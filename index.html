@@ -2419,7 +2419,7 @@ function buildWarrantyForm() {
     ? `<span class="wf-val"${style ? ' style="'+style+'"' : ''}>${esc(val)}</span>`
     : `<span class="wf-fill"${style ? ' style="'+style+'"' : ''}></span>`;
   const L = t => `<span class="wf-label">${t}:</span>`;
-  return '<div class="warranty-form-title">Warranty Registration — please print clearly, we have to read this. Mahalo!</div>'
+  return '<div class="warranty-form-title">Warranty Registration — please print clearly, we have to read this. Mahalo! <svg viewBox="0 0 64 64" fill="currentColor" style="height:1.15em;width:1.15em;vertical-align:-0.22em" aria-hidden="true"><g transform="rotate(12 32 32)"><rect x="8" y="24" width="15" height="26" rx="7.5" transform="rotate(-48 17 35)"/><rect x="39" y="8" width="11" height="30" rx="5.5" transform="rotate(9 44.5 23)"/><rect x="19" y="27" width="29" height="29" rx="12"/></g></svg></div>'
     + `<div class="wf-line">${L('Name / Organization')} ${fill(name)}</div>`
     + `<div class="wf-line">${L('Address')} ${fill(addr)}</div>`
     + `<div class="wf-line">${L('Town')} ${fill(city)} <span class="wf-gap">State:</span> ${fill(state, 'flex:0 0 42px')} <span class="wf-gap">Zip:</span> ${fill(zip, 'flex:0 0 72px')}</div>`
