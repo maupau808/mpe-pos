@@ -101,7 +101,7 @@ h2 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
 .btn-danger:hover { background: #fff5f5; border-color: #e53935; }
 .btn-filled { background: #1a73e8; color: #fff; border-color: #1a73e8; }
 .btn-filled:hover { background: #1557b0; border-color: #1557b0; }
-.review-star-btn { position: absolute; right: calc(100% + 22px); top: 50%; transform: translateY(-50%); background: none; border: 1.5px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 13px; padding: 2px 5px; line-height: 1; white-space: nowrap; transition: border-color .15s, background .15s; }
+.review-star-btn { background: none; border: 1.5px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 13px; padding: 6px 8px; line-height: 1; white-space: nowrap; transition: border-color .15s, background .15s; }
 .review-star-btn:hover { border-color: #aaa; }
 .review-star-btn.active { border-color: #4caf50; background: #f1f8e9; }
 .btn-clear:hover { background: #f0f0f0; }
@@ -472,6 +472,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
       <button class="btn-big" id="emailDocBtn" onclick="emailDoc()">✉ Email</button>
       <button class="btn-big btn-filled" onclick="printQuote()">🖨 Print</button>
+      <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
     </div>
     <div class="summary">
       <div class="sum-row">
@@ -482,10 +483,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <span class="sum-label">Tax (4.712%)</span>
         <span class="sum-val" id="sumTax">—</span>
       </div>
-      <div class="sum-row total" style="position:relative">
+      <div class="sum-row total">
         <span class="sum-label">Total</span>
         <span class="sum-val" id="sumTotal">—</span>
-        <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
       </div>
     </div>
   </div>
