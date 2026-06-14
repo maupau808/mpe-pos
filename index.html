@@ -166,9 +166,9 @@ h2 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
 .print-banner .banner-close { margin-left: auto; cursor: pointer; opacity: 0.5; font-size: 14px; background: none; border: none; padding: 0 2px; font-family: inherit; line-height: 1; }
 .print-banner .banner-close:hover { opacity: 1; }
 .mahalo { text-align: center; font-size: 14px; color: #aaa; font-style: italic; margin-top: 0.6rem; margin-bottom: 0.5rem; letter-spacing: 0.02em; }
-.review-block { display: inline-flex; align-items: center; gap: 16px; border: 1px solid #999; border-radius: 6px; padding: 12px 16px; }
-.review-text { width: 240px; font-size: 13px; font-style: italic; line-height: 1.45; text-align: left; color: #000; }
-.review-qr { width: 130px; height: 130px; flex-shrink: 0; }
+.review-block { display: inline-flex; align-items: center; gap: 9px; border: 1px solid #bbb; border-radius: 5px; padding: 7px 9px; }
+.review-text { width: 150px; font-size: 9px; font-style: italic; line-height: 1.3; text-align: left; color: #000; }
+.review-qr { width: 65px; height: 65px; flex-shrink: 0; }
 .cust-bar { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; position: relative; }
 .cust-dd { max-height: 320px; }
 .cust-dd .dd-co { font-size: 13px; font-weight: 600; color: #1a1a1a; }
@@ -477,6 +477,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <button class="btn-big btn-filled" onclick="printQuote()">🖨 Print</button>
       <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
     </div>
+    <div id="reviewMsg" style="display:none"></div>
     <div class="summary">
       <div class="sum-row">
         <span class="sum-label">Subtotal</span>
@@ -501,8 +502,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <div class="sig-line">Sign: <span class="sig-underline"></span></div>
     </div>
   </div>
-
-  <div id="reviewMsg" style="display:none;text-align:center;margin-top:16px"></div>
 
 </div>
 
@@ -2268,7 +2267,7 @@ function clearAll() {
 const REVIEW_QR_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAhIAAAISAQAAAACxRhsSAAAFcElEQVR4nO1d223cSgzleAX4UwZSgEuRO7glBbekdLAqxQUEkD4XkMGA5AznsXKAxGYQBOd8KKsnHM4BxbcS00exPnz4EUR4Rg/Iowfk0QPy+GvlsaeMl32yg7pH6xNReqG6eUu6IdonuySlNP1d/5cP4+HjjyA84/PlQczbhRW0yK8r6e5BtMiG5oPsmGyIfLPoPXoH1qUH5BElj2SKkVxjChPX9GjsTC/zTY6RcPeW+Ko/RQ2LosW6jABPg+Uxm2JlI+uyyeY1Jb7uj6JF3xL/r3yej9i/4zeBZ/y78pjanf1JSPh90l+8Ph+TqtFE80aJ6HLQsj0RLdvn/x0PeEYHyOMn9imrnsz2KbPQUczQ5jo1UvUY7NN3AY7FyOPNXHcieb2Lskwv+6O8/MVnkhiAOFjm9H9VVSrHVr1HFDDWZQB4GvLen2uo/5Z4fZbN04WYKPv73eaWaH0+5Oyn/h0PeEYHyGNAeZ93ztS1RKPskOjT4j3pe1+tghyhQlxqBDgWFT8leduzklXtzuucrVLD0oVTm3vlOvB0BHgawlMW7WhMZFGb2UnKmtXdKtexZdczA1iXHpBHmD6lwkmqGSfVndm3l1/qQilZZ48GgKcnAE8D86aH7GRLNatNPVHomANWxVItZ6FP7wGexvCUimKcNWWvtoDap/lYVqp2Qo3UrGNhn54CPI2zT7fiQrG6VcVx0nd8PlGtUnO1vEAF69ID8giJn+6aLT0mXtPlSO7RM+1fOC2vUxcrVUhWVf5Ny/YF63IH8DRGn7I7TtzmQ++Sp26Q2i+5G3GpE4CnYX7UtTFNj3zCXvkWWHX3v+4qwNMTgKdh+nSpwanZo1FeeJJPOJU9EIB81BnA08A4v+LInr9rVjvc6FN3sLJVAD/qHuBpoD4lz4wqMUusKket8nXZwbdgv+yDpycAT0PzpsyjLaqJfy9GqUkpRSlLQVxqBHgalzc1XHKyKQdHC2okVVBMU+RN3wF4GhqX4lqq5zVUtZ6/uFU1qwqevgPwNCpvytZPsuVoVC2Qqi//wl3viy634b0/AjyNi59SF7o3uD5t0qhGUa9SESBvOgA8DdOn7NFQQ6nhMxgxxzrpQm/wdAB4GlfPz179RF1vaVavtZQ6O1hN5Qp4OgA8jbNPZy3gPwoJaz6q1vCV6tShhQo8HQGeRsVPyUv1FE0fX67i916Uaimg/vQ9gKcx8rgY/5I27BsddXLfQFaZ25OpLO38MrTv6yvm9d0DPA2u5yeP89f2Zy/u80BA25+CeqkTgKdxPGWf2zO74+RevgVR1TRwitbKKfhRA8DTMJ6S90Bfu1rT5pJ++lnrUWFdekAeUXlT9lw+5zd7HTvRdUp59r8ORQFPR4CnYf4+ufG5lPe5efl6Sd+IWur6vAgQ69ID8ojN7yu8kK/pLe1Tq+18H8RPTwCeBs6XujR6sqnsb2ujuiaVplMF69ID8oidL2Voxkg5vBfFTdOmBxU8HQCextqnVzNIvQi1FPCXbpPSzOd1AJgvdQrwNDh+uvWnar1UDfb3wBy0M4CnIfKYS5XUtbztu64oTaPKGPSa/W+KVeUY1qUH5BH8PT4qX5KST/Exa/JeZ/E/35rp/XmEv0/vx7oMAE9jvstzMUWZtNJk/W/Lw6NkcL+Nm1q+TfKZHiGrHiOZ3r8T6Rx/rMsI8DSw3/Ti9mkpM60tfHZd03dSjiF+egbw9E/wdG6jUU1XVP7eSa6nLtkqxKXuAZ4G85TboFPbXuJZKG+hqlN8ET8dAZ4Gfy+aveB0mJFSR/V11anQp6cAT+Pq+mgYIyXwOpSaWm2KUWq/H9alB+Tx+fJId8Oifxkr1qUH5NED8ugBefT4l+TxA2GW1Hw0xr/XAAAAAElFTkSuQmCC';
 function buildReviewBlock() {
   return '<div class="review-block">'
-    + '<div class="review-text"><strong>Mahalo for choosing us!</strong><br><br>We hate to ask &mdash; but a quick Google review goes a long way to help local business.<br><br>Help Maui find us over mainland chains.<br><br>Scan to review &rarr;</div>'
+    + '<div class="review-text"><strong>Mahalo for choosing us!</strong><br>We hate to ask &mdash; but a quick Google review goes a long way to help support local businesses like ours. Scan to review.</div>'
     + '<img class="review-qr" src="' + REVIEW_QR_SRC + '" alt="Scan to leave a Google review">'
     + '</div>';
 }
