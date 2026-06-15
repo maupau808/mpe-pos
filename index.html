@@ -12,9 +12,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 /* ── Dark mode: invert the rendered UI (keeps colored buttons via hue-rotate). */
 /* Applied to .wrap and the modal panel only — print copies and the off-screen */
 /* email-PDF holder are separate siblings, so PDFs/printouts stay light. */
-html.dark, body.dark { background: #111; }
-body.dark .wrap { filter: invert(1) hue-rotate(180deg); }
-body.dark #uploadsModal .hist-panel { filter: invert(1) hue-rotate(180deg); }
+html.dark, body.dark { background: #161616; }
+/* contrast(.78) lifts the inverted pure-black (#000) up to ~#1E1E1E while keeping text light */
+body.dark .wrap { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
+body.dark #uploadsModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
 @media print {
   body.dark .wrap, body.dark #uploadsModal .hist-panel { filter: none !important; }
   html.dark, body.dark { background: #fff; }
