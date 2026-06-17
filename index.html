@@ -1994,6 +1994,13 @@ function searchParts(val) {
   // then split into word tokens for multi-word "all words must match" search.
   // "kohler maintenance kit" → ["kohler","maintenance","kit"] — order doesn't matter.
   const tokens = synCollapseQuery(lowerVal).split(/\s+/).filter(Boolean);
+  // Space-insensitive model matching: "fs 131" and "fs131" should be equal.
+  // Collapse all separators out of the query, and only use this when the query
+  // is model-number-shaped (has a letter↔digit boundary, e.g. "fs131","ms261").
+  // Plain words ("trimmer") and pure numbers ("131") skip it and behave exactly
+  // as the normal token search, so this adds matches only for model numbers.
+  const qCollapsed = lowerVal.replace(/[\s\-\.\/,]/g, '');
+  const useCollapsed = qCollapsed.length >= 4 && /[a-z]\d|\d[a-z]/.test(qCollapsed);
 
   const exact = [], startsWith = [], wordMatch = [];
   for (let p of partsArray) {
@@ -2012,7 +2019,16 @@ function searchParts(val) {
     // Every query word must appear somewhere in the item's text (substring match).
     // Substring handles abbreviations like "maint" inside "maintenance"; synonyms
     // (above) handle different words for the same thing.
-    if (tokens.every(t => hay.includes(t))) wordMatch.push(p);
+    // Collapse the description only (not make/PN — those are long numeric SKUs
+    // that would cause cross-boundary false positives). Cache per part.
+    let descCollapsed;
+    if (useCollapsed) {
+      descCollapsed = p._descCollapsed;
+      if (descCollapsed === undefined)
+        descCollapsed = p._descCollapsed = (p.desc||'').toLowerCase().replace(/[\s\-\.\/,]/g, '');
+    }
+    if (tokens.every(t => hay.includes(t)) ||
+        (useCollapsed && descCollapsed.includes(qCollapsed))) wordMatch.push(p);
   }
 
   const byPrice = (a, b) => (parseFloat(b.list) || 0) - (parseFloat(a.list) || 0);
