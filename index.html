@@ -16,6 +16,7 @@ html.dark, body.dark { background: #161616; }
 /* contrast(.78) lifts the inverted pure-black (#000) up to ~#1E1E1E while keeping text light */
 body.dark .wrap { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
 body.dark #uploadsModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
+body.dark #txnModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
 @media print {
   body.dark .wrap, body.dark #uploadsModal .hist-panel { filter: none !important; }
   html.dark, body.dark { background: #fff; }
@@ -151,6 +152,25 @@ h2 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
 .hist-actions { display: flex; gap: 6px; }
 .hist-count { font-size: 11px; color: #999; padding: 6px 18px 0; flex-shrink: 0; }
 .hist-list { overflow-y: auto; padding: 10px 18px 18px; flex: 1; }
+/* Transaction history lookup */
+.txn-search { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 14px; border: 1px solid #ddd; border-radius: 8px; outline: none; }
+.txn-search:focus { border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,0.12); }
+.txn-card { border: 1px solid #eee; border-radius: 8px; margin-bottom: 6px; overflow: hidden; }
+.txn-card.open { border-color: #d0d0d0; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.txn-sum { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; font-size: 13px; }
+.txn-sum:hover { background: #f7f9fc; }
+.txn-date { color: #888; flex: 0 0 88px; font-variant-numeric: tabular-nums; }
+.txn-name { font-weight: 600; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.txn-meta { color: #999; font-size: 11px; flex: 0 0 auto; }
+.txn-total { font-weight: 600; color: #2d7a3a; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.txn-caret { color: #bbb; flex: 0 0 auto; transition: transform 0.15s; }
+.txn-card.open .txn-caret { transform: rotate(180deg); }
+.txn-detail { padding: 4px 12px 12px; border-top: 1px solid #f0f0f0; background: #fafbfc; }
+.txn-meta-line { font-size: 11px; color: #888; padding: 8px 2px 6px; }
+.txn-id { color: #bbb; }
+.txn-items { width: 100%; border-collapse: collapse; font-size: 12px; }
+.txn-items th { text-align: left; color: #999; font-weight: 500; font-size: 10px; padding: 3px 6px; border-bottom: 1px solid #eee; }
+.txn-items td { padding: 4px 6px; border-bottom: 1px solid #f2f2f2; vertical-align: top; }
 .hist-entry { border: 1px solid #e8e8e8; border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
 .hist-entry-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #f9f9f9; cursor: pointer; user-select: none; }
 .hist-entry-header:hover { background: #f0f0f0; }
@@ -452,6 +472,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
           <label class="menu-check"><input type="checkbox" id="tgSalesView" onchange="toggleSalesView()"> 👁 Sales View</label>
         </div>
       </div>
+      <button class="menu-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
       <span style="display:none">
         <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="internalPrintBtn"></button>
       </span>
@@ -578,6 +599,25 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="drive-btn hist-clear-btn" onclick="savePriceChanges([]);updatePriceChangesBadge();openUploads('priceChanges');">🗑 Clear All</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Transaction History lookup -->
+<div id="txnModal" class="hist-modal hidden">
+  <div class="hist-panel">
+    <div class="hist-header">
+      <div style="font-weight:600;font-size:15px;">📒 Transaction History</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button class="drive-btn refresh" id="txnRefreshBtn" onclick="refreshTxns()">↻ Refresh</button>
+        <button class="drive-btn hist-close-btn" onclick="closeTxnHistory()">✕ Close</button>
+      </div>
+    </div>
+    <div style="padding:12px 18px 6px;flex-shrink:0;">
+      <input id="txnSearch" class="txn-search" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Search name, company, product, part #, serial #, date…" oninput="renderTxnResults()">
+    </div>
+    <div class="hist-count" id="txnCount"></div>
+    <div class="hist-list" id="txnList"></div>
   </div>
 </div>
 
@@ -1764,6 +1804,147 @@ async function pushTransactionToSheet(order) {
       alert('Transaction export failed: ' + e.message);
     }
   }
+}
+
+// ─── TRANSACTION HISTORY LOOKUP ──────────────────────────────────────────────
+// Reads the Bridge "Transactions" tab once (one Sheets API call), groups rows by
+// TxnID, and searches client-side across name/company/product/part#/serial/date.
+// Cached in IndexedDB so reopening is instant; ↻ Refresh re-pulls from Drive.
+let _txns = null, _txnsLoadedAt = 0, _txnShown = [];
+
+async function _idbPut(key, value) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).put(value, key);
+    tx.oncomplete = res; tx.onerror = rej;
+  });
+}
+async function _idbGet(key) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(DB_STORE, 'readonly');
+    const r = tx.objectStore(DB_STORE).get(key);
+    r.onsuccess = e => res(e.target.result); r.onerror = rej;
+  });
+}
+
+function _parseTxnRows(rows) {
+  const txns = [];
+  let cur = null;
+  for (const r of (rows || [])) {
+    const type = (r[0] || '').trim().toLowerCase();
+    if (type === 'txn') {
+      if (cur) txns.push(cur);
+      cur = { txnId: r[1]||'', date: r[2]||'', time: r[3]||'', name: r[4]||'',
+              phone: r[5]||'', email: r[6]||'', addr: r[7]||'', total: r[12]||'', items: [] };
+    } else if (type === 'item' && cur) {
+      cur.items.push({ pn: r[8]||'', desc: r[9]||'', qty: r[10]||'', ea: r[11]||'', sub: r[12]||'', sn: r[13]||'' });
+    }
+  }
+  if (cur) txns.push(cur);
+  for (const t of txns) {
+    const parts = [t.txnId, t.date, t.name, t.phone, t.email, t.addr, String(t.total)];
+    for (const it of t.items) parts.push(it.pn, it.desc, it.sn);
+    t._hay = parts.filter(Boolean).join(' ').toLowerCase();
+    t._ts = Date.parse(t.date) || 0;
+  }
+  return txns;
+}
+
+function _setTxnStatus(msg) { const el = document.getElementById('txnCount'); if (el) el.textContent = msg; }
+
+function openTxnHistory() {
+  document.getElementById('txnModal').classList.remove('hidden');
+  const inp = document.getElementById('txnSearch');
+  inp.value = '';
+  initTxns();
+  setTimeout(() => inp.focus(), 60);
+}
+function closeTxnHistory() { document.getElementById('txnModal').classList.add('hidden'); }
+
+async function initTxns() {
+  try {
+    if (!_txns) {
+      const cached = await _idbGet('txnCache');
+      if (cached && cached.rows) { _txns = _parseTxnRows(cached.rows); _txnsLoadedAt = cached.at; }
+    }
+    if (!_txns) { await refreshTxns(); return; }
+    renderTxnResults();
+  } catch (e) { _setTxnStatus('Error: ' + e.message); }
+}
+
+async function refreshTxns() {
+  _setTxnStatus('Loading from Drive…');
+  try {
+    const rows = await sheetsGet(TXN_SHEET);
+    _txns = _parseTxnRows(rows);
+    _txnsLoadedAt = Date.now();
+    try { await _idbPut('txnCache', { at: _txnsLoadedAt, rows }); } catch {}
+    renderTxnResults();
+  } catch (e) {
+    const hint = /sign|token|401|unauth/i.test(e.message) ? ' — sign in to Google first.'
+               : /parse range/i.test(e.message) ? ' — no "Transactions" tab found yet.' : '';
+    _setTxnStatus('Could not load: ' + e.message + hint);
+  }
+}
+
+function renderTxnResults() {
+  if (!_txns) return;
+  const q = (document.getElementById('txnSearch').value || '').trim().toLowerCase();
+  const tokens = q.split(/\s+/).filter(Boolean);
+  let res = tokens.length ? _txns.filter(t => tokens.every(tok => t._hay.includes(tok))) : _txns.slice();
+  res.sort((a, b) => b._ts - a._ts);
+  const total = res.length;
+  _txnShown = res.slice(0, 300);
+  const list = document.getElementById('txnList');
+  list.innerHTML = _txnShown.map((t, i) => _txnRowHtml(t, i)).join('')
+    || '<div style="padding:24px;color:#999;text-align:center;">No matching transactions.</div>';
+  const synced = _txnsLoadedAt ? new Date(_txnsLoadedAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+  _setTxnStatus(`${total} transaction${total!==1?'s':''}${q?' matching':''}`
+    + (total > _txnShown.length ? ` · showing first ${_txnShown.length}` : '')
+    + ` · synced ${synced}`);
+}
+
+function _fmtMoney(v) {
+  if (v == null || v === '') return '';
+  const n = Number(String(v).replace(/[^0-9.\-]/g, ''));
+  return isNaN(n) ? _esch(String(v)) : '$' + n.toFixed(2);
+}
+function _txnRowHtml(t, i) {
+  const n = t.items.length;
+  return `<div class="txn-card" id="txnCard-${i}">
+    <div class="txn-sum" onclick="toggleTxn(${i})">
+      <span class="txn-date">${_esch(t.date)||'—'}</span>
+      <span class="txn-name">${_esch(t.name)||'—'}</span>
+      <span class="txn-meta">${n} item${n!==1?'s':''}</span>
+      <span class="txn-total">${_fmtMoney(t.total)}</span>
+      <span class="txn-caret">▾</span>
+    </div>
+    <div class="txn-detail" id="txnDetail-${i}" style="display:none;"></div>
+  </div>`;
+}
+function _txnDetailHtml(t) {
+  const meta = [t.time, t.phone, t.email, t.addr].filter(Boolean).map(_esch).join('  ·  ');
+  const items = t.items.map(it => `<tr>
+      <td>${_esch(it.pn)}</td><td>${_esch(it.desc)}</td>
+      <td style="text-align:center;">${_esch(it.qty)}</td>
+      <td style="text-align:right;">${_esch(it.ea)}</td>
+      <td style="text-align:right;">${_esch(it.sub)}</td>
+      <td>${it.sn ? '<b>'+_esch(it.sn)+'</b>' : ''}</td></tr>`).join('');
+  return `<div class="txn-meta-line">${meta}${meta?'  ·  ':''}<span class="txn-id">${_esch(t.txnId)}</span></div>
+    <table class="txn-items"><thead><tr>
+      <th>Part #</th><th>Description</th><th>Qty</th><th>Ea</th><th>Sub</th><th>Serial #</th>
+    </tr></thead><tbody>${items || '<tr><td colspan="6" style="color:#999;">No line items</td></tr>'}</tbody></table>`;
+}
+function toggleTxn(i) {
+  const d = document.getElementById('txnDetail-' + i);
+  const card = document.getElementById('txnCard-' + i);
+  if (!d) return;
+  if (d.style.display === 'none') {
+    if (!d.dataset.filled) { d.innerHTML = _txnDetailHtml(_txnShown[i]); d.dataset.filled = '1'; }
+    d.style.display = 'block'; card.classList.add('open');
+  } else { d.style.display = 'none'; card.classList.remove('open'); }
 }
 
 function buildRows() {
