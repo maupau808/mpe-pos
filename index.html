@@ -162,6 +162,7 @@ h2 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
 .txn-date { color: #888; flex: 0 0 88px; font-variant-numeric: tabular-nums; }
 .txn-name { font-weight: 600; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .txn-name-alt { font-weight: 400; font-style: italic; color: #999; }
+.reprint-tag { font-style: italic; font-weight: 600; }
 .txn-meta { color: #999; font-size: 11px; flex: 0 0 auto; }
 .txn-total { font-weight: 600; color: #2d7a3a; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 .txn-caret { color: #bbb; flex: 0 0 auto; transition: transform 0.15s; }
@@ -1986,6 +1987,11 @@ function loadTxnIntoPOS(i) {
   if (!t) return;
   if (!confirm('Load this transaction into the order grid? This clears the current order.')) return;
   clearAll();
+  // Treat as a reprint: keep the original date/time + txnId so the printed doc
+  // shows the original timestamp with a "Reprint" marker, and dedup blocks a
+  // duplicate Drive push.
+  const _od = new Date(((t.date || '') + ' ' + (t.time || '')).trim());
+  _reprintSource = { txnId: t.txnId || '', date: isNaN(_od.getTime()) ? new Date().toISOString() : _od.toISOString() };
   // Customer — name field was saved as "name / company"; split it back.
   let name = t.name || '', company = '';
   if (name.includes(' / ')) { const p = name.split(' / '); name = p[0].trim(); company = p.slice(1).join(' / ').trim(); }
@@ -2022,6 +2028,7 @@ function loadTxnIntoPOS(i) {
     }
   }
   updateSummary();
+  updateScreenDocTitle();   // reflect original date/number + Reprint marker on screen
   closeTxnHistory();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -2757,7 +2764,8 @@ function preparePrint() {
   const now = reserveDocDate() || new Date();
   const dateStr = now.toLocaleDateString("en-US", {year:"numeric", month:"long", day:"numeric"});
   const timeStr = now.toLocaleTimeString("en-US", {hour:"numeric", minute:"2-digit"});
-  const _dtLine = dateStr + " · " + timeStr + (_reprintSource ? " (reprint)" : "");
+  const _reprintTag = _reprintSource ? '  ·  <span class="reprint-tag">Reprint</span>' : '';
+  const _dtLine = dateStr + " · " + timeStr + _reprintTag;
   const _dateEl = document.getElementById("printDate");
   if (_docType === 'invoice') {
     const _due = new Date(now.getTime() + 30 * 86400000);
@@ -2765,7 +2773,7 @@ function preparePrint() {
     const _dd = String(_due.getDate()).padStart(2, '0');
     _dateEl.innerHTML = `<span class="due-date">Net 30 Due Date: ${_mm}/${_dd}</span><br>${_dtLine}`;
   } else {
-    _dateEl.textContent = _dtLine;
+    _dateEl.innerHTML = _dtLine;
   }
   // Document title + number (Sales Receipt / Invoice / Quote)
   document.getElementById("printDocTitle").textContent = DOC_TITLES[_docType];
@@ -3209,7 +3217,7 @@ function updateScreenDocTitle() {
   const el = document.getElementById('docScreenTitle');
   if (!el) return;
   const num = activeDocNumber();
-  el.textContent = DOC_TITLES[_docType] + (num ? '   ·   No. ' + num : '');
+  el.textContent = DOC_TITLES[_docType] + (num ? '   ·   No. ' + num : '') + (_reprintSource ? '   ·   Reprint' : '');
 }
 
 function saveToHistory() {
