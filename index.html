@@ -1924,7 +1924,7 @@ function _txnRowHtml(t, i) {
     <div class="txn-detail" id="txnDetail-${i}" style="display:none;"></div>
   </div>`;
 }
-function _txnDetailHtml(t) {
+function _txnDetailHtml(t, idx) {
   const meta = [t.time, t.phone, t.email, t.addr].filter(Boolean).map(_esch).join('  ·  ');
   const items = t.items.map(it => `<tr>
       <td>${_esch(it.pn)}</td><td>${_esch(it.desc)}</td>
@@ -1935,16 +1935,66 @@ function _txnDetailHtml(t) {
   return `<div class="txn-meta-line">${meta}${meta?'  ·  ':''}<span class="txn-id">${_esch(t.txnId)}</span></div>
     <table class="txn-items"><thead><tr>
       <th>Part #</th><th>Description</th><th>Qty</th><th>Ea</th><th>Sub</th><th>Serial #</th>
-    </tr></thead><tbody>${items || '<tr><td colspan="6" style="color:#999;">No line items</td></tr>'}</tbody></table>`;
+    </tr></thead><tbody>${items || '<tr><td colspan="6" style="color:#999;">No line items</td></tr>'}</tbody></table>
+    <div style="text-align:right;margin-top:10px;">
+      <button class="drive-btn refresh" onclick="loadTxnIntoPOS(${idx})">↩ Load into POS</button>
+    </div>`;
 }
 function toggleTxn(i) {
   const d = document.getElementById('txnDetail-' + i);
   const card = document.getElementById('txnCard-' + i);
   if (!d) return;
   if (d.style.display === 'none') {
-    if (!d.dataset.filled) { d.innerHTML = _txnDetailHtml(_txnShown[i]); d.dataset.filled = '1'; }
+    if (!d.dataset.filled) { d.innerHTML = _txnDetailHtml(_txnShown[i], i); d.dataset.filled = '1'; }
     d.style.display = 'block'; card.classList.add('open');
   } else { d.style.display = 'none'; card.classList.remove('open'); }
+}
+
+// Re-create a past transaction as a new editable order (reprint / repeat).
+// Populates BOTH the desktop table and the mobile cards so it works on any screen.
+function loadTxnIntoPOS(i) {
+  const t = _txnShown[i];
+  if (!t) return;
+  if (!confirm('Load this transaction into the order grid? This clears the current order.')) return;
+  clearAll();
+  // Customer — name field was saved as "name / company"; split it back.
+  let name = t.name || '', company = '';
+  if (name.includes(' / ')) { const p = name.split(' / '); name = p[0].trim(); company = p.slice(1).join(' / ').trim(); }
+  const setv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  setv('custName', name); setv('custCompany', company);
+  setv('custPhone', t.phone); setv('custEmail', t.email); setv('custAddr', t.addr);
+  // Pre-size both views to fit all items (+1 spare) so we never rely on auto-add.
+  const items = t.items || [];
+  NUM_ROWS = Math.max(3, items.length + 1);
+  buildRows(); buildMobileRows();
+  for (let r = 0; r < items.length; r++) {
+    const it = items[r];
+    const price = parseFloat(String(it.ea || '').replace(/[^0-9.\-]/g, '')) || 0;
+    const qty = parseFloat(it.qty) || 1;
+    const hasSN = !!(it.sn && it.sn.trim());
+    const part = { pn: it.pn || '', desc: it.desc || '', list: price, make: '', cost: '', warranty: hasSN };
+    // Desktop row
+    const dInp = tbody.querySelector(`[data-row="${r}"].part-input`);
+    if (dInp) dInp.value = it.pn || it.desc || '';
+    const qd = document.getElementById(`qty-${r}`); if (qd) qd.value = qty;   // set before applyPart so SN count is right
+    applyPart(r, part);
+    const qd2 = document.getElementById(`qty-${r}`); if (qd2) qd2.value = qty;
+    updateSubtotal(r);
+    // Mobile card (mirrors the same data)
+    const mInp = document.querySelector(`#mobileRows [data-row="${r}"].part-input`);
+    if (mInp) { mInp.value = it.pn || it.desc || ''; applyMobilePart(r, part); }
+    const mq = document.getElementById(`mqty-${r}`); if (mq) mq.value = qty;
+    updateMobileSubtotal(r);
+    // Serial numbers (warranty rows live in the desktop table)
+    if (hasSN) {
+      const serials = it.sn.split(',').map(s => s.trim()).filter(Boolean);
+      const snInputs = tbody.querySelectorAll(`tr[data-sn-for="${r}"] .sn-input`);
+      serials.forEach((s, idx) => { if (snInputs[idx]) snInputs[idx].value = s; });
+    }
+  }
+  updateSummary();
+  closeTxnHistory();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function buildRows() {
