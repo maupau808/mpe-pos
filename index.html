@@ -161,6 +161,7 @@ h2 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
 .txn-sum:hover { background: #f7f9fc; }
 .txn-date { color: #888; flex: 0 0 88px; font-variant-numeric: tabular-nums; }
 .txn-name { font-weight: 600; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.txn-name-alt { font-weight: 400; font-style: italic; color: #999; }
 .txn-meta { color: #999; font-size: 11px; flex: 0 0 auto; }
 .txn-total { font-weight: 600; color: #2d7a3a; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 .txn-caret { color: #bbb; flex: 0 0 auto; transition: transform 0.15s; }
@@ -1843,11 +1844,20 @@ function _parseTxnRows(rows) {
     }
   }
   if (cur) txns.push(cur);
+  const _num = v => parseFloat(String(v || '').replace(/[^0-9.\-]/g, '')) || 0;
   for (const t of txns) {
     const parts = [t.txnId, t.date, t.name, t.phone, t.email, t.addr, String(t.total)];
     for (const it of t.items) parts.push(it.pn, it.desc, it.sn);
     t._hay = parts.filter(Boolean).join(' ').toLowerCase();
     t._ts = Date.parse(t.date) || 0;
+    // Fallback label for un-named sales: the priciest product in the txn (by unit
+    // price, then line total). Shown italic/unbold so it reads as "no name on file".
+    let top = null, topVal = -1;
+    for (const it of t.items) {
+      const val = _num(it.ea) || _num(it.sub);
+      if (val > topVal) { topVal = val; top = it; }
+    }
+    t._topDesc = top ? (top.desc || top.pn || '') : '';
   }
   return txns;
 }
@@ -1913,10 +1923,14 @@ function _fmtMoney(v) {
 }
 function _txnRowHtml(t, i) {
   const n = t.items.length;
+  const nameCell = t.name
+    ? `<span class="txn-name">${_esch(t.name)}</span>`
+    : (t._topDesc ? `<span class="txn-name txn-name-alt">${_esch(t._topDesc)}</span>`
+                  : `<span class="txn-name">—</span>`);
   return `<div class="txn-card" id="txnCard-${i}">
     <div class="txn-sum" onclick="toggleTxn(${i})">
       <span class="txn-date">${_esch(t.date)||'—'}</span>
-      <span class="txn-name">${_esch(t.name)||'—'}</span>
+      ${nameCell}
       <span class="txn-meta">${n} item${n!==1?'s':''}</span>
       <span class="txn-total">${_fmtMoney(t.total)}</span>
       <span class="txn-caret">▾</span>
