@@ -694,6 +694,7 @@ function initTokenClient() {
       scheduleTokenRefresh();
       fetchFromDrive();
       syncCustomersFromSheet();
+      flushUnpushedTxns();   // auto-sync any transactions saved locally while signed out
       if (_pendingAction) { const fn = _pendingAction; _pendingAction = null; fn(); }
     }
   });
@@ -1427,16 +1428,28 @@ function clearDescChange(rowIdx) {
   if (!hasPrice && !hasCost) changes.splice(idx, 1); else changes[idx] = entry;
   savePriceChanges(changes);
 }
+function countUnpushedTxns() {
+  try {
+    const pushed = getPushedTxnIds();
+    return getHistory().filter(o => o.txnId && !pushed.has(o.txnId)).length;
+  } catch (e) { return 0; }
+}
 function updatePriceChangesBadge() {
-  const n = getPriceChanges().length;
+  const pc = getPriceChanges().length;
+  const txn = countUnpushedTxns();          // transactions saved locally but not yet on Drive
+  const total = pc + txn;
   ['uploadsBadge','dataBadge'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) { el.textContent = n > 0 ? String(n) : ''; el.style.display = n > 0 ? '' : 'none'; }
+    if (el) {
+      el.textContent = total > 0 ? String(total) : '';
+      el.style.display = total > 0 ? '' : 'none';
+      el.title = total > 0 ? `${txn} transaction(s) + ${pc} item change(s) waiting to push to Drive` : '';
+    }
   });
   const tabBadge = document.getElementById('pcTabBadge');
-  if (tabBadge) tabBadge.textContent = n > 0 ? `(${n})` : '';
+  if (tabBadge) tabBadge.textContent = pc > 0 ? `(${pc})` : '';
   const btn = document.getElementById('uploadsBtn');
-  if (btn) btn.classList.toggle('active', n > 0);
+  if (btn) btn.classList.toggle('active', total > 0);
 }
 function renderPriceChanges() {
   const changes = getPriceChanges();
@@ -1663,6 +1676,23 @@ async function sheetsAppend(range, rows) {
   return true;
 }
 
+// Quietly push transactions saved locally while signed out (e.g. printed/emailed
+// offline) to the Drive Transactions sheet. Runs automatically on sign-in. Shows
+// no UI and does NOT clear local history; dedup (getPushedTxnIds) prevents doubles.
+async function flushUnpushedTxns() {
+  if (!(accessToken || sessionStorage.getItem('gToken'))) return;
+  const pushed = getPushedTxnIds();
+  const queue = getHistory().filter(o => o.txnId && !pushed.has(o.txnId));
+  if (!queue.length) return;
+  let n = 0;
+  for (const order of queue) {
+    try { await pushTransactionToSheet(order); n++; }
+    catch (e) { break; }   // network/auth hiccup — leave the rest for next sign-in
+  }
+  if (n) console.log('[MPE] Auto-synced', n, 'queued transaction(s) to Drive');
+  try { updatePriceChangesBadge(); } catch (e) {}
+}
+
 async function pushAllToSheet() {
   // Auth gate — trigger sign-in and resume automatically on success
   if (!(accessToken || sessionStorage.getItem('gToken'))) {
@@ -1798,6 +1828,7 @@ async function pushTransactionToSheet(order) {
     }
 
     addPushedTxnId(txnId);
+    try { updatePriceChangesBadge(); } catch (e) {}   // un-synced count just dropped
     console.log('[MPE] Transaction exported:', txnId, insertIdx === -1 ? '(appended)' : `(inserted at row ${insertIdx + 1})`);
   } catch(e) {
     if (e.message.includes('Unable to parse range')) {
@@ -2901,7 +2932,7 @@ function printQuote() {
   window.print();
 }
 
-window.addEventListener('beforeprint', () => { preparePrint(); saveToHistory(); });
+window.addEventListener('beforeprint', () => { preparePrint(); saveToHistory(); updatePriceChangesBadge(); });
 window.addEventListener('afterprint', () => { cleanupPrint(); showPrintBanner(); });
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'p') { e.preventDefault(); printQuote(); }
@@ -3086,6 +3117,8 @@ Maui Power Equipment
     const msgId = data.message?.id;
     if (msgId) window.open('https://mail.google.com/mail/u/0/#drafts?compose=' + msgId, '_blank');
     setBtn('✓ Draft ready', false);
+    saveToHistory();            // record the transaction (local + Drive), same as printing
+    updatePriceChangesBadge();
     setTimeout(() => setBtn('✉ Email', false), 4000);
   } catch (e) {
     document.getElementById('emailPdfHolder').innerHTML = '';
@@ -3096,7 +3129,7 @@ Maui Power Equipment
 
 // ─── HISTORY ───────────────────────────────────────────────────────────────
 const HISTORY_KEY = 'mpe_print_history';
-const HISTORY_MAX = 100;
+const HISTORY_MAX = 1000;   // local push-queue cap; raised so un-synced txns aren't evicted before reaching Drive
 const PUSHED_TXNIDS_KEY = 'mpe_pushed_txn';
 function getPushedTxnIds() { try { return new Set(JSON.parse(localStorage.getItem(PUSHED_TXNIDS_KEY) || '[]')); } catch { return new Set(); } }
 function addPushedTxnId(id) {
@@ -3311,7 +3344,7 @@ function updatePrintBanner() {
     pending: '⏳ Sending to Drive…',
     ok:      '✓ Saved to Drive Transactions sheet',
     fail:    '⚠ Drive push failed — <button class="banner-push-btn" onclick="retryPrintPush()">↑ Retry</button>',
-    skipped: '⚠ Not signed in — transaction not saved to Drive &nbsp;<button class="banner-push-btn" onclick="retryPrintPush()">↑ Push now</button>',
+    skipped: '✓ Saved on this device — sign in to sync to Drive (' + countUnpushedTxns() + ' waiting) &nbsp;<button class="banner-push-btn" onclick="retryPrintPush()">↑ Sync now</button>',
   };
   el.className = 'print-banner ' + cls;
   el.innerHTML = (msgs[_lastPushStatus] || '') + '<button class="banner-close" onclick="dismissPrintBanner()">✕</button>';
