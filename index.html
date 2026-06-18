@@ -1850,6 +1850,17 @@ function _parseTxnRows(rows) {
     for (const it of t.items) parts.push(it.pn, it.desc, it.sn);
     t._hay = parts.filter(Boolean).join(' ').toLowerCase();
     t._ts = Date.parse(t.date) || 0;
+    // Space-insensitive serial haystack: each serial with separators stripped,
+    // kept space-separated so "548 969 486" and "548969486" match both ways.
+    const serials = [];
+    for (const it of t.items) {
+      if (!it.sn) continue;
+      for (const s of String(it.sn).split(',')) {
+        const c = s.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (c) serials.push(c);
+      }
+    }
+    t._serialHay = serials.join(' ');
     // Fallback label for un-named sales: the priciest product in the txn (by unit
     // price, then line total). Shown italic/unbold so it reads as "no name on file".
     let top = null, topVal = -1;
@@ -1903,7 +1914,11 @@ function renderTxnResults() {
   if (!_txns) return;
   const q = (document.getElementById('txnSearch').value || '').trim().toLowerCase();
   const tokens = q.split(/\s+/).filter(Boolean);
-  let res = tokens.length ? _txns.filter(t => tokens.every(tok => t._hay.includes(tok))) : _txns.slice();
+  const qCollapsed = q.replace(/[^a-z0-9]/g, '');   // for space-insensitive serial match
+  let res = tokens.length
+    ? _txns.filter(t => tokens.every(tok => t._hay.includes(tok))
+        || (qCollapsed.length >= 3 && t._serialHay && t._serialHay.includes(qCollapsed)))
+    : _txns.slice();
   res.sort((a, b) => b._ts - a._ts);
   const total = res.length;
   _txnShown = res.slice(0, 300);
