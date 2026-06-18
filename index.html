@@ -1915,6 +1915,12 @@ function openTxnHistory() {
   setTimeout(() => inp.focus(), 60);
 }
 function closeTxnHistory() { document.getElementById('txnModal').classList.add('hidden'); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const m = document.getElementById('txnModal');
+    if (m && !m.classList.contains('hidden')) { e.preventDefault(); closeTxnHistory(); }
+  }
+});
 
 async function initTxns() {
   try {
