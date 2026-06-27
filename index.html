@@ -29,6 +29,11 @@ h2 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .toolbar-right { font-size: 12px; color: #888; white-space: nowrap; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .parts-count { font-size: 12px; color: #2d7a3a; font-weight: 500; }
+.stat-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c0c0c0; vertical-align: middle; }
+.stat-dot.ok { background: #2d7a3a; }
+.stat-dot.warn { background: #f0ad4e; }
+.stat-dot.err { background: #e53935; }
+.data-status { font-size: 12px; line-height: 1.7; color: #444; padding: 2px 8px 8px; border-bottom: 1px solid #eee; margin-bottom: 6px; }
 .drive-btn.manual-load { background: #f5f5f5; color: #555; border: 1px solid #ddd; font-size: 10px; padding: 3px 8px; border-radius: 5px; cursor: pointer; }
 .drive-btn.manual-load:hover { background: #eee; }
 .file-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; padding: 10px 14px; background: #f9f9f9; border-radius: 8px; border: 1px solid #e0e0e0; flex-wrap: wrap; }
@@ -457,8 +462,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="internal" onclick="setDocType('internal')">Internal</button>
       </div>
       <div class="menu-wrap">
-        <button class="menu-btn" id="dataMenuBtn" onclick="toggleMenu(event,'dataMenu')"><span class="parts-count" id="partsCount">Sign in</span> <span id="dataBadge" class="pc-badge" style="display:none"></span> <span class="caret">▾</span></button>
+        <button class="menu-btn" id="dataMenuBtn" onclick="toggleMenu(event,'dataMenu')"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount">Sign in</span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span> <span id="dataBadge" class="pc-badge" style="display:none"></span> <span class="caret">▾</span></button>
         <div class="menu-panel" id="dataMenu" onclick="event.stopPropagation()">
+          <div id="dataStatus" class="data-status"></div>
           <button class="drive-btn signin" id="driveSignInBtn" onclick="handleSignIn()">Sign in</button>
           <button class="drive-btn refresh hidden" id="driveRefreshBtn" onclick="fetchFromDrive()">↻ Refresh</button>
           <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
@@ -671,6 +677,7 @@ window.addEventListener('load', () => {
     if (btn) btn.style.display = '';
   }
   updatePriceChangesBadge();
+  refreshStatusUI();
 });
 
 function initTokenClient() {
@@ -744,33 +751,83 @@ function handleSignOut() {
   setSignedOutUI();
 }
 
-function setSignedInUI() {
-  const btn = document.getElementById('driveSignInBtn');
-  btn.classList.remove('hidden');
-  btn.textContent = '✓ Connected';
-  btn.classList.remove('signin');
-  btn.classList.add('connected');
-  btn.disabled = true;
-  document.getElementById('driveRefreshBtn').classList.remove('hidden');
+// ─── STATUS INDICATORS ──────────────────────────────────────────────────────
+// Single source of truth for the two at-a-glance dots (parts + Google sign-in) on
+// the data button, plus the detail lines in the dropdown. Reads live state on every
+// call so an aged/expired token is shown honestly instead of a stale "Connected".
+function authState() {
+  const tok = accessToken || sessionStorage.getItem('gToken');
+  if (tok) {
+    const at = parseInt(sessionStorage.getItem('gTokenAt') || '0');
+    return (Date.now() - at < 55 * 60 * 1000) ? 'in' : 'expired';  // tokens live ~60 min
+  }
+  return localStorage.getItem('gSignedIn') ? 'expired' : 'out';
 }
 
-function setSignedOutUI() {
-  const btn = document.getElementById('driveSignInBtn');
-  btn.classList.remove('hidden');
-  btn.textContent = 'Sign in';
-  btn.classList.add('signin');
-  btn.classList.remove('connected');
-  btn.disabled = false;
-  document.getElementById('driveRefreshBtn').classList.add('hidden');
-  const pc = document.getElementById('partsCount'); if (pc) pc.textContent = 'Sign in';
+let _lastFetchInfo = '';   // e.g. "Drive · 7:42a" or "cache" — shown in dropdown detail
+function refreshStatusUI(transient) {
+  const dotP = document.getElementById('dotParts');
+  if (!dotP) return;
+  const pc   = document.getElementById('partsCount');
+  const dotA = document.getElementById('dotAuth');
+  const ds   = document.getElementById('dataStatus');
+  const btn  = document.getElementById('driveSignInBtn');
+
+  const haveParts = !!(loaded && partsArray && partsArray.length);
+  dotP.className = 'stat-dot ' + (haveParts ? 'ok' : 'err');
+  dotP.title = haveParts ? partsArray.length.toLocaleString() + ' parts loaded' : 'No parts loaded';
+  pc.textContent = haveParts ? partsArray.length.toLocaleString() + ' parts' : 'No parts';
+  pc.style.color = '';
+
+  const a = authState();
+  dotA.className = 'stat-dot ' + (a === 'in' ? 'ok' : a === 'expired' ? 'warn' : '');
+  dotA.title = a === 'in' ? 'Signed in to Google'
+             : a === 'expired' ? 'Google session expired — will reconnect' : 'Not signed in';
+
+  if (btn) {
+    btn.classList.remove('signin', 'connected');
+    if (a === 'in')      { btn.textContent = '✓ Signed in'; btn.classList.add('connected'); btn.disabled = true; }
+    else if (a === 'expired') { btn.textContent = '↻ Reconnect'; btn.classList.add('signin'); btn.disabled = false; }
+    else                 { btn.textContent = 'Sign in';    btn.classList.add('signin'); btn.disabled = false; }
+  }
+  const refBtn = document.getElementById('driveRefreshBtn');
+  if (refBtn) refBtn.classList.toggle('hidden', a === 'out');
+
+  if (ds) {
+    const pLine = haveParts
+      ? `📦 ${partsArray.length.toLocaleString()} parts loaded${_lastFetchInfo ? ' · ' + _lastFetchInfo : ''}`
+      : '📦 No parts loaded';
+    const aLine = a === 'in' ? '☁️ Signed in to Google'
+                : a === 'expired' ? '☁️ Google session expired' : '☁️ Not signed in';
+    ds.innerHTML = pLine + '<br>' + aLine + (transient ? `<br><span style="color:#888">${transient}</span>` : '');
+  }
 }
+
+function setSignedInUI()  { refreshStatusUI(); }
+function setSignedOutUI() { refreshStatusUI(); }
 
 function setDriveStatus(msg, isError) {
-  const el = document.getElementById('partsCount');
-  if (!el) return;
-  el.textContent = msg;
-  el.style.color = isError ? '#e53935' : '#2d7a3a';
+  // Transient fetch status lives in the dropdown detail; the button face keeps the
+  // stable parts count. Capture "Updated …" / "cached" as the source label.
+  if (/^Updated /.test(msg)) _lastFetchInfo = 'Drive · ' + msg.replace('Updated ', '');
+  else if (/cached/i.test(msg)) _lastFetchInfo = 'cache';
+  refreshStatusUI(msg);
 }
+
+// ─── AUTO-REFRESH (keeps prices current without any UI) ──────────────────────
+// Re-pulls the Drive price list when the POS is brought to the foreground if it
+// hasn't been fetched yet today or in the last 30 min. Combined with the existing
+// hourly token refresh, a POS left open all day stays current on its own.
+let _lastFetchAt = 0, _fetching = false;
+function maybeAutoRefresh() {
+  if (document.hidden || authState() === 'out') return;
+  const now = Date.now();
+  const sameDay = _lastFetchAt && new Date(_lastFetchAt).toDateString() === new Date(now).toDateString();
+  if (sameDay && (now - _lastFetchAt) < 30 * 60 * 1000) return;   // already fresh today
+  fetchFromDrive();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); maybeAutoRefresh(); } });
+setInterval(() => { refreshStatusUI(); maybeAutoRefresh(); }, 60 * 1000);
 
 async function fetchFromDrive() {
   // Get token from memory or sessionStorage
@@ -782,6 +839,8 @@ async function fetchFromDrive() {
     // fetchFromDrive will be called again from the token callback
     return;
   }
+  if (_fetching) return;          // don't stack concurrent auto/manual refreshes
+  _fetching = true;
   setDriveStatus('Fetching…');
 
   try {
@@ -811,6 +870,7 @@ async function fetchFromDrive() {
       const binary = arrayBufferToBinary(ab);
       parseAndLoad('Drive price list', binary);
       await saveFileToDB('Drive price list', binary);
+      _lastFetchAt = Date.now();
       const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       setDriveStatus(`Updated ${now}`);
       return;
@@ -820,12 +880,15 @@ async function fetchFromDrive() {
     const binary = arrayBufferToBinary(ab);
     parseAndLoad('Drive price list', binary);
     await saveFileToDB('Drive price list', binary);
+    _lastFetchAt = Date.now();
     const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     setDriveStatus(`Updated ${now}`);
 
   } catch(err) {
     setDriveStatus('Using cached data', true);
     tryLoadFromDB();
+  } finally {
+    _fetching = false;
   }
 }
 
@@ -943,6 +1006,7 @@ function parseAndLoad(name, binaryData) {
         loaded = true;
         warmUpSearch();
         if (pc) { pc.textContent = partsArray.length.toLocaleString() + ' parts loaded'; pc.style.color = '#2d7a3a'; }
+        refreshStatusUI();
       } else {
         if (pc) { pc.textContent = 'Error loading file'; pc.style.color = '#e53935'; }
       }
@@ -3657,7 +3721,7 @@ function toggleMenu(ev, id) {
   const panel = document.getElementById(id);
   const wasOpen = panel.classList.contains('open');
   document.querySelectorAll('.menu-panel').forEach(p => p.classList.remove('open'));
-  if (!wasOpen) { if (id === 'togglesMenu') syncToggles(); panel.classList.add('open'); }
+  if (!wasOpen) { if (id === 'togglesMenu') syncToggles(); if (id === 'dataMenu') refreshStatusUI(); panel.classList.add('open'); }
 }
 document.addEventListener('click', () => document.querySelectorAll('.menu-panel.open').forEach(p => p.classList.remove('open')));
 
