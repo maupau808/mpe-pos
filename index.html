@@ -1928,13 +1928,18 @@ async function initTxns() {
       const cached = await _idbGet('txnCache');
       if (cached && cached.rows) { _txns = _parseTxnRows(cached.rows); _txnsLoadedAt = cached.at; }
     }
-    if (!_txns) { await refreshTxns(); return; }
-    renderTxnResults();
+    if (!_txns) { await refreshTxns(); return; }   // no cache → load now (shows status)
+    renderTxnResults();                            // cache present → render instantly
+    // Background refresh: re-pull the Transactions tab from Drive without blocking the
+    // view. Read-only — never touches the Prices/pricing path. Silent on failure so an
+    // expired token just leaves the cached list showing instead of flashing an error.
+    if (accessToken || sessionStorage.getItem('gToken')) refreshTxns({ silent: true });
   } catch (e) { _setTxnStatus('Error: ' + e.message); }
 }
 
-async function refreshTxns() {
-  _setTxnStatus('Loading from Drive…');
+async function refreshTxns(opts) {
+  const silent = opts && opts.silent;
+  if (!silent) _setTxnStatus('Loading from Drive…');
   try {
     const rows = await sheetsGet(TXN_SHEET);
     _txns = _parseTxnRows(rows);
@@ -1942,6 +1947,7 @@ async function refreshTxns() {
     try { await _idbPut('txnCache', { at: _txnsLoadedAt, rows }); } catch {}
     renderTxnResults();
   } catch (e) {
+    if (silent) { console.warn('[MPE] Background txn refresh failed:', e.message); return; }
     const hint = /sign|token|401|unauth/i.test(e.message) ? ' — sign in to Google first.'
                : /parse range/i.test(e.message) ? ' — no "Transactions" tab found yet.' : '';
     _setTxnStatus('Could not load: ' + e.message + hint);
