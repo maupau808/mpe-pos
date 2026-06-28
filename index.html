@@ -3533,6 +3533,17 @@ function toggleHistEntry(idx) {
   toggle.textContent = open ? '▼' : '▶';
 }
 
+// Find a Master part by the part number stored on a transaction. Saved part numbers
+// may be in OG/formatted form (dashes, spaces), so match on a normalized key against
+// both the raw part number and the OG-format field. Returns null if not found.
+function findPartByPn(pn) {
+  if (!pn || !Array.isArray(partsArray) || !partsArray.length) return null;
+  const norm = s => String(s == null ? '' : s).replace(/[^a-z0-9]/gi, '').toUpperCase();
+  const key = norm(pn);
+  if (!key) return null;
+  return partsArray.find(p => norm(p.pn) === key || norm(p.og) === key) || null;
+}
+
 function reprintOrder(idx) {
   const history = getHistory();
   const order = history[idx];
@@ -3573,27 +3584,45 @@ function reprintOrder(idx) {
   order.items.forEach((item, i) => {
     const input = tbody.querySelector(`[data-row="${i}"].part-input`);
     if (!input) return;
-    input.value = item.pn;
-    input.className = 'part-input matched';
-    const descEl = document.getElementById(`desc-${i}`);
-    descEl.textContent = item.desc;
-    descEl.className = 'cell-desc cell-editable';
-    descEl.contentEditable = 'true';
-    descEl.dataset.row = i;
-    const costEl = document.getElementById(`cost-${i}`);
-    if (costEl) costEl.dataset.cost = item.cost || 0;
-    const priceEl = document.getElementById(`price-${i}`);
-    priceEl.dataset.price = item.ea;
-    priceEl.innerHTML = `<input class="price-edit" data-row="${i}" value="$${item.ea.toFixed(2)}" type="text" autocomplete="off" spellcheck="false">`;
-    const pInput = priceEl.querySelector('.price-edit');
-    pInput.addEventListener('input', () => onPriceEdit(i));
-    pInput.addEventListener('focus', function() { this.select(); });
-    pInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); const qty = document.getElementById(`qty-${i}`); if (qty) { qty.focus(); qty.select(); } }
-    });
+    const ea = parseFloat(item.ea) || 0;
+    const part = findPartByPn(item.pn);
+    if (part) {
+      // Rehydrate cost / margin / make / list from Master via the same path a fresh
+      // selection uses, then overlay the values actually saved on this transaction.
+      applyPart(i, part);
+      const descEl = document.getElementById(`desc-${i}`);
+      if (descEl && item.desc) descEl.textContent = item.desc;   // keep any sale-time edit
+      const priceEl = document.getElementById(`price-${i}`);
+      priceEl.dataset.price = ea;
+      const pInput = priceEl.querySelector('.price-edit');
+      if (pInput) pInput.value = fmt(ea);                        // charged price, not today's list
+      // Margin off the charged price vs current cost — no price-change logging on reload
+      const cost = parseFloat(document.getElementById(`cost-${i}`)?.dataset.cost) || 0;
+      document.getElementById(`margin-${i}`).textContent = (ea > 0 && cost > 0) ? ((ea - cost) / ea * 100).toFixed(1) + '%' : '—';
+    } else {
+      // Not in Master (note / discount / discontinued) — restore saved values as-is.
+      input.value = item.pn;
+      input.className = 'part-input matched';
+      const descEl = document.getElementById(`desc-${i}`);
+      descEl.textContent = item.desc;
+      descEl.className = 'cell-desc cell-editable';
+      descEl.contentEditable = 'true';
+      descEl.dataset.row = i;
+      const costEl = document.getElementById(`cost-${i}`);
+      if (costEl) costEl.dataset.cost = item.cost || 0;
+      const priceEl = document.getElementById(`price-${i}`);
+      priceEl.dataset.price = ea;
+      priceEl.innerHTML = `<input class="price-edit" data-row="${i}" value="$${ea.toFixed(2)}" type="text" autocomplete="off" spellcheck="false">`;
+      const pInput = priceEl.querySelector('.price-edit');
+      pInput.addEventListener('input', () => onPriceEdit(i));
+      pInput.addEventListener('focus', function() { this.select(); });
+      pInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); const qty = document.getElementById(`qty-${i}`); if (qty) { qty.focus(); qty.select(); } }
+      });
+    }
     document.getElementById(`qty-${i}`).value = item.qty;
     updateSubtotal(i);
-    // Restore serial numbers
+    // Restore serial numbers (applyPart clears SN rows, so this runs after either branch)
     if (item.sn && item.sn.length) {
       renderSNFields(i, item.qty);
       const snInputs = tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);
