@@ -820,7 +820,11 @@ function setDriveStatus(msg, isError) {
 // hourly token refresh, a POS left open all day stays current on its own.
 let _lastFetchAt = 0, _fetching = false;
 function maybeAutoRefresh() {
-  if (document.hidden || authState() === 'out') return;
+  // Only refresh in the background when we already hold a valid token. Never trigger
+  // an interactive sign-in/consent from a timer or tab-refocus — that's what caused
+  // the repeated "share Gmail & Drive" consent popups. If the session is expired the
+  // amber sign-in dot prompts the user to reconnect manually.
+  if (document.hidden || authState() !== 'in') return;
   const now = Date.now();
   const sameDay = _lastFetchAt && new Date(_lastFetchAt).toDateString() === new Date(now).toDateString();
   if (sameDay && (now - _lastFetchAt) < 30 * 60 * 1000) return;   // already fresh today
