@@ -1882,8 +1882,11 @@ async function pushTransactionToSheet(order) {
     }
 
     if (insertIdx === -1) {
-      // Newer than everything (or sheet empty) — append to end
-      await sheetsAppend(`${TXN_SHEET}!A1`, rows);
+      // Newer than everything (or sheet empty) — append to end.
+      // sheetsAppend returns false (not signed in) WITHOUT throwing — must not mark the
+      // txn pushed in that case, or it silently never reaches Bridge. Leave it queued.
+      const ok = await sheetsAppend(`${TXN_SHEET}!A1`, rows);
+      if (!ok) return;
     } else {
       // Shift rows down to make room, then write into the gap
       await sheetsBatchUpdate([{
