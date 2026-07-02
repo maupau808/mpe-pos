@@ -2926,7 +2926,9 @@ function preparePrint() {
   if (isInternal) {
     tbody.querySelectorAll('tr[data-sn-for]').forEach(tr => tr.classList.add('print-hide'));
   }
-  // Two-copy logic: only when customer info is actually entered
+  // Two-copy logic: RECEIPTS ONLY, and only when a serial number field is actually
+  // filled in (or the Warranty toggle is manually on). Quotes and invoices never get
+  // the duplicate copy — invoices carry their own "our copy" format via the invoice sig block.
   const _warrantyActive = document.getElementById('warrantyBtn')?.classList.contains('active');
   const _hasSNItem = !!tbody.querySelector('tr[data-warranty="1"]');
   const _hasSNEntered = Array.from(tbody.querySelectorAll('.sn-input')).some(inp => inp.value.trim());
@@ -2937,7 +2939,7 @@ function preparePrint() {
     document.getElementById('custAddr')?.value.trim()
   );
   const copy2 = document.getElementById('printCopy2');
-  const copy2On = !isInternal && (_warrantyActive || _hasSNEntered || (_docType === 'invoice'));
+  const copy2On = _docType === 'receipt' && (_hasSNEntered || _warrantyActive);
   if (copy2) {
     if (copy2On) {
       copy2.innerHTML = buildCopy2HTML();
@@ -2964,8 +2966,9 @@ function preparePrint() {
   const receivedEl = document.getElementById('sig-received');
   const invoiceEl = document.getElementById('sig-invoice');
   const isInvoice = _docType === 'invoice';
-  // Warranty form shows when a serial number was entered OR the Warranty toggle is on.
-  const showWarranty = (warrantyActive || _hasSNEntered) && !isInvoice && !isInternal;
+  // Warranty form (the "lines/info" copy) prints on RECEIPTS only, when a serial number
+  // was entered OR the Warranty toggle is on. Never on quotes/invoices/internal.
+  const showWarranty = _docType === 'receipt' && (warrantyActive || _hasSNEntered);
   if (!isInternal && (showWarranty || sigActive || isInvoice)) {
     if (block) block.classList.add('active');
     if (formEl) {
