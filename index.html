@@ -645,6 +645,11 @@ const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const CLIENT_ID = '726499104385-oa324nvlc69sdbj915dikimmh1sqvv1r.apps.googleusercontent.com';
 const DRIVE_FILE_ID = '1xpDOnCq71CZ-Oc4Fh9enVugOL8w75bEz'; // from your Drive URL
+// Stage 4 (SQLite crossover): lean gzipped JSON price feed lives in its OWN Drive file.
+// The POS tries this FIRST and silently falls back to the xlsx above on ANY problem
+// (unset id, fetch error, gunzip/parse error, empty feed). Paste the id once created.
+const POS_JSON_FILE_ID = '1I4pT1MUWAm2cIkch2T7JW_hKt3wcLIyd';
+function posJsonReady() { return POS_JSON_FILE_ID && !POS_JSON_FILE_ID.startsWith('PUT_'); }
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/gmail.compose';
 
 // ─── APP STATE ─────────────────────────────────────────────────────────────
@@ -654,6 +659,7 @@ const MAX_RESULTS = 50;
 const DB_NAME = 'PartsLookup';
 const DB_STORE = 'files';
 const DB_KEY = 'partsFile';
+const DB_KEY_JSON = 'posJsonGz';   // Stage 4: cached POS JSON feed (raw gzip bytes)
 let partsArray = [];
 let loaded = false;
 let tokenClient = null;
@@ -848,6 +854,9 @@ async function fetchFromDrive() {
   setDriveStatus('Fetching…');
 
   try {
+    // Stage 4: try the lean POS JSON feed first; on ANY failure fall through to xlsx.
+    if (await tryFetchPosJson()) return;
+
     // Export the Google Sheet / Excel as xlsx
     const url = `https://www.googleapis.com/drive/v3/files/${DRIVE_FILE_ID}?alt=media`;
     const resp = await fetch(url, {
@@ -940,6 +949,67 @@ async function loadFileFromDB() {
     req.onsuccess = e => res(e.target.result);
     req.onerror = rej;
   });
+}
+
+// Generic keyed access into the same store (used for the Stage 4 POS JSON cache).
+function saveKeyToDB(key, value) {
+  return openDB().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).put(value, key);
+    tx.oncomplete = res; tx.onerror = rej;
+  }));
+}
+function loadKeyFromDB(key) {
+  return openDB().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(DB_STORE, 'readonly');
+    const r = tx.objectStore(DB_STORE).get(key);
+    r.onsuccess = e => res(e.target.result); r.onerror = rej;
+  }));
+}
+
+// ─── STAGE 4: POS JSON FEED (gzipped, from master.db) ───────────────────────
+// Turns raw gzip bytes into partsArray, applying the SAME supersede expansion the
+// XLSX WORKER_SCRIPT does — so the JSON path and the xlsx path yield identical arrays.
+async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
+  const stream = new Blob([arrayBuffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+  const text = await new Response(stream).text();
+  const feed = JSON.parse(text);
+  if (!feed || !Array.isArray(feed.parts) || feed.parts.length === 0)
+    throw new Error('empty POS JSON feed');
+  const parts = [];
+  for (const e of feed.parts) {
+    parts.push(e);
+    if (e.sup && e.sup !== e.pn) parts.push({ ...e, pn: e.sup, og: e.pn }); // mirrors worker
+  }
+  partsArray = parts;
+  loaded = true;
+  warmUpSearch();
+  const pc = document.getElementById('partsCount');
+  if (pc) { pc.textContent = partsArray.length.toLocaleString() + ' parts loaded'; pc.style.color = '#2d7a3a'; }
+  refreshStatusUI();
+  return feed;
+}
+
+// Fetch the JSON feed from its Drive file. Returns true only on full success; returns
+// false (never throws) on ANY problem so the caller falls back to the xlsx path.
+async function tryFetchPosJson() {
+  if (!posJsonReady() || typeof DecompressionStream === 'undefined') return false;
+  try {
+    const url = `https://www.googleapis.com/drive/v3/files/${POS_JSON_FILE_ID}?alt=media`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!resp.ok) return false;   // 401/404/etc -> let the xlsx path handle token/refresh
+    const ab = await resp.arrayBuffer();
+    await loadPosJsonBytes(ab, 'JSON');
+    await saveKeyToDB(DB_KEY_JSON, ab);
+    _lastFetchAt = Date.now();
+    const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    setDriveStatus(`Updated ${now}`);
+    _lastFetchInfo = 'Drive · ' + now + ' · JSON';
+    refreshStatusUI();
+    return true;
+  } catch(e) {
+    return false;
+  }
 }
 
 // ─── PARSE & LOAD ──────────────────────────────────────────────────────────
@@ -1072,6 +1142,11 @@ function parseAndLoadSync(name, binaryData) {
 }
 
 async function tryLoadFromDB() {
+  // Stage 4: prefer the cached POS JSON (instant, offline) over the cached xlsx.
+  try {
+    const j = await loadKeyFromDB(DB_KEY_JSON);
+    if (j) { await loadPosJsonBytes(j, 'cache'); return; }
+  } catch(e) {}
   try {
     const saved = await loadFileFromDB();
     if (saved && saved.data) {
