@@ -74,7 +74,11 @@ h2 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
 .part-input { width: 100%; font-size: 14px; padding: 6px 8px; border: 1px solid #ddd; border-radius: 7px; background: #fff; color: #1a1a1a; }
 .part-input:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.06); }
 .part-input.matched { border-color: #4caf50; }
+.part-input.matched.superseded { border-color: #d58a18; padding-right: 24px; }
 .part-input.no-match { border-color: #e53935; }
+.supersede-mark { display: none; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: #b66d00; font-size: 17px; font-weight: 700; line-height: 1; pointer-events: none; }
+.supersede-mark.visible { display: inline; }
+.dd-supersede { margin-left: 6px; color: #b66d00; font-size: 11px; font-weight: 600; }
 .dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #ccc; border-radius: 8px; z-index: 100; max-height: 500px; overflow-y: auto; box-shadow: 0 4px 14px rgba(0,0,0,0.1); display: none; }
 .dropdown.open { display: block; }
 .dd-item { padding: 9px 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
@@ -979,7 +983,7 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   const parts = [];
   for (const e of feed.parts) {
     parts.push(e);
-    if (e.sup && e.sup !== e.pn) parts.push({ ...e, pn: e.sup, og: e.pn }); // mirrors worker
+    if (e.sup && e.sup !== e.pn) parts.push({ ...e, pn: e.sup, og: e.pn, _supersedeAlias: true }); // mirrors worker
   }
   partsArray = parts;
   loaded = true;
@@ -1052,7 +1056,7 @@ self.onmessage = function(e) {
         warranty: warVal === 'Y'
       };
       parts.push(entry);
-      if (sup && sup !== pn) parts.push({ ...entry, pn: sup, og: pn });
+      if (sup && sup !== pn) parts.push({ ...entry, pn: sup, og: pn, _supersedeAlias: true });
     });
     self.postMessage({ ok: true, parts, sheetName: targetName });
   } catch(err) {
@@ -1131,7 +1135,7 @@ function parseAndLoadSync(name, binaryData) {
         warranty: warVal === 'Y'
       };
       partsArray.push(entry);
-      if (sup && sup !== pn) partsArray.push({ ...entry, pn: sup, og: pn });
+      if (sup && sup !== pn) partsArray.push({ ...entry, pn: sup, og: pn, _supersedeAlias: true });
     });
     loaded = true;
     warmUpSearch();
@@ -1305,6 +1309,7 @@ function addRow() {
     <td class="row-num">${i+1}</td>
     <td><div class="search-wrap">
       <input class="part-input" type="text" placeholder="Product" data-row="${i}" autocomplete="off" autocorrect="off" spellcheck="false">
+      <span class="supersede-mark" id="supmark-${i}" aria-hidden="true">*</span>
       <div class="dropdown" id="dd-${i}"></div>
     </div></td>
     <td><span id="desc-${i}" class="empty-cell">—</span></td>
@@ -2231,6 +2236,7 @@ function buildRows() {
       <td class="row-num">${i+1}</td>
       <td><div class="search-wrap">
         <input class="part-input" type="text" placeholder="Product" data-row="${i}" autocomplete="off" autocorrect="off" spellcheck="false">
+        <span class="supersede-mark" id="supmark-${i}" aria-hidden="true">*</span>
         <div class="dropdown" id="dd-${i}"></div>
       </div></td>
       <td><span id="desc-${i}" class="empty-cell">—</span></td>
@@ -2462,7 +2468,33 @@ function searchParts(val) {
   for (let p of partsArray) {
     const normPN = normalizePN(p.pn), normOG = normalizePN(p.og);
     // 1) Part-number first — typing a PN (or its start) stays the priority workflow.
-    if (normVal && (normPN === normVal || normOG === normVal)) { exact.push(p); continue; }
+    if (normVal && (normPN === normVal || normOG === normVal)) {
+      if (p._supersedeAlias) {
+        // The original obsolete row handles lookups by its old number. For a
+        // direct lookup of the new number, prefer its own physical Master row.
+        if (normOG === normVal || partsArray.some(candidate =>
+          !candidate._supersedeAlias &&
+          (normalizePN(candidate.pn) === normPN || normalizePN(candidate.og) === normPN)
+        )) continue;
+      }
+      // An exact obsolete PN should select the real current row, not the alias row
+      // carrying the obsolete item's old price/description.
+      if (!p._supersedeAlias && p.sup && normalizePN(p.sup) !== normPN) {
+        const currentPN = normalizePN(p.sup);
+        const current = partsArray.find(candidate =>
+          !candidate._supersedeAlias &&
+          (normalizePN(candidate.pn) === currentPN || normalizePN(candidate.og) === currentPN)
+        );
+        exact.push({
+          ...(current || p),
+          pn: current ? current.pn : p.sup,
+          og: current ? current.og : p.sup,
+          _supersededFrom: p.og || p.pn
+        });
+        continue;
+      }
+      exact.push(p); continue;
+    }
     if (normVal && (normPN.startsWith(normVal) || normOG.startsWith(normVal))) { startsWith.push(p); continue; }
 
     // 2) Multi-word text search across description + make + part numbers, with
@@ -2525,7 +2557,7 @@ function searchParts(val) {
 function renderDropdown(i, results) {
   const dd = document.getElementById(`dd-${i}`);
   const shown = results.slice(0, MAX_RESULTS);
-  dd.innerHTML = shown.map((p, idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.pn}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? '$'+(+p.list).toFixed(2) : ''}</span></div></div>`).join('')
+  dd.innerHTML = shown.map((p, idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.og || p.pn}${p._supersededFrom ? `<span class="dd-supersede">* replaces ${p._supersededFrom}</span>` : ''}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? '$'+(+p.list).toFixed(2) : ''}</span></div></div>`).join('')
     + (results.length > MAX_RESULTS ? `<div class="dd-more">${results.length} results — type more to narrow down</div>` : '');
   dd._results = shown; dd.classList.add('open'); sizeDropdown(dd);
 }
@@ -2589,7 +2621,13 @@ function updateSNFields(i) {
 
 function applyPart(i, part) {
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
-  input.className = 'part-input matched';
+  input.className = 'part-input matched' + (part._supersededFrom ? ' superseded' : '');
+  const supMark = document.getElementById(`supmark-${i}`);
+  if (supMark) {
+    supMark.classList.toggle('visible', !!part._supersededFrom);
+    supMark.title = part._supersededFrom ? `Current part selected because it replaces ${part._supersededFrom}` : '';
+  }
+  input.title = part._supersededFrom ? `Current part selected because it replaces ${part._supersededFrom}` : '';
   input.readOnly = true;
   input.dataset.list = part.list || '';
   input.dataset.partPn = part.pn || '';
@@ -2681,6 +2719,10 @@ function applyPart(i, part) {
 
 function clearRowData(i) {
   removeSNRow(i);
+  const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
+  if (partInput) partInput.title = '';
+  const supMark = document.getElementById(`supmark-${i}`);
+  if (supMark) { supMark.classList.remove('visible'); supMark.title = ''; }
   const descEl = document.getElementById(`desc-${i}`);
   descEl.innerHTML = '—'; descEl.className = 'empty-cell'; descEl.contentEditable = 'false'; descEl.dataset.row = '';
   const tr = tbody.querySelector(`tr[data-row="${i}"]`);
@@ -4094,6 +4136,7 @@ function buildMobileRows() {
     div.innerHTML = `
       <div class="mobile-search-wrap">
         <input class="mobile-part-input part-input" type="text" inputmode="search" placeholder="Product" data-row="${i}" autocomplete="off" autocorrect="off" spellcheck="false">
+        <span class="supersede-mark" id="msupmark-${i}" aria-hidden="true">*</span>
         <div class="dropdown" id="mdd-${i}"></div>
       </div>
       <div class="mobile-desc empty" id="mdesc-${i}">Description</div>
@@ -4195,7 +4238,7 @@ function handleMobileSearch(i) {
   input.className = 'mobile-part-input part-input';
   clearMobileRowData(i);
   const shown = results.slice(0, MAX_RESULTS);
-  dd.innerHTML = shown.map((p,idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.pn}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? '$'+(+p.list).toFixed(2) : ''}</span></div></div>`).join('')
+  dd.innerHTML = shown.map((p,idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.og || p.pn}${p._supersededFrom ? `<span class="dd-supersede">* replaces ${p._supersededFrom}</span>` : ''}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? '$'+(+p.list).toFixed(2) : ''}</span></div></div>`).join('')
     + (results.length > MAX_RESULTS ? `<div class="dd-more">${results.length} results — type more to narrow</div>` : '');
   dd._results = shown; dd.classList.add('open');
   updateSummary();
@@ -4212,7 +4255,14 @@ function selectMobilePart(i, idx) {
 
 function applyMobilePart(i, part) {
   const input = document.querySelector(`#mobileRows [data-row="${i}"].part-input`);
-  input.className = 'mobile-part-input part-input matched';
+  input.className = 'mobile-part-input part-input matched' + (part._supersededFrom ? ' superseded' : '');
+  const supMark = document.getElementById(`msupmark-${i}`);
+  if (supMark) {
+    supMark.classList.toggle('visible', !!part._supersededFrom);
+    supMark.title = part._supersededFrom ? `Current part selected because it replaces ${part._supersededFrom}` : '';
+  }
+  input.title = part._supersededFrom ? `Current part selected because it replaces ${part._supersededFrom}` : '';
+  if (part.og && part.og.trim()) input.value = part.og.trim();
   const descEl = document.getElementById(`mdesc-${i}`);
   descEl.textContent = part.desc || '—'; descEl.className = 'mobile-desc';
   document.getElementById(`mmake-${i}`).textContent = part.make || '';
@@ -4241,6 +4291,10 @@ function updateMobileSubtotal(i) {
 }
 
 function clearMobileRowData(i) {
+  const partInput = document.querySelector(`#mobileRows [data-row="${i}"].part-input`);
+  if (partInput) partInput.title = '';
+  const supMark = document.getElementById(`msupmark-${i}`);
+  if (supMark) { supMark.classList.remove('visible'); supMark.title = ''; }
   const descEl = document.getElementById(`mdesc-${i}`);
   descEl.textContent = 'Description'; descEl.className = 'mobile-desc empty';
   document.getElementById(`mmake-${i}`).textContent = '';
