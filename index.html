@@ -98,6 +98,22 @@ h2 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
 .cell-editable:focus { background: #fff; box-shadow: 0 0 0 2px rgba(0,0,0,0.1); }
 .price-edit { width: 72px; font-size: 14px; font-family: inherit; text-align: right; border: 1px solid #ddd; border-radius: 4px; padding: 2px 4px; background: #fff; color: #1a1a1a; box-sizing: border-box; }
 .price-edit:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.08); }
+.line-price-cell { position: relative; display: inline-block; min-width: 132px; white-space: normal; }
+.discount-display { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex-wrap: wrap; }
+.discount-original { color: #777; font-size: 12px; text-decoration: line-through; text-decoration-thickness: 1px; }
+.discount-off { color: #2d7a3a; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.discount-original.hidden, .discount-off.hidden { display: none; }
+.discount-btn { border: 1px solid #c8d8c9; border-radius: 4px; background: #f4faf4; color: #2d7a3a; cursor: pointer; font-size: 10px; line-height: 1; padding: 3px 5px; white-space: nowrap; }
+.discount-btn:hover, .discount-btn.active { background: #e3f2e4; border-color: #7cad80; }
+.discount-editor { display: none; position: absolute; right: 0; top: calc(100% + 5px); z-index: 160; width: 205px; padding: 9px; border: 1px solid #bbb; border-radius: 7px; background: #fff; box-shadow: 0 5px 18px rgba(0,0,0,.16); text-align: left; }
+.discount-editor.open { display: block; }
+.discount-editor label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; }
+.discount-editor-line { display: flex; align-items: center; gap: 5px; }
+.discount-money { width: 72px; min-width: 0; font: inherit; font-size: 13px; padding: 4px 5px; border: 1px solid #ccc; border-radius: 4px; text-align: right; }
+.discount-editor button { font: inherit; font-size: 11px; padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
+.discount-editor .discount-apply { color: #2d7a3a; border-color: #8ebc92; }
+.saved-row { color: #2d7a3a; font-weight: 700; }
+.saved-row.hidden, .card-fee-row.hidden { display: none; }
 .sub-edit { width: 80px; font-size: 16px; font-weight: 700; font-family: inherit; text-align: right; border: 1px solid #ddd; border-radius: 4px; padding: 2px 4px; background: #fff; color: #1a1a1a; box-sizing: border-box; }
 .sub-edit:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.08); }
 .cost-edit { width: 62px; font-size: 12px; font-family: inherit; text-align: right; border: 1px solid #ddd; border-radius: 4px; padding: 2px 4px; background: #fff8f0; color: #777; box-sizing: border-box; }
@@ -312,6 +328,14 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .mobile-bottom { display: flex; align-items: center; gap: 6px; }
   .mobile-make { font-size: 11px; color: #aaa; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-price { font-size: 13px; font-weight: 500; color: #444; white-space: nowrap; }
+  .mobile-price.discounted { white-space: normal; display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; flex-wrap: wrap; }
+  .mobile-discount-btn { border: 1px solid #c8d8c9; border-radius: 4px; background: #f4faf4; color: #2d7a3a; font-size: 10px; padding: 3px 5px; }
+  .mobile-discount-editor { display: none; margin-top: 7px; padding: 8px; border: 1px solid #cfdacf; border-radius: 7px; background: #f7fbf7; }
+  .mobile-discount-editor.open { display: flex; align-items: center; gap: 5px; }
+  .mobile-discount-editor label { font-size: 11px; color: #666; }
+  .mobile-discount-editor .discount-money { width: 76px; }
+  .mobile-discount-editor button { font-size: 11px; padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; background: #fff; }
+  .mobile-desc[contenteditable="true"] { border: 1px solid #ddd; border-radius: 5px; padding: 5px 7px; background: #fff; }
   .mobile-x-qty { display: flex; align-items: center; gap: 4px; }
   .mobile-qty-sym { font-size: 12px; color: #aaa; }
   .mobile-qty { width: 52px; font-size: 14px; padding: 4px 5px; border: 1px solid #ddd; border-radius: 7px; background: #fff; text-align: center; -webkit-appearance: none; -moz-appearance: textfield; }
@@ -336,6 +360,11 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .part-input { border: none; background: transparent; font-size: 14px; font-weight: 500; padding: 0; pointer-events: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
   .price-edit { border: none; background: transparent; font-size: 16px; padding: 0; pointer-events: none; text-align: right; width: 100%; max-width: 100%; overflow: visible; display: block; -webkit-appearance: none; appearance: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
+  .line-price-cell { min-width: 0; display: block; }
+  .discount-display { justify-content: flex-end; gap: 4px; }
+  .discount-original { color: #555 !important; font-size: 12px; }
+  .discount-off { color: #000 !important; font-size: 11px; }
+  .discount-btn, .discount-editor { display: none !important; }
   .dropdown { display: none !important; }
   .note-desc-input, .note-price-input, .discount-desc-input { border: none; background: transparent; padding: 0; pointer-events: none; color: #000; }
   .sub-edit { border: none; background: transparent; font-size: 14px; font-weight: 400; padding: 0; pointer-events: none; text-align: right; width: 100%; display: block; -webkit-appearance: none; appearance: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
@@ -483,11 +512,12 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
           <label class="menu-check"><input type="checkbox" id="tgSignature" onchange="toggleSignature()"> ✍ Signature</label>
           <label class="menu-check"><input type="checkbox" id="tgReview" onchange="toggleReview()"> ⭐ Review</label>
           <label class="menu-check"><input type="checkbox" id="tgSalesView" onchange="toggleSalesView()"> 👁 Sales View</label>
+          <label class="menu-check"><input type="checkbox" id="tgCardFee" onchange="toggleCardFee(this.checked)"> 💳 Card fee (3%)</label>
         </div>
       </div>
       <button class="menu-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
       <span style="display:none">
-        <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="internalPrintBtn"></button>
+        <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="internalPrintBtn"></button><button id="cardFeeBtn"></button>
       </span>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
     </div>
@@ -513,7 +543,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <th style="width:80px;">Make</th>
         <th class="r" style="width:72px;">Cost</th>
         <th class="r" style="width:65px;">Margin</th>
-        <th class="r" style="width:75px;" id="hdr-unitprice">Ea.</th>
+        <th class="r" style="width:150px;" id="hdr-unitprice">Ea.</th>
         <th style="width:44px;text-align:center;">Qty</th>
         <th class="r" style="width:90px;">Price</th>
         <th style="width:20px;"></th>
@@ -551,6 +581,10 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <span class="sum-label">Subtotal</span>
         <span class="sum-val" id="sumSubtotal">—</span>
       </div>
+      <div class="sum-row card-fee-row hidden" id="cardFeeRow">
+        <span class="sum-label">Card fee (3%)</span>
+        <span class="sum-val" id="sumCardFee">—</span>
+      </div>
       <div class="sum-row">
         <span class="sum-label">Tax (4.712%)</span>
         <span class="sum-val" id="sumTax">—</span>
@@ -558,6 +592,10 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <div class="sum-row total">
         <span class="sum-label">Total</span>
         <span class="sum-val" id="sumTotal">—</span>
+      </div>
+      <div class="sum-row saved-row hidden" id="savedRow">
+        <span>You saved</span>
+        <span id="sumSaved">$0.00!</span>
       </div>
     </div>
   </div>
@@ -659,6 +697,7 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googl
 
 // ─── APP STATE ─────────────────────────────────────────────────────────────
 const TAX_RATE = 0.04712;
+const CARD_FEE_RATE = 0.03;
 let NUM_ROWS = 3;
 const MAX_RESULTS = 50;
 const DB_NAME = 'PartsLookup';
@@ -1206,6 +1245,142 @@ function editDistLE1(a, b) {
 }
 function fmt(n) { return n < 0 ? '- $' + Math.abs(n).toFixed(2) : '$' + n.toFixed(2); }
 
+function isOtherPart(part) {
+  if (!part) return false;
+  return ['make', 'pn', 'og', 'desc'].some(k => String(part[k] || '').trim().toLowerCase() === 'other');
+}
+
+function selectEditableText(el) {
+  if (!el) return;
+  el.focus();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function installLineDiscountUI(i) {
+  const priceEl = document.getElementById(`price-${i}`);
+  const pInput = priceEl?.querySelector('.price-edit');
+  if (!priceEl || !pInput || priceEl.querySelector('.discount-display')) return;
+  priceEl.classList.add('line-price-cell');
+  const display = document.createElement('span');
+  display.className = 'discount-display';
+  const original = document.createElement('span');
+  original.className = 'discount-original hidden';
+  const off = document.createElement('span');
+  off.className = 'discount-off hidden';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'discount-btn'; btn.textContent = '$ off'; btn.title = 'Discount this item';
+  btn.addEventListener('click', e => { e.stopPropagation(); openLineDiscount(i); });
+  display.append(original, pInput, off, btn);
+  const editor = document.createElement('span');
+  editor.className = 'discount-editor';
+  editor.innerHTML = `<label>Off each</label><span class="discount-editor-line"><input class="discount-money" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off"><button type="button" class="discount-apply">Apply</button><button type="button" class="discount-remove">Cancel</button></span>`;
+  editor.querySelector('.discount-apply').addEventListener('click', () => applyLineDiscount(i));
+  editor.querySelector('.discount-remove').addEventListener('click', () => {
+    if (parseFloat(priceEl.dataset.discountPerUnit) > 0) removeLineDiscount(i);
+    else closeLineDiscount(i);
+  });
+  editor.querySelector('.discount-money').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); applyLineDiscount(i); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeLineDiscount(i); }
+  });
+  priceEl.append(display, editor);
+  renderLineDiscount(i);
+}
+
+function renderLineDiscount(i) {
+  const priceEl = document.getElementById(`price-${i}`);
+  if (!priceEl) return;
+  const original = parseFloat(priceEl.dataset.originalEa) || 0;
+  const offEach = parseFloat(priceEl.dataset.discountPerUnit) || 0;
+  const originalEl = priceEl.querySelector('.discount-original');
+  const offEl = priceEl.querySelector('.discount-off');
+  const btn = priceEl.querySelector('.discount-btn');
+  const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
+  const legacy = /^(note|discount)$/i.test(partInput?.value || '');
+  if (originalEl) { originalEl.textContent = original ? fmt(original) : ''; originalEl.classList.toggle('hidden', !(original > 0 && offEach > 0)); }
+  if (offEl) { offEl.textContent = offEach > 0 ? `(${fmt(offEach)} off)` : ''; offEl.classList.toggle('hidden', !(offEach > 0)); }
+  if (btn) { btn.style.display = partInput?.dataset.partPn && !legacy ? '' : 'none'; btn.classList.toggle('active', offEach > 0); btn.textContent = offEach > 0 ? 'Edit' : '$ off'; }
+}
+
+function openLineDiscount(i) {
+  document.querySelectorAll('.discount-editor.open').forEach(el => el.classList.remove('open'));
+  const priceEl = document.getElementById(`price-${i}`);
+  const editor = priceEl?.querySelector('.discount-editor');
+  const input = editor?.querySelector('.discount-money');
+  if (!editor || !input) return;
+  const offEach = parseFloat(priceEl.dataset.discountPerUnit) || 0;
+  input.value = offEach > 0 ? offEach.toFixed(2) : '';
+  editor.querySelector('.discount-remove').textContent = offEach > 0 ? 'Remove' : 'Cancel';
+  editor.classList.add('open');
+  setTimeout(() => { input.focus(); input.select(); }, 0);
+}
+
+function closeLineDiscount(i) { document.getElementById(`price-${i}`)?.querySelector('.discount-editor')?.classList.remove('open'); }
+
+function applyLineDiscount(i, amount) {
+  const priceEl = document.getElementById(`price-${i}`);
+  const pInput = priceEl?.querySelector('.price-edit');
+  if (!priceEl || !pInput) return;
+  const raw = amount == null ? priceEl.querySelector('.discount-money')?.value : amount;
+  const requestedOff = Math.max(0, parseFloat(String(raw || '').replace(/[$,]/g, '')) || 0);
+  if (!(requestedOff > 0)) { removeLineDiscount(i); return; }
+  const chargedNow = parseFloat(priceEl.dataset.price) || parseFloat(pInput.value.replace(/[$,]/g, '')) || 0;
+  const original = parseFloat(priceEl.dataset.originalEa) || chargedNow;
+  if (!(original > 0)) { closeLineDiscount(i); return; }
+  const offEach = Math.min(requestedOff, original);
+  const charged = Math.max(0, original - offEach);
+  priceEl.dataset.originalEa = original;
+  priceEl.dataset.discountPerUnit = offEach;
+  priceEl.dataset.price = charged;
+  pInput.value = fmt(charged);
+  renderLineDiscount(i);
+  closeLineDiscount(i);
+  updateSubtotal(i); updateSummary(); renderMobileDiscountState(i);
+}
+
+function clearLineDiscountMetadata(i) {
+  const priceEl = document.getElementById(`price-${i}`);
+  if (!priceEl) return;
+  delete priceEl.dataset.originalEa;
+  delete priceEl.dataset.discountPerUnit;
+  renderLineDiscount(i); renderMobileDiscountState(i);
+}
+
+function removeLineDiscount(i) {
+  const priceEl = document.getElementById(`price-${i}`);
+  const pInput = priceEl?.querySelector('.price-edit');
+  const original = parseFloat(priceEl?.dataset.originalEa) || 0;
+  if (priceEl && original > 0) priceEl.dataset.price = original;
+  if (pInput && original > 0) pInput.value = fmt(original);
+  clearLineDiscountMetadata(i);
+  closeLineDiscount(i);
+  updateSubtotal(i); updateSummary();
+}
+
+function openDiscountShortcut(sourceRow) {
+  let target = -1;
+  for (let i = sourceRow - 1; i >= 0; i--) {
+    const inp = tbody.querySelector(`[data-row="${i}"].part-input`);
+    if (inp?.dataset.partPn && !/^(note|discount)$/i.test(inp.value || '')) { target = i; break; }
+  }
+  if (target < 0) return;
+  if (sourceRow !== target) clearRow(sourceRow);
+  openLineDiscount(target);
+}
+
+function toggleCardFee(force) {
+  const btn = document.getElementById('cardFeeBtn');
+  const active = typeof force === 'boolean' ? force : !btn?.classList.contains('active');
+  btn?.classList.toggle('active', active);
+  const cb = document.getElementById('tgCardFee');
+  if (cb) cb.checked = active;
+  updateSummary();
+}
+
 function onEditableKeydown(e) {
   const el = e.target;
   if (!el.classList.contains('cell-editable')) return;
@@ -1231,10 +1406,12 @@ function onEditableKeydown(e) {
 function onPriceEdit(i) {
   const priceEl = document.getElementById(`price-${i}`);
   if (!priceEl) return;
+  if (parseFloat(priceEl.dataset.discountPerUnit) > 0) clearLineDiscountMetadata(i);
   const pInput = priceEl.querySelector('.price-edit');
   const raw = (pInput ? pInput.value : priceEl.textContent).replace(/[$,]/g, '').trim();
   const price = parseFloat(raw);
-  if (!isNaN(price) && price !== 0) {
+  const discounted = parseFloat(priceEl.dataset.discountPerUnit) > 0;
+  if (!isNaN(price) && (price !== 0 || discounted)) {
     priceEl.dataset.price = price;
     const _pInput = tbody.querySelector(`[data-row="${i}"].part-input`);
     const _listP = parseFloat(_pInput?.dataset.list) || 0;
@@ -1246,6 +1423,7 @@ function onPriceEdit(i) {
   } else {
     priceEl.dataset.price = '';
   }
+  renderMobileDiscountState(i);
   updateSubtotal(i); updateSummary();
 }
 
@@ -1940,8 +2118,8 @@ async function pushTransactionToSheet(order) {
   for (const item of order.items) {
     rows.push(['item', txnId, '', '', '', '', '', '',
       item.pn, item.desc, item.qty,
-      item.ea ? '$' + parseFloat(item.ea).toFixed(2) : '',
-      item.sub ? '$' + parseFloat(item.sub).toFixed(2) : '',
+      item.ea !== '' && item.ea != null ? '$' + parseFloat(item.ea).toFixed(2) : '',
+      item.sub !== '' && item.sub != null ? '$' + parseFloat(item.sub).toFixed(2) : '',
       (item.sn && item.sn.length) ? item.sn.join(', ') : '']);
   }
 
@@ -2278,7 +2456,7 @@ function onTableClick(e) {
     const i = row !== undefined ? parseInt(row) : (() => {
       const td = item.closest('td'); const inp = td?.querySelector('.part-input'); return inp ? parseInt(inp.dataset.row) : NaN;
     })();
-    if (!isNaN(i)) { const _dd = document.getElementById(`dd-${i}`); closeAllDropdowns(); _dd?._noteMode === 'discount' ? applyDiscountToRow(i) : applyNoteToRow(i); }
+    if (!isNaN(i)) { const _dd = document.getElementById(`dd-${i}`); closeAllDropdowns(); _dd?._noteMode === 'discount' ? openDiscountShortcut(i) : applyNoteToRow(i); }
     return;
   }
   if (e.target.closest('.dd-item') && !e.target.closest('.dd-item[data-note-trigger]')) {
@@ -2304,8 +2482,14 @@ function onInput(e) {
   const row = e.target.dataset.row;
   if (row === undefined) return;
   const i = parseInt(row);
-  if (e.target.classList.contains('part-input')) handleSearch(i);
-  else if (e.target.classList.contains('qty-input')) { updateSubtotal(i); updateSummary(); updateSNFields(i); }
+  if (e.target.classList.contains('part-input')) {
+    if (e.target.dataset.isOther === '1') { e.target.dataset.partPn = e.target.value; return; }
+    handleSearch(i);
+  }
+  else if (e.target.classList.contains('qty-input')) {
+    const mobileQty = document.getElementById(`mqty-${i}`); if (mobileQty) mobileQty.value = e.target.value;
+    updateSubtotal(i); updateSummary(); updateSNFields(i);
+  }
 }
 
 function onKeydown(e) {
@@ -2331,6 +2515,13 @@ function onKeydown(e) {
     return;
   }
 
+  // Other is a custom product: Enter/Tab advances to its editable description.
+  if ((e.key === 'Enter' || e.key === 'Tab') && input.classList.contains('matched') && input.dataset.isOther === '1') {
+    e.preventDefault();
+    selectEditableText(document.getElementById(`desc-${i}`));
+    return;
+  }
+
   // Enter on matched row: advance to next part row
   if (e.key === 'Enter' && input.classList.contains('matched')) {
     e.preventDefault();
@@ -2348,7 +2539,7 @@ function onKeydown(e) {
   else if (e.key === 'Enter') {
     e.preventDefault();
     if (dd._noteMode === 'note') { closeAllDropdowns(); applyNoteToRow(i); return; }
-    if (dd._noteMode === 'discount') { closeAllDropdowns(); applyDiscountToRow(i); return; }
+    if (dd._noteMode === 'discount') { closeAllDropdowns(); openDiscountShortcut(i); return; }
     active = dd.querySelector('.dd-item.active'); if (active) selectPart(i, parseInt(active.dataset.idx));
   }
   else if (e.key === 'Escape') closeAllDropdowns();
@@ -2367,7 +2558,7 @@ function handleSearch(i) {
     return;
   }
   if (/^disc(ount)?$/i.test(val)) {
-    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#c0392b;font-style:italic;">➖ Add discount to this row</div>`;
+    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">💲 Discount previous item</div>`;
     dd.classList.add('open'); sizeDropdown(dd);
     dd._noteMode = 'discount';
     return;
@@ -2620,8 +2811,9 @@ function updateSNFields(i) {
   oldVals.forEach((val, idx) => { if (newInputs[idx] && val) newInputs[idx].value = val; });
 }
 
-function applyPart(i, part) {
+function applyPart(i, part, options) {
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+  const other = isOtherPart(part);
   input.className = 'part-input matched' + (part._supersededFrom ? ' superseded' : '');
   const supMark = document.getElementById(`supmark-${i}`);
   if (supMark) {
@@ -2629,7 +2821,8 @@ function applyPart(i, part) {
     supMark.title = part._supersededFrom ? `Current part selected because it replaces ${part._supersededFrom}` : '';
   }
   input.title = part._supersededFrom ? `Current part selected because it replaces ${part._supersededFrom}` : '';
-  input.readOnly = true;
+  input.readOnly = !other;
+  input.dataset.isOther = other ? '1' : '';
   input.dataset.list = part.list || '';
   input.dataset.partPn = part.pn || '';
   input.dataset.partDesc = part.desc || '';
@@ -2679,6 +2872,7 @@ function applyPart(i, part) {
       if (qty) { qty.focus(); qty.select(); }
     }
   });
+  installLineDiscountUI(i);
   // Swap sub span → editable input so user can enter a Price and back-calc Ea
   const subSpan = document.getElementById(`sub-${i}`);
   subSpan.outerHTML = `<input class="sub-edit" id="sub-${i}" data-val="" placeholder="—">`;
@@ -2715,13 +2909,17 @@ function applyPart(i, part) {
     if (tr) delete tr.dataset.warranty;
   }
   updateSubtotal(i); updateSummary();
-  if (i === NUM_ROWS - 1) addRow();
+  if (i === NUM_ROWS - 1 && !options?.skipAddRow) addRow();
+  if (other && !options?.skipFocus) setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
 function clearRowData(i) {
   removeSNRow(i);
   const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
-  if (partInput) partInput.title = '';
+  if (partInput) {
+    partInput.title = '';
+    ['isOther', 'partPn', 'partMake', 'partDesc', 'list'].forEach(key => delete partInput.dataset[key]);
+  }
   const supMark = document.getElementById(`supmark-${i}`);
   if (supMark) { supMark.classList.remove('visible'); supMark.title = ''; }
   const descEl = document.getElementById(`desc-${i}`);
@@ -2734,6 +2932,7 @@ function clearRowData(i) {
   else { costEl.textContent = '—'; costEl.dataset.cost = ''; }
   document.getElementById(`margin-${i}`).textContent = '—';
   const p = document.getElementById(`price-${i}`);
+  delete p.dataset.originalEa; delete p.dataset.discountPerUnit;
   p.innerHTML = '—'; p.dataset.price = ''; p.className = 'cell-r';
   const s = document.getElementById(`sub-${i}`);
   if (s.tagName === 'INPUT') s.outerHTML = `<span class="cell-r sub-total" id="sub-${i}" data-val="">—</span>`;
@@ -2771,7 +2970,8 @@ function updateSubtotal(i) {
   const qty = parseFloat(qtyEl.value) || 1;
   const subEl = document.getElementById(`sub-${i}`);
   const isInput = subEl && subEl.tagName === 'INPUT';
-  if (!isNaN(price) && price !== 0) {
+  const discounted = parseFloat(priceEl.dataset.discountPerUnit) > 0;
+  if (!isNaN(price) && (price !== 0 || discounted)) {
     const s = price * qty;
     if (isInput) subEl.value = fmt(s); else subEl.textContent = fmt(s);
     subEl.dataset.val = s;
@@ -2781,25 +2981,51 @@ function updateSubtotal(i) {
   }
   // Show "Ea." header on screen whenever any row has a matched part
   const anyPart = Array.from({length: NUM_ROWS}, (_, r) => {
-    const p = parseFloat(document.getElementById(`price-${r}`)?.dataset.price);
-    return p > 0;
+    const el = document.getElementById(`price-${r}`);
+    const p = parseFloat(el?.dataset.price);
+    return p > 0 || parseFloat(el?.dataset.discountPerUnit) > 0;
   }).some(Boolean);
   const hdr = document.getElementById('hdr-unitprice');
   if (hdr) hdr.classList.toggle('ea-hidden', !anyPart);
 }
 
 function updateSummary() {
-  let subtotal = 0, hasAny = false;
-  for (let i = 0; i < NUM_ROWS; i++) { const v = parseFloat(document.getElementById(`sub-${i}`)?.dataset.val); if (v) { subtotal += v; hasAny = true; } }
+  let subtotal = 0, saved = 0, hasAny = false;
+  for (let i = 0; i < NUM_ROWS; i++) {
+    const raw = document.getElementById(`sub-${i}`)?.dataset.val;
+    const v = parseFloat(raw);
+    if (raw !== undefined && raw !== '' && !isNaN(v)) { subtotal += v; hasAny = true; }
+  }
+  for (let i = 0; i < NUM_ROWS; i++) {
+    const priceEl = document.getElementById(`price-${i}`);
+    const offEach = parseFloat(priceEl?.dataset.discountPerUnit) || 0;
+    const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
+    if (offEach > 0) saved += offEach * qty;
+  }
   // Add note rows
   tbody.querySelectorAll('[data-note-row] .note-price-input').forEach(el => {
     const v = parseFloat(el.dataset.subtotal); if (v) { subtotal += v; hasAny = true; }
   });
-  if (!hasAny) { document.getElementById('sumSubtotal').textContent = '—'; document.getElementById('sumTax').textContent = '—'; document.getElementById('sumTotal').textContent = '—'; return; }
-  const tax = subtotal * TAX_RATE;
+  const feeRow = document.getElementById('cardFeeRow');
+  const savedRow = document.getElementById('savedRow');
+  if (!hasAny) {
+    document.getElementById('sumSubtotal').textContent = '—';
+    document.getElementById('sumCardFee').textContent = '—';
+    document.getElementById('sumTax').textContent = '—';
+    document.getElementById('sumTotal').textContent = '—';
+    feeRow?.classList.add('hidden'); savedRow?.classList.add('hidden');
+    return;
+  }
+  const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
+  const cardFee = cardFeeActive ? subtotal * CARD_FEE_RATE : 0;
+  const tax = (subtotal + cardFee) * TAX_RATE;
   document.getElementById('sumSubtotal').textContent = fmt(subtotal);
+  document.getElementById('sumCardFee').textContent = fmt(cardFee);
+  feeRow?.classList.toggle('hidden', !cardFeeActive);
   document.getElementById('sumTax').textContent = fmt(tax);
-  document.getElementById('sumTotal').textContent = fmt(subtotal + tax);
+  document.getElementById('sumTotal').textContent = fmt(subtotal + cardFee + tax);
+  document.getElementById('sumSaved').textContent = fmt(saved) + '!';
+  savedRow?.classList.toggle('hidden', !(saved > 0));
 }
 
 function clearAll() {
@@ -2808,6 +3034,7 @@ function clearAll() {
   NUM_ROWS = 3; buildRows(); buildMobileRows(); updateSummary();
   clearCustFields();
   document.getElementById('signatureBtn')?.classList.remove('active');
+  toggleCardFee(false);
   _currentTxnId   = null;
   _currentTxnDate = null;
   _pendingTxnDate = null;
@@ -2831,6 +3058,10 @@ function buildCopy2HTML() {
   const reviewOn = document.getElementById('reviewBtn')?.classList.contains('active');
   const invoiceOn = _docType === 'invoice';
   const subtotal = document.getElementById('sumSubtotal')?.textContent || '—';
+  const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
+  const cardFee = document.getElementById('sumCardFee')?.textContent || '—';
+  const saved = document.getElementById('sumSaved')?.textContent || '$0.00!';
+  const hasSavings = !document.getElementById('savedRow')?.classList.contains('hidden');
   const tax = document.getElementById('sumTax')?.textContent || '—';
   const total = document.getElementById('sumTotal')?.textContent || '—';
 
@@ -2846,7 +3077,7 @@ function buildCopy2HTML() {
     const eaVal = pInput.value || '';
     if (!eaVal && pn !== 'Note') continue;
     const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
-    if (qty !== 1) anyMulti = true;
+    if (qty !== 1 || parseFloat(priceEl.dataset.discountPerUnit) > 0) anyMulti = true;
   }
 
   for (let i = 0; i < NUM_ROWS; i++) {
@@ -2867,6 +3098,11 @@ function buildCopy2HTML() {
     const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
     const subEl = document.getElementById(`sub-${i}`);
     const subVal = subEl?.tagName === 'INPUT' ? subEl.value : (subEl?.textContent || '—');
+    const originalEa = parseFloat(priceEl.dataset.originalEa) || 0;
+    const offEach = parseFloat(priceEl.dataset.discountPerUnit) || 0;
+    const eaHtml = offEach > 0
+      ? `<span class="discount-original">${esc(fmt(originalEa))}</span> ${esc(eaVal)} <span class="discount-off">(${esc(fmt(offEach))} off)</span>`
+      : (anyMulti && qty !== 1 ? esc(eaVal) : '');
 
     // 10 columns to match print CSS nth-child selectors:
     // 1(hide) 2:PN 3:Desc 4(hide) 5(hide) 6(hide) 7:Ea 8:Qty 9:Price 10(hide)
@@ -2875,7 +3111,7 @@ function buildCopy2HTML() {
       <td>${esc(pn)}</td>
       <td>${esc(desc)}</td>
       <td></td><td></td><td></td>
-      <td style="text-align:right">${anyMulti && qty !== 1 ? esc(eaVal) : ''}</td>
+      <td style="text-align:right">${eaHtml}</td>
       <td style="text-align:center">${esc(qty)}</td>
       <td style="text-align:right">${esc(subVal)}</td>
       <td></td>
@@ -2947,8 +3183,10 @@ function buildCopy2HTML() {
       <div class="mahalo-cell"><div class="mahalo">Mahalo for choosing us!</div></div>
       <div class="summary">
         <div class="sum-row"><span class="sum-label">Subtotal</span><span class="sum-val">${esc(subtotal)}</span></div>
+        ${cardFeeActive ? `<div class="sum-row"><span class="sum-label">Card fee (3%)</span><span class="sum-val">${esc(cardFee)}</span></div>` : ''}
         <div class="sum-row"><span class="sum-label">Tax (4.712%)</span><span class="sum-val">${esc(tax)}</span></div>
         <div class="sum-row total"><span class="sum-label">Total</span><span class="sum-val">${esc(total)}</span></div>
+        ${hasSavings ? `<div class="sum-row saved-row"><span>You saved</span><span>${esc(saved)}</span></div>` : ''}
       </div>
     </div>
     ${reviewOn ? `<div class="review-below">${buildReviewBlock()}</div>` : ''}
@@ -3031,8 +3269,9 @@ function preparePrint() {
     }
     if (hasPart) {
       const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
-      if (tr) tr.classList.toggle('print-qty1', qty === 1);
-      if (qty !== 1) anyMulti = true;
+      const discounted = parseFloat(priceEl.dataset.discountPerUnit) > 0;
+      if (tr) tr.classList.toggle('print-qty1', qty === 1 && !discounted);
+      if (qty !== 1 || discounted) anyMulti = true;
     }
   }
   const hdr = document.getElementById('hdr-unitprice');
@@ -3191,18 +3430,25 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   const logoSrc = document.querySelector('.wrap .print-header img')?.src || '';
   const items = order.items || [];
   const subtotal = items.reduce((s, it) => s + (parseFloat(it.sub) || 0), 0);
-  const tax = subtotal * TAX_RATE;
-  const total = subtotal + tax;
+  const cardFeeActive = !!order.toggles?.cardFee;
+  const cardFee = cardFeeActive ? subtotal * CARD_FEE_RATE : 0;
+  const tax = (subtotal + cardFee) * TAX_RATE;
+  const total = subtotal + cardFee + tax;
+  const saved = items.reduce((s, it) => s + ((parseFloat(it.discountPerUnit) || 0) * (parseFloat(it.qty) || 1)), 0);
   const anyMulti = items.some(it => (parseFloat(it.qty) || 1) !== 1);
 
   const rows = items.map(it => {
     const ea = (parseFloat(it.ea) || 0), qty = (parseFloat(it.qty) || 1), sub = (parseFloat(it.sub) || ea * qty);
+    const originalEa = parseFloat(it.originalEa) || 0, offEach = parseFloat(it.discountPerUnit) || 0;
+    const eaHtml = offEach > 0
+      ? `<span style="color:#666;text-decoration:line-through">$${originalEa.toFixed(2)}</span> $${ea.toFixed(2)} <span style="color:#2d7a3a">($${offEach.toFixed(2)} off)</span>`
+      : `$${ea.toFixed(2)}`;
     let snHtml = '';
     if (it.sn && it.sn.length) snHtml = `<tr><td></td><td colspan="3" style="padding:2px 8px 8px;font-size:12px;color:#444">${it.sn.map(esc).join(' &nbsp; ')}</td></tr>`;
     return `<tr>
       <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px">${esc(it.pn)}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px">${esc(it.desc)}</td>
-      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:center">${esc(qty)}${anyMulti && qty !== 1 ? ` <span style="color:#888">@ $${ea.toFixed(2)}</span>` : ''}</td>
+      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:center">${esc(qty)}${offEach > 0 || (anyMulti && qty !== 1) ? ` <span style="color:#888">@ ${eaHtml}</span>` : ''}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:right">$${sub.toFixed(2)}</td>
     </tr>${snHtml}`;
   }).join('');
@@ -3245,8 +3491,10 @@ function buildEmailDocHTML(order, title, number, dateStr) {
     </table>
     <div style="margin-top:14px;margin-left:auto;width:240px;font-size:13px">
       <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>
+      ${cardFeeActive ? `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Card fee (3%)</span><span>$${cardFee.toFixed(2)}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Tax (4.712%)</span><span>$${tax.toFixed(2)}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #000;font-weight:700;font-size:15px"><span>Total</span><span>$${total.toFixed(2)}</span></div>
+      ${saved > 0 ? `<div style="display:flex;justify-content:space-between;padding:5px 0;color:#2d7a3a;font-weight:700"><span>You saved</span><span>$${saved.toFixed(2)}!</span></div>` : ''}
     </div>
     ${custHtml}
     <div style="text-align:center;font-style:italic;color:#777;margin-top:22px;font-size:13px">Mahalo for your business!</div>
@@ -3358,13 +3606,18 @@ function captureOrder() {
     const noteInput = descEl?.querySelector('.note-desc-input');
     const discInput = descEl?.querySelector('.discount-desc-input');
     const desc = noteInput ? (noteInput.value.trim() || '(note)') : discInput ? (discInput.value.trim() || 'Discount') : (descEl?.textContent || '');
-    // Skip empty non-note rows
-    if (!ea && pn !== 'Note') continue;
+    const originalEa = parseFloat(priceEl.dataset.originalEa) || 0;
+    const discountPerUnit = parseFloat(priceEl.dataset.discountPerUnit) || 0;
+    // Keep a fully discounted item ($0 charged) so receipt/history still show it.
+    if (!ea && pn !== 'Note' && !(discountPerUnit > 0)) continue;
     const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
     const sub = parseFloat(document.getElementById(`sub-${i}`)?.dataset.val) || (ea * qty);
     const snTr = tbody.querySelector(`tr[data-sn-for="${i}"]`);
     const sn = snTr ? Array.from(snTr.querySelectorAll('.sn-input')).map(inp => inp.value.trim()).filter(Boolean) : [];
-    items.push({ pn, desc, qty, ea, sub, sn: sn.length ? sn : undefined });
+    items.push({ pn, desc, qty, ea, sub, sn: sn.length ? sn : undefined,
+      isOther: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.isOther === '1' || undefined,
+      originalEa: discountPerUnit > 0 ? originalEa : undefined,
+      discountPerUnit: discountPerUnit > 0 ? discountPerUnit : undefined });
   }
   // Capture legacy separate note rows (from + Note button)
   tbody.querySelectorAll('[data-note-row]').forEach(tr => {
@@ -3394,6 +3647,7 @@ function captureOrder() {
     signature: document.getElementById('signatureBtn')?.classList.contains('active') || false,
     review:    document.getElementById('reviewBtn')?.classList.contains('active') || false,
     salesView: document.getElementById('salesViewBtn')?.classList.contains('active') || false,
+    cardFee:   document.getElementById('cardFeeBtn')?.classList.contains('active') || false,
   };
   return { date: new Date().toISOString(), customer, items, total, toggles };
 }
@@ -3602,7 +3856,7 @@ function renderHistory() {
         <td>${it.pn}</td>
         <td>${it.desc}</td>
         <td style="text-align:center;">${it.qty}</td>
-        <td style="text-align:right;">$${it.ea.toFixed(2)}</td>
+        <td style="text-align:right;">${parseFloat(it.discountPerUnit) > 0 ? `<span style="color:#888;text-decoration:line-through;">$${parseFloat(it.originalEa).toFixed(2)}</span><br>$${it.ea.toFixed(2)} <span style="color:#2d7a3a;">($${parseFloat(it.discountPerUnit).toFixed(2)} off)</span>` : '$' + it.ea.toFixed(2)}</td>
         <td style="text-align:right;">$${it.sub.toFixed(2)}</td>
       </tr>`).join('');
     return `
@@ -3701,6 +3955,7 @@ function reprintOrder(idx) {
     if (order.toggles.signature && !sig?.classList.contains('active')) toggleSignature();
     if (order.toggles.review)    toggleReview();
     if (order.toggles.salesView && !document.getElementById('salesViewBtn')?.classList.contains('active')) toggleSalesView();
+    if (order.toggles.cardFee) toggleCardFee(true);
   }
   const hasSNItems = order.items.some(item => item.sn && item.sn.length);
   if (hasSNItems) {
@@ -3708,12 +3963,13 @@ function reprintOrder(idx) {
     document.getElementById('warrantyBtn')?.classList.add('active');
   }
   while (NUM_ROWS < order.items.length + 1) addRow();
+  buildMobileRows();
   for (let i = 0; i < NUM_ROWS; i++) clearRow(i);
   order.items.forEach((item, i) => {
     const input = tbody.querySelector(`[data-row="${i}"].part-input`);
     if (!input) return;
     const ea = parseFloat(item.ea) || 0;
-    const part = findPartByPn(item.pn);
+    const part = item.isOther ? null : findPartByPn(item.pn);
     if (part) {
       // Rehydrate cost / margin / make / list from Master via the same path a fresh
       // selection uses, then overlay the values actually saved on this transaction.
@@ -3731,6 +3987,9 @@ function reprintOrder(idx) {
       // Not in Master (note / discount / discontinued) — restore saved values as-is.
       input.value = item.pn;
       input.className = 'part-input matched';
+      input.dataset.partPn = item.pn || '';
+      input.dataset.isOther = item.isOther ? '1' : '';
+      input.readOnly = false;
       const descEl = document.getElementById(`desc-${i}`);
       descEl.textContent = item.desc;
       descEl.className = 'cell-desc cell-editable';
@@ -3747,9 +4006,34 @@ function reprintOrder(idx) {
       pInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); const qty = document.getElementById(`qty-${i}`); if (qty) { qty.focus(); qty.select(); } }
       });
+      installLineDiscountUI(i);
     }
     document.getElementById(`qty-${i}`).value = item.qty;
+    if (parseFloat(item.discountPerUnit) > 0) {
+      const priceEl = document.getElementById(`price-${i}`);
+      priceEl.dataset.originalEa = parseFloat(item.originalEa) || (ea + parseFloat(item.discountPerUnit));
+      priceEl.dataset.discountPerUnit = parseFloat(item.discountPerUnit);
+      priceEl.dataset.price = ea;
+      const pInput = priceEl.querySelector('.price-edit'); if (pInput) pInput.value = fmt(ea);
+      renderLineDiscount(i);
+    }
     updateSubtotal(i);
+    // Local-history reprints must populate the mobile view too.
+    const mobileInput = document.querySelector(`#mobileRows [data-row="${i}"].part-input`);
+    if (mobileInput) {
+      mobileInput.value = item.pn || '';
+      mobileInput.className = 'mobile-part-input part-input matched';
+      mobileInput.dataset.isOther = item.isOther ? '1' : '';
+    }
+    const mobileDesc = document.getElementById(`mdesc-${i}`);
+    if (mobileDesc) {
+      mobileDesc.textContent = item.desc || '—'; mobileDesc.className = 'mobile-desc';
+      mobileDesc.contentEditable = item.isOther ? 'true' : 'false'; mobileDesc.dataset.isOther = item.isOther ? '1' : '';
+      mobileDesc.dataset.row = item.isOther ? i : '';
+    }
+    const mobileQty = document.getElementById(`mqty-${i}`); if (mobileQty) mobileQty.value = item.qty;
+    const mobilePrice = document.getElementById(`mprice-${i}`); if (mobilePrice) mobilePrice.dataset.price = ea;
+    renderMobileDiscountState(i);
     // Restore serial numbers (applyPart clears SN rows, so this runs after either branch)
     if (item.sn && item.sn.length) {
       renderSNFields(i, item.qty);
@@ -3870,7 +4154,7 @@ function toggleInternalPrint() {
   btn.classList.toggle('active', document.body.classList.contains('internal-print'));
 }
 function syncToggles() {
-  const map = { tgWarranty:'warrantyBtn', tgSignature:'signatureBtn', tgReview:'reviewBtn', tgSalesView:'salesViewBtn', tgInternal:'internalPrintBtn' };
+  const map = { tgWarranty:'warrantyBtn', tgSignature:'signatureBtn', tgReview:'reviewBtn', tgSalesView:'salesViewBtn', tgInternal:'internalPrintBtn', tgCardFee:'cardFeeBtn' };
   for (const cb in map) { const c = document.getElementById(cb), b = document.getElementById(map[cb]); if (c && b) c.checked = b.classList.contains('active'); }
 }
 function toggleMenu(ev, id) {
@@ -4144,12 +4428,17 @@ function buildMobileRows() {
       <div class="mobile-bottom">
         <span class="mobile-make" id="mmake-${i}"></span>
         <span class="mobile-price" id="mprice-${i}" data-price=""></span>
+        <button type="button" class="mobile-discount-btn" data-row="${i}" style="display:none">$ off</button>
         <div class="mobile-x-qty">
           <span class="mobile-qty-sym">×</span>
           <input class="mobile-qty qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="mqty-${i}">
         </div>
         <span class="mobile-sub" id="msub-${i}"></span>
         <span class="mobile-clear" data-row="${i}">×</span>
+      </div>
+      <div class="mobile-discount-editor" id="mdiscount-${i}">
+        <label>Off each</label><input class="discount-money" data-row="${i}" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off">
+        <button type="button" class="mobile-discount-apply" data-row="${i}">Apply</button><button type="button" class="mobile-discount-remove" data-row="${i}">Cancel</button>
       </div>`;
     container.appendChild(div);
     // Attach keydown directly to avoid bubbling issues
@@ -4157,6 +4446,7 @@ function buildMobileRows() {
   }
   container.addEventListener('input', onMobileInput);
   container.addEventListener('click', onMobileClick);
+  container.addEventListener('keydown', onMobileDescKeydown);
   document.addEventListener('click', e => { if (!e.target.closest('.mobile-search-wrap')) closeMobileDropdowns(); });
 }
 
@@ -4164,14 +4454,51 @@ function onMobileInput(e) {
   const row = e.target.dataset.row;
   if (row === undefined) return;
   const i = parseInt(row);
-  if (e.target.classList.contains('part-input')) handleMobileSearch(i);
-  else if (e.target.classList.contains('qty-input')) { updateMobileSubtotal(i); updateSummary(); }
+  if (e.target.classList.contains('part-input')) {
+    if (e.target.dataset.isOther === '1') {
+      const desktop = tbody.querySelector(`[data-row="${i}"].part-input`); if (desktop) { desktop.value = e.target.value; desktop.dataset.partPn = e.target.value; }
+      return;
+    }
+    if (e.target.classList.contains('matched')) {
+      e.target.classList.remove('matched');
+      clearRow(i);
+      clearMobileRowData(i);
+    }
+    handleMobileSearch(i);
+  }
+  else if (e.target.classList.contains('qty-input')) {
+    const desktopQty = document.getElementById(`qty-${i}`); if (desktopQty) desktopQty.value = e.target.value;
+    updateMobileSubtotal(i); updateSummary();
+  }
+  else if (e.target.classList.contains('mobile-desc') && e.target.dataset.isOther === '1') {
+    const desktopDesc = document.getElementById(`desc-${i}`); if (desktopDesc) desktopDesc.textContent = e.target.textContent;
+  }
+}
+
+function onMobileDescKeydown(e) {
+  if (!e.target.classList.contains('mobile-desc') || e.target.dataset.isOther !== '1') return;
+  if (e.key !== 'Enter' && e.key !== 'Tab') return;
+  e.preventDefault();
+  const qty = document.getElementById(`mqty-${parseInt(e.target.dataset.row)}`);
+  if (qty) { qty.focus(); qty.select(); }
 }
 
 function onMobileClick(e) {
+  const discountBtn = e.target.closest('.mobile-discount-btn');
+  if (discountBtn) { openMobileDiscount(parseInt(discountBtn.dataset.row)); return; }
+  const discountApply = e.target.closest('.mobile-discount-apply');
+  if (discountApply) { applyMobileDiscount(parseInt(discountApply.dataset.row)); return; }
+  const discountRemove = e.target.closest('.mobile-discount-remove');
+  if (discountRemove) { const i = parseInt(discountRemove.dataset.row); const p = document.getElementById(`price-${i}`); if (parseFloat(p?.dataset.discountPerUnit) > 0) removeLineDiscount(i); else closeMobileDiscount(i); renderMobileDiscountState(i); return; }
   const clearBtn = e.target.closest('.mobile-clear');
   if (clearBtn) { clearMobileRow(parseInt(clearBtn.dataset.row)); updateSummary(); return; }
   const item = e.target.closest('.dd-item');
+  if (item?.dataset.noteTrigger) {
+    const i = parseInt(item.closest('.mobile-row')?.dataset.row);
+    const dd = document.getElementById(`mdd-${i}`);
+    if (dd?._noteMode === 'discount') openMobileDiscountShortcut(i);
+    return;
+  }
   if (item) selectMobilePart(parseInt(item.dataset.row), parseInt(item.dataset.idx));
 }
 
@@ -4189,10 +4516,15 @@ function onMobileKeydown(e) {
       input.value = '';
     }
     input.classList.remove('matched');
+    clearRow(i);
     clearMobileRowData(i);
     updateSummary();
     handleMobileSearch(i);
     return;
+  }
+
+  if ((e.key === 'Enter' || e.key === 'Tab') && input.classList.contains('matched') && input.dataset.isOther === '1') {
+    e.preventDefault(); selectEditableText(document.getElementById(`mdesc-${i}`)); return;
   }
 
   if (e.key === 'Enter' && input.classList.contains('matched')) {
@@ -4209,7 +4541,11 @@ function onMobileKeydown(e) {
   let idx = active ? parseInt(active.dataset.idx) : 0;
   if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx+1,items.length-1); items.forEach(it=>it.classList.remove('active')); items[idx].classList.add('active'); items[idx].scrollIntoView({block:'nearest'}); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx-1,0); items.forEach(it=>it.classList.remove('active')); items[idx].classList.add('active'); items[idx].scrollIntoView({block:'nearest'}); }
-  else if (e.key === 'Enter') { e.preventDefault(); active = dd.querySelector('.dd-item.active'); if (active) selectMobilePart(i,parseInt(active.dataset.idx)); }
+  else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (dd._noteMode === 'discount') { closeMobileDropdowns(); openMobileDiscountShortcut(i); return; }
+    active = dd.querySelector('.dd-item.active'); if (active) selectMobilePart(i,parseInt(active.dataset.idx));
+  }
   else if (e.key === 'Escape') closeMobileDropdowns();
 }
 
@@ -4225,7 +4561,7 @@ function handleMobileSearch(i) {
   }
   if (/^disc(ount)?$/i.test(val)) {
     const dd = document.getElementById(`mdd-${i}`);
-    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#c0392b;font-style:italic;">➖ Add discount row</div>`;
+    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">💲 Discount previous item</div>`;
     dd.classList.add('open'); dd._noteMode = 'discount'; return;
   }
   if (!loaded) { document.getElementById(`mdesc-${i}`).textContent = 'Load a file first'; return; }
@@ -4255,7 +4591,11 @@ function selectMobilePart(i, idx) {
 }
 
 function applyMobilePart(i, part) {
+  const desktopInput = tbody.querySelector(`[data-row="${i}"].part-input`);
+  if (desktopInput) desktopInput.value = part.pn || part.desc || '';
+  applyPart(i, part, { skipAddRow: true, skipFocus: true });
   const input = document.querySelector(`#mobileRows [data-row="${i}"].part-input`);
+  const other = isOtherPart(part);
   input.className = 'mobile-part-input part-input matched' + (part._supersededFrom ? ' superseded' : '');
   const supMark = document.getElementById(`msupmark-${i}`);
   if (supMark) {
@@ -4263,17 +4603,23 @@ function applyMobilePart(i, part) {
     supMark.title = part._supersededFrom ? `Current part selected because it replaces ${part._supersededFrom}` : '';
   }
   input.title = part._supersededFrom ? `Current part selected because it replaces ${part._supersededFrom}` : '';
+  input.dataset.isOther = other ? '1' : '';
   if (part.og && part.og.trim()) input.value = part.og.trim();
   const descEl = document.getElementById(`mdesc-${i}`);
   descEl.textContent = part.desc || '—'; descEl.className = 'mobile-desc';
+  descEl.contentEditable = other ? 'true' : 'false'; descEl.dataset.row = i; descEl.dataset.isOther = other ? '1' : '';
+  if (other) descEl.addEventListener('keydown', e => { if (e.key === 'Tab') { e.preventDefault(); const q = document.getElementById(`mqty-${i}`); q?.focus(); q?.select(); } });
   document.getElementById(`mmake-${i}`).textContent = part.make || '';
   const price = parseFloat(part.list) || 0;
   const priceEl = document.getElementById(`mprice-${i}`);
   priceEl.textContent = price > 0 ? fmt(price) : ''; priceEl.dataset.price = price || '';
+  divDiscountButton(i, true);
   if (/labor/i.test(part.desc || '') || /labor/i.test(part.pn || '')) {
     document.getElementById(`mqty-${i}`).value = 30;
+    const desktopQty = document.getElementById(`qty-${i}`); if (desktopQty) desktopQty.value = 30;
   }
   updateMobileSubtotal(i); updateSummary();
+  if (other) setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
 function updateMobileSubtotal(i) {
@@ -4281,25 +4627,90 @@ function updateMobileSubtotal(i) {
   const qty = parseFloat(document.getElementById(`mqty-${i}`).value) || 1;
   const subEl = document.getElementById(`msub-${i}`);
   const hiddenSub = document.getElementById(`sub-${i}`);
-  if (price > 0) {
+  const discounted = parseFloat(document.getElementById(`price-${i}`)?.dataset.discountPerUnit) > 0;
+  if (!isNaN(price) && (price > 0 || discounted)) {
     const s = price * qty;
     subEl.textContent = fmt(s);
-    if (hiddenSub) { hiddenSub.textContent = fmt(s); hiddenSub.dataset.val = s; }
+    if (hiddenSub) {
+      if (hiddenSub.tagName === 'INPUT') hiddenSub.value = fmt(s); else hiddenSub.textContent = fmt(s);
+      hiddenSub.dataset.val = s;
+    }
   } else {
     subEl.textContent = '';
-    if (hiddenSub) { hiddenSub.textContent = '—'; hiddenSub.dataset.val = ''; }
+    if (hiddenSub) {
+      if (hiddenSub.tagName === 'INPUT') hiddenSub.value = ''; else hiddenSub.textContent = '—';
+      hiddenSub.dataset.val = '';
+    }
   }
+}
+
+function divDiscountButton(i, show) {
+  const btn = document.querySelector(`#mobileRows .mobile-discount-btn[data-row="${i}"]`);
+  if (btn) btn.style.display = show ? '' : 'none';
+}
+
+function renderMobileDiscountState(i) {
+  const mobilePrice = document.getElementById(`mprice-${i}`);
+  const desktopPrice = document.getElementById(`price-${i}`);
+  if (!mobilePrice || !desktopPrice) return;
+  const charged = parseFloat(desktopPrice.dataset.price) || 0;
+  const original = parseFloat(desktopPrice.dataset.originalEa) || 0;
+  const offEach = parseFloat(desktopPrice.dataset.discountPerUnit) || 0;
+  const desktopQty = document.getElementById(`qty-${i}`);
+  const mobileQty = document.getElementById(`mqty-${i}`);
+  if (desktopQty && mobileQty) mobileQty.value = desktopQty.value;
+  mobilePrice.dataset.price = offEach > 0 ? charged : (charged || '');
+  mobilePrice.classList.toggle('discounted', offEach > 0);
+  mobilePrice.innerHTML = offEach > 0
+    ? `<span class="discount-original">${fmt(original)}</span><span>${fmt(charged)}</span><span class="discount-off">(${fmt(offEach)} off)</span>`
+    : (charged > 0 ? fmt(charged) : '');
+  const btn = document.querySelector(`#mobileRows .mobile-discount-btn[data-row="${i}"]`);
+  const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
+  const eligible = !!partInput?.dataset.partPn && !/^(note|discount)$/i.test(partInput.value || '');
+  if (btn) { btn.style.display = eligible && (charged > 0 || offEach > 0) ? '' : 'none'; btn.textContent = offEach > 0 ? 'Edit' : '$ off'; }
+  const remove = document.querySelector(`#mdiscount-${i} .mobile-discount-remove`);
+  if (remove) remove.textContent = offEach > 0 ? 'Remove' : 'Cancel';
+  updateMobileSubtotal(i);
+}
+
+function openMobileDiscount(i) {
+  document.querySelectorAll('.mobile-discount-editor.open').forEach(el => el.classList.remove('open'));
+  const editor = document.getElementById(`mdiscount-${i}`);
+  const input = editor?.querySelector('.discount-money');
+  if (!editor || !input) return;
+  input.value = parseFloat(document.getElementById(`price-${i}`)?.dataset.discountPerUnit) > 0
+    ? parseFloat(document.getElementById(`price-${i}`).dataset.discountPerUnit).toFixed(2) : '';
+  editor.classList.add('open'); setTimeout(() => { input.focus(); input.select(); }, 0);
+}
+
+function closeMobileDiscount(i) { document.getElementById(`mdiscount-${i}`)?.classList.remove('open'); }
+
+function applyMobileDiscount(i) {
+  const amount = document.querySelector(`#mdiscount-${i} .discount-money`)?.value || '';
+  applyLineDiscount(i, amount); closeMobileDiscount(i); renderMobileDiscountState(i);
+}
+
+function openMobileDiscountShortcut(sourceRow) {
+  let target = -1;
+  for (let i = sourceRow - 1; i >= 0; i--) {
+    const price = parseFloat(document.getElementById(`mprice-${i}`)?.dataset.price) || 0;
+    if (price > 0) { target = i; break; }
+  }
+  if (target < 0) return;
+  clearMobileRow(sourceRow); openMobileDiscount(target);
 }
 
 function clearMobileRowData(i) {
   const partInput = document.querySelector(`#mobileRows [data-row="${i}"].part-input`);
-  if (partInput) partInput.title = '';
+  if (partInput) { partInput.title = ''; delete partInput.dataset.isOther; partInput.readOnly = false; }
   const supMark = document.getElementById(`msupmark-${i}`);
   if (supMark) { supMark.classList.remove('visible'); supMark.title = ''; }
   const descEl = document.getElementById(`mdesc-${i}`);
   descEl.textContent = 'Description'; descEl.className = 'mobile-desc empty';
+  descEl.contentEditable = 'false'; delete descEl.dataset.isOther; delete descEl.dataset.row;
   document.getElementById(`mmake-${i}`).textContent = '';
   const p = document.getElementById(`mprice-${i}`); p.textContent = ''; p.dataset.price = '';
+  p.classList.remove('discounted'); divDiscountButton(i, false); closeMobileDiscount(i);
   document.getElementById(`msub-${i}`).textContent = '';
   const s = document.getElementById(`sub-${i}`);
   if (s) { s.textContent = '—'; s.dataset.val = ''; }
@@ -4310,6 +4721,7 @@ function clearMobileRow(i) {
   if (input) { input.value = ''; input.className = 'mobile-part-input part-input'; }
   const qty = document.getElementById(`mqty-${i}`);
   if (qty) qty.value = 1;
+  clearRow(i);
   clearMobileRowData(i); closeMobileDropdowns();
 }
 
