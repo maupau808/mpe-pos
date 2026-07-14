@@ -366,7 +366,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .discount-off { color: #000 !important; font-size: 11px; }
   .discount-btn, .discount-editor { display: none !important; }
   .dropdown { display: none !important; }
-  .note-desc-input, .note-price-input, .discount-desc-input { border: none; background: transparent; padding: 0; pointer-events: none; color: #000; }
+  .note-desc-input, .note-price-input, .discount-desc-input { border: none; outline: none; caret-color: transparent; background: transparent; padding: 0; pointer-events: none; color: #000; }
   .sub-edit { border: none; background: transparent; font-size: 14px; font-weight: 400; padding: 0; pointer-events: none; text-align: right; width: 100%; display: block; -webkit-appearance: none; appearance: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
   .cost-edit { border: none; background: transparent; font-size: 12px; padding: 0; pointer-events: none; text-align: right; width: 100%; display: block; color: #000; }
   .sn-input { border: none; background: transparent; pointer-events: none; min-width: 100px; -webkit-appearance: none; appearance: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
@@ -698,6 +698,7 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googl
 // ─── APP STATE ─────────────────────────────────────────────────────────────
 const TAX_RATE = 0.04712;
 const CARD_FEE_RATE = 0.03;
+let discountControlsEnabled = false;
 let NUM_ROWS = 3;
 const MAX_RESULTS = 50;
 const DB_NAME = 'PartsLookup';
@@ -1303,7 +1304,7 @@ function renderLineDiscount(i) {
   const legacy = /^(note|discount)$/i.test(partInput?.value || '');
   if (originalEl) { originalEl.textContent = original ? fmt(original) : ''; originalEl.classList.toggle('hidden', !(original > 0 && offEach > 0)); }
   if (offEl) { offEl.textContent = offEach > 0 ? `(${fmt(offEach)} off)` : ''; offEl.classList.toggle('hidden', !(offEach > 0)); }
-  if (btn) { btn.style.display = partInput?.dataset.partPn && !legacy ? '' : 'none'; btn.classList.toggle('active', offEach > 0); btn.textContent = offEach > 0 ? 'Edit' : '$ off'; }
+  if (btn) { btn.style.display = discountControlsEnabled && partInput?.dataset.partPn && !legacy ? '' : 'none'; btn.classList.toggle('active', offEach > 0); btn.textContent = offEach > 0 ? 'Edit' : '$ off'; }
 }
 
 function openLineDiscount(i) {
@@ -1361,15 +1362,17 @@ function removeLineDiscount(i) {
   updateSubtotal(i); updateSummary();
 }
 
-function openDiscountShortcut(sourceRow) {
-  let target = -1;
-  for (let i = sourceRow - 1; i >= 0; i--) {
-    const inp = tbody.querySelector(`[data-row="${i}"].part-input`);
-    if (inp?.dataset.partPn && !/^(note|discount)$/i.test(inp.value || '')) { target = i; break; }
+function enableDiscountControls() {
+  discountControlsEnabled = true;
+  for (let i = 0; i < NUM_ROWS; i++) {
+    renderLineDiscount(i);
+    renderMobileDiscountState(i);
   }
-  if (target < 0) return;
-  if (sourceRow !== target) clearRow(sourceRow);
-  openLineDiscount(target);
+}
+
+function activateDiscountShortcut(sourceRow) {
+  enableDiscountControls();
+  applyDiscountToRow(sourceRow);
 }
 
 function toggleCardFee(force) {
@@ -2456,7 +2459,7 @@ function onTableClick(e) {
     const i = row !== undefined ? parseInt(row) : (() => {
       const td = item.closest('td'); const inp = td?.querySelector('.part-input'); return inp ? parseInt(inp.dataset.row) : NaN;
     })();
-    if (!isNaN(i)) { const _dd = document.getElementById(`dd-${i}`); closeAllDropdowns(); _dd?._noteMode === 'discount' ? openDiscountShortcut(i) : applyNoteToRow(i); }
+    if (!isNaN(i)) { const _dd = document.getElementById(`dd-${i}`); closeAllDropdowns(); _dd?._noteMode === 'discount' ? activateDiscountShortcut(i) : applyNoteToRow(i); }
     return;
   }
   if (e.target.closest('.dd-item') && !e.target.closest('.dd-item[data-note-trigger]')) {
@@ -2539,7 +2542,7 @@ function onKeydown(e) {
   else if (e.key === 'Enter') {
     e.preventDefault();
     if (dd._noteMode === 'note') { closeAllDropdowns(); applyNoteToRow(i); return; }
-    if (dd._noteMode === 'discount') { closeAllDropdowns(); openDiscountShortcut(i); return; }
+    if (dd._noteMode === 'discount') { closeAllDropdowns(); activateDiscountShortcut(i); return; }
     active = dd.querySelector('.dd-item.active'); if (active) selectPart(i, parseInt(active.dataset.idx));
   }
   else if (e.key === 'Escape') closeAllDropdowns();
@@ -2558,7 +2561,7 @@ function handleSearch(i) {
     return;
   }
   if (/^disc(ount)?$/i.test(val)) {
-    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">💲 Discount previous item</div>`;
+    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">💲 Show $ off controls and add discount line</div>`;
     dd.classList.add('open'); sizeDropdown(dd);
     dd._noteMode = 'discount';
     return;
@@ -3029,6 +3032,7 @@ function updateSummary() {
 }
 
 function clearAll() {
+  discountControlsEnabled = false;
   NOTE_COUNT = 0;
   tbody.querySelectorAll('[data-note-row]').forEach(tr => tr.remove());
   NUM_ROWS = 3; buildRows(); buildMobileRows(); updateSummary();
@@ -4561,7 +4565,7 @@ function handleMobileSearch(i) {
   }
   if (/^disc(ount)?$/i.test(val)) {
     const dd = document.getElementById(`mdd-${i}`);
-    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">💲 Discount previous item</div>`;
+    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">💲 Show $ off controls</div>`;
     dd.classList.add('open'); dd._noteMode = 'discount'; return;
   }
   if (!loaded) { document.getElementById(`mdesc-${i}`).textContent = 'Load a file first'; return; }
@@ -4613,7 +4617,7 @@ function applyMobilePart(i, part) {
   const price = parseFloat(part.list) || 0;
   const priceEl = document.getElementById(`mprice-${i}`);
   priceEl.textContent = price > 0 ? fmt(price) : ''; priceEl.dataset.price = price || '';
-  divDiscountButton(i, true);
+  divDiscountButton(i, discountControlsEnabled);
   if (/labor/i.test(part.desc || '') || /labor/i.test(part.pn || '')) {
     document.getElementById(`mqty-${i}`).value = 30;
     const desktopQty = document.getElementById(`qty-${i}`); if (desktopQty) desktopQty.value = 30;
@@ -4667,7 +4671,7 @@ function renderMobileDiscountState(i) {
   const btn = document.querySelector(`#mobileRows .mobile-discount-btn[data-row="${i}"]`);
   const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
   const eligible = !!partInput?.dataset.partPn && !/^(note|discount)$/i.test(partInput.value || '');
-  if (btn) { btn.style.display = eligible && (charged > 0 || offEach > 0) ? '' : 'none'; btn.textContent = offEach > 0 ? 'Edit' : '$ off'; }
+  if (btn) { btn.style.display = discountControlsEnabled && eligible && (charged > 0 || offEach > 0) ? '' : 'none'; btn.textContent = offEach > 0 ? 'Edit' : '$ off'; }
   const remove = document.querySelector(`#mdiscount-${i} .mobile-discount-remove`);
   if (remove) remove.textContent = offEach > 0 ? 'Remove' : 'Cancel';
   updateMobileSubtotal(i);
@@ -4691,13 +4695,8 @@ function applyMobileDiscount(i) {
 }
 
 function openMobileDiscountShortcut(sourceRow) {
-  let target = -1;
-  for (let i = sourceRow - 1; i >= 0; i--) {
-    const price = parseFloat(document.getElementById(`mprice-${i}`)?.dataset.price) || 0;
-    if (price > 0) { target = i; break; }
-  }
-  if (target < 0) return;
-  clearMobileRow(sourceRow); openMobileDiscount(target);
+  enableDiscountControls();
+  clearMobileRow(sourceRow);
 }
 
 function clearMobileRowData(i) {
