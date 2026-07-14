@@ -101,8 +101,10 @@ h2 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
 .line-price-cell { position: relative; display: inline-block; min-width: 132px; white-space: normal; }
 .discount-display { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex-wrap: wrap; }
 .discount-original { color: #777; font-size: 12px; text-decoration: line-through; text-decoration-thickness: 1px; }
-.discount-off { color: #2d7a3a; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.discount-off { display: none; }
 .discount-original.hidden, .discount-off.hidden { display: none; }
+.discount-line-total { display: block; color: #2d7a3a; font-size: 11px; font-weight: 600; line-height: 1.15; white-space: nowrap; text-align: right; }
+.discount-line-total.hidden { display: none; }
 .discount-btn { border: 1px solid #c8d8c9; border-radius: 4px; background: #f4faf4; color: #2d7a3a; cursor: pointer; font-size: 10px; line-height: 1; padding: 3px 5px; white-space: nowrap; }
 .discount-btn:hover, .discount-btn.active { background: #e3f2e4; border-color: #7cad80; }
 .discount-editor { display: none; position: absolute; right: 0; top: calc(100% + 5px); z-index: 160; width: 205px; padding: 9px; border: 1px solid #bbb; border-radius: 7px; background: #fff; box-shadow: 0 5px 18px rgba(0,0,0,.16); text-align: left; }
@@ -112,8 +114,7 @@ h2 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
 .discount-money { width: 72px; min-width: 0; font: inherit; font-size: 13px; padding: 4px 5px; border: 1px solid #ccc; border-radius: 4px; text-align: right; }
 .discount-editor button { font: inherit; font-size: 11px; padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
 .discount-editor .discount-apply { color: #2d7a3a; border-color: #8ebc92; }
-.saved-row { color: #2d7a3a; font-weight: 700; }
-.saved-row.hidden, .card-fee-row.hidden { display: none; }
+.card-fee-row.hidden { display: none; }
 .sub-edit { width: 80px; font-size: 16px; font-weight: 700; font-family: inherit; text-align: right; border: 1px solid #ddd; border-radius: 4px; padding: 2px 4px; background: #fff; color: #1a1a1a; box-sizing: border-box; }
 .sub-edit:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.08); }
 .cost-edit { width: 62px; font-size: 12px; font-family: inherit; text-align: right; border: 1px solid #ddd; border-radius: 4px; padding: 2px 4px; background: #fff8f0; color: #777; box-sizing: border-box; }
@@ -329,6 +330,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .mobile-make { font-size: 11px; color: #aaa; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-price { font-size: 13px; font-weight: 500; color: #444; white-space: nowrap; }
   .mobile-price.discounted { white-space: normal; display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; flex-wrap: wrap; }
+  .mobile-discount-total { display: none; color: #2d7a3a; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .mobile-discount-total.visible { display: inline; }
   .mobile-discount-btn { border: 1px solid #c8d8c9; border-radius: 4px; background: #f4faf4; color: #2d7a3a; font-size: 10px; padding: 3px 5px; }
   .mobile-discount-editor { display: none; margin-top: 7px; padding: 8px; border: 1px solid #cfdacf; border-radius: 7px; background: #f7fbf7; }
   .mobile-discount-editor.open { display: flex; align-items: center; gap: 5px; }
@@ -363,7 +366,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .line-price-cell { min-width: 0; display: block; }
   .discount-display { justify-content: flex-end; gap: 4px; }
   .discount-original { color: #555 !important; font-size: 12px; }
-  .discount-off { color: #000 !important; font-size: 11px; }
+  .discount-line-total { color: #000 !important; font-size: 11px; }
   .discount-btn, .discount-editor { display: none !important; }
   .dropdown { display: none !important; }
   .note-desc-input, .note-price-input, .discount-desc-input { border: none; outline: none; caret-color: transparent; background: transparent; padding: 0; pointer-events: none; color: #000; }
@@ -592,10 +595,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <div class="sum-row total">
         <span class="sum-label">Total</span>
         <span class="sum-val" id="sumTotal">—</span>
-      </div>
-      <div class="sum-row saved-row hidden" id="savedRow">
-        <span>You saved</span>
-        <span id="sumSaved">$0.00!</span>
       </div>
     </div>
   </div>
@@ -1270,12 +1269,10 @@ function installLineDiscountUI(i) {
   display.className = 'discount-display';
   const original = document.createElement('span');
   original.className = 'discount-original hidden';
-  const off = document.createElement('span');
-  off.className = 'discount-off hidden';
   const btn = document.createElement('button');
   btn.type = 'button'; btn.className = 'discount-btn'; btn.textContent = '$ off'; btn.title = 'Discount this item';
   btn.addEventListener('click', e => { e.stopPropagation(); openLineDiscount(i); });
-  display.append(original, pInput, off, btn);
+  display.append(original, pInput, btn);
   const editor = document.createElement('span');
   editor.className = 'discount-editor';
   editor.innerHTML = `<label>Off each</label><span class="discount-editor-line"><input class="discount-money" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off"><button type="button" class="discount-apply">Apply</button><button type="button" class="discount-remove">Cancel</button></span>`;
@@ -1298,13 +1295,36 @@ function renderLineDiscount(i) {
   const original = parseFloat(priceEl.dataset.originalEa) || 0;
   const offEach = parseFloat(priceEl.dataset.discountPerUnit) || 0;
   const originalEl = priceEl.querySelector('.discount-original');
-  const offEl = priceEl.querySelector('.discount-off');
   const btn = priceEl.querySelector('.discount-btn');
   const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
   const legacy = /^(note|discount)$/i.test(partInput?.value || '');
   if (originalEl) { originalEl.textContent = original ? fmt(original) : ''; originalEl.classList.toggle('hidden', !(original > 0 && offEach > 0)); }
-  if (offEl) { offEl.textContent = offEach > 0 ? `(${fmt(offEach)} off)` : ''; offEl.classList.toggle('hidden', !(offEach > 0)); }
+  const lineDiscount = offEach > 0 ? ensureDiscountTotalDisplay(i) : document.getElementById(`discount-total-${i}`);
+  if (lineDiscount) {
+    const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
+    lineDiscount.textContent = offEach > 0 ? `(${fmt(offEach * qty)} off)` : '';
+    lineDiscount.classList.toggle('hidden', !(offEach > 0));
+  }
   if (btn) { btn.style.display = discountControlsEnabled && partInput?.dataset.partPn && !legacy ? '' : 'none'; btn.classList.toggle('active', offEach > 0); btn.textContent = offEach > 0 ? 'Edit' : '$ off'; }
+}
+
+function ensureDiscountTotalDisplay(i) {
+  let el = document.getElementById(`discount-total-${i}`);
+  if (el) return el;
+  const subEl = document.getElementById(`sub-${i}`);
+  if (!subEl) return null;
+  el = document.createElement('span');
+  el.id = `discount-total-${i}`;
+  el.className = 'discount-line-total hidden';
+  subEl.before(el);
+  return el;
+}
+
+function updateMarginForLine(i) {
+  const price = parseFloat(document.getElementById(`price-${i}`)?.dataset.price);
+  const cost = parseFloat(document.getElementById(`cost-${i}`)?.dataset.cost) || 0;
+  const marginEl = document.getElementById(`margin-${i}`);
+  if (marginEl) marginEl.textContent = price > 0 && cost > 0 ? ((price - cost) / price * 100).toFixed(1) + '%' : '—';
 }
 
 function openLineDiscount(i) {
@@ -1338,6 +1358,7 @@ function applyLineDiscount(i, amount) {
   priceEl.dataset.discountPerUnit = offEach;
   priceEl.dataset.price = charged;
   pInput.value = fmt(charged);
+  updateMarginForLine(i);
   renderLineDiscount(i);
   closeLineDiscount(i);
   updateSubtotal(i); updateSummary(); renderMobileDiscountState(i);
@@ -1357,6 +1378,7 @@ function removeLineDiscount(i) {
   const original = parseFloat(priceEl?.dataset.originalEa) || 0;
   if (priceEl && original > 0) priceEl.dataset.price = original;
   if (pInput && original > 0) pInput.value = fmt(original);
+  updateMarginForLine(i);
   clearLineDiscountMetadata(i);
   closeLineDiscount(i);
   updateSubtotal(i); updateSummary();
@@ -2491,7 +2513,7 @@ function onInput(e) {
   }
   else if (e.target.classList.contains('qty-input')) {
     const mobileQty = document.getElementById(`mqty-${i}`); if (mobileQty) mobileQty.value = e.target.value;
-    updateSubtotal(i); updateSummary(); updateSNFields(i);
+    updateSubtotal(i); renderLineDiscount(i); updateSummary(); updateSNFields(i);
   }
 }
 
@@ -2937,6 +2959,7 @@ function clearRowData(i) {
   const p = document.getElementById(`price-${i}`);
   delete p.dataset.originalEa; delete p.dataset.discountPerUnit;
   p.innerHTML = '—'; p.dataset.price = ''; p.className = 'cell-r';
+  document.getElementById(`discount-total-${i}`)?.remove();
   const s = document.getElementById(`sub-${i}`);
   if (s.tagName === 'INPUT') s.outerHTML = `<span class="cell-r sub-total" id="sub-${i}" data-val="">—</span>`;
   else { s.textContent = '—'; s.dataset.val = ''; }
@@ -2993,30 +3016,23 @@ function updateSubtotal(i) {
 }
 
 function updateSummary() {
-  let subtotal = 0, saved = 0, hasAny = false;
+  let subtotal = 0, hasAny = false;
   for (let i = 0; i < NUM_ROWS; i++) {
     const raw = document.getElementById(`sub-${i}`)?.dataset.val;
     const v = parseFloat(raw);
     if (raw !== undefined && raw !== '' && !isNaN(v)) { subtotal += v; hasAny = true; }
-  }
-  for (let i = 0; i < NUM_ROWS; i++) {
-    const priceEl = document.getElementById(`price-${i}`);
-    const offEach = parseFloat(priceEl?.dataset.discountPerUnit) || 0;
-    const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
-    if (offEach > 0) saved += offEach * qty;
   }
   // Add note rows
   tbody.querySelectorAll('[data-note-row] .note-price-input').forEach(el => {
     const v = parseFloat(el.dataset.subtotal); if (v) { subtotal += v; hasAny = true; }
   });
   const feeRow = document.getElementById('cardFeeRow');
-  const savedRow = document.getElementById('savedRow');
   if (!hasAny) {
     document.getElementById('sumSubtotal').textContent = '—';
     document.getElementById('sumCardFee').textContent = '—';
     document.getElementById('sumTax').textContent = '—';
     document.getElementById('sumTotal').textContent = '—';
-    feeRow?.classList.add('hidden'); savedRow?.classList.add('hidden');
+    feeRow?.classList.add('hidden');
     return;
   }
   const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
@@ -3027,8 +3043,6 @@ function updateSummary() {
   feeRow?.classList.toggle('hidden', !cardFeeActive);
   document.getElementById('sumTax').textContent = fmt(tax);
   document.getElementById('sumTotal').textContent = fmt(subtotal + cardFee + tax);
-  document.getElementById('sumSaved').textContent = fmt(saved) + '!';
-  savedRow?.classList.toggle('hidden', !(saved > 0));
 }
 
 function clearAll() {
@@ -3064,8 +3078,6 @@ function buildCopy2HTML() {
   const subtotal = document.getElementById('sumSubtotal')?.textContent || '—';
   const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
   const cardFee = document.getElementById('sumCardFee')?.textContent || '—';
-  const saved = document.getElementById('sumSaved')?.textContent || '$0.00!';
-  const hasSavings = !document.getElementById('savedRow')?.classList.contains('hidden');
   const tax = document.getElementById('sumTax')?.textContent || '—';
   const total = document.getElementById('sumTotal')?.textContent || '—';
 
@@ -3104,9 +3116,13 @@ function buildCopy2HTML() {
     const subVal = subEl?.tagName === 'INPUT' ? subEl.value : (subEl?.textContent || '—');
     const originalEa = parseFloat(priceEl.dataset.originalEa) || 0;
     const offEach = parseFloat(priceEl.dataset.discountPerUnit) || 0;
+    const lineOff = offEach * qty;
     const eaHtml = offEach > 0
-      ? `<span class="discount-original">${esc(fmt(originalEa))}</span> ${esc(eaVal)} <span class="discount-off">(${esc(fmt(offEach))} off)</span>`
+      ? `<span class="discount-original">${esc(fmt(originalEa))}</span> ${esc(eaVal)}`
       : (anyMulti && qty !== 1 ? esc(eaVal) : '');
+    const priceHtml = lineOff > 0
+      ? `<span class="discount-line-total">(${esc(fmt(lineOff))} off)</span>${esc(subVal)}`
+      : esc(subVal);
 
     // 10 columns to match print CSS nth-child selectors:
     // 1(hide) 2:PN 3:Desc 4(hide) 5(hide) 6(hide) 7:Ea 8:Qty 9:Price 10(hide)
@@ -3117,7 +3133,7 @@ function buildCopy2HTML() {
       <td></td><td></td><td></td>
       <td style="text-align:right">${eaHtml}</td>
       <td style="text-align:center">${esc(qty)}</td>
-      <td style="text-align:right">${esc(subVal)}</td>
+      <td style="text-align:right">${priceHtml}</td>
       <td></td>
     </tr>`;
 
@@ -3190,7 +3206,6 @@ function buildCopy2HTML() {
         ${cardFeeActive ? `<div class="sum-row"><span class="sum-label">Card fee (3%)</span><span class="sum-val">${esc(cardFee)}</span></div>` : ''}
         <div class="sum-row"><span class="sum-label">Tax (4.712%)</span><span class="sum-val">${esc(tax)}</span></div>
         <div class="sum-row total"><span class="sum-label">Total</span><span class="sum-val">${esc(total)}</span></div>
-        ${hasSavings ? `<div class="sum-row saved-row"><span>You saved</span><span>${esc(saved)}</span></div>` : ''}
       </div>
     </div>
     ${reviewOn ? `<div class="review-below">${buildReviewBlock()}</div>` : ''}
@@ -3438,14 +3453,14 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   const cardFee = cardFeeActive ? subtotal * CARD_FEE_RATE : 0;
   const tax = (subtotal + cardFee) * TAX_RATE;
   const total = subtotal + cardFee + tax;
-  const saved = items.reduce((s, it) => s + ((parseFloat(it.discountPerUnit) || 0) * (parseFloat(it.qty) || 1)), 0);
   const anyMulti = items.some(it => (parseFloat(it.qty) || 1) !== 1);
 
   const rows = items.map(it => {
     const ea = (parseFloat(it.ea) || 0), qty = (parseFloat(it.qty) || 1), sub = (parseFloat(it.sub) || ea * qty);
     const originalEa = parseFloat(it.originalEa) || 0, offEach = parseFloat(it.discountPerUnit) || 0;
+    const lineOff = offEach * qty;
     const eaHtml = offEach > 0
-      ? `<span style="color:#666;text-decoration:line-through">$${originalEa.toFixed(2)}</span> $${ea.toFixed(2)} <span style="color:#2d7a3a">($${offEach.toFixed(2)} off)</span>`
+      ? `<span style="color:#666;text-decoration:line-through">$${originalEa.toFixed(2)}</span> $${ea.toFixed(2)}`
       : `$${ea.toFixed(2)}`;
     let snHtml = '';
     if (it.sn && it.sn.length) snHtml = `<tr><td></td><td colspan="3" style="padding:2px 8px 8px;font-size:12px;color:#444">${it.sn.map(esc).join(' &nbsp; ')}</td></tr>`;
@@ -3453,7 +3468,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px">${esc(it.pn)}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px">${esc(it.desc)}</td>
       <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:center">${esc(qty)}${offEach > 0 || (anyMulti && qty !== 1) ? ` <span style="color:#888">@ ${eaHtml}</span>` : ''}</td>
-      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:right">$${sub.toFixed(2)}</td>
+      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:right">${lineOff > 0 ? `<div style="font-size:11px;color:#2d7a3a">($${lineOff.toFixed(2)} off)</div>` : ''}$${sub.toFixed(2)}</td>
     </tr>${snHtml}`;
   }).join('');
 
@@ -3498,7 +3513,6 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       ${cardFeeActive ? `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Card fee (3%)</span><span>$${cardFee.toFixed(2)}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Tax (4.712%)</span><span>$${tax.toFixed(2)}</span></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #000;font-weight:700;font-size:15px"><span>Total</span><span>$${total.toFixed(2)}</span></div>
-      ${saved > 0 ? `<div style="display:flex;justify-content:space-between;padding:5px 0;color:#2d7a3a;font-weight:700"><span>You saved</span><span>$${saved.toFixed(2)}!</span></div>` : ''}
     </div>
     ${custHtml}
     <div style="text-align:center;font-style:italic;color:#777;margin-top:22px;font-size:13px">Mahalo for your business!</div>
@@ -3855,14 +3869,18 @@ function renderHistory() {
     const d = new Date(order.date);
     const dateStr = d.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'});
     const timeStr = d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
-    const rows = order.items.map(it => `
+    const rows = order.items.map(it => {
+      const offEach = parseFloat(it.discountPerUnit) || 0;
+      const lineOff = offEach * (parseFloat(it.qty) || 1);
+      return `
       <tr>
         <td>${it.pn}</td>
         <td>${it.desc}</td>
         <td style="text-align:center;">${it.qty}</td>
-        <td style="text-align:right;">${parseFloat(it.discountPerUnit) > 0 ? `<span style="color:#888;text-decoration:line-through;">$${parseFloat(it.originalEa).toFixed(2)}</span><br>$${it.ea.toFixed(2)} <span style="color:#2d7a3a;">($${parseFloat(it.discountPerUnit).toFixed(2)} off)</span>` : '$' + it.ea.toFixed(2)}</td>
-        <td style="text-align:right;">$${it.sub.toFixed(2)}</td>
-      </tr>`).join('');
+        <td style="text-align:right;">${offEach > 0 ? `<span style="color:#888;text-decoration:line-through;">$${parseFloat(it.originalEa).toFixed(2)}</span><br>$${it.ea.toFixed(2)}` : '$' + it.ea.toFixed(2)}</td>
+        <td style="text-align:right;">${lineOff > 0 ? `<div style="color:#2d7a3a;font-size:11px;">($${lineOff.toFixed(2)} off)</div>` : ''}$${it.sub.toFixed(2)}</td>
+      </tr>`;
+    }).join('');
     return `
       <div class="hist-entry">
         <div class="hist-entry-header" onclick="toggleHistEntry(${idx})">
@@ -4437,6 +4455,7 @@ function buildMobileRows() {
           <span class="mobile-qty-sym">×</span>
           <input class="mobile-qty qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="mqty-${i}">
         </div>
+        <span class="mobile-discount-total" id="mdiscount-total-${i}"></span>
         <span class="mobile-sub" id="msub-${i}"></span>
         <span class="mobile-clear" data-row="${i}">×</span>
       </div>
@@ -4472,7 +4491,7 @@ function onMobileInput(e) {
   }
   else if (e.target.classList.contains('qty-input')) {
     const desktopQty = document.getElementById(`qty-${i}`); if (desktopQty) desktopQty.value = e.target.value;
-    updateMobileSubtotal(i); updateSummary();
+    updateMobileSubtotal(i); renderLineDiscount(i); renderMobileDiscountState(i); updateSummary();
   }
   else if (e.target.classList.contains('mobile-desc') && e.target.dataset.isOther === '1') {
     const desktopDesc = document.getElementById(`desc-${i}`); if (desktopDesc) desktopDesc.textContent = e.target.textContent;
@@ -4666,8 +4685,14 @@ function renderMobileDiscountState(i) {
   mobilePrice.dataset.price = offEach > 0 ? charged : (charged || '');
   mobilePrice.classList.toggle('discounted', offEach > 0);
   mobilePrice.innerHTML = offEach > 0
-    ? `<span class="discount-original">${fmt(original)}</span><span>${fmt(charged)}</span><span class="discount-off">(${fmt(offEach)} off)</span>`
+    ? `<span class="discount-original">${fmt(original)}</span><span>${fmt(charged)}</span>`
     : (charged > 0 ? fmt(charged) : '');
+  const lineDiscount = document.getElementById(`mdiscount-total-${i}`);
+  if (lineDiscount) {
+    const lineOff = offEach * (parseFloat(mobileQty?.value) || 1);
+    lineDiscount.textContent = lineOff > 0 ? `(${fmt(lineOff)} off)` : '';
+    lineDiscount.classList.toggle('visible', lineOff > 0);
+  }
   const btn = document.querySelector(`#mobileRows .mobile-discount-btn[data-row="${i}"]`);
   const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
   const eligible = !!partInput?.dataset.partPn && !/^(note|discount)$/i.test(partInput.value || '');
