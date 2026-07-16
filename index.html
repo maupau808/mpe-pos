@@ -780,9 +780,9 @@ function handleSignIn() {
     setDriveStatus('Google sign-in not ready yet, try again in a moment.', true);
     return;
   }
-  // Use 'select_account' on first sign-in, '' for silent refresh when already known
-  const wasSignedIn = !!localStorage.getItem('gSignedIn');
-  tokenClient.requestAccessToken({ prompt: wasSignedIn ? '' : 'select_account' });
+  // This app always uses the shop account. Reuse its existing grant and avoid
+  // forcing the account chooser; Google still prompts if authorization is missing.
+  tokenClient.requestAccessToken({ prompt: '', hint: 'info@mauipowerequipment.com' });
 }
 
 let _refreshTimer = null;
