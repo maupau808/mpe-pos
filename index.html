@@ -704,7 +704,9 @@ const DB_NAME = 'PartsLookup';
 const DB_STORE = 'files';
 const DB_KEY = 'partsFile';
 const DB_KEY_JSON = 'posJsonGz';   // Stage 4: cached POS JSON feed (raw gzip bytes)
+const DB_KEY_SALES = 'posSaleRules'; // Last verified seasonal-sale config, independent of parts format
 let partsArray = [];
+let saleRules = [];
 let loaded = false;
 let tokenClient = null;
 let _pendingAction = null; // action to fire after sign-in completes
@@ -963,12 +965,10 @@ function arrayBufferToBinary(ab) {
 // ─── INDEXEDDB ─────────────────────────────────────────────────────────────
 function openDB() {
   return new Promise((res, rej) => {
-    const req = indexedDB.open(DB_NAME, 4); // v4: force cache refresh for margin display fix
+    const req = indexedDB.open(DB_NAME, 5); // v5: preserve parts cache while adding seasonal-sale cache
     req.onupgradeneeded = e => {
       const db = e.target.result;
-      // Delete old store if exists (clears stale cached file on version bump)
-      if (db.objectStoreNames.contains(DB_STORE)) db.deleteObjectStore(DB_STORE);
-      db.createObjectStore(DB_STORE);
+      if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
     };
     req.onsuccess = e => res(e.target.result);
     req.onerror = e => rej(e);
@@ -1023,8 +1023,11 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   const parts = [];
   for (const e of feed.parts) {
     parts.push(e);
-    if (e.sup && e.sup !== e.pn) parts.push({ ...e, pn: e.sup, og: e.pn, _supersedeAlias: true }); // mirrors worker
+    if (e.sup && e.sup !== e.pn) parts.push({ ...e, pn: e.sup, og: e.pn, _supersedeAlias: true, _salePn: e.pn, _saleOg: e.og }); // mirrors worker
   }
+  // A successful current feed is authoritative. Missing/invalid rules mean no
+  // automatic sale, never "keep yesterday's sale" in memory.
+  saleRules = normalizeSaleRules(feed.sales);
   partsArray = parts;
   loaded = true;
   warmUpSearch();
@@ -1043,8 +1046,9 @@ async function tryFetchPosJson() {
     const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!resp.ok) return false;   // 401/404/etc -> let the xlsx path handle token/refresh
     const ab = await resp.arrayBuffer();
-    await loadPosJsonBytes(ab, 'JSON');
+    const feed = await loadPosJsonBytes(ab, 'JSON');
     await saveKeyToDB(DB_KEY_JSON, ab);
+    await saveKeyToDB(DB_KEY_SALES, normalizeSaleRules(feed.sales));
     _lastFetchAt = Date.now();
     const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     setDriveStatus(`Updated ${now}`);
@@ -1096,7 +1100,7 @@ self.onmessage = function(e) {
         warranty: warVal === 'Y'
       };
       parts.push(entry);
-      if (sup && sup !== pn) parts.push({ ...entry, pn: sup, og: pn, _supersedeAlias: true });
+      if (sup && sup !== pn) parts.push({ ...entry, pn: sup, og: pn, _supersedeAlias: true, _salePn: pn, _saleOg: og });
     });
     self.postMessage({ ok: true, parts, sheetName: targetName });
   } catch(err) {
@@ -1175,7 +1179,7 @@ function parseAndLoadSync(name, binaryData) {
         warranty: warVal === 'Y'
       };
       partsArray.push(entry);
-      if (sup && sup !== pn) partsArray.push({ ...entry, pn: sup, og: pn, _supersedeAlias: true });
+      if (sup && sup !== pn) partsArray.push({ ...entry, pn: sup, og: pn, _supersedeAlias: true, _salePn: pn, _saleOg: og });
     });
     loaded = true;
     warmUpSearch();
@@ -1187,6 +1191,10 @@ function parseAndLoadSync(name, binaryData) {
 
 async function tryLoadFromDB() {
   // Stage 4: prefer the cached POS JSON (instant, offline) over the cached xlsx.
+  try {
+    const cachedSales = await loadKeyFromDB(DB_KEY_SALES);
+    if (Array.isArray(cachedSales)) saleRules = normalizeSaleRules(cachedSales);
+  } catch(e) {}
   try {
     const j = await loadKeyFromDB(DB_KEY_JSON);
     if (j) { await loadPosJsonBytes(j, 'cache'); return; }
@@ -1217,6 +1225,61 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
 // ─── SEARCH UI ─────────────────────────────────────────────────────────────
 function normalizePN(pn) {
   return String(pn || '').replace(/[\s\-\.]/g, '').toUpperCase().trim();
+}
+
+function normalizeSaleRules(rules) {
+  if (!Array.isArray(rules)) return [];
+  return rules.filter(rule => {
+    const discount = Number(rule?.discount);
+    return rule && rule.enabled === true && normalizePN(rule.pn) &&
+      Number.isFinite(discount) && discount > 0 &&
+      /^\d{4}-\d{2}-\d{2}$/.test(String(rule.start || '')) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(String(rule.end || '')) &&
+      rule.start <= rule.end;
+  }).map(rule => ({
+    id: String(rule.id == null ? '' : rule.id),
+    pn: String(rule.pn || ''),
+    make: String(rule.make || '').trim(),
+    og: String(rule.og || ''),
+    discount: Number(rule.discount),
+    start: String(rule.start),
+    end: String(rule.end),
+    enabled: true
+  }));
+}
+
+function localDateYMD(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function activeSaleForPart(part, today = localDateYMD()) {
+  if (!part || !normalizePN(part.pn)) return null;
+  // Superseded-number aliases still represent the canonical catalog item, so
+  // a sale selected for the current part also follows an old-number lookup.
+  const partPn = normalizePN(part._salePn || part.pn);
+  const partMake = String(part.make || '').trim().toLowerCase();
+  const partOg = normalizePN(part._salePn ? part._saleOg : part.og);
+  return saleRules.filter(rule => {
+    if (today < rule.start || today > rule.end || normalizePN(rule.pn) !== partPn) return false;
+    if (rule.make.toLowerCase() !== partMake) return false;
+    if (normalizePN(rule.og) !== partOg) return false;
+    return true;
+  }).sort((a, b) => b.start.localeCompare(a.start) || a.id.localeCompare(b.id))[0] || null;
+}
+
+function marginPercent(cost, price) {
+  const c = Number(cost), p = Number(price);
+  if (!Number.isFinite(c) || !Number.isFinite(p) || c < 0 || !(p > 0)) return null;
+  return (p - c) / p * 100;
+}
+
+function marginText(cost, price) {
+  if (!(Number(cost) > 0)) return '—';
+  const percent = marginPercent(cost, price);
+  return percent == null ? '—' : percent.toFixed(1) + '%';
 }
 // True if a and b are within one typo of each other — counting an adjacent
 // letter swap (transposition, e.g. "kholer"→"kohler") as a single edit, since
@@ -1281,7 +1344,9 @@ function installLineDiscountUI(i) {
     if (parseFloat(priceEl.dataset.discountPerUnit) > 0) removeLineDiscount(i);
     else closeLineDiscount(i);
   });
-  editor.querySelector('.discount-money').addEventListener('keydown', e => {
+  const moneyInput = editor.querySelector('.discount-money');
+  moneyInput.addEventListener('input', () => previewLineDiscountMargin(i, moneyInput.value));
+  moneyInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); applyLineDiscount(i); }
     else if (e.key === 'Escape') { e.preventDefault(); closeLineDiscount(i); }
   });
@@ -1320,15 +1385,30 @@ function ensureDiscountTotalDisplay(i) {
   return el;
 }
 
-function updateMarginForLine(i) {
-  const price = parseFloat(document.getElementById(`price-${i}`)?.dataset.price);
+function updateMarginForLine(i, previewPrice) {
+  const committed = parseFloat(document.getElementById(`price-${i}`)?.dataset.price);
+  const price = previewPrice == null ? committed : Number(previewPrice);
   const cost = parseFloat(document.getElementById(`cost-${i}`)?.dataset.cost) || 0;
   const marginEl = document.getElementById(`margin-${i}`);
-  if (marginEl) marginEl.textContent = price > 0 && cost > 0 ? ((price - cost) / price * 100).toFixed(1) + '%' : '—';
+  if (marginEl) marginEl.textContent = marginText(cost, price);
+}
+
+function previewLineDiscountMargin(i, rawAmount) {
+  const priceEl = document.getElementById(`price-${i}`);
+  const pInput = priceEl?.querySelector('.price-edit');
+  if (!priceEl || !pInput) return;
+  const committed = parseFloat(priceEl.dataset.price) || parseFloat(pInput.value.replace(/[$,]/g, '')) || 0;
+  const original = parseFloat(priceEl.dataset.originalEa) || committed;
+  const requested = Math.max(0, parseFloat(String(rawAmount || '').replace(/[$,]/g, '')) || 0);
+  const charged = Math.max(0, original - Math.min(requested, original));
+  updateMarginForLine(i, charged);
 }
 
 function openLineDiscount(i) {
-  document.querySelectorAll('.discount-editor.open').forEach(el => el.classList.remove('open'));
+  document.querySelectorAll('.discount-editor.open').forEach(el => {
+    const row = parseInt(el.closest('[id^="price-"]')?.id.replace('price-', ''));
+    if (!isNaN(row) && row !== i) closeLineDiscount(row);
+  });
   const priceEl = document.getElementById(`price-${i}`);
   const editor = priceEl?.querySelector('.discount-editor');
   const input = editor?.querySelector('.discount-money');
@@ -1340,7 +1420,10 @@ function openLineDiscount(i) {
   setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
-function closeLineDiscount(i) { document.getElementById(`price-${i}`)?.querySelector('.discount-editor')?.classList.remove('open'); }
+function closeLineDiscount(i) {
+  document.getElementById(`price-${i}`)?.querySelector('.discount-editor')?.classList.remove('open');
+  updateMarginForLine(i);
+}
 
 function applyLineDiscount(i, amount) {
   const priceEl = document.getElementById(`price-${i}`);
@@ -1384,6 +1467,22 @@ function removeLineDiscount(i) {
   updateSubtotal(i); updateSummary();
 }
 
+function applyActiveSaleToLine(i, part, listPrice) {
+  const rule = activeSaleForPart(part);
+  const priceEl = document.getElementById(`price-${i}`);
+  const pInput = priceEl?.querySelector('.price-edit');
+  if (!rule || !priceEl || !pInput || !(listPrice > 0)) return false;
+  const offEach = Math.min(rule.discount, listPrice);
+  const charged = Math.max(0, listPrice - offEach);
+  priceEl.dataset.originalEa = listPrice;
+  priceEl.dataset.discountPerUnit = offEach;
+  priceEl.dataset.price = charged;
+  pInput.value = fmt(charged);
+  updateMarginForLine(i);
+  renderLineDiscount(i);
+  return true;
+}
+
 function enableDiscountControls() {
   discountControlsEnabled = true;
   for (let i = 0; i < NUM_ROWS; i++) {
@@ -1391,6 +1490,21 @@ function enableDiscountControls() {
     renderMobileDiscountState(i);
   }
 }
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.discount-editor')) {
+    document.querySelectorAll('.discount-editor.open').forEach(editor => {
+      const row = parseInt(editor.closest('[id^="price-"]')?.id.replace('price-', ''));
+      if (!isNaN(row)) closeLineDiscount(row);
+    });
+  }
+  if (!e.target.closest('.mobile-discount-editor') && !e.target.closest('.mobile-discount-btn')) {
+    document.querySelectorAll('.mobile-discount-editor.open').forEach(editor => {
+      const row = parseInt(editor.id.replace('mdiscount-', ''));
+      if (!isNaN(row)) closeMobileDiscount(row);
+    });
+  }
+});
 
 function activateDiscountShortcut(sourceRow) {
   enableDiscountControls();
@@ -1443,7 +1557,7 @@ function onPriceEdit(i) {
     if (_listP && Math.abs(price - _listP) > 0.001) logPriceChange(i, price, _listP);
     else clearPriceChange(i);
     const cost = parseFloat(document.getElementById(`cost-${i}`)?.dataset.cost) || 0;
-    const margin = cost > 0 ? ((price - cost) / price * 100).toFixed(1) + '%' : '—';
+    const margin = marginText(cost, price);
     document.getElementById(`margin-${i}`).textContent = margin;
   } else {
     priceEl.dataset.price = '';
@@ -1480,7 +1594,7 @@ function onCostEdit(i) {
   costEl.value = newCost > 0 ? fmt(newCost) : '';
   // Refresh margin display
   const price = parseFloat(document.getElementById(`price-${i}`)?.dataset.price) || 0;
-  const margin = price > 0 && newCost > 0 ? ((price - newCost) / price * 100).toFixed(1) + '%' : '—';
+  const margin = marginText(newCost, price);
   document.getElementById(`margin-${i}`).textContent = margin;
   // Log cost change into price changes store
   const inp = tbody.querySelector(`[data-row="${i}"].part-input`);
@@ -1715,8 +1829,8 @@ function logPriceChange(rowIdx, newPrice, listPrice) {
   const key = inp.dataset.partPn + '_' + rowIdx;
   const idx = changes.findIndex(c => c.rowKey === key);
   const _cost = parseFloat(inp.dataset.partCost) || 0;
-  const _newMarg = _cost > 0 && newPrice > 0 ? (((newPrice - _cost) / newPrice) * 100).toFixed(1) + '%' : '—';
-  const _oldMarg = _cost > 0 && listPrice > 0 ? (((listPrice - _cost) / listPrice) * 100).toFixed(1) + '%' : '—';
+  const _newMarg = marginText(_cost, newPrice);
+  const _oldMarg = marginText(_cost, listPrice);
   const entry = { rowKey: key, pn: inp.dataset.partPn, desc: inp.dataset.partDesc,
     make: inp.dataset.partMake, cost: inp.dataset.partCost,
     listPrice: listPrice, newPrice: newPrice,
@@ -2410,12 +2524,12 @@ function loadTxnIntoPOS(i) {
     const dInp = tbody.querySelector(`[data-row="${r}"].part-input`);
     if (dInp) dInp.value = it.pn || it.desc || '';
     const qd = document.getElementById(`qty-${r}`); if (qd) qd.value = qty;   // set before applyPart so SN count is right
-    applyPart(r, part);
+    applyPart(r, part, { skipAutomaticSale: true });
     const qd2 = document.getElementById(`qty-${r}`); if (qd2) qd2.value = qty;
     updateSubtotal(r);
     // Mobile card (mirrors the same data)
     const mInp = document.querySelector(`#mobileRows [data-row="${r}"].part-input`);
-    if (mInp) { mInp.value = it.pn || it.desc || ''; applyMobilePart(r, part); }
+    if (mInp) { mInp.value = it.pn || it.desc || ''; applyMobilePart(r, part, { skipAutomaticSale: true }); }
     const mq = document.getElementById(`mqty-${r}`); if (mq) mq.value = qty;
     updateMobileSubtotal(r);
     // Serial numbers (warranty rows live in the desktop table)
@@ -2875,8 +2989,8 @@ function applyPart(i, part, options) {
   });
   const _mList = parseFloat(part.list) || 0;
   const _mCost = parseFloat(part.cost) || 0;
-  const margin = _mList > 0 && _mCost >= 0 ? (_mList - _mCost) / _mList : NaN;
-  document.getElementById(`margin-${i}`).textContent = (!isNaN(margin) && _mList > 0) ? (margin * 100).toFixed(1) + '%' : '—';
+  const initialMargin = _mList > 0 && _mCost >= 0 ? marginPercent(_mCost, _mList) : null;
+  document.getElementById(`margin-${i}`).textContent = initialMargin == null ? '—' : initialMargin.toFixed(1) + '%';
   const price = parseFloat(part.list) || 0;
   // Replace span content with an editable input
   const priceEl = document.getElementById(`price-${i}`);
@@ -2898,6 +3012,7 @@ function applyPart(i, part, options) {
     }
   });
   installLineDiscountUI(i);
+  if (!options?.skipAutomaticSale) applyActiveSaleToLine(i, part, price);
   // Swap sub span → editable input so user can enter a Price and back-calc Ea
   const subSpan = document.getElementById(`sub-${i}`);
   subSpan.outerHTML = `<input class="sub-edit" id="sub-${i}" data-val="" placeholder="—">`;
@@ -3995,7 +4110,7 @@ function reprintOrder(idx) {
     if (part) {
       // Rehydrate cost / margin / make / list from Master via the same path a fresh
       // selection uses, then overlay the values actually saved on this transaction.
-      applyPart(i, part);
+      applyPart(i, part, { skipAutomaticSale: true });
       const descEl = document.getElementById(`desc-${i}`);
       if (descEl && item.desc) descEl.textContent = item.desc;   // keep any sale-time edit
       const priceEl = document.getElementById(`price-${i}`);
@@ -4004,7 +4119,7 @@ function reprintOrder(idx) {
       if (pInput) pInput.value = fmt(ea);                        // charged price, not today's list
       // Margin off the charged price vs current cost — no price-change logging on reload
       const cost = parseFloat(document.getElementById(`cost-${i}`)?.dataset.cost) || 0;
-      document.getElementById(`margin-${i}`).textContent = (ea > 0 && cost > 0) ? ((ea - cost) / ea * 100).toFixed(1) + '%' : '—';
+      document.getElementById(`margin-${i}`).textContent = marginText(cost, ea);
     } else {
       // Not in Master (note / discount / discontinued) — restore saved values as-is.
       input.value = item.pn;
@@ -4477,7 +4592,10 @@ function onMobileInput(e) {
   const row = e.target.dataset.row;
   if (row === undefined) return;
   const i = parseInt(row);
-  if (e.target.classList.contains('part-input')) {
+  if (e.target.classList.contains('discount-money')) {
+    previewLineDiscountMargin(i, e.target.value);
+  }
+  else if (e.target.classList.contains('part-input')) {
     if (e.target.dataset.isOther === '1') {
       const desktop = tbody.querySelector(`[data-row="${i}"].part-input`); if (desktop) { desktop.value = e.target.value; desktop.dataset.partPn = e.target.value; }
       return;
@@ -4499,6 +4617,12 @@ function onMobileInput(e) {
 }
 
 function onMobileDescKeydown(e) {
+  if (e.target.classList.contains('discount-money')) {
+    const i = parseInt(e.target.dataset.row);
+    if (e.key === 'Enter') { e.preventDefault(); applyMobileDiscount(i); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeMobileDiscount(i); }
+    return;
+  }
   if (!e.target.classList.contains('mobile-desc') || e.target.dataset.isOther !== '1') return;
   if (e.key !== 'Enter' && e.key !== 'Tab') return;
   e.preventDefault();
@@ -4613,10 +4737,10 @@ function selectMobilePart(i, idx) {
   applyMobilePart(i, part);
 }
 
-function applyMobilePart(i, part) {
+function applyMobilePart(i, part, options) {
   const desktopInput = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (desktopInput) desktopInput.value = part.pn || part.desc || '';
-  applyPart(i, part, { skipAddRow: true, skipFocus: true });
+  applyPart(i, part, { skipAddRow: true, skipFocus: true, ...(options || {}) });
   const input = document.querySelector(`#mobileRows [data-row="${i}"].part-input`);
   const other = isOtherPart(part);
   input.className = 'mobile-part-input part-input matched' + (part._supersededFrom ? ' superseded' : '');
@@ -4641,7 +4765,7 @@ function applyMobilePart(i, part) {
     document.getElementById(`mqty-${i}`).value = 30;
     const desktopQty = document.getElementById(`qty-${i}`); if (desktopQty) desktopQty.value = 30;
   }
-  updateMobileSubtotal(i); updateSummary();
+  renderMobileDiscountState(i); updateSummary();
   if (other) setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
@@ -4703,7 +4827,10 @@ function renderMobileDiscountState(i) {
 }
 
 function openMobileDiscount(i) {
-  document.querySelectorAll('.mobile-discount-editor.open').forEach(el => el.classList.remove('open'));
+  document.querySelectorAll('.mobile-discount-editor.open').forEach(el => {
+    const row = parseInt(el.id.replace('mdiscount-', ''));
+    if (!isNaN(row) && row !== i) closeMobileDiscount(row);
+  });
   const editor = document.getElementById(`mdiscount-${i}`);
   const input = editor?.querySelector('.discount-money');
   if (!editor || !input) return;
@@ -4712,7 +4839,10 @@ function openMobileDiscount(i) {
   editor.classList.add('open'); setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
-function closeMobileDiscount(i) { document.getElementById(`mdiscount-${i}`)?.classList.remove('open'); }
+function closeMobileDiscount(i) {
+  document.getElementById(`mdiscount-${i}`)?.classList.remove('open');
+  updateMarginForLine(i);
+}
 
 function applyMobileDiscount(i) {
   const amount = document.querySelector(`#mdiscount-${i} .discount-money`)?.value || '';
