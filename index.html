@@ -449,7 +449,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .wf-fill { flex:1; border-bottom: 1px solid #000; height: 22px; min-width: 0; }
   .wf-val { font-weight: 600; flex: 1; }
   .wf-gap { flex: 0 0 auto; white-space: nowrap; }
-  #sig-warranty-form { max-width: 75%; break-inside: avoid; page-break-inside: avoid; }
+  #sig-warranty-form { width: 100%; max-width: none; break-inside: avoid; page-break-inside: avoid; }
+  .wf-email-line { gap: 0; }
+  .wf-email-label { flex: 0 0 50%; text-align: right; }
   /* margin:0 leaves no page-margin box for Chrome to inject its URL/title/date/page-number
      header & footer into — that strip disappears. The 1.5cm spacing is restored as .wrap
      padding below so the printout looks identical. */
@@ -685,6 +687,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
+const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
 const CLIENT_ID = '726499104385-oa324nvlc69sdbj915dikimmh1sqvv1r.apps.googleusercontent.com';
 const DRIVE_FILE_ID = '1xpDOnCq71CZ-Oc4Fh9enVugOL8w75bEz'; // from your Drive URL
 // Stage 4 (SQLite crossover): lean gzipped JSON price feed lives in its OWN Drive file.
@@ -736,6 +739,9 @@ function initTokenClient() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
+    // Google Identity Services recognizes login_hint (not hint). It skips the
+    // account picker when the shop account is already signed in to Google.
+    login_hint: SHOP_GOOGLE_ACCOUNT,
     callback: async (resp) => {
       if (resp.error) {
         // User dismissed or denied — revert UI, don't spam
@@ -782,7 +788,7 @@ function handleSignIn() {
   }
   // This app always uses the shop account. Reuse its existing grant and avoid
   // forcing the account chooser; Google still prompts if authorization is missing.
-  tokenClient.requestAccessToken({ prompt: '', hint: 'info@mauipowerequipment.com' });
+  tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
 }
 
 let _refreshTimer = null;
@@ -891,7 +897,7 @@ async function fetchFromDrive() {
   // If still no token, request one then re-call
   if (!accessToken) {
     setDriveStatus('Reconnecting…');
-    tokenClient.requestAccessToken({ prompt: '', hint: localStorage.getItem('gEmail') || '' });
+    tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
     // fetchFromDrive will be called again from the token callback
     return;
   }
@@ -3337,7 +3343,7 @@ function buildWarrantyForm() {
   const phoneRaw = v('custPhone');
   const phone = phoneRaw ? (formatPhone(phoneRaw.replace(/[^0-9]/g,'')) || phoneRaw) : '';
   const email = v('custEmail');
-  // Typed value prints as text; empty field prints a blank line. Email never blank.
+  // Typed values print as text; empty fields retain a line for handwriting.
   const fill = (val, style) => val
     ? `<span class="wf-val"${style ? ' style="'+style+'"' : ''}>${esc(val)}</span>`
     : `<span class="wf-fill"${style ? ' style="'+style+'"' : ''}></span>`;
@@ -3345,8 +3351,9 @@ function buildWarrantyForm() {
   return '<div class="warranty-form-title">Warranty Registration — please print clearly, we have to read this. Mahalo!</div>'
     + `<div class="wf-line">${L('Name / Organization')} ${fill(name)}</div>`
     + `<div class="wf-line">${L('Address')} ${fill(addr)}</div>`
-    + `<div class="wf-line">${L('Town')} ${fill(city)} <span class="wf-gap">State:</span> ${fill(state, 'flex:0 0 42px')} <span class="wf-gap">Zip:</span> ${fill(zip, 'flex:0 0 72px')}</div>`
-    + `<div class="wf-line">${L('Phone')} ${email ? fill(phone, 'flex:0 0 170px') + ' <span class="wf-gap">Email:</span> ' + fill(email) : fill(phone)}</div>`;
+    + `<div class="wf-line">${L('Town')} ${fill(city)} <span class="wf-gap">State:</span> ${fill(state, 'flex:0 0 84px')} <span class="wf-gap">Zip:</span> ${fill(zip, 'flex:0 0 180px')}</div>`
+    + `<div class="wf-line">${L('Phone')} ${fill(phone)}</div>`
+    + `<div class="wf-line wf-email-line"><span class="wf-label wf-email-label">Email:</span>${fill(email)}</div>`;
 }
 
 function buildInvoiceSig() {
