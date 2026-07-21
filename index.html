@@ -450,8 +450,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .wf-val { font-weight: 600; flex: 1; }
   .wf-gap { flex: 0 0 auto; white-space: nowrap; }
   #sig-warranty-form { width: 100%; max-width: none; break-inside: avoid; page-break-inside: avoid; }
-  .wf-email-line { gap: 0; }
-  .wf-email-label { flex: 0 0 50%; text-align: right; }
+  .wf-contact-line { display: grid; grid-template-columns: 50% 50%; gap: 0; }
+  .wf-phone-group { display: flex; align-items: flex-end; gap: 8px; min-width: 0; }
+  .wf-phone-group .wf-fill, .wf-phone-group .wf-val { min-width: 0; }
   /* margin:0 leaves no page-margin box for Chrome to inject its URL/title/date/page-number
      header & footer into — that strip disappears. The 1.5cm spacing is restored as .wrap
      padding below so the printout looks identical. */
@@ -3352,8 +3353,7 @@ function buildWarrantyForm() {
     + `<div class="wf-line">${L('Name / Organization')} ${fill(name)}</div>`
     + `<div class="wf-line">${L('Address')} ${fill(addr)}</div>`
     + `<div class="wf-line">${L('Town')} ${fill(city)} <span class="wf-gap">State:</span> ${fill(state, 'flex:0 0 84px')} <span class="wf-gap">Zip:</span> ${fill(zip, 'flex:0 0 180px')}</div>`
-    + `<div class="wf-line">${L('Phone')} ${fill(phone)}</div>`
-    + `<div class="wf-line wf-email-line"><span class="wf-label wf-email-label">Email:</span>${fill(email)}</div>`;
+    + `<div class="wf-line wf-contact-line"><div class="wf-phone-group">${L('Phone')} ${fill(phone)} <span class="wf-label">Email:</span></div>${fill(email)}</div>`;
 }
 
 function buildInvoiceSig() {
