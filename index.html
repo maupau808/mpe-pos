@@ -462,6 +462,21 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .wrap { padding: 1.5cm !important; box-sizing: border-box; min-height: 27.6cm; display: flex; flex-direction: column; }
   #printCopy2 { display: none; }
   #printCopy2.active { display: block; page-break-before: always; }
+  /* ── Strict black & white printout (must stay LAST in this block: it wins on
+     source order, not specificity). The screen UI uses a warm off-white paper
+     (.wrap #fffdfa) plus grey/green ink; with print-color-adjust:exact those
+     tints actually print, giving the beige page. Force pure white paper and
+     pure black ink everywhere. Hairline table rules keep their neutral greys
+     (#ddd/#999) — those are achromatic and print as clean grey lines. */
+  *, *::before, *::after {
+    background: #fff !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+  }
+  /* Logo art is dark green — desaturate so nothing prints in colour. */
+  .print-header img { filter: grayscale(1) !important; }
 }
 </style>
 </head>
