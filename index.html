@@ -596,6 +596,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
       <button class="btn-big" id="emailDocBtn" onclick="emailDoc()">✉ Email</button>
       <button class="btn-big btn-filled" onclick="printQuote()">🖨 Print</button>
+      <button class="btn-big" onclick="autoPrint()" title="Print directly to Checkout PoS, single-sided">🖨 Auto Print</button>
       <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
     </div>
     <div class="mahalo-cell"><div class="mahalo">Mahalo for choosing us!</div></div>
@@ -3571,7 +3572,12 @@ function serializedPrintDocument() {
   return '<!doctype html>\n' + copy.outerHTML;
 }
 
-async function printQuote() {
+function printQuote() {
+  prepareAndSaveForPrint();
+  window.print();
+}
+
+async function autoPrint() {
   if (_directPrintInFlight) return;
   _directPrintInFlight = true;
   prepareAndSaveForPrint();
