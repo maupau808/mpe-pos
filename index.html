@@ -265,6 +265,14 @@ h2 { font-size: 20px; font-weight: 700; color: #313f2c; margin-bottom: 4px; }
 .caret { color: #999; font-size: 10px; }
 .menu-panel { display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; background: #fff; border: 1px solid #c7cfc4; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.12); padding: 6px; z-index: 200; min-width: 170px; }
 .menu-panel.open { display: block; }
+.menu-panel.right { left: auto; right: 0; min-width: 232px; }
+/* Admin menu: every Drive/sign-in/sync notice lives in here, out of the way of
+   the counter workflow. The dot is the ONLY thing that surfaces — amber when
+   something is waiting, red when something actually failed. */
+.admin-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e67e22; vertical-align: middle; margin-left: 3px; }
+.admin-dot.err { background: #e53935; }
+.menu-panel .print-banner { margin: 0 0 6px; font-size: 11px; padding: 6px 9px; }
+.tr-row { display: flex; align-items: center; gap: 8px; }
 .menu-panel .drive-btn { display: block; width: 100%; text-align: left; margin: 0; border-radius: 6px; }
 .menu-check { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 13px; color: #333; cursor: pointer; border-radius: 6px; white-space: nowrap; }
 .menu-check:hover { background: #eef1ec; }
@@ -519,16 +527,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="internal" onclick="setDocType('internal')">Internal</button>
       </div>
       <div class="menu-wrap">
-        <button class="menu-btn" id="dataMenuBtn" onclick="toggleMenu(event,'dataMenu')"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount">Sign in</span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span> <span id="dataBadge" class="pc-badge" style="display:none"></span> <span class="caret">▾</span></button>
-        <div class="menu-panel" id="dataMenu" onclick="event.stopPropagation()">
-          <div id="dataStatus" class="data-status"></div>
-          <button class="drive-btn signin" id="driveSignInBtn" onclick="handleSignIn()">Sign in</button>
-          <button class="drive-btn refresh hidden" id="driveRefreshBtn" onclick="fetchFromDrive()">↻ Refresh</button>
-          <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
-          <button class="drive-btn hist-btn" id="uploadsBtn" onclick="openUploads('priceChanges')">📤 Uploads<span id="uploadsBadge" class="pc-badge" style="display:none"></span></button>
-        </div>
-      </div>
-      <div class="menu-wrap">
         <button class="menu-btn" id="togglesBtn" onclick="toggleMenu(event,'togglesMenu')">Toggles <span class="caret">▾</span></button>
         <div class="menu-panel" id="togglesMenu" onclick="event.stopPropagation()">
           <label class="menu-check"><input type="checkbox" id="tgWarranty" onchange="toggleCustPanel()"> 🔧 Warranty</label>
@@ -545,12 +543,24 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
     </div>
     <div class="toolbar-right">
-      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark mode">☾</button>
+      <div class="tr-row">
+        <div class="menu-wrap">
+          <button class="menu-btn" id="adminMenuBtn" onclick="toggleMenu(event,'adminMenu')" title="Google sign-in, Drive sync and uploads">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
+          <div class="menu-panel right" id="adminMenu" onclick="event.stopPropagation()">
+            <div id="printBanner" class="print-banner" style="display:none"></div>
+            <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span> <span id="dataBadge" class="pc-badge" style="display:none"></span></div>
+            <div id="dataStatus" class="data-status"></div>
+            <button class="drive-btn signin" id="driveSignInBtn" onclick="handleSignIn()">Sign in</button>
+            <button class="drive-btn refresh hidden" id="driveRefreshBtn" onclick="fetchFromDrive()">↻ Refresh</button>
+            <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
+            <button class="drive-btn hist-btn" id="uploadsBtn" onclick="openUploads('priceChanges')">📤 Uploads<span id="uploadsBadge" class="pc-badge" style="display:none"></span></button>
+          </div>
+        </div>
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark mode">☾</button>
+      </div>
       <div id="docScreenTitle" class="doc-screen-title"></div>
     </div>
   </div>
-
-  <div id="printBanner" class="print-banner" style="display:none"></div>
 
   <div class="print-titlerow">
     <span class="print-doctitle" id="printDocTitle"></span>
@@ -774,8 +784,8 @@ function initTokenClient() {
       }
       accessToken = resp.access_token;
       localStorage.setItem('gSignedIn', '1');
-      sessionStorage.setItem('gToken', resp.access_token);
-      sessionStorage.setItem('gTokenAt', Date.now().toString());
+      localStorage.setItem('gToken', resp.access_token);
+      localStorage.setItem('gTokenAt', Date.now().toString());
       setSignedInUI();
       scheduleTokenRefresh();
       fetchFromDrive();
@@ -790,8 +800,8 @@ function initTokenClient() {
   if (localStorage.getItem('gSignedIn')) {
     setSignedInUI();
     // Silently attempt token via sessionStorage (same tab, no popup needed)
-    const cached = sessionStorage.getItem('gToken');
-    const cachedAt = parseInt(sessionStorage.getItem('gTokenAt') || '0');
+    const cached = localStorage.getItem('gToken');
+    const cachedAt = parseInt(localStorage.getItem('gTokenAt') || '0');
     if (cached && (Date.now() - cachedAt) < 55 * 60 * 1000) {
       accessToken = cached;
       scheduleTokenRefresh();
@@ -816,7 +826,7 @@ let _refreshTimer = null;
 function scheduleTokenRefresh() {
   clearTimeout(_refreshTimer);
   _refreshTimer = setTimeout(() => {
-    if (tokenClient && accessToken) tokenClient.requestAccessToken({ prompt: '' });
+    if (tokenClient && accessToken) tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
   }, 55 * 60 * 1000);
 }
 
@@ -825,8 +835,8 @@ function handleSignOut() {
   if (accessToken) google.accounts.oauth2.revoke(accessToken);
   accessToken = null;
   localStorage.removeItem('gSignedIn');
-  sessionStorage.removeItem('gToken');
-  sessionStorage.removeItem('gTokenAt');
+  localStorage.removeItem('gToken');
+  localStorage.removeItem('gTokenAt');
   setSignedOutUI();
 }
 
@@ -835,9 +845,9 @@ function handleSignOut() {
 // the data button, plus the detail lines in the dropdown. Reads live state on every
 // call so an aged/expired token is shown honestly instead of a stale "Connected".
 function authState() {
-  const tok = accessToken || sessionStorage.getItem('gToken');
+  const tok = accessToken || localStorage.getItem('gToken');
   if (tok) {
-    const at = parseInt(sessionStorage.getItem('gTokenAt') || '0');
+    const at = parseInt(localStorage.getItem('gTokenAt') || '0');
     return (Date.now() - at < 55 * 60 * 1000) ? 'in' : 'expired';  // tokens live ~60 min
   }
   return localStorage.getItem('gSignedIn') ? 'expired' : 'out';
@@ -880,6 +890,32 @@ function refreshStatusUI(transient) {
                 : a === 'expired' ? '☁️ Google session expired' : '☁️ Not signed in';
     ds.innerHTML = pLine + '<br>' + aLine + (transient ? `<br><span style="color:#888">${transient}</span>` : '');
   }
+  updateAdminDot();
+}
+
+// ── ADMIN DOT ────────────────────────────────────────────────────────────────
+// Coworkers were reading the Drive/sync notices as errors mid-sale, so every one of
+// them now lives inside the Admin dropdown. Only this dot escapes: amber = something
+// is waiting to sync or nobody is signed in, red = a push actually failed or the
+// catalog is missing. No dot at all = nothing to do, which is the normal state.
+function adminAlertLevel() {
+  if (!(typeof loaded !== 'undefined' && loaded && partsArray && partsArray.length)) return 'err';
+  if (_lastPushStatus === 'fail') return 'err';
+  const waiting = (function(){ try { return getPriceChanges().length + countUnpushedTxns(); } catch(e) { return 0; } })();
+  if (authState() !== 'in' || waiting > 0) return 'warn';
+  return '';
+}
+function updateAdminDot() {
+  const dot = document.getElementById('adminDot');
+  if (!dot) return;
+  const level = adminAlertLevel();
+  dot.className = 'admin-dot' + (level === 'err' ? ' err' : '');
+  dot.style.display = level ? '' : 'none';
+  const waiting = (function(){ try { return getPriceChanges().length + countUnpushedTxns(); } catch(e) { return 0; } })();
+  dot.title = level === 'err'
+    ? (_lastPushStatus === 'fail' ? 'A Drive push failed — open Admin' : 'No parts loaded — open Admin')
+    : waiting > 0 ? waiting + ' waiting to sync to Drive — open Admin'
+    : 'Not signed in to Google — open Admin';
 }
 
 function setSignedInUI()  { refreshStatusUI(); }
@@ -914,7 +950,7 @@ setInterval(() => { refreshStatusUI(); maybeAutoRefresh(); }, 60 * 1000);
 
 async function fetchFromDrive() {
   // Get token from memory or sessionStorage
-  if (!accessToken) accessToken = sessionStorage.getItem('gToken');
+  if (!accessToken) accessToken = localStorage.getItem('gToken');
   // If still no token, request one then re-call
   if (!accessToken) {
     setDriveStatus('Reconnecting…');
@@ -939,9 +975,9 @@ async function fetchFromDrive() {
     if (resp.status === 401) {
       // Token expired — clear both stores, request new one silently
       accessToken = null;
-      sessionStorage.removeItem('gToken');
+      localStorage.removeItem('gToken');
       setDriveStatus('Reconnecting…');
-      tokenClient.requestAccessToken({ prompt: '' });
+      tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
       return;
     }
 
@@ -1943,6 +1979,7 @@ function updatePriceChangesBadge() {
   if (tabBadge) tabBadge.textContent = pc > 0 ? `(${pc})` : '';
   const btn = document.getElementById('uploadsBtn');
   if (btn) btn.classList.toggle('active', total > 0);
+  updateAdminDot();
 }
 function renderPriceChanges() {
   const changes = getPriceChanges();
@@ -1980,7 +2017,7 @@ function switchUploadTab(tab) {
   else renderPriceChanges();
 }
 async function sheetsGet(range) {
-  const token = accessToken || sessionStorage.getItem('gToken');
+  const token = accessToken || localStorage.getItem('gToken');
   if (!token) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`;
   const resp = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
@@ -1994,7 +2031,7 @@ async function sheetsGet(range) {
 }
 
 async function sheetsUpdate(range, rows) {
-  const token = accessToken || sessionStorage.getItem('gToken');
+  const token = accessToken || localStorage.getItem('gToken');
   if (!token) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
   const resp = await fetch(url, {
@@ -2011,7 +2048,7 @@ async function sheetsUpdate(range, rows) {
 }
 
 async function sheetsBatchUpdate(requests) {
-  const token = accessToken || sessionStorage.getItem('gToken');
+  const token = accessToken || localStorage.getItem('gToken');
   if (!token) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}:batchUpdate`;
   const resp = await fetch(url, {
@@ -2028,7 +2065,7 @@ async function sheetsBatchUpdate(requests) {
 }
 
 async function getSheetNumericId(tabName) {
-  const token = accessToken || sessionStorage.getItem('gToken');
+  const token = accessToken || localStorage.getItem('gToken');
   if (!token) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}?fields=sheets.properties`;
   const resp = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
@@ -2045,7 +2082,7 @@ async function cleanTransactionDuplicates() {
   btn.disabled = true; btn.textContent = '⏳ Reading…';
 
   try {
-    const token = accessToken || sessionStorage.getItem('gToken');
+    const token = accessToken || localStorage.getItem('gToken');
     if (!token) { alert('Sign in to Drive first.'); return; }
 
     const [rows, sheetId] = await Promise.all([
@@ -2140,7 +2177,7 @@ async function cleanTransactionDuplicates() {
 }
 
 async function sheetsAppend(range, rows) {
-  const token = accessToken || sessionStorage.getItem('gToken');
+  const token = accessToken || localStorage.getItem('gToken');
   if (!token) {
     setSignedOutUI();
     setDriveStatus('Signing in to push…');
@@ -2155,7 +2192,7 @@ async function sheetsAppend(range, rows) {
   });
   if (resp.status === 401) {
     accessToken = null;
-    sessionStorage.removeItem('gToken');
+    localStorage.removeItem('gToken');
     setSignedOutUI();
     setDriveStatus('Session expired — signing in again…');
     handleSignIn();
@@ -2173,7 +2210,7 @@ async function sheetsAppend(range, rows) {
 // offline) to the Drive Transactions sheet. Runs automatically on sign-in. Shows
 // no UI and does NOT clear local history; dedup (getPushedTxnIds) prevents doubles.
 async function flushUnpushedTxns() {
-  if (!(accessToken || sessionStorage.getItem('gToken'))) return;
+  if (!(accessToken || localStorage.getItem('gToken'))) return;
   const pushed = getPushedTxnIds();
   const queue = getHistory().filter(o => o.txnId && !pushed.has(o.txnId));
   if (!queue.length) return;
@@ -2188,7 +2225,7 @@ async function flushUnpushedTxns() {
 
 async function pushAllToSheet() {
   // Auth gate — trigger sign-in and resume automatically on success
-  if (!(accessToken || sessionStorage.getItem('gToken'))) {
+  if (!(accessToken || localStorage.getItem('gToken'))) {
     _pendingAction = () => pushAllToSheet();
     handleSignIn();
     return;
@@ -2429,7 +2466,7 @@ async function initTxns() {
     // Background refresh: re-pull the Transactions tab from Drive without blocking the
     // view. Read-only — never touches the Prices/pricing path. Silent on failure so an
     // expired token just leaves the cached list showing instead of flashing an error.
-    if (accessToken || sessionStorage.getItem('gToken')) refreshTxns({ silent: true });
+    if (accessToken || localStorage.getItem('gToken')) refreshTxns({ silent: true });
   } catch (e) { _setTxnStatus('Error: ' + e.message); }
 }
 
@@ -3734,7 +3771,7 @@ async function emailDoc() {
   if (!order || !order.items.length) { alert('Add at least one item before emailing.'); return; }
   if (typeof html2pdf === 'undefined') { alert('PDF library not loaded — check your internet connection and reload.'); return; }
 
-  let token = accessToken || sessionStorage.getItem('gToken');
+  let token = accessToken || localStorage.getItem('gToken');
   if (!token) { _pendingAction = () => emailDoc(); handleSignIn(); return; }
 
   maybeSaveNewCustomer();
@@ -3783,7 +3820,7 @@ Maui Power Equipment
     // new scope was added). Both: re-request consent once, then auto-retry via _pendingAction.
     if ((resp.status === 401 || resp.status === 403) && !_emailScopeRetried) {
       _emailScopeRetried = true;
-      accessToken = null; sessionStorage.removeItem('gToken');
+      accessToken = null; localStorage.removeItem('gToken');
       _pendingAction = () => emailDoc();
       setBtn('✉ Email', false);
       handleSignIn();
@@ -3953,7 +3990,7 @@ function saveToHistory() {
     _lastPrintedOrder = order;
     _lastPushStatus = null;
     // Attempt push — dedup in pushTransactionToSheet will silently skip if already sent
-    if (sessionStorage.getItem('gToken')) {
+    if (localStorage.getItem('gToken')) {
       _lastPushStatus = 'pending';
       pushTransactionToSheet(order)
         .then(() => { _lastPushStatus = 'ok';   updatePrintBanner(); })
@@ -3970,7 +4007,7 @@ function saveToHistory() {
     order.date  = _currentTxnDate;
     _lastPrintedOrder = order;
     _lastPushStatus = null;
-    if (sessionStorage.getItem('gToken')) {
+    if (localStorage.getItem('gToken')) {
       _lastPushStatus = 'pending';
       pushTransactionToSheet(order)
         .then(() => { _lastPushStatus = 'ok';   updatePrintBanner(); })
@@ -4005,7 +4042,7 @@ function saveToHistory() {
     }
   } catch(e) {}
   // Export to Drive Transactions sheet if signed in
-  if (sessionStorage.getItem('gToken')) {
+  if (localStorage.getItem('gToken')) {
     _lastPushStatus = 'pending';
     pushTransactionToSheet(order)
       .then(() => { _lastPushStatus = 'ok';   updatePrintBanner(); })
@@ -4016,9 +4053,11 @@ function saveToHistory() {
 }
 
 function showPrintBanner() {
+  // Fills the Admin panel's banner. It is only ever SEEN when Admin is open —
+  // the dot is what tells the counter that something needs a look.
   if (!_lastPrintedOrder) return;
-  updatePrintBanner();
   document.getElementById('printBanner').style.display = 'flex';
+  updatePrintBanner();
 }
 
 function updatePrintBanner() {
@@ -4033,16 +4072,18 @@ function updatePrintBanner() {
   };
   el.className = 'print-banner ' + cls;
   el.innerHTML = (msgs[_lastPushStatus] || '') + '<button class="banner-close" onclick="dismissPrintBanner()">✕</button>';
+  updateAdminDot();
   if (_lastPushStatus === 'ok') setTimeout(dismissPrintBanner, 8000);
 }
 
 function dismissPrintBanner() {
   document.getElementById('printBanner').style.display = 'none';
+  updateAdminDot();
 }
 
 async function retryPrintPush() {
   if (!_lastPrintedOrder) return;
-  if (!sessionStorage.getItem('gToken')) {
+  if (!localStorage.getItem('gToken')) {
     _pendingAction = () => retryPrintPush();
     handleSignIn();
     return;
@@ -4128,7 +4169,7 @@ function renderHistory() {
 async function pushHistoryEntry(idx) {
   const order = getHistory()[idx];
   if (!order) return;
-  if (!sessionStorage.getItem('gToken')) {
+  if (!localStorage.getItem('gToken')) {
     _pendingAction = () => pushHistoryEntry(idx);
     handleSignIn();
     return;
@@ -4393,7 +4434,7 @@ function toggleMenu(ev, id) {
   const panel = document.getElementById(id);
   const wasOpen = panel.classList.contains('open');
   document.querySelectorAll('.menu-panel').forEach(p => p.classList.remove('open'));
-  if (!wasOpen) { if (id === 'togglesMenu') syncToggles(); if (id === 'dataMenu') refreshStatusUI(); panel.classList.add('open'); }
+  if (!wasOpen) { if (id === 'togglesMenu') syncToggles(); if (id === 'adminMenu') { refreshStatusUI(); updatePriceChangesBadge(); } panel.classList.add('open'); }
 }
 document.addEventListener('click', () => document.querySelectorAll('.menu-panel.open').forEach(p => p.classList.remove('open')));
 
@@ -4598,7 +4639,7 @@ async function ensureCustomersSheet(){
 }
 async function flushPendingCustomers(){
   if (!_custPending.length) return;
-  if (!(accessToken || sessionStorage.getItem('gToken'))) return;   // try again after sign-in
+  if (!(accessToken || localStorage.getItem('gToken'))) return;   // try again after sign-in
   try {
     await ensureCustomersSheet();
     const batch = _custPending.slice();
@@ -4612,7 +4653,7 @@ async function flushPendingCustomers(){
 }
 // Pull the Customers tab on load and merge; then flush any offline-queued additions.
 async function syncCustomersFromSheet(){
-  if (!(accessToken || sessionStorage.getItem('gToken'))) return;
+  if (!(accessToken || localStorage.getItem('gToken'))) return;
   try {
     const rows = await sheetsGet(CUSTOMERS_SHEET);
     const recs = [];
