@@ -301,16 +301,39 @@ body.sales-view .search-table th:nth-child(6),
 body.sales-view .search-table td:nth-child(5),
 body.sales-view .search-table td:nth-child(6) { display: none !important; }
 
-/* Internal print: show cost/margin and don't print copy2 */
+/* Internal print: show cost/margin, drop Qty, don't print copy2.
+   Layout: Description takes the room it needs; the number block
+   (Cost | Margin | Ea. | Price) packs tight against the right edge instead of
+   floating with auto widths. Qty is dropped — an internal sheet is a cost/margin
+   review, not a receipt. Multi-qty lines still show a unit price in "Ea."
+   col2 PN 16% | col3 Desc 46% | col5 Cost 11% | col6 Margin 8% | col7 Ea 8% | col9 Price 11% */
 @media print {
+  body.internal-print #printCopy2 { display: none !important; }
+  body.internal-print .mahalo-cell { display: none !important; }
   body.internal-print .search-table th:nth-child(5),
   body.internal-print .search-table td:nth-child(5),
   body.internal-print .search-table th:nth-child(6),
   body.internal-print .search-table td:nth-child(6) { display: table-cell !important; }
-  body.internal-print #printCopy2 { display: none !important; }
-  body.internal-print .mahalo-cell { display: none !important; }
+  body.internal-print .search-table th:nth-child(8),
+  body.internal-print .search-table td:nth-child(8) { display: none !important; }
+  /* !important is load-bearing: every <th> carries an inline width= attribute
+     (155px PN, 150px Ea., …) and an inline style beats a plain stylesheet rule.
+     Without it the 150px "Ea." column reserves a fat empty gap mid-page and the
+     description gets squeezed — which is exactly what these sheets looked like. */
+  body.internal-print .search-table th:nth-child(2),
+  body.internal-print .search-table td:nth-child(2) { width: 16% !important; }
   body.internal-print .search-table th:nth-child(3),
-  body.internal-print .search-table td:nth-child(3) { width: 40%; }
+  body.internal-print .search-table td:nth-child(3) { width: 46% !important; }
+  body.internal-print .search-table th:nth-child(5),
+  body.internal-print .search-table td:nth-child(5) { width: 11% !important; text-align: right; }
+  body.internal-print .search-table th:nth-child(6),
+  body.internal-print .search-table td:nth-child(6) { width: 8% !important; text-align: right; }
+  body.internal-print .search-table th:nth-child(7),
+  body.internal-print .search-table td:nth-child(7) { width: 8% !important; text-align: right; }
+  body.internal-print .search-table th:nth-child(9),
+  body.internal-print .search-table td:nth-child(9) { width: 11% !important; text-align: right; }
+  body.internal-print .search-table th:nth-child(n+5),
+  body.internal-print .search-table td:nth-child(n+5) { padding-left: 2px; padding-right: 2px; white-space: nowrap; }
 }
 
 @media (max-width: 768px) {
@@ -2702,14 +2725,18 @@ function onKeydown(e) {
   const input = e.target;
   const dd = document.getElementById(`dd-${i}`);
 
-  // Backspace/Delete on a matched row
+  // Backspace/Delete on a matched row. A matched part is readOnly, so a plain
+  // Backspace peels one character off to unlock it. Select-all first (⌘A / drag)
+  // and either key wipes the whole line in one shot.
   if ((e.key === 'Backspace' || e.key === 'Delete') && input.classList.contains('matched')) {
     e.preventDefault();
+    const allSelected = input.value.length > 0 &&
+      input.selectionStart === 0 && input.selectionEnd === input.value.length;
     input.readOnly = false;
-    if (e.key === 'Backspace' && input.value.length > 0) {
-      input.value = input.value.slice(0, -1);
-    } else if (e.key === 'Delete') {
+    if (allSelected || e.key === 'Delete') {
       input.value = '';
+    } else if (e.key === 'Backspace' && input.value.length > 0) {
+      input.value = input.value.slice(0, -1);
     }
     input.classList.remove('matched');
     clearRowData(i);
@@ -3567,6 +3594,10 @@ function cleanupPrint() {
   if (rc) rc.style.display = '';
   const rv = document.getElementById('reviewMsg');
   if (rv) rv.style.display = 'none';
+  // Quote / Invoice / Internal are one-off modes. Once that document has printed,
+  // fall back to Sales Receipt so the next sale at the counter can't inherit the
+  // wrong document type from the last one.
+  if (_docType !== 'receipt') setDocType('receipt');
 }
 
 // Finalize the order before opening the native print sheet.  The browser also
