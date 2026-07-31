@@ -3796,6 +3796,18 @@ function _buildEmailMime(to, subject, bodyText, filename, pdfB64) {
   ].join('\r\n');
 }
 
+// Brand palette, matching the website (Website/index.html :root) so the emailed
+// PDF looks like the rest of MPE rather than a fax. Green carries the structure
+// (header band, rules, totals), gold is the accent only. This is the CUSTOMER
+// copy — the black-and-white treatment in @media print is deliberate and stays,
+// because that path feeds the shop's mono printers.
+const PDF_GREEN = '#2f4339';
+const PDF_GOLD  = '#FFAD00';
+const PDF_GOLD_DEEP = '#D99300';
+const PDF_INK   = '#1d2722';
+const PDF_MUTED = '#6a736d';
+const PDF_LINE  = '#e6e1d6';
+
 function buildEmailDocHTML(order, title, number, dateStr) {
   const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const logoSrc = document.querySelector('.wrap .print-header img')?.src || '';
@@ -3812,15 +3824,16 @@ function buildEmailDocHTML(order, title, number, dateStr) {
     const originalEa = parseFloat(it.originalEa) || 0, offEach = parseFloat(it.discountPerUnit) || 0;
     const lineOff = offEach * qty;
     const eaHtml = offEach > 0
-      ? `<span style="color:#666;text-decoration:line-through">$${originalEa.toFixed(2)}</span> $${ea.toFixed(2)}`
+      ? `<span style="color:${PDF_MUTED};text-decoration:line-through">$${originalEa.toFixed(2)}</span> $${ea.toFixed(2)}`
       : `$${ea.toFixed(2)}`;
     let snHtml = '';
-    if (it.sn && it.sn.length) snHtml = `<tr><td></td><td colspan="3" style="padding:2px 8px 8px;font-size:12px;color:#444">${it.sn.map(esc).join(' &nbsp; ')}</td></tr>`;
+    if (it.sn && it.sn.length) snHtml = `<tr><td></td><td colspan="3" style="padding:2px 8px 8px;font-size:12px;color:${PDF_MUTED}">${it.sn.map(esc).join(' &nbsp; ')}</td></tr>`;
+    const cell = `padding:6px 8px;border-bottom:1px solid ${PDF_LINE};font-size:13px;color:${PDF_INK}`;
     return `<tr>
-      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px">${esc(it.pn)}</td>
-      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px">${esc(it.desc)}</td>
-      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:center">${esc(qty)}${offEach > 0 || (anyMulti && qty !== 1) ? ` <span style="color:#888">@ ${eaHtml}</span>` : ''}</td>
-      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:13px;text-align:right">${lineOff > 0 ? `<div style="font-size:11px;color:#2d7a3a">($${lineOff.toFixed(2)} off)</div>` : ''}$${sub.toFixed(2)}</td>
+      <td style="${cell}">${esc(it.pn)}</td>
+      <td style="${cell}">${esc(it.desc)}</td>
+      <td style="${cell};text-align:center">${esc(qty)}${offEach > 0 || (anyMulti && qty !== 1) ? ` <span style="color:${PDF_MUTED}">@ ${eaHtml}</span>` : ''}</td>
+      <td style="${cell};text-align:right;white-space:nowrap">${lineOff > 0 ? `<div style="font-size:11px;font-weight:600;color:${PDF_GOLD_DEEP}">($${lineOff.toFixed(2)} off)</div>` : ''}$${sub.toFixed(2)}</td>
     </tr>${snHtml}`;
   }).join('');
 
@@ -3828,46 +3841,49 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   const cityLine = [c.city, c.state, c.zip].filter(Boolean).join(', ');
   const nameCo = [c.name, c.company].filter(Boolean).join(' / ');
   const hasCust = c.name || c.addr || c.phone || c.email;
-  const custHtml = hasCust ? `<div style="margin-top:18px;font-size:13px;line-height:1.7;color:#000">
-    ${nameCo ? `<div style="font-weight:600">${esc(nameCo)}</div>` : ''}
+  const custHtml = hasCust ? `<div style="margin-top:18px;font-size:13px;line-height:1.7;color:${PDF_INK};border-left:3px solid ${PDF_LINE};padding-left:10px">
+    ${nameCo ? `<div style="font-weight:600;color:${PDF_GREEN}">${esc(nameCo)}</div>` : ''}
     ${c.addr ? `<div>${esc(c.addr)}</div>` : ''}
     ${cityLine ? `<div>${esc(cityLine)}</div>` : ''}
     ${c.phone ? `<div>${esc(c.phone)}</div>` : ''}
     ${c.email ? `<div>${esc(c.email)}</div>` : ''}
   </div>` : '';
 
-  return `<div style="width:760px;box-sizing:border-box;padding:24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#000;background:#fff">
+  const th = `text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#fff;padding:7px 8px;background:${PDF_GREEN}`;
+  const sumRow = 'display:flex;justify-content:space-between;padding:3px 0';
+  return `<div style="width:760px;box-sizing:border-box;padding:24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${PDF_INK};background:#fff">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
-        <div style="font-size:20px;font-weight:700">Maui Power Equipment</div>
-        <div style="font-size:12px;margin-top:3px;line-height:1.5">970 Lower Main St &nbsp;·&nbsp; Wailuku HI 96793<br>(808) 249-2730 &nbsp;·&nbsp; info&#64;mauipowerequipment.com</div>
+        <div style="font-size:20px;font-weight:700;color:${PDF_GREEN}">Maui Power Equipment</div>
+        <div style="font-size:12px;margin-top:3px;line-height:1.5;color:${PDF_MUTED}">970 Lower Main St &nbsp;·&nbsp; Wailuku HI 96793<br>(808) 249-2730 &nbsp;·&nbsp; info&#64;mauipowerequipment.com</div>
       </div>
       <div>
-        ${logoSrc ? `<img src="${logoSrc}" style="max-height:47px;opacity:.85" alt="">` : ''}
+        ${logoSrc ? `<img src="${logoSrc}" style="max-height:47px" alt="">` : ''}
       </div>
     </div>
-    <div style="display:flex;align-items:baseline;gap:10px;margin:10px 0 0;border-bottom:2px solid #000;padding-bottom:6px">
-      <span style="font-size:22px;font-weight:800">${esc(title)}</span>
-      <span style="font-size:13px;font-weight:600">No. ${esc(number)}</span>
-      <span style="font-size:13px;font-weight:600;margin-left:auto">${esc(dateStr)}</span>
+    <div style="display:flex;align-items:baseline;gap:10px;margin:10px 0 0;border-bottom:2px solid ${PDF_GREEN};padding-bottom:6px">
+      <span style="font-size:22px;font-weight:800;color:${PDF_GREEN}">${esc(title)}</span>
+      <span style="font-size:13px;font-weight:600;color:${PDF_MUTED}">No. ${esc(number)}</span>
+      <span style="font-size:13px;font-weight:600;margin-left:auto;color:${PDF_MUTED}">${esc(dateStr)}</span>
     </div>
+    <div style="height:3px;width:96px;background:${PDF_GOLD}"></div>
     <table style="width:100%;border-collapse:collapse;margin-top:16px">
       <thead><tr>
-        <th style="text-align:left;font-size:11px;text-transform:uppercase;color:#666;padding:6px 8px;border-bottom:1px solid #999">Product</th>
-        <th style="text-align:left;font-size:11px;text-transform:uppercase;color:#666;padding:6px 8px;border-bottom:1px solid #999">Description</th>
-        <th style="text-align:center;font-size:11px;text-transform:uppercase;color:#666;padding:6px 8px;border-bottom:1px solid #999">Qty</th>
-        <th style="text-align:right;font-size:11px;text-transform:uppercase;color:#666;padding:6px 8px;border-bottom:1px solid #999">Price</th>
+        <th style="${th}">Product</th>
+        <th style="${th}">Description</th>
+        <th style="${th};text-align:center">Qty</th>
+        <th style="${th};text-align:right">Price</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <div style="margin-top:14px;margin-left:auto;width:240px;font-size:13px">
-      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>
-      ${cardFeeActive ? `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Card fee (3%)</span><span>$${cardFee.toFixed(2)}</span></div>` : ''}
-      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Tax</span><span>$${tax.toFixed(2)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #000;font-weight:700;font-size:15px"><span>Total</span><span>$${total.toFixed(2)}</span></div>
+      <div style="${sumRow}"><span style="color:${PDF_MUTED}">Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>
+      ${cardFeeActive ? `<div style="${sumRow}"><span style="color:${PDF_MUTED}">Card fee (3%)</span><span>$${cardFee.toFixed(2)}</span></div>` : ''}
+      <div style="${sumRow}"><span style="color:${PDF_MUTED}">Tax</span><span>$${tax.toFixed(2)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:2px solid ${PDF_GREEN};font-weight:700;font-size:16px;color:${PDF_GREEN}"><span>Total</span><span>$${total.toFixed(2)}</span></div>
     </div>
     ${custHtml}
-    <div style="text-align:center;font-style:italic;color:#777;margin-top:22px;font-size:13px">Mahalo for your business!</div>
+    <div style="text-align:center;font-style:italic;color:${PDF_GREEN};margin-top:22px;font-size:13px">Mahalo for your business!</div>
   </div>`;
 }
 
