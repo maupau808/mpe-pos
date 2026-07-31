@@ -134,6 +134,20 @@ h2 { font-size: 20px; font-weight: 700; color: #313f2c; margin-bottom: 4px; }
 .sum-val { font-size: 14px; font-weight: 500; }
 .sum-row.total .sum-label { font-size: 16px; font-weight: 500; color: #1a1a1a; }
 .sum-row.total .sum-val { font-size: 22px; font-weight: 500; }
+/* Internal-only figures, tucked under Total inside the same box. Hidden for
+   Receipt/Invoice/Quote on screen AND in print — the only things that reveal it
+   are the Internal doc type (screen + print) and the manual Internal Print
+   toggle (print), exactly like the Cost/Margin columns. */
+.sum-internal { display: none; margin-top: 9px; padding-top: 8px; border-top: 2px solid #313f2c; }
+body.doc-internal .sum-internal { display: block; }
+.sum-internal .sum-row { padding: 3px 0; }
+.sum-internal .sum-row + .sum-row { border-top: none; }
+.sum-internal .sum-label { font-size: 13px; }
+.sum-internal .sum-val { font-size: 13px; }
+.sum-internal .sum-row.gp .sum-label { font-weight: 600; color: #1a1a1a; }
+.sum-internal .sum-row.gp .sum-val { font-size: 16px; font-weight: 600; }
+.sum-nocost { display: none; font-size: 11px; color: #c0392b; padding-top: 4px; }
+.sum-nocost.show { display: block; }
 .actions { display: flex; gap: 8px; }
 .btn-clear { font-size: 10px; padding: 3px 8px; border: 1px solid #c7cfc4; border-radius: 5px; background: #fff; color: #666; cursor: pointer; }
 .btn-clear-lg { font-size: 15px; padding: 5px 13px; }
@@ -334,6 +348,13 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   body.internal-print .search-table td:nth-child(9) { width: 11% !important; text-align: right; }
   body.internal-print .search-table th:nth-child(n+5),
   body.internal-print .search-table td:nth-child(n+5) { padding-left: 2px; padding-right: 2px; white-space: nowrap; }
+  /* Cost / Gross Profit / Margin ride along under Total, printed in the same
+     ink weight as the rest of the sheet. */
+  body.internal-print .sum-internal { display: block !important; border-top: 1px solid #999; margin-top: 6px; padding-top: 5px; }
+  body.internal-print .sum-internal .sum-label,
+  body.internal-print .sum-internal .sum-val { color: #000; }
+  body.internal-print .sum-internal .sum-row.gp .sum-val { font-size: 14px; }
+  body.internal-print .sum-nocost.show { display: block !important; color: #000 !important; }
 }
 
 @media (max-width: 768px) {
@@ -649,6 +670,21 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <div class="sum-row total">
         <span class="sum-label">Total</span>
         <span class="sum-val" id="sumTotal">—</span>
+      </div>
+      <div class="sum-internal" id="sumInternal">
+        <div class="sum-row">
+          <span class="sum-label">Cost</span>
+          <span class="sum-val" id="sumCost">—</span>
+        </div>
+        <div class="sum-row gp">
+          <span class="sum-label">Gross Profit</span>
+          <span class="sum-val" id="sumProfit">—</span>
+        </div>
+        <div class="sum-row">
+          <span class="sum-label">Margin</span>
+          <span class="sum-val" id="sumMarginPct">—</span>
+        </div>
+        <div class="sum-nocost" id="sumNoCost"></div>
       </div>
     </div>
   </div>
@@ -1682,6 +1718,7 @@ function onCostEdit(i) {
   const price = parseFloat(document.getElementById(`price-${i}`)?.dataset.price) || 0;
   const margin = marginText(newCost, price);
   document.getElementById(`margin-${i}`).textContent = margin;
+  updateSummary();   // an edited cost moves the internal Cost / Gross Profit / Margin figures
   // Log cost change into price changes store
   const inp = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (!inp?.dataset.partPn) return;
@@ -3221,6 +3258,41 @@ function updateSubtotal(i) {
   if (hdr) hdr.classList.toggle('ea-hidden', !anyPart);
 }
 
+// Internal-sheet figures: what the order cost us, what it makes us, at what margin.
+// Cost is per-unit × qty; revenue is each line's SUBTOTAL, so line discounts,
+// discount rows (negative, no cost) and note rows (revenue, no cost) all fold in
+// on their own. A part row carrying no cost would silently inflate gross profit,
+// so those lines are counted and called out instead of quietly skewing the number.
+function updateInternalTotals(revenue, hasAny) {
+  const costEl = document.getElementById('sumCost');
+  const profitEl = document.getElementById('sumProfit');
+  const marginEl = document.getElementById('sumMarginPct');
+  const noCostEl = document.getElementById('sumNoCost');
+  if (!costEl || !profitEl || !marginEl || !noCostEl) return;
+  if (!hasAny) {
+    costEl.textContent = profitEl.textContent = marginEl.textContent = '—';
+    noCostEl.textContent = ''; noCostEl.classList.remove('show');
+    return;
+  }
+  let cost = 0, missing = 0;
+  for (let i = 0; i < NUM_ROWS; i++) {
+    const raw = document.getElementById(`sub-${i}`)?.dataset.val;
+    const v = parseFloat(raw);
+    if (raw === undefined || raw === '' || isNaN(v)) continue;
+    const c = parseFloat(document.getElementById(`cost-${i}`)?.dataset.cost) || 0;
+    const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
+    cost += c * qty;
+    const isPart = !!tbody.querySelector(`[data-row="${i}"].part-input`)?.dataset.partPn;
+    if (isPart && !(c > 0)) missing++;
+  }
+  const profit = revenue - cost;
+  costEl.textContent = fmt(cost);
+  profitEl.textContent = fmt(profit);
+  marginEl.textContent = revenue > 0 ? (profit / revenue * 100).toFixed(1) + '%' : '—';
+  noCostEl.textContent = missing ? `⚠ ${missing} line${missing > 1 ? 's' : ''} with no cost` : '';
+  noCostEl.classList.toggle('show', missing > 0);
+}
+
 function updateSummary() {
   let subtotal = 0, hasAny = false;
   for (let i = 0; i < NUM_ROWS; i++) {
@@ -3239,6 +3311,7 @@ function updateSummary() {
     document.getElementById('sumTax').textContent = '—';
     document.getElementById('sumTotal').textContent = '—';
     feeRow?.classList.add('hidden');
+    updateInternalTotals(0, false);
     return;
   }
   const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
@@ -3249,6 +3322,8 @@ function updateSummary() {
   feeRow?.classList.toggle('hidden', !cardFeeActive);
   document.getElementById('sumTax').textContent = fmt(tax);
   document.getElementById('sumTotal').textContent = fmt(subtotal + cardFee + tax);
+  // Gross profit is measured against the goods, not the card fee or tax.
+  updateInternalTotals(subtotal, true);
 }
 
 function clearAll() {
@@ -3964,6 +4039,10 @@ function setDocType(t) {
   if (!DOC_TITLES[t]) return;
   _docType = t;
   document.querySelectorAll('#docTypeSel .doc-type-btn').forEach(b => b.classList.toggle('active', b.dataset.doc === t));
+  // Drives the on-screen Cost / Gross Profit / Margin block. Kept separate from
+  // the print-only `internal-print` class so switching back to Receipt/Invoice/
+  // Quote takes those figures off the screen too.
+  document.body.classList.toggle('doc-internal', t === 'internal');
   // Invoices & quotes need customer info — surface the panel automatically.
   // (Only reveal the panel; do NOT enable the Warranty toggle, or a quote would
   //  print the warranty form.)
