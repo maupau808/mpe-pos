@@ -9,13 +9,13 @@
 /* Page sits on the shop's deep green; the receipt card stays paper-white on top */
 /* of it. Accents and rules throughout are greens pulled from these two, so the */
 /* invert-based dark mode keeps the same family (invert+hue-rotate preserves hue). */
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #23321f; color: #1a1a1a; padding: 2rem; zoom: 1.25; }
-.wrap { max-width: 980px; margin: 0 auto; background: #fffdfa; border-radius: 12px; padding: 2rem; border: 1px solid #313f2c; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #2f4339; color: #1a1a1a; padding: 2rem; zoom: 1.25; }
+.wrap { max-width: 980px; margin: 0 auto; background: #fffdfa; border-radius: 12px; padding: 2rem; border: 1px solid #2f4339; }
 
 /* ── Dark mode: invert the rendered UI (keeps colored buttons via hue-rotate). */
 /* Applied to .wrap and the modal panel only — print copies and the off-screen */
 /* email-PDF holder are separate siblings, so PDFs/printouts stay light. */
-html.dark, body.dark { background: #23321f; }
+html.dark, body.dark { background: #2f4339; }
 /* contrast(.78) lifts the inverted pure-black (#000) up to ~#1E1E1E while keeping text light */
 body.dark .wrap { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
 body.dark #uploadsModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
@@ -26,7 +26,7 @@ body.dark #txnModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(
 }
 .theme-toggle { background: none; border: 1px solid #d9dfd6; border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1; padding: 5px 9px; color: #888; }
 .theme-toggle:hover { border-color: #aaa; color: #555; }
-h2 { font-size: 20px; font-weight: 700; color: #313f2c; margin-bottom: 4px; }
+h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .sub { font-size: 13px; color: #666; margin-bottom: 1.5rem; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -54,11 +54,11 @@ h2 { font-size: 20px; font-weight: 700; color: #313f2c; margin-bottom: 4px; }
 .drive-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; padding: 10px 14px; background: #eef5ef; border-radius: 8px; border: 1px solid #bcd4bf; flex-wrap: wrap; }
 .drive-bar.hidden { display: none; }
 .drive-icon { font-size: 16px; }
-.drive-info { font-size: 14px; color: #2f6b3a; flex: 1; }
+.drive-info { font-size: 14px; color: #2f4339; flex: 1; }
 .drive-info strong { font-weight: 600; }
 .drive-btn { font-size: 10px; padding: 3px 8px; border: none; border-radius: 5px; cursor: pointer; white-space: nowrap; font-weight: 500; }
-.drive-btn.signin { background: #2f6b3a; color: #fff; }
-.drive-btn.signin:hover { background: #1f4a28; }
+.drive-btn.signin { background: #2f4339; color: #fff; }
+.drive-btn.signin:hover { background: #202d27; }
 .drive-btn.signout { background: transparent; color: #888; border: 1px solid #c7cfc4; }
 .drive-btn.connected { background: #e8f5e9; color: #2d7a3a; border: 1px solid #a5d6a7; cursor: default; }
 .drive-btn.signout:hover { background: #eef1ec; }
@@ -126,7 +126,7 @@ h2 { font-size: 20px; font-weight: 700; color: #313f2c; margin-bottom: 4px; }
 .not-found { font-size: 13px; color: #e53935; }
 .clear-row { width: 20px; text-align: center; cursor: pointer; font-size: 15px; color: #c7cfc4; user-select: none; }
 .clear-row:hover { color: #e53935; }
-.summary { background: #f9f8f7; border-radius: 8px; border: 1px solid #313f2c; padding: 14px 18px; margin-bottom: 1rem; width: 300px; margin-left: auto; }
+.summary { background: #f9f8f7; border-radius: 8px; border: 1px solid #2f4339; padding: 14px 18px; margin-bottom: 1rem; width: 300px; margin-left: auto; }
 .mahalo-cell { display: none; }
 .sum-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; }
 .sum-row + .sum-row { border-top: 1px solid #e8ece6; }
@@ -138,7 +138,7 @@ h2 { font-size: 20px; font-weight: 700; color: #313f2c; margin-bottom: 4px; }
    Receipt/Invoice/Quote on screen AND in print — the only things that reveal it
    are the Internal doc type (screen + print) and the manual Internal Print
    toggle (print), exactly like the Cost/Margin columns. */
-.sum-internal { display: none; margin-top: 9px; padding-top: 8px; border-top: 2px solid #313f2c; }
+.sum-internal { display: none; margin-top: 9px; padding-top: 8px; border-top: 2px solid #2f4339; }
 body.doc-internal .sum-internal { display: block; }
 .sum-internal .sum-row { padding: 3px 0; }
 .sum-internal .sum-row + .sum-row { border-top: none; }
@@ -151,14 +151,14 @@ body.doc-internal .sum-internal { display: block; }
 .actions { display: flex; gap: 8px; }
 .btn-clear { font-size: 10px; padding: 3px 8px; border: 1px solid #c7cfc4; border-radius: 5px; background: #fff; color: #666; cursor: pointer; }
 .btn-clear-lg { font-size: 15px; padding: 5px 13px; }
-.btn-big { font-size: 14px; padding: 8px 19px; border: 1px solid #2f6b3a; border-radius: 8px; background: #fff; color: #2f6b3a; cursor: pointer; font-family: inherit; font-weight: 500; }
+.btn-big { font-size: 14px; padding: 8px 19px; border: 1px solid #2f4339; border-radius: 8px; background: #fff; color: #2f4339; cursor: pointer; font-family: inherit; font-weight: 500; }
 .btn-big:hover { background: #eef5ef; }
 .bottom-bar { display: flex; align-items: flex-end; gap: 20px; margin-bottom: 1rem; }
 .bottom-actions { display: flex; gap: 10px; }
 .btn-danger { color: #c62828; border-color: #ef9a9a; }
 .btn-danger:hover { background: #fff5f5; border-color: #e53935; }
-.btn-filled { background: #2f6b3a; color: #fff; border-color: #2f6b3a; }
-.btn-filled:hover { background: #1f4a28; border-color: #1f4a28; }
+.btn-filled { background: #2f4339; color: #fff; border-color: #2f4339; }
+.btn-filled:hover { background: #202d27; border-color: #202d27; }
 .review-star-btn { background: none; border: 1.5px solid #d9dfd6; border-radius: 6px; cursor: pointer; font-size: 13px; padding: 6px 8px; line-height: 1; white-space: nowrap; transition: border-color .15s, background .15s; }
 .review-star-btn:hover { border-color: #aaa; }
 .review-star-btn.active { border-color: #4caf50; background: #f1f8e9; }
@@ -183,7 +183,7 @@ body.doc-internal .sum-internal { display: block; }
 .drive-btn.hist-btn:hover { background: #f3f6f2; }
 .uploads-tab { font-size: 13px; padding: 5px 12px; border: 1px solid #d9dfd6; border-radius: 6px; background: #f3f6f2; color: #555; cursor: pointer; font-family: inherit; font-weight: 500; }
 .uploads-tab:hover { background: #e8ece6; }
-.uploads-tab.active { background: #2f6b3a; color: #fff; border-color: #2f6b3a; }
+.uploads-tab.active { background: #2f4339; color: #fff; border-color: #2f4339; }
 .drive-btn.hist-clear-btn { background: #fff3f3; color: #c62828; border: 1px solid #ffcdd2; }
 .drive-btn.hist-clear-btn:hover { background: #ffebee; }
 .drive-btn.hist-close-btn { background: #f3f6f2; color: #555; border: 1px solid #d9dfd6; }
@@ -197,7 +197,7 @@ body.doc-internal .sum-internal { display: block; }
 .hist-list { overflow-y: auto; padding: 10px 18px 18px; flex: 1; }
 /* Transaction history lookup */
 .txn-search { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 14px; border: 1px solid #d9dfd6; border-radius: 8px; outline: none; }
-.txn-search:focus { border-color: #2f6b3a; box-shadow: 0 0 0 2px rgba(47,107,58,0.12); }
+.txn-search:focus { border-color: #2f4339; box-shadow: 0 0 0 2px rgba(47,67,57,0.12); }
 .txn-card { border: 1px solid #e9ece7; border-radius: 8px; margin-bottom: 6px; overflow: hidden; }
 .txn-card.open { border-color: #d0d0d0; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
 .txn-sum { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; font-size: 13px; }
@@ -230,7 +230,7 @@ body.doc-internal .sum-internal { display: block; }
 .hist-items-table td { padding: 4px 6px; border-bottom: 1px solid #f3f6f2; color: #1a1a1a; }
 .hist-entry-cust { font-size: 11px; color: #888; font-weight: 400; }
 .hist-cust-info { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: #555; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #eef1ec; }
-.hist-reprint-btn { font-size: 11px; padding: 4px 10px; border: 1px solid #2f6b3a; border-radius: 5px; background: #fff; color: #2f6b3a; cursor: pointer; }
+.hist-reprint-btn { font-size: 11px; padding: 4px 10px; border: 1px solid #2f4339; border-radius: 5px; background: #fff; color: #2f4339; cursor: pointer; }
 .hist-reprint-btn:hover { background: #eef5ef; }
 .hist-del-btn { font-size: 11px; padding: 2px 7px; border: none; border-radius: 4px; background: transparent; color: #bbb; cursor: pointer; line-height: 1; flex-shrink: 0; }
 .hist-del-btn:hover { background: #fee; color: #c00; }
@@ -240,7 +240,7 @@ body.doc-internal .sum-internal { display: block; }
 .print-banner.ok  { background: #e8f5e9; color: #2d7a3a; border: 1px solid #a5d6a7; }
 .print-banner.warn { background: #fff8e1; color: #7a5800; border: 1px solid #ffe082; }
 .print-banner.err  { background: #fce8e6; color: #c0392b; border: 1px solid #ffcdd2; }
-.print-banner.pending { background: #e8f2e9; color: #2f6b3a; border: 1px solid #c3ddc6; }
+.print-banner.pending { background: #e8f2e9; color: #2f4339; border: 1px solid #c3ddc6; }
 .print-banner .banner-push-btn { font-size: 11px; padding: 3px 8px; border: 1px solid currentColor; border-radius: 5px; background: #fff; color: inherit; cursor: pointer; font-family: inherit; white-space: nowrap; }
 .print-banner .banner-close { margin-left: auto; cursor: pointer; opacity: 0.5; font-size: 14px; background: none; border: none; padding: 0 2px; font-family: inherit; line-height: 1; }
 .print-banner .banner-close:hover { opacity: 1; }
@@ -269,13 +269,18 @@ body.doc-internal .sum-internal { display: block; }
 #hdr-unitprice { visibility: hidden; }
 #hdr-unitprice:not(.ea-hidden) { visibility: visible; }
 .top-actions { margin-bottom: 1rem; }
-.btn-print { font-size: 10px; padding: 3px 8px; border: 1px solid #2f6b3a; border-radius: 5px; background: #fff; color: #2f6b3a; cursor: pointer; }
+.btn-print { font-size: 10px; padding: 3px 8px; border: 1px solid #2f4339; border-radius: 5px; background: #fff; color: #2f4339; cursor: pointer; }
 .btn-print:hover { background: #eef5ef; }
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .action-btns { display: flex; gap: 6px; }
 .menu-wrap { position: relative; display: inline-block; }
 .menu-btn { font-size: 13px; padding: 6px 12px; border: 1px solid #c7cfc4; border-radius: 7px; background: #fff; color: #333; cursor: pointer; font-family: inherit; white-space: nowrap; }
 .menu-btn:hover { background: #f3f6f2; }
+/* Icon-only siblings of .menu-btn — same box, square, so the toolbar row keeps
+   one control height. Their meaning lives in the title tooltip. */
+.icon-btn { font-size: 14px; line-height: 1; width: 32px; height: 30px; padding: 0; border: 1px solid #c7cfc4; border-radius: 7px; background: #fff; color: #333; cursor: pointer; font-family: inherit; }
+.icon-btn:hover { background: #f3f6f2; }
+.icon-btn:disabled { opacity: .55; cursor: default; }
 .caret { color: #999; font-size: 10px; }
 .menu-panel { display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; background: #fff; border: 1px solid #c7cfc4; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.12); padding: 6px; z-index: 200; min-width: 170px; }
 .menu-panel.open { display: block; }
@@ -295,7 +300,7 @@ body.doc-internal .sum-internal { display: block; }
 .doc-type-sel { display: inline-flex; border: 1px solid #c7cfc4; border-radius: 6px; overflow: hidden; margin-right: 4px; }
 .doc-type-btn { font-size: 12px; padding: 5px 12px; border: none; background: #fff; color: #666; cursor: pointer; font-family: inherit; border-right: 1px solid #e9ece7; }
 .doc-type-btn:last-child { border-right: none; }
-.doc-type-btn.active { background: #2f6b3a; color: #fff; font-weight: 600; }
+.doc-type-btn.active { background: #2f4339; color: #fff; font-weight: 600; }
 .doc-screen-title { font-size: 12px; font-weight: 400; color: #999; }
 .cell-r.sub-total { font-size: 16px !important; font-weight: 700 !important; }
 .mobile-rows { display: none; }
@@ -570,17 +575,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="quote" onclick="setDocType('quote')">Quote</button>
         <button class="doc-type-btn" data-doc="internal" onclick="setDocType('internal')">Internal</button>
       </div>
-      <div class="menu-wrap">
-        <button class="menu-btn" id="togglesBtn" onclick="toggleMenu(event,'togglesMenu')">Toggles <span class="caret">▾</span></button>
-        <div class="menu-panel" id="togglesMenu" onclick="event.stopPropagation()">
-          <label class="menu-check"><input type="checkbox" id="tgWarranty" onchange="toggleCustPanel()"> 🔧 Warranty</label>
-          <label class="menu-check"><input type="checkbox" id="tgSignature" onchange="toggleSignature()"> ✍ Signature</label>
-          <label class="menu-check"><input type="checkbox" id="tgReview" onchange="toggleReview()"> ⭐ Review</label>
-          <label class="menu-check"><input type="checkbox" id="tgSalesView" onchange="toggleSalesView()"> 👁 Sales View</label>
-          <label class="menu-check"><input type="checkbox" id="tgCardFee" onchange="toggleCardFee(this.checked)"> 💳 Card fee (3%)</label>
-        </div>
-      </div>
-      <button class="menu-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
       <span style="display:none">
         <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="internalPrintBtn"></button><button id="cardFeeBtn"></button>
       </span>
@@ -589,7 +583,20 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="toolbar-right">
       <div class="tr-row">
         <div class="menu-wrap">
-          <button class="menu-btn" id="adminMenuBtn" onclick="toggleMenu(event,'adminMenu')" title="Google sign-in, Drive sync and uploads">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
+          <button class="menu-btn" id="togglesBtn" onclick="toggleMenu(event,'togglesMenu')">Toggles <span class="caret">▾</span></button>
+          <div class="menu-panel right" id="togglesMenu" onclick="event.stopPropagation()">
+            <label class="menu-check"><input type="checkbox" id="tgWarranty" onchange="toggleCustPanel()"> 🔧 Warranty</label>
+            <label class="menu-check"><input type="checkbox" id="tgSignature" onchange="toggleSignature()"> ✍ Signature</label>
+            <label class="menu-check"><input type="checkbox" id="tgReview" onchange="toggleReview()"> ⭐ Review</label>
+            <label class="menu-check"><input type="checkbox" id="tgSalesView" onchange="toggleSalesView()"> 👁 Sales View</label>
+            <label class="menu-check"><input type="checkbox" id="tgCardFee" onchange="toggleCardFee(this.checked)"> 💳 Card fee (3%)</label>
+          </div>
+        </div>
+        <button class="icon-btn" id="emailDocBtn" onclick="emailDoc()" title="Email — attach the colour PDF to a Gmail draft">✉</button>
+        <button class="icon-btn" id="exportPdfBtn" onclick="exportPdf()" title="Export PDF — download the colour copy">⬇</button>
+        <button class="icon-btn" id="autoPrintBtn" onclick="autoPrint()" title="Auto Print — straight to Checkout PoS, single-sided">🖨</button>
+        <div class="menu-wrap">
+          <button class="menu-btn" id="adminMenuBtn" onclick="openAdminMenu(event)" title="Reconnect, refresh and uploads">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
           <div class="menu-panel right" id="adminMenu" onclick="event.stopPropagation()">
             <div id="printBanner" class="print-banner" style="display:none"></div>
             <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span> <span id="dataBadge" class="pc-badge" style="display:none"></span></div>
@@ -598,6 +605,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <button class="drive-btn refresh hidden" id="driveRefreshBtn" onclick="fetchFromDrive()">↻ Refresh</button>
             <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
             <button class="drive-btn hist-btn" id="uploadsBtn" onclick="openUploads('priceChanges')">📤 Uploads<span id="uploadsBadge" class="pc-badge" style="display:none"></span></button>
+            <button class="drive-btn hist-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
           </div>
         </div>
         <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark mode">☾</button>
@@ -648,10 +656,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   <div class="bottom-bar">
     <div class="bottom-actions">
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
-      <button class="btn-big" id="emailDocBtn" onclick="emailDoc()">✉ Email</button>
-      <button class="btn-big" id="exportPdfBtn" onclick="exportPdf()" title="Download a colour PDF copy to Downloads">⬇ PDF</button>
       <button class="btn-big btn-filled" onclick="printQuote()">🖨 Print</button>
-      <button class="btn-big" onclick="autoPrint()" title="Print directly to Checkout PoS, single-sided">🖨 Auto Print</button>
       <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
     </div>
     <div class="mahalo-cell"><div class="mahalo">Mahalo for choosing us!</div></div>
@@ -880,6 +885,46 @@ function handleSignIn() {
   // This app always uses the shop account. Reuse its existing grant and avoid
   // forcing the account chooser; Google still prompts if authorization is missing.
   tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
+}
+
+// ─── STAYING CONNECTED ─────────────────────────────────────────────────────
+// Reconnecting used to mean noticing the till was offline and pressing a button.
+// Now typing in the order grid quietly renews a stale token, so it is normally
+// back before anyone notices. Guarded hard, because a token request per keystroke
+// would be a popup storm: only when already signed in, only when the token is
+// actually stale, one attempt at a time, and at most once every two minutes.
+//
+// A silent renew works whenever the Google session is still alive — that is the
+// everyday case. If the session is gone Google needs a real click to show its
+// own window, and a keystroke is not a click, so the browser would block it.
+// The Admin button stays as that click.
+let _reconnectAt = 0, _reconnecting = false;
+function tokenIsFresh() {
+  const at = parseInt(localStorage.getItem('gTokenAt') || '0');
+  return !!accessToken && (Date.now() - at) < 55 * 60 * 1000;
+}
+function ensureConnected(opts) {
+  const wantRefresh = !!(opts && opts.refresh);
+  if (!localStorage.getItem('gSignedIn') || !tokenClient) return;
+  if (tokenIsFresh()) { if (wantRefresh) fetchFromDrive(); return; }
+  if (_reconnecting) return;
+  if (!wantRefresh && Date.now() - _reconnectAt < 120000) return;   // typing path is rate-limited
+  _reconnecting = true;
+  _reconnectAt = Date.now();
+  setTimeout(() => { _reconnecting = false; }, 8000);   // the GIS callback may never fire
+  tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
+}
+// Any typing in the order grid is a reconnect trigger.
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (!t || !t.closest || !t.closest('.wrap')) return;
+  if (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA') return;
+  ensureConnected();
+});
+// One click on Admin: reconnect if stale, refresh the catalog, show the panel.
+function openAdminMenu(event) {
+  toggleMenu(event, 'adminMenu');
+  if (document.getElementById('adminMenu')?.classList.contains('open')) ensureConnected({ refresh: true });
 }
 
 let _refreshTimer = null;
@@ -2053,7 +2098,7 @@ function renderPriceChanges() {
         `<td style="text-align:center;"><button class="hist-del-btn" title="Remove" onclick="deletePriceChangeEntry(${i})">✕</button></td>` +
         `<td style="font-size:13px;font-weight:500;">${c.pn}</td>` +
         `<td style="font-size:12px;color:#555;">${c.desc || '—'}</td>` +
-        `<td style="font-size:12px;color:#2f6b3a;">${c.newDesc != null ? c.newDesc : '—'}</td>` +
+        `<td style="font-size:12px;color:#2f4339;">${c.newDesc != null ? c.newDesc : '—'}</td>` +
         `<td style="font-size:13px;text-align:right;color:#c0392b;">${c.newPrice != null ? '<strong>$'+parseFloat(c.newPrice).toFixed(2)+'</strong>' : '—'}</td>` +
         `<td style="font-size:12px;text-align:right;color:#888;">${c.listPrice != null ? '$'+parseFloat(c.listPrice).toFixed(2) : '—'}</td>` +
         `<td style="font-size:12px;text-align:right;">${c.newCost != null ? '$'+parseFloat(c.newCost).toFixed(2) : '—'}</td>` +
@@ -3973,7 +4018,7 @@ async function exportPdf() {
   if (!order || !order.items.length) { alert('Add at least one item before exporting.'); return; }
   if (typeof html2pdf === 'undefined') { alert('PDF library not loaded — check your internet connection and reload.'); return; }
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
-  setBtn('⏳ Building…', true);
+  setBtn('⏳', true);
   const holder = document.getElementById('emailPdfHolder');
   try {
     const now    = reserveDocDate() || new Date();
@@ -3983,13 +4028,13 @@ async function exportPdf() {
     holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
     await _renderPdf(holder.firstElementChild, `MPE_${title}_${number}.pdf`, 'save');
     holder.innerHTML = '';
-    setBtn('✓ Downloaded', false);
+    setBtn('✓', false);
     saveToHistory();            // same record any other outgoing copy makes
     updatePriceChangesBadge();
-    setTimeout(() => setBtn('⬇ PDF', false), 4000);
+    setTimeout(() => setBtn('⬇', false), 4000);
   } catch (e) {
     holder.innerHTML = '';
-    setBtn('⬇ PDF', false);
+    setBtn('⬇', false);
     alert('Could not export the PDF: ' + e.message);
   }
 }
@@ -4005,7 +4050,7 @@ async function emailDoc() {
 
   maybeSaveNewCustomer();
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
-  setBtn('⏳ Building…', true);
+  setBtn('⏳', true);
   try {
     const now    = reserveDocDate() || new Date();
     const number = formatDocNumber(now, _docType);
@@ -4031,7 +4076,7 @@ Maui Power Equipment
 (808) 249-2730`;
     const raw = _b64UrlUtf8(_buildEmailMime(to, subject, bodyText, number + '.pdf', pdfB64));
 
-    setBtn('⏳ Creating draft…', true);
+    setBtn('⏳', true);
     let resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -4043,7 +4088,7 @@ Maui Power Equipment
       _emailScopeRetried = true;
       accessToken = null; localStorage.removeItem('gToken');
       _pendingAction = () => emailDoc();
-      setBtn('✉ Email', false);
+      setBtn('✉', false);
       handleSignIn();
       return;
     }
@@ -4053,13 +4098,13 @@ Maui Power Equipment
 
     const msgId = data.message?.id;
     if (msgId) window.open('https://mail.google.com/mail/u/0/#drafts?compose=' + msgId, '_blank');
-    setBtn('✓ Draft ready', false);
+    setBtn('✓', false);
     saveToHistory();            // record the transaction (local + Drive), same as printing
     updatePriceChangesBadge();
-    setTimeout(() => setBtn('✉ Email', false), 4000);
+    setTimeout(() => setBtn('✉', false), 4000);
   } catch (e) {
     document.getElementById('emailPdfHolder').innerHTML = '';
-    setBtn('✉ Email', false);
+    setBtn('✉', false);
     alert('Could not create the email draft: ' + e.message);
   }
 }
