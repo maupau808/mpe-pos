@@ -3809,9 +3809,33 @@ const PDF_INK   = '#1d2722';
 const PDF_MUTED = '#6a736d';
 const PDF_LINE  = '#e6e1d6';
 
+// The mark ships as its own dark green, a shade off the header green. It's
+// single-colour artwork with an alpha channel, so filling through `source-in`
+// keeps the shape and swaps the ink — no second logo file to keep in sync.
+let _pdfLogoCache = null;
+function _pdfLogoSrc() {
+  if (_pdfLogoCache) return _pdfLogoCache;
+  const img = document.querySelector('.wrap .print-header img');
+  if (!img) return '';
+  if (!img.complete || !img.naturalWidth) return img.src;   // not decoded yet; retry next time
+  try {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0);
+    x.globalCompositeOperation = 'source-in';
+    x.fillStyle = PDF_GREEN;
+    x.fillRect(0, 0, c.width, c.height);
+    _pdfLogoCache = c.toDataURL('image/png');
+  } catch (e) {
+    _pdfLogoCache = img.src;
+  }
+  return _pdfLogoCache;
+}
+
 function buildEmailDocHTML(order, title, number, dateStr) {
   const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const logoSrc = document.querySelector('.wrap .print-header img')?.src || '';
+  const logoSrc = _pdfLogoSrc();
   const items = order.items || [];
   const subtotal = items.reduce((s, it) => s + (parseFloat(it.sub) || 0), 0);
   const cardFeeActive = !!order.toggles?.cardFee;
@@ -3917,6 +3941,28 @@ function _pdfOptions(filename) {
   };
 }
 
+// html2canvas normally re-draws every glyph itself, and it gets the metrics
+// wrong: words drift apart ("Maui  Power  Equipment"), the totals column slides
+// out of line with its labels, and the right-hand columns can fall off the page.
+// foreignObjectRendering hands the layout back to the browser — it paints the
+// real DOM into an SVG foreignObject — so the PDF matches the page exactly.
+// Some engines taint the canvas that way and throw on export, so fall back to
+// the plain renderer rather than failing the export outright.
+async function _renderPdf(el, filename, mode) {
+  const run = foreignObject => {
+    const opt = _pdfOptions(filename);
+    if (foreignObject) opt.html2canvas = { ...opt.html2canvas, foreignObjectRendering: true };
+    const worker = html2pdf().set(opt).from(el);
+    return mode === 'save' ? worker.save() : worker.outputPdf('blob');
+  };
+  try {
+    return await run(true);
+  } catch (e) {
+    console.warn('PDF: foreignObject render failed, falling back', e);
+    return await run(false);
+  }
+}
+
 // Colour PDF straight to Downloads. The browser's print dialog can't tell
 // "Save as PDF" from a real printer — both run the same @media print CSS — so a
 // separate button is the only way to get a colour file without putting colour on
@@ -3935,7 +3981,7 @@ async function exportPdf() {
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
     holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
-    await html2pdf().set(_pdfOptions(`MPE_${title}_${number}.pdf`)).from(holder.firstElementChild).save();
+    await _renderPdf(holder.firstElementChild, `MPE_${title}_${number}.pdf`, 'save');
     holder.innerHTML = '';
     setBtn('✓ Downloaded', false);
     saveToHistory();            // same record any other outgoing copy makes
@@ -3969,7 +4015,7 @@ async function emailDoc() {
     // Render PDF from an offscreen, fully inline-styled copy (print CSS isn't active for html2canvas)
     const holder = document.getElementById('emailPdfHolder');
     holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
-    const blob = await html2pdf().set(_pdfOptions(number + '.pdf')).from(holder.firstElementChild).outputPdf('blob');
+    const blob = await _renderPdf(holder.firstElementChild, number + '.pdf', 'blob');
     holder.innerHTML = '';
     const pdfB64 = await _blobToB64(blob);
 
