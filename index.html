@@ -1003,9 +1003,27 @@ function refreshStatusUI(transient) {
 // them now lives inside the Admin dropdown. Only this dot escapes: amber = something
 // is waiting to sync or nobody is signed in, red = a push actually failed or the
 // catalog is missing. No dot at all = nothing to do, which is the normal state.
+// A failed Auto Print / PDF / Email shows up as the control's OWN state — the
+// icon flips to ✕ and back — never as a dialog. Whoever is at the counter can't
+// act on a stack trace, so stopping them with a box only spooks them; the button
+// going ✕ says "that didn't take, press it again", which is the whole message.
+// The reason is kept here for Trevor and turns the Admin dot red, which is where
+// every other "something needs you" signal already lives.
+let _lastToolFailure = null;
+function noteToolFailure(what, err) {
+  _lastToolFailure = { what, message: (err && err.message) || String(err || '') };
+  console.warn('POS: ' + what + ' failed —', err);
+  try { updateAdminDot(); } catch (e) {}
+}
+function clearToolFailure() {
+  if (!_lastToolFailure) return;
+  _lastToolFailure = null;
+  try { updateAdminDot(); } catch (e) {}
+}
+
 function adminAlertLevel() {
   if (!(typeof loaded !== 'undefined' && loaded && partsArray && partsArray.length)) return 'err';
-  if (_lastPushStatus === 'fail') return 'err';
+  if (_lastPushStatus === 'fail' || _lastToolFailure) return 'err';
   const waiting = (function(){ try { return getPriceChanges().length + countUnpushedTxns(); } catch(e) { return 0; } })();
   if (authState() !== 'in' || waiting > 0) return 'warn';
   return '';
@@ -1018,7 +1036,9 @@ function updateAdminDot() {
   dot.style.display = level ? '' : 'none';
   const waiting = (function(){ try { return getPriceChanges().length + countUnpushedTxns(); } catch(e) { return 0; } })();
   dot.title = level === 'err'
-    ? (_lastPushStatus === 'fail' ? 'A Drive push failed — open Admin' : 'No parts loaded — open Admin')
+    ? (_lastPushStatus === 'fail' ? 'A Drive push failed — open Admin'
+       : _lastToolFailure ? _lastToolFailure.what + ' failed: ' + _lastToolFailure.message
+       : 'No parts loaded — open Admin')
     : waiting > 0 ? waiting + ' waiting to sync to Drive — open Admin'
     : 'Not signed in to Google — open Admin';
 }
@@ -3769,6 +3789,10 @@ function printQuote() {
 async function autoPrint() {
   if (_directPrintInFlight) return;
   _directPrintInFlight = true;
+  const btn = document.getElementById('autoPrintBtn');
+  const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
+  clearToolFailure();
+  setBtn('⏳', true);
   prepareAndSaveForPrint();
   try {
     const response = await fetch(POS_PRINT_URL, {
@@ -3779,8 +3803,14 @@ async function autoPrint() {
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
     showPrintBanner();
+    setBtn('✓', false);
+    setTimeout(() => setBtn('🖨', false), 4000);
   } catch (error) {
-    alert('Receipt was saved, but did not print to Checkout PoS: ' + error.message);
+    // The sale is already saved; only the paper didn't come out, which whoever
+    // pressed it can see for themselves. They just press it again.
+    noteToolFailure('Auto Print', error);
+    setBtn('✕', false);
+    setTimeout(() => setBtn('🖨', false), 4000);
   } finally {
     cleanupPrint();
     _printPrepared = false;
@@ -4016,8 +4046,13 @@ async function exportPdf() {
   const btn = document.getElementById('exportPdfBtn');
   const order = captureOrder();
   if (!order || !order.items.length) { alert('Add at least one item before exporting.'); return; }
-  if (typeof html2pdf === 'undefined') { alert('PDF library not loaded — check your internet connection and reload.'); return; }
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
+  if (typeof html2pdf === 'undefined') {
+    noteToolFailure('PDF export', new Error('html2pdf library did not load'));
+    setBtn('✕', false); setTimeout(() => setBtn('⬇', false), 4000);
+    return;
+  }
+  clearToolFailure();
   setBtn('⏳', true);
   const holder = document.getElementById('emailPdfHolder');
   try {
@@ -4034,8 +4069,9 @@ async function exportPdf() {
     setTimeout(() => setBtn('⬇', false), 4000);
   } catch (e) {
     holder.innerHTML = '';
-    setBtn('⬇', false);
-    alert('Could not export the PDF: ' + e.message);
+    noteToolFailure('PDF export', e);
+    setBtn('✕', false);
+    setTimeout(() => setBtn('⬇', false), 4000);
   }
 }
 
@@ -4043,13 +4079,18 @@ async function emailDoc() {
   const btn = document.getElementById('emailDocBtn');
   const order = captureOrder();
   if (!order || !order.items.length) { alert('Add at least one item before emailing.'); return; }
-  if (typeof html2pdf === 'undefined') { alert('PDF library not loaded — check your internet connection and reload.'); return; }
+  const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
+  if (typeof html2pdf === 'undefined') {
+    noteToolFailure('Email draft', new Error('html2pdf library did not load'));
+    setBtn('✕', false); setTimeout(() => setBtn('✉', false), 4000);
+    return;
+  }
 
   let token = accessToken || localStorage.getItem('gToken');
   if (!token) { _pendingAction = () => emailDoc(); handleSignIn(); return; }
 
   maybeSaveNewCustomer();
-  const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
+  clearToolFailure();
   setBtn('⏳', true);
   try {
     const now    = reserveDocDate() || new Date();
@@ -4104,8 +4145,9 @@ Maui Power Equipment
     setTimeout(() => setBtn('✉', false), 4000);
   } catch (e) {
     document.getElementById('emailPdfHolder').innerHTML = '';
-    setBtn('✉', false);
-    alert('Could not create the email draft: ' + e.message);
+    noteToolFailure('Email draft', e);
+    setBtn('✕', false);
+    setTimeout(() => setBtn('✉', false), 4000);
   }
 }
 
