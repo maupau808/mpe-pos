@@ -1004,26 +1004,23 @@ function refreshStatusUI(transient) {
 // is waiting to sync or nobody is signed in, red = a push actually failed or the
 // catalog is missing. No dot at all = nothing to do, which is the normal state.
 // A failed Auto Print / PDF / Email shows up as the control's OWN state — the
-// icon flips to ✕ and back — never as a dialog. Whoever is at the counter can't
-// act on a stack trace, so stopping them with a box only spooks them; the button
-// going ✕ says "that didn't take, press it again", which is the whole message.
-// The reason is kept here for Trevor and turns the Admin dot red, which is where
-// every other "something needs you" signal already lives.
-let _lastToolFailure = null;
+// icon flips to ✕ and back — and nowhere else. Whoever is at the counter can see
+// that no paper came out or no file arrived, so a dialog adds nothing they can
+// act on, and it isn't worth a toolbar signal either: these shouldn't happen, and
+// if one does the answer is to press the button again. The reason goes to the
+// console for when something is actually being diagnosed.
 function noteToolFailure(what, err) {
-  _lastToolFailure = { what, message: (err && err.message) || String(err || '') };
   console.warn('POS: ' + what + ' failed —', err);
-  try { updateAdminDot(); } catch (e) {}
 }
-function clearToolFailure() {
-  if (!_lastToolFailure) return;
-  _lastToolFailure = null;
-  try { updateAdminDot(); } catch (e) {}
-}
+function clearToolFailure() {}
 
+// Red is reserved for "this till cannot do its job" — i.e. no catalog loaded.
+// A failed Drive push is NOT that: the sale is saved locally and is only marked
+// pushed on success, so it goes out with the next sync. It falls through to the
+// amber "N waiting to sync" below, which is what is actually true. The detail
+// lives in the Admin panel for when Trevor wants it.
 function adminAlertLevel() {
   if (!(typeof loaded !== 'undefined' && loaded && partsArray && partsArray.length)) return 'err';
-  if (_lastPushStatus === 'fail' || _lastToolFailure) return 'err';
   const waiting = (function(){ try { return getPriceChanges().length + countUnpushedTxns(); } catch(e) { return 0; } })();
   if (authState() !== 'in' || waiting > 0) return 'warn';
   return '';
@@ -1036,9 +1033,7 @@ function updateAdminDot() {
   dot.style.display = level ? '' : 'none';
   const waiting = (function(){ try { return getPriceChanges().length + countUnpushedTxns(); } catch(e) { return 0; } })();
   dot.title = level === 'err'
-    ? (_lastPushStatus === 'fail' ? 'A Drive push failed — open Admin'
-       : _lastToolFailure ? _lastToolFailure.what + ' failed: ' + _lastToolFailure.message
-       : 'No parts loaded — open Admin')
+    ? 'No parts loaded — open Admin'
     : waiting > 0 ? waiting + ' waiting to sync to Drive — open Admin'
     : 'Not signed in to Google — open Admin';
 }
@@ -2490,11 +2485,16 @@ async function pushTransactionToSheet(order) {
     try { updatePriceChangesBadge(); } catch (e) {}   // un-synced count just dropped
     console.log('[MPE] Transaction exported:', txnId, insertIdx === -1 ? '(appended)' : `(inserted at row ${insertIdx + 1})`);
   } catch(e) {
-    if (e.message.includes('Unable to parse range')) {
-      alert('Create a sheet tab named "Transactions" in your MPE Price Updates spreadsheet first.');
-    } else {
-      alert('Transaction export failed: ' + e.message);
-    }
+    // This runs automatically after every sale, so it must never put a dialog on
+    // the counter — that was the popup appearing out of nowhere. It also has to
+    // RETHROW: the txn is only marked pushed on success above, so every caller
+    // already has a catch that queues it for the next sync, and swallowing the
+    // error here made all of that dead code (a failed push counted as sent).
+    const why = e.message && e.message.includes('Unable to parse range')
+      ? 'the Drive sheet has no "Transactions" tab'
+      : e.message;
+    console.warn('[MPE] Transaction export failed —', why, '· stays queued for the next sync');
+    throw new Error(why);
   }
 }
 
