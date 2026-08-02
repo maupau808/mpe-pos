@@ -649,6 +649,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="bottom-actions">
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
       <button class="btn-big" id="emailDocBtn" onclick="emailDoc()">✉ Email</button>
+      <button class="btn-big" id="exportPdfBtn" onclick="exportPdf()" title="Download a colour PDF copy to Downloads">⬇ PDF</button>
       <button class="btn-big btn-filled" onclick="printQuote()">🖨 Print</button>
       <button class="btn-big" onclick="autoPrint()" title="Print directly to Checkout PoS, single-sided">🖨 Auto Print</button>
       <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
@@ -3851,6 +3852,19 @@ function buildEmailDocHTML(order, title, number, dateStr) {
 
   const th = `text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#fff;padding:7px 8px;background:${PDF_GREEN}`;
   const sumRow = 'display:flex;justify-content:space-between;padding:3px 0';
+
+  // An Internal document carries its Cost / Gross Profit / Margin into the PDF too,
+  // read straight off the live summary so the file always matches the screen. Without
+  // this an exported "Internal" would look like a customer copy with its defining
+  // numbers quietly missing.
+  const warnEl = document.getElementById('sumNoCost');
+  const figure = id => esc(document.getElementById(id)?.textContent || '—');
+  const internalHtml = _docType !== 'internal' ? '' : `<div style="margin-top:9px;margin-left:auto;width:240px;font-size:13px;border-top:1px solid ${PDF_LINE};padding-top:8px">
+      <div style="${sumRow}"><span style="color:${PDF_MUTED}">Cost</span><span>${figure('sumCost')}</span></div>
+      <div style="${sumRow};font-weight:700;color:${PDF_GREEN}"><span>Gross Profit</span><span>${figure('sumProfit')}</span></div>
+      <div style="${sumRow}"><span style="color:${PDF_MUTED}">Margin</span><span>${figure('sumMarginPct')}</span></div>
+      ${warnEl?.classList.contains('show') ? `<div style="font-size:11px;color:#c0392b;padding-top:4px">${esc(warnEl.textContent)}</div>` : ''}
+    </div>`;
   return `<div style="width:760px;box-sizing:border-box;padding:24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${PDF_INK};background:#fff">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
@@ -3882,9 +3896,56 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       <div style="${sumRow}"><span style="color:${PDF_MUTED}">Tax</span><span>$${tax.toFixed(2)}</span></div>
       <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:2px solid ${PDF_GREEN};font-weight:700;font-size:16px;color:${PDF_GREEN}"><span>Total</span><span>$${total.toFixed(2)}</span></div>
     </div>
+    ${internalHtml}
     ${custHtml}
     <div style="text-align:center;font-style:italic;color:${PDF_GREEN};margin-top:22px;font-size:13px">Mahalo for your business!</div>
   </div>`;
+}
+
+// Shared by the Email attachment and the Export PDF button so the two files are
+// byte-for-byte the same document.
+function _pdfDateStr(now) {
+  return now.toLocaleDateString('en-US', {year:'numeric', month:'long', day:'numeric'}) +
+         ' · ' + now.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+}
+function _pdfOptions(filename) {
+  return {
+    margin: [10, 10, 10, 10], filename,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+    jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
+  };
+}
+
+// Colour PDF straight to Downloads. The browser's print dialog can't tell
+// "Save as PDF" from a real printer — both run the same @media print CSS — so a
+// separate button is the only way to get a colour file without putting colour on
+// the sheets that come off the shop printer. Needs no Google sign-in.
+async function exportPdf() {
+  const btn = document.getElementById('exportPdfBtn');
+  const order = captureOrder();
+  if (!order || !order.items.length) { alert('Add at least one item before exporting.'); return; }
+  if (typeof html2pdf === 'undefined') { alert('PDF library not loaded — check your internet connection and reload.'); return; }
+  const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
+  setBtn('⏳ Building…', true);
+  const holder = document.getElementById('emailPdfHolder');
+  try {
+    const now    = reserveDocDate() || new Date();
+    const number = formatDocNumber(now, _docType);
+    const title  = DOC_TITLES[_docType];
+    updateScreenDocTitle();
+    holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
+    await html2pdf().set(_pdfOptions(`MPE_${title}_${number}.pdf`)).from(holder.firstElementChild).save();
+    holder.innerHTML = '';
+    setBtn('✓ Downloaded', false);
+    saveToHistory();            // same record any other outgoing copy makes
+    updatePriceChangesBadge();
+    setTimeout(() => setBtn('⬇ PDF', false), 4000);
+  } catch (e) {
+    holder.innerHTML = '';
+    setBtn('⬇ PDF', false);
+    alert('Could not export the PDF: ' + e.message);
+  }
 }
 
 async function emailDoc() {
@@ -3903,20 +3964,12 @@ async function emailDoc() {
     const now    = reserveDocDate() || new Date();
     const number = formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
-    const dateStr = now.toLocaleDateString('en-US', {year:'numeric', month:'long', day:'numeric'}) +
-                    ' · ' + now.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
     updateScreenDocTitle();
 
     // Render PDF from an offscreen, fully inline-styled copy (print CSS isn't active for html2canvas)
     const holder = document.getElementById('emailPdfHolder');
-    holder.innerHTML = buildEmailDocHTML(order, title, number, dateStr);
-    const opt = {
-      margin: [10, 10, 10, 10], filename: number + '.pdf',
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-      jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
-    };
-    const blob = await html2pdf().set(opt).from(holder.firstElementChild).outputPdf('blob');
+    holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
+    const blob = await html2pdf().set(_pdfOptions(number + '.pdf')).from(holder.firstElementChild).outputPdf('blob');
     holder.innerHTML = '';
     const pdfB64 = await _blobToB64(blob);
 
