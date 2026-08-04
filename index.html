@@ -3045,10 +3045,23 @@ function searchParts(val) {
   }
 
   const byPrice = (a, b) => (parseFloat(b.list) || 0) - (parseFloat(a.list) || 0);
-  startsWith.sort(byPrice);
-  // Rank word matches: a contiguous phrase hit in the description floats up,
-  // then by price (units/bigger-ticket items first, matching the PN buckets).
+  // Sales-frequency ranking. `f` = how many separate sale lines this item has
+  // appeared on, stamped onto the feed by the server from the Transactions tab.
+  // It is the FIRST tiebreak inside each match bucket and nothing more: the
+  // bucket order (exact PN → PN prefix → word match → fuzzy) is untouched, and
+  // items that have never sold fall through to exactly the previous ordering.
+  // An absent `f` (older feed, or a feed built with no ranking cache) reads as 0,
+  // so search behaves as it always did until a ranked feed is pushed.
+  const byFreq  = (a, b) => (b.f || 0) - (a.f || 0);
+  // Array.prototype.sort is stable, so equal-frequency rows keep the order the
+  // previous comparator gave them (or Master row order, for the exact bucket).
+  exact.sort(byFreq);
+  startsWith.sort((a, b) => byFreq(a, b) || byPrice(a, b));
+  // Rank word matches: what actually sells floats up, then a contiguous phrase hit
+  // in the description, then price (bigger-ticket items first, matching the PN buckets).
   wordMatch.sort((a, b) => {
+    const f = byFreq(a, b);
+    if (f) return f;
     const pa = (a.desc||'').toLowerCase().includes(lowerVal) ? 0 : 1;
     const pb = (b.desc||'').toLowerCase().includes(lowerVal) ? 0 : 1;
     if (pa !== pb) return pa - pb;
@@ -3075,7 +3088,7 @@ function searchParts(val) {
     );
     if (ok) fuzzy.push(p);
   }
-  fuzzy.sort(byPrice);
+  fuzzy.sort((a, b) => byFreq(a, b) || byPrice(a, b));
   return fuzzy;
 }
 
@@ -3794,28 +3807,52 @@ async function autoPrint() {
   clearToolFailure();
   setBtn('⏳', true);
   prepareAndSaveForPrint();
+  let printedByService = false;
   try {
-    const response = await fetch(POS_PRINT_URL, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({html: serializedPrintDocument()}),
-    });
+    // A machine with no print service refuses the connection instantly, so this
+    // timeout only bites when a service is present but wedged.
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 30000);
+    let response;
+    try {
+      response = await fetch(POS_PRINT_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({html: serializedPrintDocument()}),
+        signal: ctl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    printedByService = true;
     showPrintBanner();
     setBtn('✓', false);
     setTimeout(() => setBtn('🖨', false), 4000);
   } catch (error) {
-    // The sale is already saved; only the paper didn't come out, which whoever
-    // pressed it can see for themselves. They just press it again.
     noteToolFailure('Auto Print', error);
-    setBtn('✕', false);
-    setTimeout(() => setBtn('🖨', false), 4000);
-  } finally {
-    cleanupPrint();
-    _printPrepared = false;
-    _directPrintInFlight = false;
   }
+  if (!printedByService) {
+    // No print service on this till, or it failed. Fall back to the browser's own
+    // print rather than leaving the receipt unprinted: the till still prints, it
+    // just costs one keypress. The sale itself is already saved either way, and
+    // _printPrepared stops the beforeprint handler saving it a second time.
+    // cleanup is left to afterprint, which fires whether or not they hit Cancel.
+    setBtn('🖨', false);
+    _directPrintInFlight = false;
+    try {
+      window.print();
+    } catch (error) {
+      noteToolFailure('Print dialog', error);
+      cleanupPrint();
+      _printPrepared = false;
+    }
+    return;
+  }
+  cleanupPrint();
+  _printPrepared = false;
+  _directPrintInFlight = false;
 }
 
 window.addEventListener('beforeprint', prepareAndSaveForPrint);
