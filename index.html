@@ -42,7 +42,9 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .scan-panel.review-mode .scan-stop { display: none; }
 .scan-camera { position: relative; height: 128px; overflow: hidden; border-radius: 7px; background: #18201c; }
 .scan-camera video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.scan-guide { position: absolute; inset: 29% 8%; border: 2px solid rgba(255,255,255,.9); border-radius: 5px; box-shadow: 0 0 0 999px rgba(0,0,0,.2); pointer-events: none; }
+.scan-camera video.unmirror { transform: scaleX(-1); }
+.scan-guide { position: absolute; inset: 20% 4%; border: 2px solid rgba(255,255,255,.9); border-radius: 5px; box-shadow: 0 0 0 999px rgba(0,0,0,.2); pointer-events: none; }
+.scan-guide::before { content: ''; position: absolute; width: 22px; left: 50%; top: 50%; border-top: 2px solid rgba(255,255,255,.9); transform: translate(-50%, -50%); }
 .scan-info { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
 .scan-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .scan-title { font-size: 13px; font-weight: 600; color: #2f4339; }
@@ -1985,10 +1987,10 @@ async function scanFallbackCameraFrame() {
     scanDetectBusy = true;
     try {
       const fullFrame = scanFallbackFrameCount > 0 && scanFallbackFrameCount % FALLBACK_FULL_FRAME_EVERY === 0;
-      const sourceX = fullFrame ? 0 : Math.round(video.videoWidth * 0.08);
-      const sourceY = fullFrame ? 0 : Math.round(video.videoHeight * 0.29);
-      const width = fullFrame ? video.videoWidth : Math.round(video.videoWidth * 0.84);
-      const height = fullFrame ? video.videoHeight : Math.round(video.videoHeight * 0.42);
+      const sourceX = fullFrame ? 0 : Math.round(video.videoWidth * 0.04);
+      const sourceY = fullFrame ? 0 : Math.round(video.videoHeight * 0.20);
+      const width = fullFrame ? video.videoWidth : Math.round(video.videoWidth * 0.92);
+      const height = fullFrame ? video.videoHeight : Math.round(video.videoHeight * 0.60);
       if (fullFrame && !scanFallbackFullCanvas) scanFallbackFullCanvas = document.createElement('canvas');
       if (!fullFrame && !scanFallbackCanvas) scanFallbackCanvas = document.createElement('canvas');
       const canvas = fullFrame ? scanFallbackFullCanvas : scanFallbackCanvas;
@@ -2065,6 +2067,7 @@ async function startScanner() {
         return;
       }
       const video = document.getElementById('scanVideo');
+      video.classList.remove('unmirror');
       video.srcObject = scanStream;
       await video.play();
       scanActive = true;
@@ -2091,6 +2094,7 @@ async function startScanner() {
         return;
       }
       await optimizeWindowsScanCamera(scanStream);
+      video.classList.add('unmirror');
       video.srcObject = scanStream;
       await video.play();
       scanActive = true;
@@ -2122,7 +2126,10 @@ function stopScanner(hidePanel = true) {
   scanFallbackCanvas = null;
   scanFallbackFullCanvas = null;
   const video = document.getElementById('scanVideo');
-  if (video) video.srcObject = null;
+  if (video) {
+    video.srcObject = null;
+    video.classList.remove('unmirror');
+  }
   const button = document.getElementById('scanBtn');
   updateScanButton();
   clearScanChoices();
