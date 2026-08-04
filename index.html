@@ -1497,6 +1497,9 @@ function normalizePN(pn) {
 let scanDetector = null;
 let scanStream = null;
 let scanTimer = null;
+let scanFallbackReader = null;
+let scanFallbackControls = null;
+let scanFallbackLoadPromise = null;
 let scanActive = false;
 let scanDetectBusy = false;
 let scanStartVersion = 0;
@@ -1889,6 +1892,38 @@ function onHardwareScanKeydown(event) {
 
 document.addEventListener('keydown', onHardwareScanKeydown, true);
 
+function acceptCameraDecodedValue(rawValue, format) {
+  const value = String(rawValue || '').trim();
+  if (!value) return;
+  scanAbsentFrames = 0;
+  const now = Date.now();
+  const isNew = value !== scanLastValue;
+  if ((isNew && now - scanLastAt > 350) || !scanLastValue) {
+    scanLastValue = value;
+    scanLastAt = now;
+    acceptDecodedScan(value, format);
+  }
+}
+
+function loadZxingScanner() {
+  if (window.ZXingBrowser?.BrowserMultiFormatReader) return Promise.resolve(window.ZXingBrowser);
+  if (scanFallbackLoadPromise) return scanFallbackLoadPromise;
+  scanFallbackLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = new URL('zxing-browser.min.js', location.href).href;
+    script.onload = () => {
+      if (window.ZXingBrowser?.BrowserMultiFormatReader) resolve(window.ZXingBrowser);
+      else reject(new Error('camera decoder did not initialize'));
+    };
+    script.onerror = () => reject(new Error('camera decoder could not load'));
+    document.head.appendChild(script);
+  }).catch(error => {
+    scanFallbackLoadPromise = null;
+    throw error;
+  });
+  return scanFallbackLoadPromise;
+}
+
 async function scanCameraFrame() {
   if (!scanActive) return;
   const video = document.getElementById('scanVideo');
@@ -1906,13 +1941,7 @@ async function scanCameraFrame() {
         // part. Otherwise the detector's first (normally the aimed-at) symbol wins.
         const resolved = values.filter(item => resolveScannedValue(item.rawValue).candidates.length === 1);
         const item = resolved.length === 1 ? resolved[0] : values[0];
-        const now = Date.now();
-        const isNew = item.rawValue !== scanLastValue;
-        if ((isNew && now - scanLastAt > 350) || !scanLastValue) {
-          scanLastValue = item.rawValue;
-          scanLastAt = now;
-          acceptDecodedScan(item.rawValue, item.format);
-        }
+        acceptCameraDecodedValue(item.rawValue, item.format);
       }
     } catch (e) {
       if (scanActive) setScanStatus(`Camera scan error: ${e.message}`, 'err');
@@ -1933,37 +1962,66 @@ async function startScanner() {
   updateScanNext();
   setScanStatus('Starting camera…');
   prepareScanAudio();
-  if (!('BarcodeDetector' in window)) {
-    setScanStatus('This browser does not support fast barcode scanning', 'err');
-    return;
-  }
   if (!navigator.mediaDevices?.getUserMedia) {
     setScanStatus('Camera access is not available in this browser', 'err');
     return;
   }
   try {
-    const wanted = ['code_128', 'code_39', 'codabar', 'data_matrix', 'ean_13', 'ean_8', 'itf', 'qr_code', 'upc_a', 'upc_e'];
-    const supported = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : wanted;
-    const formats = wanted.filter(format => supported.includes(format));
-    scanDetector = formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
-    scanStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    });
-    if (startVersion !== scanStartVersion) {
-      scanStream.getTracks().forEach(track => track.stop());
-      scanStream = null;
-      return;
+    const forceFallback = isLocalPos() && new URLSearchParams(location.search).get('zxingTest') === '1';
+    if (!forceFallback && 'BarcodeDetector' in window) {
+      const wanted = ['code_128', 'code_39', 'codabar', 'data_matrix', 'ean_13', 'ean_8', 'itf', 'qr_code', 'upc_a', 'upc_e'];
+      const supported = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : wanted;
+      const formats = wanted.filter(format => supported.includes(format));
+      scanDetector = formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
+      scanStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      if (startVersion !== scanStartVersion) {
+        scanStream.getTracks().forEach(track => track.stop());
+        scanStream = null;
+        return;
+      }
+      const video = document.getElementById('scanVideo');
+      video.srcObject = scanStream;
+      await video.play();
+      scanActive = true;
+      scanLastValue = '';
+      scanAbsentFrames = 0;
+      updateScanButton();
+      setScanStatus('Ready — scan the first item');
+      scanCameraFrame();
+    } else {
+      setScanStatus('Loading camera scanner…');
+      const ZXingBrowser = await loadZxingScanner();
+      if (startVersion !== scanStartVersion) return;
+      const video = document.getElementById('scanVideo');
+      scanFallbackReader = new ZXingBrowser.BrowserMultiFormatReader(undefined, {
+        delayBetweenScanAttempts: 90,
+        delayBetweenScanSuccess: 350
+      });
+      scanActive = true;
+      scanLastValue = '';
+      scanAbsentFrames = 0;
+      const controls = await scanFallbackReader.decodeFromConstraints({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      }, video, (result, error) => {
+        if (!scanActive) return;
+        if (result) acceptCameraDecodedValue(result.getText(), 'zxing');
+        else if (error) {
+          scanAbsentFrames++;
+          if (scanAbsentFrames >= 3) scanLastValue = '';
+        }
+      });
+      if (startVersion !== scanStartVersion) {
+        controls.stop();
+        return;
+      }
+      scanFallbackControls = controls;
+      updateScanButton();
+      setScanStatus('Ready — scan the first item');
     }
-    const video = document.getElementById('scanVideo');
-    video.srcObject = scanStream;
-    await video.play();
-    scanActive = true;
-    scanLastValue = '';
-    scanAbsentFrames = 0;
-    updateScanButton();
-    setScanStatus('Ready — scan the first item');
-    scanCameraFrame();
   } catch (e) {
     if (startVersion !== scanStartVersion) return;
     stopScanner(false);
@@ -1980,6 +2038,9 @@ function stopScanner(hidePanel = true) {
   scanTimer = null;
   if (scanStream) scanStream.getTracks().forEach(track => track.stop());
   scanStream = null;
+  if (scanFallbackControls) scanFallbackControls.stop();
+  scanFallbackControls = null;
+  scanFallbackReader = null;
   const video = document.getElementById('scanVideo');
   if (video) video.srcObject = null;
   const button = document.getElementById('scanBtn');
