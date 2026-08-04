@@ -1514,6 +1514,7 @@ let scanLastValue = '';
 let scanLastAt = 0;
 let scanAbsentFrames = 0;
 let scanStatusVersion = 0;
+const scanRecentValues = new Map();
 let hardwareScanBuffer = '';
 let hardwareScanStartedAt = 0;
 let hardwareScanLastAt = 0;
@@ -1525,6 +1526,7 @@ const PART_CODES_LEARNED_KEY = 'mpePartCodeLearned';
 const FALLBACK_SCAN_ANGLES = [0, 8, -8, 15, -15];
 const FALLBACK_FULL_FRAME_EVERY = 11;
 const FALLBACK_RETRY_MS = 12;
+const SCAN_REPEAT_LOCKOUT_MS = 2250;
 let partCodePending = [];
 let partCodeLearned = {};
 let partCodesSheetEnsured = false;
@@ -1581,6 +1583,14 @@ function canonicalScannedCode(value) {
   if (!s) return '';
   if (/^\d+$/.test(s) && s.length <= 14) return s.padStart(14, '0');
   return s.toUpperCase();
+}
+
+function claimScannedValue(value, now = Date.now()) {
+  const key = canonicalScannedCode(value);
+  const lastAcceptedAt = scanRecentValues.get(key) || 0;
+  if (now - lastAcceptedAt < SCAN_REPEAT_LOCKOUT_MS) return false;
+  scanRecentValues.set(key, now);
+  return true;
 }
 
 function uniqueScanParts(parts) {
@@ -1818,6 +1828,7 @@ function acceptDecodedScan(rawValue, format) {
     setScanStatus('Parts are still loading — try again in a moment', 'err');
     return;
   }
+  if (!claimScannedValue(raw)) return;
   const result = resolveScannedValue(raw);
   const needsReview = result.candidates.length !== 1;
   playScanBeep(needsReview);
