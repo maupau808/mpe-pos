@@ -1695,13 +1695,13 @@ function playScanBeep(needsReview) {
   try {
     prepareScanAudio();
     if (!scanAudioContext) return;
-    const tone = (start, duration, frequency) => {
+    const tone = (start, duration, frequency, type = 'sine', volume = 0.18) => {
       const oscillator = scanAudioContext.createOscillator();
       const gain = scanAudioContext.createGain();
-      oscillator.type = 'sine';
+      oscillator.type = type;
       oscillator.frequency.setValueAtTime(frequency, start);
       gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.008);
+      gain.gain.exponentialRampToValueAtTime(volume, start + 0.004);
       gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
       oscillator.connect(gain).connect(scanAudioContext.destination);
       oscillator.start(start);
@@ -1712,7 +1712,7 @@ function playScanBeep(needsReview) {
       tone(now, 0.07, 620);
       tone(now + 0.10, 0.08, 430);
     } else {
-      tone(now, 0.085, 1050);
+      tone(now, 0.115, 1850, 'square', 0.09);
     }
   } catch (e) {}
 }
