@@ -1500,7 +1500,9 @@ let scanTimer = null;
 let scanFallbackDetector = null;
 let scanFallbackLoadPromise = null;
 let scanFallbackCanvas = null;
+let scanFallbackFullCanvas = null;
 let scanFallbackAngleIndex = 0;
+let scanFallbackFrameCount = 0;
 let scanActive = false;
 let scanDetectBusy = false;
 let scanStartVersion = 0;
@@ -1519,6 +1521,8 @@ const PART_CODES_SHEET_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Add
 const PART_CODES_PENDING_KEY = 'mpePartCodePending';
 const PART_CODES_LEARNED_KEY = 'mpePartCodeLearned';
 const FALLBACK_SCAN_ANGLES = [0, 8, -8, 15, -15];
+const FALLBACK_FULL_FRAME_EVERY = 11;
+const FALLBACK_RETRY_MS = 12;
 let partCodePending = [];
 let partCodeLearned = {};
 let partCodesSheetEnsured = false;
@@ -1980,22 +1984,27 @@ async function scanFallbackCameraFrame() {
   if (!scanDetectBusy && video?.readyState >= 2) {
     scanDetectBusy = true;
     try {
-      const width = video.videoWidth;
-      const height = video.videoHeight;
-      if (!scanFallbackCanvas) scanFallbackCanvas = document.createElement('canvas');
-      if (scanFallbackCanvas.width !== width || scanFallbackCanvas.height !== height) {
-        scanFallbackCanvas.width = width;
-        scanFallbackCanvas.height = height;
+      const fullFrame = scanFallbackFrameCount > 0 && scanFallbackFrameCount % FALLBACK_FULL_FRAME_EVERY === 0;
+      const sourceX = fullFrame ? 0 : Math.round(video.videoWidth * 0.08);
+      const sourceY = fullFrame ? 0 : Math.round(video.videoHeight * 0.29);
+      const width = fullFrame ? video.videoWidth : Math.round(video.videoWidth * 0.84);
+      const height = fullFrame ? video.videoHeight : Math.round(video.videoHeight * 0.42);
+      if (fullFrame && !scanFallbackFullCanvas) scanFallbackFullCanvas = document.createElement('canvas');
+      if (!fullFrame && !scanFallbackCanvas) scanFallbackCanvas = document.createElement('canvas');
+      const canvas = fullFrame ? scanFallbackFullCanvas : scanFallbackCanvas;
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
       }
-      const context = scanFallbackCanvas.getContext('2d', { willReadFrequently: true });
+      const context = canvas.getContext('2d', { willReadFrequently: true });
       const angle = FALLBACK_SCAN_ANGLES[scanFallbackAngleIndex];
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.fillStyle = '#fff';
       context.fillRect(0, 0, width, height);
       context.translate(width / 2, height / 2);
       context.rotate(angle * Math.PI / 180);
-      context.drawImage(video, -width / 2, -height / 2, width, height);
-      const found = await scanFallbackDetector.detect(scanFallbackCanvas);
+      context.drawImage(video, sourceX, sourceY, width, height, -width / 2, -height / 2, width, height);
+      const found = await scanFallbackDetector.detect(canvas);
       if (!scanActive) return;
       if (found.length) acceptCameraDecodedValue(found[0].rawValue, found[0].format || 'zxing-wasm');
       else {
@@ -2008,9 +2017,10 @@ async function scanFallbackCameraFrame() {
     } finally {
       scanDetectBusy = false;
       scanFallbackAngleIndex = (scanFallbackAngleIndex + 1) % FALLBACK_SCAN_ANGLES.length;
+      scanFallbackFrameCount++;
     }
   }
-  if (scanActive) scanTimer = setTimeout(scanFallbackCameraFrame, 45);
+  if (scanActive) scanTimer = setTimeout(scanFallbackCameraFrame, FALLBACK_RETRY_MS);
 }
 
 async function optimizeWindowsScanCamera(stream) {
@@ -2087,6 +2097,7 @@ async function startScanner() {
       scanLastValue = '';
       scanAbsentFrames = 0;
       scanFallbackAngleIndex = 0;
+      scanFallbackFrameCount = 0;
       updateScanButton();
       setScanStatus('Ready — scan the first item');
       scanFallbackCameraFrame();
@@ -2109,6 +2120,7 @@ function stopScanner(hidePanel = true) {
   scanStream = null;
   scanFallbackDetector = null;
   scanFallbackCanvas = null;
+  scanFallbackFullCanvas = null;
   const video = document.getElementById('scanVideo');
   if (video) video.srcObject = null;
   const button = document.getElementById('scanBtn');
