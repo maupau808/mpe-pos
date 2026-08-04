@@ -31,6 +31,33 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .toolbar-right { font-size: 12px; color: #888; white-space: nowrap; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.scan-btn { font-size: 12px; padding: 5px 11px; border: 1px solid #2f4339; border-radius: 7px; background: #fff; color: #2f4339; cursor: pointer; font-family: inherit; font-weight: 600; white-space: nowrap; }
+.scan-btn:hover { background: #eef5ef; }
+.scan-btn.active { background: #2f4339; color: #fff; }
+.scan-btn.review { border-color: #d7a34c; background: #fff8e8; color: #8a5700; }
+.scan-panel { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 13px; margin: -4px 0 14px; padding: 11px; border: 1px solid #c7cfc4; border-radius: 9px; background: #f7faf6; }
+.scan-panel[hidden] { display: none; }
+.scan-panel.review-mode { grid-template-columns: 1fr; }
+.scan-panel.review-mode .scan-camera { display: none; }
+.scan-panel.review-mode .scan-stop { display: none; }
+.scan-camera { position: relative; height: 128px; overflow: hidden; border-radius: 7px; background: #18201c; }
+.scan-camera video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-guide { position: absolute; inset: 29% 8%; border: 2px solid rgba(255,255,255,.9); border-radius: 5px; box-shadow: 0 0 0 999px rgba(0,0,0,.2); pointer-events: none; }
+.scan-info { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.scan-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.scan-title { font-size: 13px; font-weight: 600; color: #2f4339; }
+.scan-stop { font: inherit; font-size: 11px; padding: 3px 8px; border: 1px solid #c7cfc4; border-radius: 5px; background: #fff; color: #666; cursor: pointer; }
+.scan-status { font-size: 14px; color: #444; line-height: 1.35; }
+.scan-status.ok { color: #2d7a3a; font-weight: 600; }
+.scan-status.warn { color: #b66d00; font-weight: 600; }
+.scan-status.err { color: #c62828; font-weight: 600; }
+.scan-next { font-size: 12px; color: #777; }
+.scan-choice { display: flex; flex-wrap: wrap; gap: 6px; }
+.scan-choice button { font: inherit; font-size: 11px; padding: 5px 8px; border: 1px solid #b9c5b8; border-radius: 5px; background: #fff; color: #2f4339; cursor: pointer; text-align: left; }
+.scan-choice button:hover { background: #eef5ef; }
+.scan-debug { display: none; align-items: center; gap: 5px; margin-top: auto; }
+.scan-debug input { min-width: 0; width: 180px; font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid #d9dfd6; border-radius: 5px; }
+.scan-debug button { font: inherit; font-size: 11px; padding: 4px 7px; border: 1px solid #c7cfc4; border-radius: 5px; background: #fff; color: #555; cursor: pointer; }
 .parts-count { font-size: 12px; color: #2d7a3a; font-weight: 500; }
 .stat-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c0c0c0; vertical-align: middle; }
 .stat-dot.ok { background: #2d7a3a; }
@@ -411,13 +438,15 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .sum-row.total .sum-val { font-size: 20px; }
   .actions { gap: 8px; }
   .btn-clear, .btn-print { flex: 1; text-align: center; padding: 10px; font-size: 14px; }
+  .scan-panel { grid-template-columns: 1fr; }
+  .scan-camera { height: 170px; }
 }
 .print-header { display: none; }
 .print-titlerow { display: none; }
 @media print {
   body { background: #fff; padding: 0; zoom: 1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .wrap { border: none; border-radius: 0; padding: 1.2rem; max-width: 100%; }
-  .toolbar, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, #printBanner, .doc-screen-title, .bottom-actions { display: none !important; }
+  .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, #printBanner, .doc-screen-title, .bottom-actions { display: none !important; }
   .qty-input { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; border: none; background: transparent; font-size: 14px; padding: 0; pointer-events: none; width: auto; text-align: center; color: #000 !important; -webkit-text-fill-color: #000 !important; }
   .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .part-input { border: none; background: transparent; font-size: 14px; font-weight: 500; padding: 0; pointer-events: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
@@ -575,6 +604,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="quote" onclick="setDocType('quote')">Quote</button>
         <button class="doc-type-btn" data-doc="internal" onclick="setDocType('internal')">Internal</button>
       </div>
+      <button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button>
       <span style="display:none">
         <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="internalPrintBtn"></button><button id="cardFeeBtn"></button>
       </span>
@@ -611,6 +641,26 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark mode">☾</button>
       </div>
       <div id="docScreenTitle" class="doc-screen-title"></div>
+    </div>
+  </div>
+
+  <div class="scan-panel" id="scanPanel" hidden>
+    <div class="scan-camera">
+      <video id="scanVideo" playsinline muted></video>
+      <div class="scan-guide" aria-hidden="true"></div>
+    </div>
+    <div class="scan-info">
+      <div class="scan-head">
+        <div class="scan-title">Continuous scanner</div>
+        <button class="scan-stop" type="button" onclick="stopScanner()">Stop</button>
+      </div>
+      <div class="scan-status" id="scanStatus">Starting camera…</div>
+      <div class="scan-next" id="scanNext"></div>
+      <div class="scan-choice" id="scanChoice"></div>
+      <form class="scan-debug" id="scanDebug" onsubmit="submitScannerTest(event)">
+        <input id="scanDebugCode" type="text" placeholder="Test barcode value" autocomplete="off">
+        <button type="submit">Test</button>
+      </form>
     </div>
   </div>
 
@@ -806,6 +856,7 @@ const DB_KEY_JSON = 'posJsonGz';   // Stage 4: cached POS JSON feed (raw gzip by
 const DB_KEY_SALES = 'posSaleRules'; // Last verified seasonal-sale config, independent of parts format
 let partsArray = [];
 let saleRules = [];
+let partCodeMap = {};
 let loaded = false;
 let tokenClient = null;
 let _pendingAction = null; // action to fire after sign-in completes
@@ -815,8 +866,10 @@ const tbody = document.getElementById('searchRows');
 
 // ─── GOOGLE AUTH ───────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
-  // Always load cached parts immediately
-  tryLoadFromDB();
+  // Local scanner testing uses the current server feed directly. GitHub Pages
+  // keeps the existing instant-cache + Drive refresh path.
+  if (isLocalPos()) loadLocalPosFeed();
+  else tryLoadFromDB();
   // Init token client then silently re-auth if previously signed in
   if (window.google) initTokenClient();
   else document.querySelector('script[src*="accounts.google.com"]')
@@ -826,10 +879,18 @@ window.addEventListener('load', () => {
   if (!host || host === 'localhost' || host === '127.0.0.1') {
     const btn = document.getElementById('loadFileBtn');
     if (btn) btn.style.display = '';
+    if (new URLSearchParams(location.search).get('scannerTest') === '1') {
+      const debug = document.getElementById('scanDebug');
+      if (debug) debug.style.display = 'flex';
+    }
   }
   updatePriceChangesBadge();
   refreshStatusUI();
 });
+
+function isLocalPos() {
+  return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+}
 
 function initTokenClient() {
   tokenClient = google.accounts.oauth2.initTokenClient({
@@ -855,6 +916,7 @@ function initTokenClient() {
       scheduleTokenRefresh();
       fetchFromDrive();
       syncCustomersFromSheet();
+      flushPendingPartCodes();
       flushUnpushedTxns();   // auto-sync any transactions saved locally while signed out
       if (_pendingAction) { const fn = _pendingAction; _pendingAction = null; fn(); }
     }
@@ -872,6 +934,7 @@ function initTokenClient() {
       scheduleTokenRefresh();
       fetchFromDrive();
       syncCustomersFromSheet();
+      flushPendingPartCodes();
     }
     // If no session token, user clicks Refresh to re-auth with one popup
   }
@@ -1211,6 +1274,11 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   // A successful current feed is authoritative. Missing/invalid rules mean no
   // automatic sale, never "keep yesterday's sale" in memory.
   saleRules = normalizeSaleRules(feed.sales);
+  partCodeMap = feed.codes && typeof feed.codes === 'object' ? feed.codes : {};
+  for (const [code, pn] of Object.entries(partCodeLearned)) {
+    const key = canonicalScannedCode(code);
+    if (key && pn) partCodeMap[key] = normalizePN(pn);
+  }
   partsArray = parts;
   loaded = true;
   warmUpSearch();
@@ -1218,6 +1286,19 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   if (pc) { pc.textContent = partsArray.length.toLocaleString() + ' parts loaded'; pc.style.color = '#2d7a3a'; }
   refreshStatusUI();
   return feed;
+}
+
+async function loadLocalPosFeed() {
+  try {
+    const feedUrl = location.port === '8765' ? '/pos-data' : 'http://localhost:8765/pos-data';
+    const resp = await fetch(feedUrl);
+    if (!resp.ok) throw new Error(`POS feed ${resp.status}`);
+    const ab = await resp.arrayBuffer();
+    await loadPosJsonBytes(ab, 'local');
+  } catch (e) {
+    console.warn('Local POS feed unavailable:', e.message);
+    tryLoadFromDB();
+  }
 }
 
 // Fetch the JSON feed from its Drive file. Returns true only on full success; returns
@@ -1408,6 +1489,526 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
 // ─── SEARCH UI ─────────────────────────────────────────────────────────────
 function normalizePN(pn) {
   return String(pn || '').replace(/[\s\-\.]/g, '').toUpperCase().trim();
+}
+
+// ─── CONTINUOUS BARCODE SCANNER ───────────────────────────────────────────
+// One camera start serves the whole sale: every good scan fills the first empty
+// product row, creates another row when needed, and immediately rearms.
+let scanDetector = null;
+let scanStream = null;
+let scanTimer = null;
+let scanActive = false;
+let scanDetectBusy = false;
+let scanStartVersion = 0;
+let scanIssues = new Map();
+let scanAudioContext = null;
+let scanLastValue = '';
+let scanLastAt = 0;
+let scanAbsentFrames = 0;
+let scanStatusVersion = 0;
+let hardwareScanBuffer = '';
+let hardwareScanStartedAt = 0;
+let hardwareScanLastAt = 0;
+let hardwareScanOrigin = null;
+const PART_CODES_SHEET = 'Codes';
+const PART_CODES_SHEET_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Added'];
+const PART_CODES_PENDING_KEY = 'mpePartCodePending';
+const PART_CODES_LEARNED_KEY = 'mpePartCodeLearned';
+let partCodePending = [];
+let partCodeLearned = {};
+let partCodesSheetEnsured = false;
+let partCodeFlushPromise = null;
+try { partCodePending = JSON.parse(localStorage.getItem(PART_CODES_PENDING_KEY) || '[]') || []; }
+catch (e) { partCodePending = []; }
+try { partCodeLearned = JSON.parse(localStorage.getItem(PART_CODES_LEARNED_KEY) || '{}') || {}; }
+catch (e) { partCodeLearned = {}; }
+for (const item of partCodePending) {
+  const key = canonicalScannedCode(item?.code);
+  if (key && item?.pn) partCodeLearned[key] = normalizePN(item.pn);
+}
+persistLearnedPartCodes();
+
+function persistPendingPartCodes() {
+  try { localStorage.setItem(PART_CODES_PENDING_KEY, JSON.stringify(partCodePending)); } catch (e) {}
+}
+
+function persistLearnedPartCodes() {
+  try { localStorage.setItem(PART_CODES_LEARNED_KEY, JSON.stringify(partCodeLearned)); } catch (e) {}
+}
+
+function queuePartCodeBinding(issue, part) {
+  const code = canonicalScannedCode(issue?.rawValue);
+  const pn = String(part?.pn || part?.og || '').trim();
+  if (!code || !pn) return;
+  const record = {
+    code,
+    pn,
+    format: String(issue?.format || ''),
+    source: 'pos',
+    added: new Date().toISOString()
+  };
+  const existing = partCodePending.findIndex(item => canonicalScannedCode(item.code) === code);
+  if (existing >= 0) partCodePending[existing] = record;
+  else partCodePending.push(record);
+  persistPendingPartCodes();
+  partCodeLearned[code] = normalizePN(pn);
+  persistLearnedPartCodes();
+  partCodeMap[code] = normalizePN(pn);
+  flushPendingPartCodes();
+}
+
+function updateScanButton() {
+  const button = document.getElementById('scanBtn');
+  if (!button) return;
+  button.classList.toggle('active', scanActive);
+  button.classList.toggle('review', !scanActive && scanIssues.size > 0);
+  button.textContent = scanActive ? 'Scanning…' : scanIssues.size ? `Review scans (${scanIssues.size})` : 'Scan items';
+}
+
+function canonicalScannedCode(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  if (/^\d+$/.test(s) && s.length <= 14) return s.padStart(14, '0');
+  return s.toUpperCase();
+}
+
+function uniqueScanParts(parts) {
+  const seen = new Set();
+  return parts.filter(part => {
+    const key = [normalizePN(part.pn), normalizePN(part.og), String(part.make || '').toUpperCase(), String(part.desc || '').toUpperCase()].join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function exactScanParts(value) {
+  const key = normalizePN(value);
+  if (!key || !loaded) return [];
+  return uniqueScanParts(searchParts(String(value)).filter(part =>
+    normalizePN(part.pn) === key ||
+    normalizePN(part.og) === key ||
+    normalizePN(part._supersededFrom) === key
+  ));
+}
+
+function resolveScannedValue(rawValue) {
+  const code = canonicalScannedCode(rawValue);
+  const mappedPN = code ? partCodeMap[code] : '';
+  // An imported or counter-bound barcode is authoritative. Direct matching is
+  // for Code 128 / similar labels whose decoded text is the part number itself.
+  const candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
+  return { code, mappedPN, candidates };
+}
+
+function firstOpenScanRow() {
+  for (let i = 0; i < NUM_ROWS; i++) {
+    const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+    if (input && !input.dataset.partPn && !input.value.trim()) return i;
+  }
+  const i = NUM_ROWS;
+  addRow();
+  ensureScannerMobileRow(i);
+  return i;
+}
+
+function ensureScannerMobileRow(i) {
+  const container = document.getElementById('mobileRows');
+  if (!container || container.querySelector(`.mobile-row[data-row="${i}"]`)) return;
+  const div = document.createElement('div');
+  div.className = 'mobile-row';
+  div.dataset.row = i;
+  div.innerHTML = `
+    <div class="mobile-search-wrap">
+      <input class="mobile-part-input part-input" type="text" inputmode="search" placeholder="Product" data-row="${i}" autocomplete="off" autocorrect="off" spellcheck="false">
+      <span class="supersede-mark" id="msupmark-${i}" aria-hidden="true">*</span>
+      <div class="dropdown" id="mdd-${i}"></div>
+    </div>
+    <div class="mobile-desc empty" id="mdesc-${i}">Description</div>
+    <div class="mobile-bottom">
+      <span class="mobile-make" id="mmake-${i}"></span>
+      <span class="mobile-price" id="mprice-${i}" data-price=""></span>
+      <button type="button" class="mobile-discount-btn" data-row="${i}" style="display:none">$ off</button>
+      <div class="mobile-x-qty"><span class="mobile-qty-sym">×</span><input class="mobile-qty qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="mqty-${i}"></div>
+      <span class="mobile-discount-total" id="mdiscount-total-${i}"></span>
+      <span class="mobile-sub" id="msub-${i}"></span>
+      <span class="mobile-clear" data-row="${i}">×</span>
+    </div>
+    <div class="mobile-discount-editor" id="mdiscount-${i}">
+      <label>Off each</label><input class="discount-money" data-row="${i}" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off">
+      <button type="button" class="mobile-discount-apply" data-row="${i}">Apply</button><button type="button" class="mobile-discount-remove" data-row="${i}">Cancel</button>
+    </div>`;
+  container.appendChild(div);
+  div.querySelector('.part-input').addEventListener('keydown', onMobileKeydown);
+}
+
+function setScanStatus(message, state) {
+  const el = document.getElementById('scanStatus');
+  if (!el) return;
+  el.textContent = message;
+  el.className = 'scan-status' + (state ? ` ${state}` : '');
+}
+
+function updateScanNext() {
+  const el = document.getElementById('scanNext');
+  if (!el) return;
+  const row = firstOpenScanRow();
+  const review = scanIssues.size ? ` · ${scanIssues.size} to review later` : '';
+  el.textContent = `Next scan fills row ${row + 1}${review}`;
+}
+
+function clearScanChoices() {
+  const el = document.getElementById('scanChoice');
+  if (el) el.replaceChildren();
+}
+
+function prepareScanAudio() {
+  try {
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (!scanAudioContext && AudioCtor) scanAudioContext = new AudioCtor();
+    if (scanAudioContext?.state === 'suspended') scanAudioContext.resume();
+  } catch (e) {}
+}
+
+function playScanBeep(needsReview) {
+  try {
+    prepareScanAudio();
+    if (!scanAudioContext) return;
+    const tone = (start, duration, frequency) => {
+      const oscillator = scanAudioContext.createOscillator();
+      const gain = scanAudioContext.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      oscillator.connect(gain).connect(scanAudioContext.destination);
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.01);
+    };
+    const now = scanAudioContext.currentTime;
+    if (needsReview) {
+      tone(now, 0.07, 620);
+      tone(now + 0.10, 0.08, 430);
+    } else {
+      tone(now, 0.085, 1050);
+    }
+  } catch (e) {}
+}
+
+function addEmptyRowAfterScan(row) {
+  if (row !== NUM_ROWS - 1) return;
+  addRow();
+  ensureScannerMobileRow(NUM_ROWS - 1);
+}
+
+function fillScannedPart(part, requestedRow) {
+  const row = Number.isInteger(requestedRow) ? requestedRow : firstOpenScanRow();
+  ensureScannerMobileRow(row);
+  applyMobilePart(row, part);
+  addEmptyRowAfterScan(row);
+  const version = ++scanStatusVersion;
+  setScanStatus(`Added ${part.og || part.pn} — ${part.desc || ''}`, 'ok');
+  updateScanNext();
+  updateScanButton();
+  setTimeout(() => {
+    if (scanActive && scanStatusVersion === version)
+      setScanStatus('Ready — scan the next item');
+  }, 900);
+}
+
+function saveScanForReview(rawValue, format, candidates) {
+  const row = firstOpenScanRow();
+  ensureScannerMobileRow(row);
+  scanIssues.set(row, { rawValue, format: format || '', candidates });
+  const input = tbody.querySelector(`[data-row="${row}"].part-input`);
+  if (input) {
+    input.value = rawValue;
+    input.className = 'part-input no-match';
+    input.readOnly = false;
+    input.dataset.scanIssue = '1';
+  }
+  const desc = document.getElementById(`desc-${row}`);
+  if (desc) {
+    desc.textContent = candidates.length ? 'Needs review — multiple parts match' : 'Needs part — barcode saved';
+    desc.className = 'not-found';
+  }
+  const mobileInput = document.querySelector(`#mobileRows [data-row="${row}"].part-input`);
+  if (mobileInput) {
+    mobileInput.value = rawValue;
+    mobileInput.className = 'mobile-part-input part-input no-match';
+    mobileInput.dataset.scanIssue = '1';
+  }
+  const mobileDesc = document.getElementById(`mdesc-${row}`);
+  if (mobileDesc) {
+    mobileDesc.textContent = candidates.length ? 'Needs review — multiple parts match' : 'Needs part — barcode saved';
+    mobileDesc.className = 'mobile-desc not-found';
+  }
+  addEmptyRowAfterScan(row);
+  ++scanStatusVersion;
+  setScanStatus(`Saved row ${row + 1} for review — keep scanning`, 'warn');
+  updateScanNext();
+  updateScanButton();
+}
+
+function focusScanIssue(row) {
+  const input = tbody.querySelector(`[data-row="${row}"].part-input`);
+  if (!input) return;
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => { input.focus(); input.select(); }, 250);
+}
+
+function chooseScanIssue(row, index) {
+  const issue = scanIssues.get(row);
+  const part = issue?.candidates?.[index];
+  if (!part) return;
+  fillScannedPart(part, row);
+  if (!scanActive) setTimeout(showNextScanIssue, 150);
+}
+
+function showNextScanIssue(preferredRow) {
+  const panel = document.getElementById('scanPanel');
+  panel.hidden = false;
+  panel.classList.add('review-mode');
+  clearScanChoices();
+  if (!scanIssues.size) {
+    setScanStatus('All scanned rows are matched', 'ok');
+    const next = document.getElementById('scanNext');
+    if (next) next.textContent = 'Ready to print or start scanning again';
+    return;
+  }
+  const row = scanIssues.has(preferredRow) ? preferredRow : scanIssues.keys().next().value;
+  const issue = scanIssues.get(row);
+  const choices = document.getElementById('scanChoice');
+  setScanStatus(`Review row ${row + 1}: ${issue.rawValue}`, 'warn');
+  if (issue.candidates.length) {
+    issue.candidates.forEach((part, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = `${part.og || part.pn} · ${part.make || 'No make'} · ${part.desc || ''}`;
+      button.addEventListener('click', () => chooseScanIssue(row, index));
+      choices.appendChild(button);
+    });
+  }
+  const typeButton = document.createElement('button');
+  typeButton.type = 'button';
+  typeButton.textContent = issue.candidates.length ? 'Search for a different part' : 'Type the part number';
+  typeButton.addEventListener('click', () => focusScanIssue(row));
+  choices.appendChild(typeButton);
+  const next = document.getElementById('scanNext');
+  if (next) next.textContent = `${scanIssues.size} row${scanIssues.size === 1 ? '' : 's'} still need review`;
+}
+
+function acceptDecodedScan(rawValue, format) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return;
+  if (!loaded) {
+    playScanBeep(true);
+    setScanStatus('Parts are still loading — try again in a moment', 'err');
+    return;
+  }
+  const result = resolveScannedValue(raw);
+  const needsReview = result.candidates.length !== 1;
+  playScanBeep(needsReview);
+  if (!needsReview) fillScannedPart(result.candidates[0]);
+  else saveScanForReview(raw, format, result.candidates);
+}
+
+// USB, Bluetooth HID, and 2.4 GHz dongle scanners type very quickly and finish
+// with Enter. Capture that burst anywhere on the page, restore any field that
+// happened to have focus, and send the decoded value through the camera's exact
+// same row-filling path. Ordinary typing is too slow to qualify.
+function snapshotHardwareScanOrigin(target) {
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    return { kind: 'value', element: target, value: target.value, start: target.selectionStart, end: target.selectionEnd };
+  }
+  if (target instanceof HTMLSelectElement) {
+    return { kind: 'select', element: target, selectedIndex: target.selectedIndex };
+  }
+  const editable = target?.closest?.('[contenteditable="true"]');
+  if (editable) return { kind: 'html', element: editable, html: editable.innerHTML };
+  return null;
+}
+
+function restoreHardwareScanOrigin(origin) {
+  const element = origin?.element;
+  if (!element?.isConnected) return;
+  if (origin.kind === 'value') {
+    element.value = origin.value;
+    if (typeof origin.start === 'number') {
+      try { element.setSelectionRange(origin.start, origin.end); } catch (e) {}
+    }
+  } else if (origin.kind === 'select') {
+    element.selectedIndex = origin.selectedIndex;
+  } else if (origin.kind === 'html') {
+    element.innerHTML = origin.html;
+  }
+}
+
+function resetHardwareScanCapture() {
+  hardwareScanBuffer = '';
+  hardwareScanStartedAt = 0;
+  hardwareScanLastAt = 0;
+  hardwareScanOrigin = null;
+}
+
+function onHardwareScanKeydown(event) {
+  if (event.defaultPrevented || event.isComposing || event.repeat || event.ctrlKey || event.metaKey || event.altKey) {
+    resetHardwareScanCapture();
+    return;
+  }
+  const now = performance.now();
+  if (event.key === 'Enter') {
+    const value = hardwareScanBuffer;
+    const origin = hardwareScanOrigin;
+    const elapsed = hardwareScanLastAt - hardwareScanStartedAt;
+    const averageGap = elapsed / Math.max(1, value.length - 1);
+    const scannerLike = value.length >= 4 && now - hardwareScanLastAt <= 140 && elapsed <= 1500 && averageGap <= 70;
+    resetHardwareScanCapture();
+    if (!scannerLike) return;
+    event.preventDefault();
+    event.stopPropagation();
+    restoreHardwareScanOrigin(origin);
+    closeAllDropdowns();
+    acceptDecodedScan(value, 'hardware');
+    return;
+  }
+  if (event.key.length !== 1) {
+    if (now - hardwareScanLastAt > 140) resetHardwareScanCapture();
+    return;
+  }
+  if (!hardwareScanBuffer || now - hardwareScanLastAt > 140) {
+    hardwareScanBuffer = event.key;
+    hardwareScanStartedAt = now;
+    hardwareScanOrigin = snapshotHardwareScanOrigin(event.target);
+  } else {
+    hardwareScanBuffer += event.key;
+  }
+  hardwareScanLastAt = now;
+}
+
+document.addEventListener('keydown', onHardwareScanKeydown, true);
+
+async function scanCameraFrame() {
+  if (!scanActive) return;
+  const video = document.getElementById('scanVideo');
+  if (!scanDetectBusy && video?.readyState >= 2) {
+    scanDetectBusy = true;
+    try {
+      const found = await scanDetector.detect(video);
+      const values = [...new Map(found.map(item => [String(item.rawValue || '').trim(), item])).values()].filter(item => item.rawValue);
+      if (!values.length) {
+        scanAbsentFrames++;
+        if (scanAbsentFrames >= 3) scanLastValue = '';
+      } else {
+        scanAbsentFrames = 0;
+        // If several symbols are visible, prefer the sole one that resolves to a
+        // part. Otherwise the detector's first (normally the aimed-at) symbol wins.
+        const resolved = values.filter(item => resolveScannedValue(item.rawValue).candidates.length === 1);
+        const item = resolved.length === 1 ? resolved[0] : values[0];
+        const now = Date.now();
+        const isNew = item.rawValue !== scanLastValue;
+        if ((isNew && now - scanLastAt > 350) || !scanLastValue) {
+          scanLastValue = item.rawValue;
+          scanLastAt = now;
+          acceptDecodedScan(item.rawValue, item.format);
+        }
+      }
+    } catch (e) {
+      if (scanActive) setScanStatus(`Camera scan error: ${e.message}`, 'err');
+    } finally {
+      scanDetectBusy = false;
+    }
+  }
+  if (scanActive) scanTimer = setTimeout(scanCameraFrame, 90);
+}
+
+async function startScanner() {
+  const startVersion = ++scanStartVersion;
+  const panel = document.getElementById('scanPanel');
+  const button = document.getElementById('scanBtn');
+  panel.hidden = false;
+  panel.classList.remove('review-mode');
+  clearScanChoices();
+  updateScanNext();
+  setScanStatus('Starting camera…');
+  prepareScanAudio();
+  if (!('BarcodeDetector' in window)) {
+    setScanStatus('This browser does not support fast barcode scanning', 'err');
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setScanStatus('Camera access is not available in this browser', 'err');
+    return;
+  }
+  try {
+    const wanted = ['code_128', 'code_39', 'codabar', 'data_matrix', 'ean_13', 'ean_8', 'itf', 'qr_code', 'upc_a', 'upc_e'];
+    const supported = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : wanted;
+    const formats = wanted.filter(format => supported.includes(format));
+    scanDetector = formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    if (startVersion !== scanStartVersion) {
+      scanStream.getTracks().forEach(track => track.stop());
+      scanStream = null;
+      return;
+    }
+    const video = document.getElementById('scanVideo');
+    video.srcObject = scanStream;
+    await video.play();
+    scanActive = true;
+    scanLastValue = '';
+    scanAbsentFrames = 0;
+    updateScanButton();
+    setScanStatus('Ready — scan the first item');
+    scanCameraFrame();
+  } catch (e) {
+    if (startVersion !== scanStartVersion) return;
+    stopScanner(false);
+    panel.hidden = false;
+    setScanStatus(e.name === 'NotAllowedError' ? 'Camera permission was not allowed' : `Could not start camera: ${e.message}`, 'err');
+  }
+}
+
+function stopScanner(hidePanel = true) {
+  scanStartVersion++;
+  scanActive = false;
+  scanDetectBusy = false;
+  if (scanTimer) clearTimeout(scanTimer);
+  scanTimer = null;
+  if (scanStream) scanStream.getTracks().forEach(track => track.stop());
+  scanStream = null;
+  const video = document.getElementById('scanVideo');
+  if (video) video.srcObject = null;
+  const button = document.getElementById('scanBtn');
+  updateScanButton();
+  clearScanChoices();
+  const panel = document.getElementById('scanPanel');
+  if (scanIssues.size) showNextScanIssue();
+  else if (hidePanel) panel.hidden = true;
+}
+
+function toggleScanner() {
+  if (scanActive) stopScanner();
+  else if (scanIssues.size) showNextScanIssue();
+  else startScanner();
+}
+
+function submitScannerTest(event) {
+  event.preventDefault();
+  const input = document.getElementById('scanDebugCode');
+  const value = input.value.trim();
+  if (!value) return;
+  if (new URLSearchParams(location.search).get('hardwareTest') === '1') {
+    const target = document.activeElement instanceof HTMLElement ? document.activeElement : document;
+    for (const key of value) target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  } else {
+    acceptDecodedScan(value, 'test');
+  }
+  input.value = '';
 }
 
 function normalizeSaleRules(rules) {
@@ -2324,7 +2925,60 @@ async function sheetsAppend(range, rows) {
     try { const j = await resp.json(); msg = j.error?.message || msg; } catch {}
     throw new Error(msg);
   }
-  return true;
+  return await resp.json();
+}
+
+async function ensurePartCodesSheet() {
+  if (partCodesSheetEnsured) return;
+  let exists = false;
+  try {
+    await getSheetNumericId(PART_CODES_SHEET);
+    exists = true;
+  } catch (e) {}
+  if (!exists) {
+    await sheetsBatchUpdate([{ addSheet: { properties: { title: PART_CODES_SHEET } } }]);
+  }
+  let header = await sheetsGet(`${PART_CODES_SHEET}!A1:E1`);
+  if (!header.length || !header[0]?.some(value => String(value || '').trim())) {
+    await sheetsUpdate(`${PART_CODES_SHEET}!A1`, [PART_CODES_SHEET_HEADER]);
+    header = await sheetsGet(`${PART_CODES_SHEET}!A1:E1`);
+  }
+  if (!header.length || PART_CODES_SHEET_HEADER.some((value, i) => header[0]?.[i] !== value)) {
+    throw new Error('Codes sheet header could not be verified');
+  }
+  partCodesSheetEnsured = true;
+}
+
+async function _flushPendingPartCodes() {
+  if (!partCodePending.length) return;
+  if (!(accessToken || localStorage.getItem('gToken'))) return;
+  try {
+    await ensurePartCodesSheet();
+    while (partCodePending.length) {
+      const batch = partCodePending.slice();
+      const rows = batch.map(item => [item.code, item.pn, item.format, item.source, item.added]);
+      const result = await sheetsAppend(`${PART_CODES_SHEET}!A1`, rows);
+      if (!result) return;
+      const writtenRange = result?.updates?.updatedRange;
+      if (!writtenRange) throw new Error('Codes append returned no range to verify');
+      const writtenRows = await sheetsGet(writtenRange);
+      const confirmed = new Set(writtenRows.map(row =>
+        `${canonicalScannedCode(row[0])}|${normalizePN(row[1])}`));
+      const missing = batch.find(item =>
+        !confirmed.has(`${canonicalScannedCode(item.code)}|${normalizePN(item.pn)}`));
+      if (missing) throw new Error(`Code ${missing.code} was not found after append`);
+      partCodePending = partCodePending.slice(batch.length);
+      persistPendingPartCodes();
+    }
+  } catch (e) {
+    console.warn('Code binding sync deferred:', e.message);
+  }
+}
+
+function flushPendingPartCodes() {
+  if (partCodeFlushPromise) return partCodeFlushPromise;
+  partCodeFlushPromise = _flushPendingPartCodes().finally(() => { partCodeFlushPromise = null; });
+  return partCodeFlushPromise;
 }
 
 // Quietly push transactions saved locally while signed out (e.g. printed/emailed
@@ -3159,6 +3813,11 @@ function updateSNFields(i) {
 
 function applyPart(i, part, options) {
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+  const correctedScanIssue = scanIssues.get(i);
+  scanIssues.delete(i);
+  delete input.dataset.scanIssue;
+  const mobileIssueInput = document.querySelector(`#mobileRows [data-row="${i}"].part-input`);
+  if (mobileIssueInput) delete mobileIssueInput.dataset.scanIssue;
   const other = isOtherPart(part);
   input.className = 'part-input matched' + (part._supersededFrom ? ' superseded' : '');
   const supMark = document.getElementById(`supmark-${i}`);
@@ -3258,6 +3917,12 @@ function applyPart(i, part, options) {
   updateSubtotal(i); updateSummary();
   if (i === NUM_ROWS - 1 && !options?.skipAddRow) addRow();
   if (other && !options?.skipFocus) setTimeout(() => { input.focus(); input.select(); }, 0);
+  if (correctedScanIssue) {
+    queuePartCodeBinding(correctedScanIssue, part);
+    updateScanNext();
+    updateScanButton();
+    if (!scanActive) setTimeout(showNextScanIssue, 0);
+  }
 }
 
 function clearRowData(i) {
@@ -3288,6 +3953,7 @@ function clearRowData(i) {
 }
 
 function clearRow(i) {
+  const removedScanIssue = scanIssues.delete(i);
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (input) { input.value = ''; input.className = 'part-input'; input.readOnly = false; input.style.color = ''; input.style.fontStyle = ''; }
   const qEl = document.getElementById(`qty-${i}`);
@@ -3295,6 +3961,11 @@ function clearRow(i) {
   clearPriceChange(i);
   clearDescChange(i);
   clearRowData(i); closeAllDropdowns();
+  if (removedScanIssue) {
+    updateScanNext();
+    updateScanButton();
+    if (!scanActive) setTimeout(showNextScanIssue, 0);
+  }
 }
 
 function closeAllDropdowns() { document.querySelectorAll('.dropdown').forEach(d => { d.classList.remove('open'); d.style.width = ''; }); }
@@ -3408,6 +4079,9 @@ function updateSummary() {
 function clearAll() {
   discountControlsEnabled = false;
   NOTE_COUNT = 0;
+  scanIssues.clear();
+  clearScanChoices();
+  updateScanButton();
   tbody.querySelectorAll('[data-note-row]').forEach(tr => tr.remove());
   NUM_ROWS = 3; buildRows(); buildMobileRows(); updateSummary();
   clearCustFields();
