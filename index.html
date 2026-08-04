@@ -1497,7 +1497,7 @@ function normalizePN(pn) {
 let scanDetector = null;
 let scanStream = null;
 let scanTimer = null;
-let scanFallbackReader = null;
+let scanFallbackDetector = null;
 let scanFallbackLoadPromise = null;
 let scanFallbackCanvas = null;
 let scanFallbackAngleIndex = 0;
@@ -1907,16 +1907,36 @@ function acceptCameraDecodedValue(rawValue, format) {
   }
 }
 
-function loadZxingScanner() {
-  if (window.ZXingBrowser?.BrowserMultiFormatReader) return Promise.resolve(window.ZXingBrowser);
+function loadWindowsBarcodeDetector() {
   if (scanFallbackLoadPromise) return scanFallbackLoadPromise;
   scanFallbackLoadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = new URL('zxing-browser.min.js', location.href).href;
-    script.onload = () => {
-      if (window.ZXingBrowser?.BrowserMultiFormatReader) resolve(window.ZXingBrowser);
-      else reject(new Error('camera decoder did not initialize'));
+    const initialize = async () => {
+      const api = window.BarcodeDetectionAPI;
+      if (!api?.BarcodeDetector || !api?.prepareZXingModule) {
+        reject(new Error('camera decoder did not initialize'));
+        return;
+      }
+      try {
+        await api.prepareZXingModule({
+          overrides: {
+            locateFile: path => path.endsWith('.wasm')
+              ? new URL('zxing_reader.wasm', location.href).href
+              : path
+          },
+          fireImmediately: true
+        });
+        resolve(api);
+      } catch (error) {
+        reject(error);
+      }
     };
+    if (window.BarcodeDetectionAPI?.BarcodeDetector) {
+      initialize();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = new URL('barcode-detector-ponyfill.js', location.href).href;
+    script.onload = initialize;
     script.onerror = () => reject(new Error('camera decoder could not load'));
     document.head.appendChild(script);
   }).catch(error => {
@@ -1954,7 +1974,7 @@ async function scanCameraFrame() {
   if (scanActive) scanTimer = setTimeout(scanCameraFrame, 90);
 }
 
-function scanFallbackCameraFrame() {
+async function scanFallbackCameraFrame() {
   if (!scanActive) return;
   const video = document.getElementById('scanVideo');
   if (!scanDetectBusy && video?.readyState >= 2) {
@@ -1975,8 +1995,13 @@ function scanFallbackCameraFrame() {
       context.translate(width / 2, height / 2);
       context.rotate(angle * Math.PI / 180);
       context.drawImage(video, -width / 2, -height / 2, width, height);
-      const result = scanFallbackReader.decodeFromCanvas(scanFallbackCanvas);
-      acceptCameraDecodedValue(result.getText(), 'zxing');
+      const found = await scanFallbackDetector.detect(scanFallbackCanvas);
+      if (!scanActive) return;
+      if (found.length) acceptCameraDecodedValue(found[0].rawValue, found[0].format || 'zxing-wasm');
+      else {
+        scanAbsentFrames++;
+        if (scanAbsentFrames >= FALLBACK_SCAN_ANGLES.length) scanLastValue = '';
+      }
     } catch (error) {
       scanAbsentFrames++;
       if (scanAbsentFrames >= FALLBACK_SCAN_ANGLES.length) scanLastValue = '';
@@ -1986,6 +2011,17 @@ function scanFallbackCameraFrame() {
     }
   }
   if (scanActive) scanTimer = setTimeout(scanFallbackCameraFrame, 45);
+}
+
+async function optimizeWindowsScanCamera(stream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track?.getCapabilities || !track.applyConstraints) return;
+  try {
+    const capabilities = track.getCapabilities();
+    if (capabilities.focusMode?.includes('continuous')) {
+      await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+    }
+  } catch (error) {}
 }
 
 async function startScanner() {
@@ -2029,28 +2065,14 @@ async function startScanner() {
       scanCameraFrame();
     } else {
       setScanStatus('Loading camera scanner…');
-      const ZXingBrowser = await loadZxingScanner();
+      const BarcodeDetectionAPI = await loadWindowsBarcodeDetector();
       if (startVersion !== scanStartVersion) return;
-      // The UMD build does not export DecodeHintType: 2 is POSSIBLE_FORMATS
-      // and 3 is TRY_HARDER in this pinned ZXing release.
-      const hints = new Map();
-      hints.set(2, [
-        ZXingBrowser.BarcodeFormat.CODE_128,
-        ZXingBrowser.BarcodeFormat.CODE_39,
-        ZXingBrowser.BarcodeFormat.CODABAR,
-        ZXingBrowser.BarcodeFormat.DATA_MATRIX,
-        ZXingBrowser.BarcodeFormat.EAN_13,
-        ZXingBrowser.BarcodeFormat.EAN_8,
-        ZXingBrowser.BarcodeFormat.ITF,
-        ZXingBrowser.BarcodeFormat.QR_CODE,
-        ZXingBrowser.BarcodeFormat.UPC_A,
-        ZXingBrowser.BarcodeFormat.UPC_E
-      ]);
-      hints.set(3, true);
       const video = document.getElementById('scanVideo');
-      scanFallbackReader = new ZXingBrowser.BrowserMultiFormatReader(hints);
+      scanFallbackDetector = new BarcodeDetectionAPI.BarcodeDetector({
+        formats: ['code_128', 'code_39', 'codabar', 'data_matrix', 'ean_13', 'ean_8', 'itf', 'qr_code', 'upc_a', 'upc_e']
+      });
       scanStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false
       });
       if (startVersion !== scanStartVersion) {
@@ -2058,6 +2080,7 @@ async function startScanner() {
         scanStream = null;
         return;
       }
+      await optimizeWindowsScanCamera(scanStream);
       video.srcObject = scanStream;
       await video.play();
       scanActive = true;
@@ -2084,7 +2107,7 @@ function stopScanner(hidePanel = true) {
   scanTimer = null;
   if (scanStream) scanStream.getTracks().forEach(track => track.stop());
   scanStream = null;
-  scanFallbackReader = null;
+  scanFallbackDetector = null;
   scanFallbackCanvas = null;
   const video = document.getElementById('scanVideo');
   if (video) video.srcObject = null;
