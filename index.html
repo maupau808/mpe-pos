@@ -1521,6 +1521,8 @@ let scanLastAt = 0;
 let scanAbsentFrames = 0;
 let scanStatusVersion = 0;
 let scanCameraFallbackNotice = '';
+let scanOcrWorkerPromise = null;
+let scanOcrPrewarmTimer = null;
 const scanRecentValues = new Map();
 let hardwareScanBuffer = '';
 let hardwareScanStartedAt = 0;
@@ -1535,6 +1537,8 @@ const FALLBACK_FULL_FRAME_EVERY = 11;
 const FALLBACK_RETRY_MS = 12;
 const SCAN_REPEAT_LOCKOUT_MS = 2250;
 const SCAN_CAMERA_KEY = 'mpeScanCameraId';
+const STIHL_SERIAL_MIN_LENGTH = 7;
+const STIHL_SERIAL_MAX_LENGTH = 12;
 let partCodePending = [];
 let partCodeLearned = {};
 let partCodesSheetEnsured = false;
@@ -1628,6 +1632,187 @@ function resolveScannedValue(rawValue) {
   // for Code 128 / similar labels whose decoded text is the part number itself.
   const candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
   return { code, mappedPN, candidates };
+}
+
+function isPossibleStihlSerial(rawValue, format, result) {
+  const value = String(rawValue || '').trim();
+  return result.candidates.length === 0 &&
+    /^\d+$/.test(value) &&
+    value.length >= STIHL_SERIAL_MIN_LENGTH &&
+    value.length <= STIHL_SERIAL_MAX_LENGTH &&
+    String(format || '').toLowerCase().replace(/[^a-z0-9]/g, '') === 'code128';
+}
+
+function stihlModelFromDescription(description) {
+  const clean = String(description || '').toUpperCase().replace(/[®™*]/g, ' ').replace(/[^A-Z0-9.\- ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const match = clean.match(/^([A-Z]{1,4})\s+(\d{1,4}(?:\.\d+)?)\b(?:\s+([A-Z]{1,4}(?:-[A-Z]{1,3})?))?/);
+  if (!match) return '';
+  let suffix = match[3] || '';
+  if (suffix === 'Z') suffix = '';
+  suffix = suffix.replace(/-Z$/, '');
+  return [match[1], match[2], suffix].filter(Boolean).join(' ');
+}
+
+function scanTextKey(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function scanModelDistance(a, b) {
+  const confusable = new Set(['1A', 'A1', '1I', 'I1', '1L', 'L1', '0O', 'O0', '2Z', 'Z2', '5S', 'S5', '6G', 'G6', '8B', 'B8', '9R', 'R9']);
+  const left = scanTextKey(a);
+  const right = scanTextKey(b);
+  const previous = Array.from({ length: right.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= left.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= right.length; j++) {
+      const replace = left[i - 1] === right[j - 1] ? 0 : (confusable.has(left[i - 1] + right[j - 1]) ? 0.35 : 1);
+      current[j] = Math.min(current[j - 1] + 1, previous[j] + 1, previous[j - 1] + replace);
+    }
+    for (let j = 0; j < current.length; j++) previous[j] = current[j];
+  }
+  return previous[right.length];
+}
+
+function stihlLabelCandidates(ocrText) {
+  const textKey = scanTextKey(ocrText);
+  if (!textKey) return [];
+  const catalog = [];
+  for (const part of partsArray) {
+    if (String(part.make || '').trim().toUpperCase() !== 'STIHL' || !part.warranty) continue;
+    const model = stihlModelFromDescription(part.desc);
+    const modelKey = scanTextKey(model);
+    if (modelKey.length >= 4) catalog.push({ part, model, modelKey });
+  }
+  const exact = catalog.filter(item => textKey.includes(item.modelKey));
+  if (exact.length) {
+    const longest = Math.max(...exact.map(item => item.modelKey.length));
+    return uniqueScanParts(exact.filter(item => item.modelKey.length === longest).map(item => item.part));
+  }
+
+  // A photographed line can turn "FS 91 R-Z" into "SS RA R-Z" even when the
+  // neighboring word is perfect. Compare only the short text immediately before
+  // a recognized equipment word, with cheap costs for common letter/digit swaps.
+  const equipmentWords = ['BRUSHCUTTER', 'CHAINSAW', 'BLOWER', 'TRIMMER', 'EDGER', 'PRUNER', 'CUTQUICK', 'MOWER', 'HEDGETRIMMER', 'CULTIVATOR', 'AUGER', 'SPRAYER', 'SHREDDER', 'VACUUM'];
+  const lines = String(ocrText || '').toUpperCase().split(/[\r\n]+/);
+  let modelLine = '';
+  let equipmentMatch = null;
+  for (const line of lines) {
+    for (const token of line.matchAll(/[A-Z]{4,}/g)) {
+      const ranked = equipmentWords
+        .map(word => ({ word, distance: scanModelDistance(token[0], word) }))
+        .sort((a, b) => a.distance - b.distance);
+      if (ranked[0]?.distance <= 1) {
+        modelLine = line;
+        equipmentMatch = { index: token.index, category: ranked[0].word };
+        break;
+      }
+    }
+    if (equipmentMatch) break;
+  }
+  if (!equipmentMatch) return [];
+  const fragment = modelLine.slice(0, equipmentMatch.index).replace(/-Z\b/g, '').match(/[A-Z0-9.]+(?:-[A-Z0-9]+)?/g)?.slice(-3).join('') || '';
+  if (scanTextKey(fragment).length < 4) return [];
+  const category = equipmentMatch.category;
+  const scored = catalog
+    .filter(item => scanTextKey(item.part.desc).includes(category))
+    .map(item => ({ ...item, distance: scanModelDistance(fragment, item.modelKey) }))
+    .sort((a, b) => a.distance - b.distance || b.modelKey.length - a.modelKey.length);
+  if (!scored.length || scored[0].distance > Math.max(1.4, scored[0].modelKey.length * 0.42)) return [];
+  if (/\d$/.test(scanTextKey(fragment)) && /[A-Z]$/.test(scored[0].modelKey)) return [];
+  const best = scored[0].distance;
+  const nextDifferentModel = scored.find(item => item.modelKey !== scored[0].modelKey);
+  if (nextDifferentModel && nextDifferentModel.distance - best < 0.45) return [];
+  return uniqueScanParts(scored.filter(item => item.modelKey === scored[0].modelKey).map(item => item.part));
+}
+
+function loadScanOcrScript() {
+  if (window.Tesseract?.createWorker) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-scan-ocr]');
+    if (existing) {
+      existing.addEventListener('load', resolve, { once: true });
+      existing.addEventListener('error', () => reject(new Error('label reader could not load')), { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.dataset.scanOcr = '1';
+    script.src = new URL('ocr/tesseract.min.js', location.href).href;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('label reader could not load'));
+    document.head.appendChild(script);
+  });
+}
+
+function ensureScanOcrWorker() {
+  if (scanOcrWorkerPromise) return scanOcrWorkerPromise;
+  scanOcrWorkerPromise = (async () => {
+    await loadScanOcrScript();
+    const worker = await Tesseract.createWorker('eng', 1, {
+      workerPath: new URL('ocr/worker.min.js', location.href).href,
+      corePath: new URL('ocr/core/', location.href).href,
+      langPath: new URL('ocr/tessdata', location.href).href
+    });
+    await worker.setParameters({
+      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_COLUMN,
+      preserve_interword_spaces: '1'
+    });
+    return worker;
+  })().catch(error => {
+    scanOcrWorkerPromise = null;
+    throw error;
+  });
+  return scanOcrWorkerPromise;
+}
+
+function prewarmScanOcr() {
+  if (scanOcrWorkerPromise || scanOcrPrewarmTimer) return;
+  scanOcrPrewarmTimer = setTimeout(() => {
+    scanOcrPrewarmTimer = null;
+    ensureScanOcrWorker().catch(() => {});
+  }, 700);
+}
+
+function captureStihlLabelFrame(barcode, frameSource) {
+  const sourceElement = frameSource || document.getElementById('scanVideo');
+  const sourceWidth = sourceElement?.videoWidth || sourceElement?.width || 0;
+  const sourceHeight = sourceElement?.videoHeight || sourceElement?.height || 0;
+  if (!sourceWidth || !sourceHeight) return null;
+  const box = barcode?.boundingBox;
+  let x = 0;
+  let y = Math.round(sourceHeight * 0.08);
+  let width = sourceWidth;
+  let height = Math.round(sourceHeight * 0.70);
+  if (box && box.width > 20 && box.height > 8 && box.x < sourceWidth && box.y < sourceHeight) {
+    x = Math.max(0, Math.round(box.x - box.width * 0.35));
+    y = Math.max(0, Math.round(box.y - box.height * 2.2));
+    width = Math.min(sourceWidth - x, Math.round(box.width * 1.70));
+    height = Math.min(sourceHeight - y, Math.round(box.height * 2.70));
+  }
+  const scale = Math.min(4, Math.max(1, 1500 / width));
+  const source = document.createElement('canvas');
+  source.width = Math.round(width * scale);
+  source.height = Math.round(height * scale);
+  source.getContext('2d').drawImage(sourceElement, x, y, width, height, 0, 0, source.width, source.height);
+  const points = barcode?.cornerPoints;
+  if (!points || points.length !== 4) return source;
+  const angle = Math.atan2(points[2].y - points[3].y, points[2].x - points[3].x);
+  const canvas = document.createElement('canvas');
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.translate(canvas.width / 2, canvas.height / 2);
+  context.rotate(-angle);
+  context.drawImage(source, -source.width / 2, -source.height / 2);
+  return canvas;
+}
+
+function fillRowSerial(row, serial) {
+  const input = tbody.querySelector(`tr[data-sn-for="${row}"] .sn-input`);
+  if (!input) return false;
+  input.value = String(serial || '').trim();
+  return true;
 }
 
 function firstOpenScanRow() {
@@ -1746,10 +1931,10 @@ function fillScannedPart(part, requestedRow) {
   }, 900);
 }
 
-function saveScanForReview(rawValue, format, candidates) {
-  const row = firstOpenScanRow();
+function saveScanForReview(rawValue, format, candidates, options = {}) {
+  const row = Number.isInteger(options.row) ? options.row : firstOpenScanRow();
   ensureScannerMobileRow(row);
-  scanIssues.set(row, { rawValue, format: format || '', candidates });
+  scanIssues.set(row, { rawValue, format: format || '', candidates, serial: options.serial || '' });
   const input = tbody.querySelector(`[data-row="${row}"].part-input`);
   if (input) {
     input.value = rawValue;
@@ -1759,7 +1944,9 @@ function saveScanForReview(rawValue, format, candidates) {
   }
   const desc = document.getElementById(`desc-${row}`);
   if (desc) {
-    desc.textContent = candidates.length ? 'Needs review — multiple parts match' : 'Needs part — barcode saved';
+    desc.textContent = options.serial
+      ? (candidates.length ? 'Serial saved — choose the unit' : 'Serial saved — unit was not recognized')
+      : (candidates.length ? 'Needs review — multiple parts match' : 'Needs part — barcode saved');
     desc.className = 'not-found';
   }
   const mobileInput = document.querySelector(`#mobileRows [data-row="${row}"].part-input`);
@@ -1767,17 +1954,76 @@ function saveScanForReview(rawValue, format, candidates) {
     mobileInput.value = rawValue;
     mobileInput.className = 'mobile-part-input part-input no-match';
     mobileInput.dataset.scanIssue = '1';
+    mobileInput.readOnly = false;
   }
   const mobileDesc = document.getElementById(`mdesc-${row}`);
   if (mobileDesc) {
-    mobileDesc.textContent = candidates.length ? 'Needs review — multiple parts match' : 'Needs part — barcode saved';
+    mobileDesc.textContent = options.serial
+      ? (candidates.length ? 'Serial saved — choose the unit' : 'Serial saved — unit was not recognized')
+      : (candidates.length ? 'Needs review — multiple parts match' : 'Needs part — barcode saved');
     mobileDesc.className = 'mobile-desc not-found';
   }
   addEmptyRowAfterScan(row);
   ++scanStatusVersion;
-  setScanStatus(`Saved row ${row + 1} for review — keep scanning`, 'warn');
+  setScanStatus(options.serial
+    ? `Serial ${options.serial} saved in row ${row + 1} — choose the unit later`
+    : `Saved row ${row + 1} for review — keep scanning`, 'warn');
   updateScanNext();
   updateScanButton();
+}
+
+function markSerialLabelPending(row, serial) {
+  ensureScannerMobileRow(row);
+  const input = tbody.querySelector(`[data-row="${row}"].part-input`);
+  if (input) {
+    input.value = serial;
+    input.className = 'part-input no-match';
+    input.readOnly = true;
+  }
+  const desc = document.getElementById(`desc-${row}`);
+  if (desc) {
+    desc.textContent = 'Reading STIHL unit label…';
+    desc.className = 'not-found';
+  }
+  const mobileInput = document.querySelector(`#mobileRows [data-row="${row}"].part-input`);
+  if (mobileInput) {
+    mobileInput.value = serial;
+    mobileInput.className = 'mobile-part-input part-input no-match';
+    mobileInput.readOnly = true;
+  }
+  const mobileDesc = document.getElementById(`mdesc-${row}`);
+  if (mobileDesc) {
+    mobileDesc.textContent = 'Reading STIHL unit label…';
+    mobileDesc.className = 'mobile-desc not-found';
+  }
+}
+
+async function acceptStihlSerialLabel(serial, format, barcode, frameSource) {
+  const row = firstOpenScanRow();
+  const frame = captureStihlLabelFrame(barcode, frameSource);
+  markSerialLabelPending(row, serial);
+  addEmptyRowAfterScan(row);
+  ++scanStatusVersion;
+  setScanStatus(`Serial ${serial} read — identifying STIHL unit…`, 'ok');
+  updateScanNext();
+  try {
+    if (!frame) throw new Error('camera frame was unavailable');
+    const worker = await ensureScanOcrWorker();
+    const result = await worker.recognize(frame);
+    const candidates = stihlLabelCandidates(result?.data?.text || '');
+    if (candidates.length === 1) {
+      applyMobilePart(row, candidates[0]);
+      fillRowSerial(row, serial);
+      const model = stihlModelFromDescription(candidates[0].desc) || candidates[0].og || candidates[0].pn;
+      setScanStatus(`Added ${model} · SN ${serial}`, 'ok');
+      updateScanNext();
+      updateScanButton();
+    } else {
+      saveScanForReview(serial, format, candidates, { row, serial });
+    }
+  } catch (error) {
+    saveScanForReview(serial, format, [], { row, serial });
+  }
 }
 
 function focusScanIssue(row) {
@@ -1828,7 +2074,7 @@ function showNextScanIssue(preferredRow) {
   if (next) next.textContent = `${scanIssues.size} row${scanIssues.size === 1 ? '' : 's'} still need review`;
 }
 
-function acceptDecodedScan(rawValue, format) {
+function acceptDecodedScan(rawValue, format, options = {}) {
   const raw = String(rawValue || '').trim();
   if (!raw) return;
   if (!loaded) {
@@ -1838,6 +2084,10 @@ function acceptDecodedScan(rawValue, format) {
   }
   if (!claimScannedValue(raw)) return;
   const result = resolveScannedValue(raw);
+  if (options.camera && isPossibleStihlSerial(raw, format, result)) {
+    playScanBeep(false);
+    return acceptStihlSerialLabel(raw, format, options.barcode, options.frameSource);
+  }
   const needsReview = result.candidates.length !== 1;
   playScanBeep(needsReview);
   if (!needsReview) fillScannedPart(result.candidates[0]);
@@ -1919,7 +2169,7 @@ function onHardwareScanKeydown(event) {
 
 document.addEventListener('keydown', onHardwareScanKeydown, true);
 
-function acceptCameraDecodedValue(rawValue, format) {
+function acceptCameraDecodedValue(rawValue, format, barcode, frameSource) {
   const value = String(rawValue || '').trim();
   if (!value) return;
   scanAbsentFrames = 0;
@@ -1928,7 +2178,7 @@ function acceptCameraDecodedValue(rawValue, format) {
   if ((isNew && now - scanLastAt > 350) || !scanLastValue) {
     scanLastValue = value;
     scanLastAt = now;
-    acceptDecodedScan(value, format);
+    return acceptDecodedScan(value, format, { camera: true, barcode, frameSource });
   }
 }
 
@@ -1988,7 +2238,7 @@ async function scanCameraFrame() {
         // part. Otherwise the detector's first (normally the aimed-at) symbol wins.
         const resolved = values.filter(item => resolveScannedValue(item.rawValue).candidates.length === 1);
         const item = resolved.length === 1 ? resolved[0] : values[0];
-        acceptCameraDecodedValue(item.rawValue, item.format);
+        await acceptCameraDecodedValue(item.rawValue, item.format, item);
       }
     } catch (e) {
       if (scanActive) setScanStatus(`Camera scan error: ${e.message}`, 'err');
@@ -2027,7 +2277,7 @@ async function scanFallbackCameraFrame() {
       context.drawImage(video, sourceX, sourceY, width, height, -width / 2, -height / 2, width, height);
       const found = await scanFallbackDetector.detect(canvas);
       if (!scanActive) return;
-      if (found.length) acceptCameraDecodedValue(found[0].rawValue, found[0].format || 'zxing-wasm');
+      if (found.length) await acceptCameraDecodedValue(found[0].rawValue, found[0].format || 'zxing-wasm', found[0], canvas);
       else {
         scanAbsentFrames++;
         if (scanAbsentFrames >= FALLBACK_SCAN_ANGLES.length) scanLastValue = '';
@@ -2151,6 +2401,7 @@ async function startScanner() {
       updateScanButton();
       await refreshScanCameras();
       scannerReadyStatus();
+      prewarmScanOcr();
       scanCameraFrame();
     } else {
       setScanStatus('Loading camera scanner…');
@@ -2178,6 +2429,7 @@ async function startScanner() {
       updateScanButton();
       await refreshScanCameras();
       scannerReadyStatus();
+      prewarmScanOcr();
       scanFallbackCameraFrame();
     }
   } catch (e) {
@@ -2192,6 +2444,8 @@ function stopScanner(hidePanel = true) {
   scanStartVersion++;
   scanActive = false;
   scanDetectBusy = false;
+  if (scanOcrPrewarmTimer) clearTimeout(scanOcrPrewarmTimer);
+  scanOcrPrewarmTimer = null;
   if (scanTimer) clearTimeout(scanTimer);
   scanTimer = null;
   if (scanStream) scanStream.getTracks().forEach(track => track.stop());
@@ -4140,7 +4394,8 @@ function applyPart(i, part, options) {
   if (i === NUM_ROWS - 1 && !options?.skipAddRow) addRow();
   if (other && !options?.skipFocus) setTimeout(() => { input.focus(); input.select(); }, 0);
   if (correctedScanIssue) {
-    queuePartCodeBinding(correctedScanIssue, part);
+    if (correctedScanIssue.serial && part.warranty) fillRowSerial(i, correctedScanIssue.serial);
+    else queuePartCodeBinding(correctedScanIssue, part);
     updateScanNext();
     updateScanButton();
     if (!scanActive) setTimeout(showNextScanIssue, 0);
