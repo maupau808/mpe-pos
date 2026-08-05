@@ -1753,7 +1753,10 @@ function ensureScanOcrWorker() {
       langPath: new URL('ocr/tessdata', location.href).href
     });
     await worker.setParameters({
-      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_COLUMN,
+      // The unit sticker is one compact block. This mode was the only one that
+      // recovered "FS 91 ... Brushcutter" from the real counter photo; AUTO and
+      // SINGLE_COLUMN both wandered into the barcode bars and surrounding texture.
+      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
       preserve_interword_spaces: '1'
     });
     return worker;
@@ -1777,34 +1780,16 @@ function captureStihlLabelFrame(barcode, frameSource) {
   const sourceWidth = sourceElement?.videoWidth || sourceElement?.width || 0;
   const sourceHeight = sourceElement?.videoHeight || sourceElement?.height || 0;
   if (!sourceWidth || !sourceHeight) return null;
-  const box = barcode?.boundingBox;
-  let x = 0;
-  let y = Math.round(sourceHeight * 0.08);
-  let width = sourceWidth;
-  let height = Math.round(sourceHeight * 0.70);
-  if (box && box.width > 20 && box.height > 8 && box.x < sourceWidth && box.y < sourceHeight) {
-    x = Math.max(0, Math.round(box.x - box.width * 0.35));
-    y = Math.max(0, Math.round(box.y - box.height * 2.2));
-    width = Math.min(sourceWidth - x, Math.round(box.width * 1.70));
-    height = Math.min(sourceHeight - y, Math.round(box.height * 2.70));
-  }
-  const scale = Math.min(4, Math.max(1, 1500 / width));
-  const source = document.createElement('canvas');
-  source.width = Math.round(width * scale);
-  source.height = Math.round(height * scale);
-  source.getContext('2d').drawImage(sourceElement, x, y, width, height, 0, 0, source.width, source.height);
-  const points = barcode?.cornerPoints;
-  if (!points || points.length !== 4) return source;
-  const angle = Math.atan2(points[2].y - points[3].y, points[2].x - points[3].x);
+  // Keep the camera frame at its native resolution. Testing the actual FS 91
+  // photo showed that a tight/upscaled barcode crop destroys the short model
+  // line, while Tesseract reads it from the untouched frame. The barcode has
+  // already told us this is the rare serial-label path, so surrounding scenery
+  // cannot interfere with normal product scans.
   const canvas = document.createElement('canvas');
-  canvas.width = source.width;
-  canvas.height = source.height;
+  canvas.width = sourceWidth;
+  canvas.height = sourceHeight;
   const context = canvas.getContext('2d');
-  context.fillStyle = '#fff';
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.translate(canvas.width / 2, canvas.height / 2);
-  context.rotate(-angle);
-  context.drawImage(source, -source.width / 2, -source.height / 2);
+  context.drawImage(sourceElement, 0, 0, sourceWidth, sourceHeight);
   return canvas;
 }
 
