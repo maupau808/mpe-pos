@@ -40,6 +40,7 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .scan-panel.review-mode { grid-template-columns: 1fr; }
 .scan-panel.review-mode .scan-camera { display: none; }
 .scan-panel.review-mode .scan-stop { display: none; }
+.scan-panel.review-mode .scan-camera-select { display: none; }
 .scan-camera { position: relative; height: 128px; overflow: hidden; border-radius: 7px; background: #18201c; }
 .scan-camera video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .scan-camera video.unmirror { transform: scaleX(-1); }
@@ -48,6 +49,8 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .scan-info { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
 .scan-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .scan-title { font-size: 13px; font-weight: 600; color: #2f4339; }
+.scan-camera-select { min-width: 0; max-width: 210px; height: 25px; padding: 2px 24px 2px 7px; border: 1px solid #c7cfc4; border-radius: 5px; background: #fff; color: #555; font: inherit; font-size: 11px; }
+.scan-camera-select:focus { outline: 1px solid #aeb8ac; outline-offset: 1px; }
 .scan-stop { font: inherit; font-size: 11px; padding: 3px 8px; border: 1px solid #c7cfc4; border-radius: 5px; background: #fff; color: #666; cursor: pointer; }
 .scan-status { font-size: 14px; color: #444; line-height: 1.35; }
 .scan-status.ok { color: #2d7a3a; font-weight: 600; }
@@ -654,6 +657,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="scan-info">
       <div class="scan-head">
         <div class="scan-title">Continuous scanner</div>
+        <select class="scan-camera-select" id="scanCameraSelect" aria-label="Scanner camera" onchange="changeScanCamera()">
+          <option value="">Default camera</option>
+        </select>
         <button class="scan-stop" type="button" onclick="stopScanner()">Stop</button>
       </div>
       <div class="scan-status" id="scanStatus">Starting camera…</div>
@@ -1514,6 +1520,7 @@ let scanLastValue = '';
 let scanLastAt = 0;
 let scanAbsentFrames = 0;
 let scanStatusVersion = 0;
+let scanCameraFallbackNotice = '';
 const scanRecentValues = new Map();
 let hardwareScanBuffer = '';
 let hardwareScanStartedAt = 0;
@@ -1527,6 +1534,7 @@ const FALLBACK_SCAN_ANGLES = [0, 8, -8, 15, -15];
 const FALLBACK_FULL_FRAME_EVERY = 11;
 const FALLBACK_RETRY_MS = 12;
 const SCAN_REPEAT_LOCKOUT_MS = 2250;
+const SCAN_CAMERA_KEY = 'mpeScanCameraId';
 let partCodePending = [];
 let partCodeLearned = {};
 let partCodesSheetEnsured = false;
@@ -2047,6 +2055,64 @@ async function optimizeWindowsScanCamera(stream) {
   } catch (error) {}
 }
 
+function selectedScanCameraId() {
+  return document.getElementById('scanCameraSelect')?.value || '';
+}
+
+function scanCameraConstraints(width, height, deviceId = selectedScanCameraId()) {
+  const video = { width: { ideal: width }, height: { ideal: height } };
+  if (deviceId) video.deviceId = { exact: deviceId };
+  else video.facingMode = { ideal: 'environment' };
+  return { video, audio: false };
+}
+
+async function refreshScanCameras() {
+  const select = document.getElementById('scanCameraSelect');
+  if (!select || !navigator.mediaDevices?.enumerateDevices) return;
+  const saved = localStorage.getItem(SCAN_CAMERA_KEY) || '';
+  try {
+    const cameras = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === 'videoinput');
+    select.replaceChildren(new Option('Default camera', ''));
+    cameras.forEach((camera, index) => {
+      select.add(new Option(camera.label || `Camera ${index + 1}`, camera.deviceId));
+    });
+    if (saved && cameras.some(camera => camera.deviceId === saved)) select.value = saved;
+    else if (saved) localStorage.removeItem(SCAN_CAMERA_KEY);
+  } catch (error) {}
+}
+
+async function openScanCamera(width, height) {
+  const preferred = selectedScanCameraId();
+  scanCameraFallbackNotice = '';
+  try {
+    return await navigator.mediaDevices.getUserMedia(scanCameraConstraints(width, height, preferred));
+  } catch (error) {
+    if (!preferred || error.name === 'NotAllowedError' || error.name === 'SecurityError') throw error;
+    localStorage.removeItem(SCAN_CAMERA_KEY);
+    const select = document.getElementById('scanCameraSelect');
+    if (select) select.value = '';
+    scanCameraFallbackNotice = 'Selected camera unavailable — using default camera';
+    return navigator.mediaDevices.getUserMedia(scanCameraConstraints(width, height, ''));
+  }
+}
+
+function isCamoScanStream(stream) {
+  return /camo/i.test(stream?.getVideoTracks?.()[0]?.label || '');
+}
+
+function scannerReadyStatus() {
+  setScanStatus(scanCameraFallbackNotice || 'Ready — scan the first item', scanCameraFallbackNotice ? 'warn' : '');
+}
+
+async function changeScanCamera() {
+  const selected = selectedScanCameraId();
+  if (selected) localStorage.setItem(SCAN_CAMERA_KEY, selected);
+  else localStorage.removeItem(SCAN_CAMERA_KEY);
+  if (!scanActive) return;
+  stopScanner(false);
+  await startScanner();
+}
+
 async function startScanner() {
   const startVersion = ++scanStartVersion;
   const panel = document.getElementById('scanPanel');
@@ -2062,16 +2128,14 @@ async function startScanner() {
     return;
   }
   try {
+    await refreshScanCameras();
     const forceFallback = isLocalPos() && new URLSearchParams(location.search).get('zxingTest') === '1';
     if (!forceFallback && 'BarcodeDetector' in window) {
       const wanted = ['code_128', 'code_39', 'codabar', 'data_matrix', 'ean_13', 'ean_8', 'itf', 'qr_code', 'upc_a', 'upc_e'];
       const supported = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : wanted;
       const formats = wanted.filter(format => supported.includes(format));
       scanDetector = formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
-      scanStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false
-      });
+      scanStream = await openScanCamera(1280, 720);
       if (startVersion !== scanStartVersion) {
         scanStream.getTracks().forEach(track => track.stop());
         scanStream = null;
@@ -2085,7 +2149,8 @@ async function startScanner() {
       scanLastValue = '';
       scanAbsentFrames = 0;
       updateScanButton();
-      setScanStatus('Ready — scan the first item');
+      await refreshScanCameras();
+      scannerReadyStatus();
       scanCameraFrame();
     } else {
       setScanStatus('Loading camera scanner…');
@@ -2095,17 +2160,14 @@ async function startScanner() {
       scanFallbackDetector = new BarcodeDetectionAPI.BarcodeDetector({
         formats: ['code_128', 'code_39', 'codabar', 'data_matrix', 'ean_13', 'ean_8', 'itf', 'qr_code', 'upc_a', 'upc_e']
       });
-      scanStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false
-      });
+      scanStream = await openScanCamera(1920, 1080);
       if (startVersion !== scanStartVersion) {
         scanStream.getTracks().forEach(track => track.stop());
         scanStream = null;
         return;
       }
       await optimizeWindowsScanCamera(scanStream);
-      video.classList.add('unmirror');
+      video.classList.toggle('unmirror', !isCamoScanStream(scanStream));
       video.srcObject = scanStream;
       await video.play();
       scanActive = true;
@@ -2114,7 +2176,8 @@ async function startScanner() {
       scanFallbackAngleIndex = 0;
       scanFallbackFrameCount = 0;
       updateScanButton();
-      setScanStatus('Ready — scan the first item');
+      await refreshScanCameras();
+      scannerReadyStatus();
       scanFallbackCameraFrame();
     }
   } catch (e) {
