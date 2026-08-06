@@ -865,6 +865,7 @@ const DB_KEY_SALES = 'posSaleRules'; // Last verified seasonal-sale config, inde
 let partsArray = [];
 let saleRules = [];
 let partCodeMap = {};
+let serialNumberMap = {};
 let loaded = false;
 let tokenClient = null;
 let _pendingAction = null; // action to fire after sign-in completes
@@ -1283,6 +1284,7 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   // automatic sale, never "keep yesterday's sale" in memory.
   saleRules = normalizeSaleRules(feed.sales);
   partCodeMap = feed.codes && typeof feed.codes === 'object' ? feed.codes : {};
+  serialNumberMap = feed.serials && typeof feed.serials === 'object' ? feed.serials : {};
   for (const [code, pn] of Object.entries(partCodeLearned)) {
     const key = canonicalScannedCode(code);
     if (key && pn) partCodeMap[key] = normalizePN(pn);
@@ -1315,7 +1317,10 @@ async function tryFetchPosJson() {
   if (!posJsonReady() || typeof DecompressionStream === 'undefined') return false;
   try {
     const url = `https://www.googleapis.com/drive/v3/files/${POS_JSON_FILE_ID}?alt=media`;
-    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const resp = await fetch(url, {
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
     if (!resp.ok) return false;   // 401/404/etc -> let the xlsx path handle token/refresh
     const ab = await resp.arrayBuffer();
     const feed = await loadPosJsonBytes(ab, 'JSON');
@@ -1595,6 +1600,10 @@ function canonicalScannedCode(value) {
   if (!s) return '';
   if (/^\d+$/.test(s) && s.length <= 14) return s.padStart(14, '0');
   return s.toUpperCase();
+}
+
+function canonicalSerialNumber(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 function claimScannedValue(value, now = Date.now()) {
@@ -1914,6 +1923,7 @@ function fillScannedPart(part, requestedRow) {
     if (scanActive && scanStatusVersion === version)
       setScanStatus('Ready — scan the next item');
   }, 900);
+  return row;
 }
 
 function saveScanForReview(rawValue, format, candidates, options = {}) {
@@ -2068,6 +2078,22 @@ function acceptDecodedScan(rawValue, format, options = {}) {
     return;
   }
   if (!claimScannedValue(raw)) return;
+  const knownSerialPN = serialNumberMap[canonicalSerialNumber(raw)];
+  if (knownSerialPN) {
+    const serialCandidates = exactScanParts(knownSerialPN);
+    if (serialCandidates.length === 1 && serialCandidates[0].warranty) {
+      playScanBeep(false);
+      const row = fillScannedPart(serialCandidates[0]);
+      fillRowSerial(row, raw);
+      const model = stihlModelFromDescription(serialCandidates[0].desc)
+        || serialCandidates[0].og || serialCandidates[0].pn;
+      ++scanStatusVersion;
+      setScanStatus(`Added ${model} · SN ${raw}`, 'ok');
+      updateScanNext();
+      updateScanButton();
+      return;
+    }
+  }
   const result = resolveScannedValue(raw);
   if (options.camera && isPossibleStihlSerial(raw, format, result)) {
     playScanBeep(false);
