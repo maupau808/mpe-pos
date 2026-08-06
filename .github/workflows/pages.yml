@@ -32,8 +32,20 @@ jobs:
         with:
           path: .
 
+      - name: Load official Pages deployer
+        uses: actions/checkout@v4
+        with:
+          repository: actions/deploy-pages
+          ref: d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
+          path: .pages-deploy-action
+
+      - name: Extend Pages polling window
+        run: |
+          sed -i 's/const MAX_TIMEOUT = 600000/const MAX_TIMEOUT = 1800000/' .pages-deploy-action/dist/index.js
+          grep -q 'const MAX_TIMEOUT = 1800000' .pages-deploy-action/dist/index.js
+
       - name: Deploy POS
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: ./.pages-deploy-action
         with:
           timeout: 1800000
