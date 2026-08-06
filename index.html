@@ -879,6 +879,12 @@ let serialNumberMap = {};
 let unitSerialPrefixRules = [];
 let unitSerialCandidateRules = [];
 let warrantyModelMap = new Map();
+const DISTRIBUTOR_PART_PREFIXES = [
+  { prefix: 'SC', make: 'SCAG' },
+  { prefix: 'GV', make: 'SCAG' },
+  { prefix: 'WR', make: 'WRIGHT' },
+  { prefix: 'BB', make: 'BLUEBIRD' }
+];
 let loaded = false;
 let tokenClient = null;
 let _pendingAction = null; // action to fire after sign-in completes
@@ -1719,6 +1725,19 @@ function exactWarrantyModelParts(value) {
   return uniqueScanParts(warrantyModelMap.get(key) || []);
 }
 
+function distributorPartCandidates(value) {
+  const code = String(value || '').toUpperCase().replace(/[\s\-.]/g, '');
+  if (!code || !loaded) return [];
+  for (const rule of DISTRIBUTOR_PART_PREFIXES) {
+    if (!code.startsWith(rule.prefix) || code.length === rule.prefix.length) continue;
+    const candidates = exactScanParts(code.slice(rule.prefix.length)).filter(part =>
+      String(part.make || '').trim().toUpperCase() === rule.make
+    );
+    if (candidates.length) return candidates;
+  }
+  return [];
+}
+
 function buildWarrantyModelMap() {
   warrantyModelMap = new Map();
   for (const part of partsArray) {
@@ -1736,6 +1755,10 @@ function resolveScannedValue(rawValue) {
   // An imported or counter-bound barcode is authoritative. Direct matching is
   // for Code 128 / similar labels whose decoded text is the part number itself.
   let candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
+  // PACE prepends a brand code that Master intentionally omits. Strip only a
+  // known distributor prefix, then require an exact PN and Make match so the
+  // same digits under another brand cannot resolve accidentally.
+  if (!mappedPN && candidates.length === 0) candidates = distributorPartCandidates(rawValue);
   // Some unit labels encode the printed model rather than the supplier item
   // number. Exact first-token matching is intentionally warranty-only so a
   // model scan can safely become the first half of model-then-serial entry.
