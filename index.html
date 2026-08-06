@@ -876,6 +876,9 @@ let partsArray = [];
 let saleRules = [];
 let partCodeMap = {};
 let serialNumberMap = {};
+let unitSerialPrefixRules = [];
+let unitSerialCandidateRules = [];
+let warrantyModelMap = new Map();
 let loaded = false;
 let tokenClient = null;
 let _pendingAction = null; // action to fire after sign-in completes
@@ -1293,13 +1296,14 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   // A successful current feed is authoritative. Missing/invalid rules mean no
   // automatic sale, never "keep yesterday's sale" in memory.
   saleRules = normalizeSaleRules(feed.sales);
-  partCodeMap = feed.codes && typeof feed.codes === 'object' ? feed.codes : {};
   serialNumberMap = feed.serials && typeof feed.serials === 'object' ? feed.serials : {};
+  loadUnitSerialRules(feed.codes && typeof feed.codes === 'object' ? feed.codes : {});
   for (const [code, pn] of Object.entries(partCodeLearned)) {
     const key = canonicalScannedCode(code);
     if (key && pn) partCodeMap[key] = normalizePN(pn);
   }
   partsArray = parts;
+  buildWarrantyModelMap();
   loaded = true;
   warmUpSearch();
   const pc = document.getElementById('partsCount');
@@ -1543,6 +1547,7 @@ let hardwareScanBuffer = '';
 let hardwareScanStartedAt = 0;
 let hardwareScanLastAt = 0;
 let hardwareScanOrigin = null;
+let pendingUnitSerialRow = null;
 const PART_CODES_SHEET = 'Codes';
 const PART_CODES_SHEET_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Added'];
 const PART_CODES_PENDING_KEY = 'mpePartCodePending';
@@ -1616,6 +1621,70 @@ function canonicalSerialNumber(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
+function loadUnitSerialRules(codes) {
+  partCodeMap = {};
+  unitSerialPrefixRules = [];
+  const candidateGroups = new Map();
+  for (const [rawCode, rawPN] of Object.entries(codes || {})) {
+    const code = String(rawCode || '').toUpperCase();
+    const pn = normalizePN(rawPN);
+    if (!pn) continue;
+    if (code.startsWith('@UNIT-EXACT:')) {
+      const serial = canonicalSerialNumber(code.slice(12));
+      if (serial) serialNumberMap[serial] = pn;
+      continue;
+    }
+    if (code.startsWith('@UNIT-PREFIX:')) {
+      const prefix = canonicalSerialNumber(code.slice(13));
+      if (prefix) unitSerialPrefixRules.push({ prefix, pns: [pn] });
+      continue;
+    }
+    if (code.startsWith('@UNIT-CANDIDATE:')) {
+      const prefix = canonicalSerialNumber(code.slice(16).split(':')[0]);
+      if (!prefix) continue;
+      if (!candidateGroups.has(prefix)) candidateGroups.set(prefix, new Set());
+      candidateGroups.get(prefix).add(pn);
+      continue;
+    }
+    partCodeMap[canonicalScannedCode(code)] = pn;
+  }
+  unitSerialPrefixRules.sort((a, b) => b.prefix.length - a.prefix.length);
+  unitSerialCandidateRules = Array.from(candidateGroups, ([prefix, pns]) => ({
+    prefix,
+    pns: Array.from(pns)
+  })).sort((a, b) => b.prefix.length - a.prefix.length);
+}
+
+function unitSerialCandidates(rawValue) {
+  const serial = canonicalSerialNumber(rawValue);
+  if (!serial) return [];
+  const exactPN = serialNumberMap[serial];
+  if (exactPN) return exactScanParts(exactPN);
+  const exactPrefix = unitSerialPrefixRules.find(rule => serial.startsWith(rule.prefix));
+  if (exactPrefix) return uniqueScanParts(exactPrefix.pns.flatMap(exactScanParts));
+  const candidatePrefix = unitSerialCandidateRules.find(rule => serial.startsWith(rule.prefix));
+  return candidatePrefix
+    ? uniqueScanParts(candidatePrefix.pns.flatMap(exactScanParts))
+    : [];
+}
+
+function likelySecondUnitSerial(rawValue) {
+  const value = String(rawValue || '').trim();
+  return value.length >= 6 && value.length <= 30 && /[A-Z]/i.test(value) && /^[A-Z0-9 -]+$/i.test(value);
+}
+
+function rowNeedsUnitSerial(row) {
+  if (!Number.isInteger(row)) return false;
+  const tr = tbody.querySelector(`tr[data-row="${row}"]`);
+  const fields = tbody.querySelectorAll(`tr[data-sn-for="${row}"] .sn-input`);
+  return tr?.dataset.warranty === '1' && fields.length > 0 && Array.from(fields).some(input => !input.value.trim());
+}
+
+function pendingUnitPN() {
+  if (!rowNeedsUnitSerial(pendingUnitSerialRow)) return '';
+  return normalizePN(tbody.querySelector(`[data-row="${pendingUnitSerialRow}"].part-input`)?.dataset.partPn);
+}
+
 function claimScannedValue(value, now = Date.now()) {
   const key = canonicalScannedCode(value);
   const lastAcceptedAt = scanRecentValues.get(key) || 0;
@@ -1644,12 +1713,33 @@ function exactScanParts(value) {
   ));
 }
 
+function exactWarrantyModelParts(value) {
+  const key = normalizePN(value);
+  if (!key || !loaded) return [];
+  return uniqueScanParts(warrantyModelMap.get(key) || []);
+}
+
+function buildWarrantyModelMap() {
+  warrantyModelMap = new Map();
+  for (const part of partsArray) {
+    if (!part.warranty) continue;
+    const key = normalizePN(String(part.desc || '').trim().split(/\s+/, 1)[0]);
+    if (!key) continue;
+    if (!warrantyModelMap.has(key)) warrantyModelMap.set(key, []);
+    warrantyModelMap.get(key).push(part);
+  }
+}
+
 function resolveScannedValue(rawValue) {
   const code = canonicalScannedCode(rawValue);
   const mappedPN = code ? partCodeMap[code] : '';
   // An imported or counter-bound barcode is authoritative. Direct matching is
   // for Code 128 / similar labels whose decoded text is the part number itself.
-  const candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
+  let candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
+  // Some unit labels encode the printed model rather than the supplier item
+  // number. Exact first-token matching is intentionally warranty-only so a
+  // model scan can safely become the first half of model-then-serial entry.
+  if (!mappedPN && candidates.length === 0) candidates = exactWarrantyModelParts(rawValue);
   return { code, mappedPN, candidates };
 }
 
@@ -1816,6 +1906,7 @@ function fillRowSerial(row, serial) {
   const input = tbody.querySelector(`tr[data-sn-for="${row}"] .sn-input`);
   if (!input) return false;
   input.value = String(serial || '').trim();
+  if (pendingUnitSerialRow === row) pendingUnitSerialRow = null;
   return true;
 }
 
@@ -1924,6 +2015,7 @@ function fillScannedPart(part, requestedRow) {
   const row = Number.isInteger(requestedRow) ? requestedRow : firstOpenScanRow();
   ensureScannerMobileRow(row);
   applyMobilePart(row, part);
+  pendingUnitSerialRow = part.warranty && rowNeedsUnitSerial(row) ? row : null;
   addEmptyRowAfterScan(row);
   const version = ++scanStatusVersion;
   setScanStatus(`Added ${part.og || part.pn} — ${part.desc || ''}`, 'ok');
@@ -2088,23 +2180,39 @@ function acceptDecodedScan(rawValue, format, options = {}) {
     return;
   }
   if (!claimScannedValue(raw)) return;
-  const knownSerialPN = serialNumberMap[canonicalSerialNumber(raw)];
-  if (knownSerialPN) {
-    const serialCandidates = exactScanParts(knownSerialPN);
-    if (serialCandidates.length === 1 && serialCandidates[0].warranty) {
+  const result = resolveScannedValue(raw);
+  const serialCandidates = unitSerialCandidates(raw).filter(part => part.warranty);
+  if (result.candidates.length === 0 && rowNeedsUnitSerial(pendingUnitSerialRow) && likelySecondUnitSerial(raw)) {
+    const waitingPN = pendingUnitPN();
+    const compatible = serialCandidates.length === 0 || serialCandidates.some(part => normalizePN(part.pn) === waitingPN);
+    if (compatible) {
       playScanBeep(false);
-      const row = fillScannedPart(serialCandidates[0]);
+      const row = pendingUnitSerialRow;
       fillRowSerial(row, raw);
-      const model = stihlModelFromDescription(serialCandidates[0].desc)
-        || serialCandidates[0].og || serialCandidates[0].pn;
       ++scanStatusVersion;
-      setScanStatus(`Added ${model} · SN ${raw}`, 'ok');
+      setScanStatus(`Serial ${raw} added to row ${row + 1}`, 'ok');
       updateScanNext();
       updateScanButton();
       return;
     }
   }
-  const result = resolveScannedValue(raw);
+  if (serialCandidates.length === 1) {
+    playScanBeep(false);
+    const row = fillScannedPart(serialCandidates[0]);
+    fillRowSerial(row, raw);
+    const model = stihlModelFromDescription(serialCandidates[0].desc)
+      || serialCandidates[0].og || serialCandidates[0].pn;
+    ++scanStatusVersion;
+    setScanStatus(`Added ${model} · SN ${raw}`, 'ok');
+    updateScanNext();
+    updateScanButton();
+    return;
+  }
+  if (serialCandidates.length > 1) {
+    playScanBeep(true);
+    saveScanForReview(raw, format, serialCandidates, { serial: raw });
+    return;
+  }
   if (options.camera && isPossibleStihlSerial(raw, format, result)) {
     playScanBeep(false);
     return acceptStihlSerialLabel(raw, format, options.barcode, options.frameSource);
