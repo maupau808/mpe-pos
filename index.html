@@ -189,6 +189,9 @@ body.doc-internal .sum-internal { display: block; }
 .bottom-actions { display: flex; gap: 10px; }
 .btn-danger { color: #c62828; border-color: #ef9a9a; }
 .btn-danger:hover { background: #fff5f5; border-color: #e53935; }
+/* Half-width sibling of Print: same height and type so the row still reads as
+   one set of controls, narrower box so Print stays the primary action. */
+.btn-auto { padding: 8px 4px; width: 56px; }
 .btn-filled { background: #2f4339; color: #fff; border-color: #2f4339; }
 .btn-filled:hover { background: #202d27; border-color: #202d27; }
 .review-star-btn { background: none; border: 1.5px solid #d9dfd6; border-radius: 6px; cursor: pointer; font-size: 13px; padding: 6px 8px; line-height: 1; white-space: nowrap; transition: border-color .15s, background .15s; }
@@ -633,7 +636,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         </div>
         <button class="icon-btn" id="emailDocBtn" onclick="emailDoc()" title="Email — attach the colour PDF to a Gmail draft">✉</button>
         <button class="icon-btn" id="exportPdfBtn" onclick="exportPdf()" title="Export PDF — download the colour copy">⬇</button>
-        <button class="icon-btn" id="autoPrintBtn" onclick="autoPrint()" title="Auto Print — straight to Checkout PoS, single-sided">🖨</button>
         <div class="menu-wrap">
           <button class="menu-btn" id="adminMenuBtn" onclick="openAdminMenu(event)" title="Reconnect, refresh and uploads">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
           <div class="menu-panel right" id="adminMenu" onclick="event.stopPropagation()">
@@ -719,6 +721,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="bottom-actions">
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
       <button class="btn-big btn-filled" onclick="printQuote()">🖨 Print</button>
+      <button class="btn-big btn-auto" id="autoPrintBtn" onclick="autoPrint()" title="Auto Print — straight to the counter printer, single-sided">Auto</button>
       <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
     </div>
     <div class="mahalo-cell"><div class="mahalo">Mahalo for choosing us!</div></div>
@@ -1594,7 +1597,18 @@ const PART_CODES_SHEET = 'Codes';
 const PART_CODES_SHEET_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Added'];
 const PART_CODES_PENDING_KEY = 'mpePartCodePending';
 const PART_CODES_LEARNED_KEY = 'mpePartCodeLearned';
-const FALLBACK_SCAN_ANGLES = [0, 8, -8, 15, -15];
+// Tilts are a fallback, not a rotation the scanner sits in. A straight-on pass
+// is what reads a label held normally, and a rotated copy is strictly worse for
+// it: same full decode cost, and the corners clip against a canvas that is the
+// same size as the source rect, which can cut the ends off a wide Code 128.
+// Cycling a 0° entry through this list spent four passes out of every five
+// making the common case harder. Every pass is now 0° until a run of misses
+// says the label probably is crooked, and even then 0° keeps every other pass.
+const FALLBACK_SCAN_ANGLES = [8, -8, 15, -15];
+const FALLBACK_TILT_AFTER_MISSES = 6;
+// Misses in a row before the last decoded value is released for re-reading.
+// Pinned at 5 rather than riding on the tilt list's length, which it used to.
+const FALLBACK_RELEASE_AFTER_MISSES = 5;
 const FALLBACK_FULL_FRAME_EVERY = 11;
 const FALLBACK_RETRY_MS = 12;
 const SCAN_REPEAT_LOCKOUT_MS = 2250;
@@ -2470,11 +2484,19 @@ async function scanFallbackCameraFrame() {
   const video = document.getElementById('scanVideo');
   if (!scanDetectBusy && video?.readyState >= 2) {
     scanDetectBusy = true;
+    // Only tilt once straight-on passes have been failing, and even then only
+    // on alternate passes, so a label held normally never waits behind one.
+    const tilted = scanAbsentFrames >= FALLBACK_TILT_AFTER_MISSES && scanFallbackFrameCount % 2 === 1;
     try {
+      // Never trim horizontally. A long Honda Code 39 part number is a wide,
+      // low-density barcode that spans the frame, and shaving the sides costs
+      // the quiet zone or the end characters outright — a short UPC never
+      // noticed the 4% crop, which is why this read as "Honda codes only".
+      // The band still trims vertically, where nothing about a barcode lives.
       const fullFrame = scanFallbackFrameCount > 0 && scanFallbackFrameCount % FALLBACK_FULL_FRAME_EVERY === 0;
-      const sourceX = fullFrame ? 0 : Math.round(video.videoWidth * 0.04);
+      const sourceX = 0;
       const sourceY = fullFrame ? 0 : Math.round(video.videoHeight * 0.20);
-      const width = fullFrame ? video.videoWidth : Math.round(video.videoWidth * 0.92);
+      const width = video.videoWidth;
       const height = fullFrame ? video.videoHeight : Math.round(video.videoHeight * 0.60);
       if (fullFrame && !scanFallbackFullCanvas) scanFallbackFullCanvas = document.createElement('canvas');
       if (!fullFrame && !scanFallbackCanvas) scanFallbackCanvas = document.createElement('canvas');
@@ -2484,26 +2506,28 @@ async function scanFallbackCameraFrame() {
         canvas.height = height;
       }
       const context = canvas.getContext('2d', { willReadFrequently: true });
-      const angle = FALLBACK_SCAN_ANGLES[scanFallbackAngleIndex];
+      const angle = tilted ? FALLBACK_SCAN_ANGLES[scanFallbackAngleIndex] : 0;
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.fillStyle = '#fff';
       context.fillRect(0, 0, width, height);
       context.translate(width / 2, height / 2);
-      context.rotate(angle * Math.PI / 180);
+      if (angle) context.rotate(angle * Math.PI / 180);
       context.drawImage(video, sourceX, sourceY, width, height, -width / 2, -height / 2, width, height);
       const found = await scanFallbackDetector.detect(canvas);
       if (!scanActive) return;
       if (found.length) await acceptCameraDecodedValue(found[0].rawValue, found[0].format || 'zxing-wasm', found[0], canvas);
       else {
         scanAbsentFrames++;
-        if (scanAbsentFrames >= FALLBACK_SCAN_ANGLES.length) scanLastValue = '';
+        if (scanAbsentFrames >= FALLBACK_RELEASE_AFTER_MISSES) scanLastValue = '';
       }
     } catch (error) {
       scanAbsentFrames++;
-      if (scanAbsentFrames >= FALLBACK_SCAN_ANGLES.length) scanLastValue = '';
+      if (scanAbsentFrames >= FALLBACK_RELEASE_AFTER_MISSES) scanLastValue = '';
     } finally {
       scanDetectBusy = false;
-      scanFallbackAngleIndex = (scanFallbackAngleIndex + 1) % FALLBACK_SCAN_ANGLES.length;
+      // Only walk the tilt list on a pass that actually used one, or the angles
+      // rotate past while nothing is being tried at them.
+      if (tilted) scanFallbackAngleIndex = (scanFallbackAngleIndex + 1) % FALLBACK_SCAN_ANGLES.length;
       scanFallbackFrameCount++;
     }
   }
@@ -5256,7 +5280,7 @@ async function autoPrint() {
     printedByService = true;
     showPrintBanner();
     setBtn('✓', false);
-    setTimeout(() => setBtn('🖨', false), 4000);
+    setTimeout(() => setBtn('Auto', false), 4000);
   } catch (error) {
     noteToolFailure('Auto Print', error);
   }
@@ -5266,7 +5290,7 @@ async function autoPrint() {
     // just costs one keypress. The sale itself is already saved either way, and
     // _printPrepared stops the beforeprint handler saving it a second time.
     // cleanup is left to afterprint, which fires whether or not they hit Cancel.
-    setBtn('🖨', false);
+    setBtn('Auto', false);
     _directPrintInFlight = false;
     try {
       window.print();
