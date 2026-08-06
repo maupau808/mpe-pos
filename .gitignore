@@ -1,3 +1,6 @@
 *
 !index.html
 !.gitignore
+!.github/
+!.github/workflows/
+!.github/workflows/pages.yml
