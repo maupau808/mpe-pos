@@ -2487,17 +2487,25 @@ async function scanFallbackCameraFrame() {
     // Only tilt once straight-on passes have been failing, and even then only
     // on alternate passes, so a label held normally never waits behind one.
     const tilted = scanAbsentFrames >= FALLBACK_TILT_AFTER_MISSES && scanFallbackFrameCount % 2 === 1;
+    // A Honda parts-box barcode is dense and short-barred, and against a
+    // fixed-focus webcam it lands right at the resolution floor: roughly one
+    // pixel per module, where the decoder needs two or three. A UPC's bars are
+    // several times wider, which is why those still read. Every third straight
+    // pass therefore magnifies the middle of the frame 2× into the same canvas
+    // — same decode cost, twice the pixels per bar — so holding the box in the
+    // centre gives the dense codes a pass built for them.
+    const zoomed = !tilted && scanFallbackFrameCount % 3 === 2;
     try {
-      // Never trim horizontally. A long Honda Code 39 part number is a wide,
-      // low-density barcode that spans the frame, and shaving the sides costs
-      // the quiet zone or the end characters outright — a short UPC never
-      // noticed the 4% crop, which is why this read as "Honda codes only".
-      // The band still trims vertically, where nothing about a barcode lives.
+      // Never trim horizontally. A wide barcode spans the frame, and shaving
+      // the sides costs its quiet zone or its end characters outright — a short
+      // UPC sits well inside the old 4% crop and never noticed it.
+      // The band trims vertically only, and stays generous: on a parts box the
+      // barcode sits low on the label, not on the label's centre line.
       const fullFrame = scanFallbackFrameCount > 0 && scanFallbackFrameCount % FALLBACK_FULL_FRAME_EVERY === 0;
       const sourceX = 0;
-      const sourceY = fullFrame ? 0 : Math.round(video.videoHeight * 0.20);
+      const sourceY = fullFrame ? 0 : Math.round(video.videoHeight * 0.10);
       const width = video.videoWidth;
-      const height = fullFrame ? video.videoHeight : Math.round(video.videoHeight * 0.60);
+      const height = fullFrame ? video.videoHeight : Math.round(video.videoHeight * 0.80);
       if (fullFrame && !scanFallbackFullCanvas) scanFallbackFullCanvas = document.createElement('canvas');
       if (!fullFrame && !scanFallbackCanvas) scanFallbackCanvas = document.createElement('canvas');
       const canvas = fullFrame ? scanFallbackFullCanvas : scanFallbackCanvas;
@@ -2512,7 +2520,12 @@ async function scanFallbackCameraFrame() {
       context.fillRect(0, 0, width, height);
       context.translate(width / 2, height / 2);
       if (angle) context.rotate(angle * Math.PI / 180);
-      context.drawImage(video, sourceX, sourceY, width, height, -width / 2, -height / 2, width, height);
+      // Source rect maps onto the whole canvas, so halving it magnifies 2×.
+      const sampleW = zoomed ? Math.round(width / 2) : width;
+      const sampleH = zoomed ? Math.round(height / 2) : height;
+      const sampleX = sourceX + Math.round((width - sampleW) / 2);
+      const sampleY = sourceY + Math.round((height - sampleH) / 2);
+      context.drawImage(video, sampleX, sampleY, sampleW, sampleH, -width / 2, -height / 2, width, height);
       const found = await scanFallbackDetector.detect(canvas);
       if (!scanActive) return;
       if (found.length) await acceptCameraDecodedValue(found[0].rawValue, found[0].format || 'zxing-wasm', found[0], canvas);
