@@ -234,7 +234,11 @@ body.doc-internal .sum-internal { display: block; }
 .txn-card.open { border-color: #d0d0d0; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
 .txn-sum { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; font-size: 13px; }
 .txn-sum:hover { background: #f4f8f3; }
-.txn-date { color: #888; flex: 0 0 88px; font-variant-numeric: tabular-nums; }
+.txn-date-block { flex: 0 0 88px; min-width: 0; }
+.txn-date { display: block; color: #888; font-variant-numeric: tabular-nums; }
+.doc-history-tag { display: inline-block; margin-left: 6px; padding: 1px 5px; border: 1px solid #c7cfc4; border-radius: 4px; background: #f3f6f2; color: #555; font-size: 9px; font-weight: 700; line-height: 1.35; text-transform: uppercase; letter-spacing: .03em; vertical-align: 1px; white-space: nowrap; }
+.txn-date-block .doc-history-tag { margin: 2px 0 0; vertical-align: 0; }
+.doc-history-number { margin-left: 5px; color: #999; font-size: 10px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .txn-name { font-weight: 600; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .txn-name-alt { font-weight: 400; font-style: italic; color: #999; }
 .reprint-tag { font-style: italic; font-weight: 600; }
@@ -723,13 +727,13 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <span class="sum-label">Subtotal</span>
         <span class="sum-val" id="sumSubtotal">—</span>
       </div>
-      <div class="sum-row card-fee-row hidden" id="cardFeeRow">
-        <span class="sum-label">Card fee (3%)</span>
-        <span class="sum-val" id="sumCardFee">—</span>
-      </div>
       <div class="sum-row">
         <span class="sum-label">Tax</span>
         <span class="sum-val" id="sumTax">—</span>
+      </div>
+      <div class="sum-row card-fee-row hidden" id="cardFeeRow">
+        <span class="sum-label">Card fee (3%)</span>
+        <span class="sum-val" id="sumCardFee">—</span>
       </div>
       <div class="sum-row total">
         <span class="sum-label">Total</span>
@@ -854,6 +858,12 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googl
 // ─── APP STATE ─────────────────────────────────────────────────────────────
 const TAX_RATE = 0.04712;
 const CARD_FEE_RATE = 0.03;
+
+function checkoutTotals(subtotal, cardFeeActive) {
+  const tax = subtotal * TAX_RATE;
+  const cardFee = cardFeeActive ? (subtotal + tax) * CARD_FEE_RATE : 0;
+  return { tax, cardFee, total: subtotal + tax + cardFee };
+}
 let discountControlsEnabled = false;
 let NUM_ROWS = 3;
 const MAX_RESULTS = 50;
@@ -3553,6 +3563,9 @@ async function pushPriceChangesToSheet() {
   } catch(e) { alert('Push failed: ' + e.message); }
 }
 async function pushTransactionToSheet(order) {
+  // WRITES TO: Google Drive Bridge "Transactions" sheet.
+  // TRIGGER: Print, Auto Print, Export PDF, Email, or an explicit history push.
+  // DOES NOT TOUCH: Master pricing, POS catalog data, customers, or QBO.
   if (!order) return;
   if (!SHEETS_ID) { alert('Set SHEETS_ID in the app config first.'); return; }
 
@@ -3573,11 +3586,15 @@ async function pushTransactionToSheet(order) {
   // Build rows: TXN summary row first, then item rows
   const rows = [];
 
-  // Summary row: Type | TxnID | Date | Time | Name | Phone | Email | Address | — | — | — | — | Total
+  // Summary row: Type | TxnID | Date | Time | Name | Phone | Email | Address |
+  // — | — | — | — | Total | — | Document Type | Document Number
+  const savedDocType = DOC_TITLES[order.docType] ? order.docType : '';
+  const savedDocNumber = order.docNumber ? String(order.docNumber) : '';
   rows.push(['TXN', txnId, dateStr, timeStr,
     [c.name, c.company].filter(Boolean).join(' / ') || '',
     c.phone || '', c.email || '', addr,
-    '', '', '', '', order.total]);
+    '', '', '', '', order.total, '', savedDocType,
+    savedDocNumber ? "'" + savedDocNumber : '']);
 
   // Item rows
   for (const item of order.items) {
@@ -3585,7 +3602,7 @@ async function pushTransactionToSheet(order) {
       item.pn, item.desc, item.qty,
       item.ea !== '' && item.ea != null ? '$' + parseFloat(item.ea).toFixed(2) : '',
       item.sub !== '' && item.sub != null ? '$' + parseFloat(item.sub).toFixed(2) : '',
-      (item.sn && item.sn.length) ? item.sn.join(', ') : '']);
+      (item.sn && item.sn.length) ? item.sn.join(', ') : '', '', '']);
   }
 
   try {
@@ -3595,36 +3612,63 @@ async function pushTransactionToSheet(order) {
       getSheetNumericId(TXN_SHEET)
     ]);
 
-    const txnTs = txnDate.getTime();
+    let writtenRange = '';
+    let writeMode = '(verified existing)';
+    const existingTxnIdx = existingRows.findIndex(row =>
+      String(row[0] || '').trim().toUpperCase() === 'TXN' && String(row[1] || '') === txnId);
+    if (existingTxnIdx >= 0) {
+      const existing = existingRows[existingTxnIdx];
+      if (String(existing[14] || '') !== savedDocType || String(existing[15] || '') !== savedDocNumber) {
+        await sheetsUpdate(`${TXN_SHEET}!O${existingTxnIdx + 1}:P${existingTxnIdx + 1}`, [[
+          savedDocType, savedDocNumber ? "'" + savedDocNumber : '',
+        ]]);
+      }
+      writtenRange = `${TXN_SHEET}!A${existingTxnIdx + 1}:P${existingTxnIdx + 1}`;
+    } else {
+      const txnTs = txnDate.getTime();
+      // Find the first TXN row that is older than this transaction → insert before it.
+      let insertIdx = -1; // -1 = append to end
+      for (let i = 0; i < existingRows.length; i++) {
+        if ((existingRows[i][0] || '').trim().toUpperCase() !== 'TXN') continue;
+        const rowTs = new Date((existingRows[i][2] || '') + ' ' + (existingRows[i][3] || '')).getTime();
+        if (!isNaN(rowTs) && rowTs < txnTs) { insertIdx = i; break; }
+      }
 
-    // Find the first TXN row that is older than this transaction → insert before it
-    let insertIdx = -1; // -1 = append to end
-    for (let i = 0; i < existingRows.length; i++) {
-      if ((existingRows[i][0] || '').trim().toUpperCase() !== 'TXN') continue;
-      const rowTs = new Date((existingRows[i][2] || '') + ' ' + (existingRows[i][3] || '')).getTime();
-      if (!isNaN(rowTs) && rowTs < txnTs) { insertIdx = i; break; }
+      if (insertIdx === -1) {
+        // Newer than everything (or sheet empty) — append to end.
+        // sheetsAppend returns false (not signed in) WITHOUT throwing — must not mark the
+        // txn pushed in that case, or it silently never reaches Bridge. Leave it queued.
+        const result = await sheetsAppend(`${TXN_SHEET}!A1`, rows);
+        if (!result) return;
+        writtenRange = result?.updates?.updatedRange || '';
+        writeMode = '(appended)';
+      } else {
+        // Shift rows down to make room, then write into the gap.
+        await sheetsBatchUpdate([{
+          insertDimension: {
+            range: { sheetId, dimension: 'ROWS', startIndex: insertIdx, endIndex: insertIdx + rows.length },
+            inheritFromBefore: false
+          }
+        }]);
+        await sheetsUpdate(`${TXN_SHEET}!A${insertIdx + 1}`, rows);
+        writtenRange = `${TXN_SHEET}!A${insertIdx + 1}:P${insertIdx + rows.length}`;
+        writeMode = `(inserted at row ${insertIdx + 1})`;
+      }
     }
 
-    if (insertIdx === -1) {
-      // Newer than everything (or sheet empty) — append to end.
-      // sheetsAppend returns false (not signed in) WITHOUT throwing — must not mark the
-      // txn pushed in that case, or it silently never reaches Bridge. Leave it queued.
-      const ok = await sheetsAppend(`${TXN_SHEET}!A1`, rows);
-      if (!ok) return;
-    } else {
-      // Shift rows down to make room, then write into the gap
-      await sheetsBatchUpdate([{
-        insertDimension: {
-          range: { sheetId, dimension: 'ROWS', startIndex: insertIdx, endIndex: insertIdx + rows.length },
-          inheritFromBefore: false
-        }
-      }]);
-      await sheetsUpdate(`${TXN_SHEET}!A${insertIdx + 1}`, rows);
+    if (!writtenRange) throw new Error('Transaction save returned no range to verify');
+    const writtenRows = await sheetsGet(writtenRange);
+    const savedSummary = writtenRows.find(row =>
+      String(row[0] || '').trim().toUpperCase() === 'TXN' && String(row[1] || '') === txnId);
+    if (!savedSummary
+        || String(savedSummary[14] || '') !== savedDocType
+        || String(savedSummary[15] || '') !== savedDocNumber) {
+      throw new Error('Transaction could not be verified after saving');
     }
 
     addPushedTxnId(txnId);
     try { updatePriceChangesBadge(); } catch (e) {}   // un-synced count just dropped
-    console.log('[MPE] Transaction exported:', txnId, insertIdx === -1 ? '(appended)' : `(inserted at row ${insertIdx + 1})`);
+    console.log('[MPE] Transaction exported:', txnId, writeMode);
   } catch(e) {
     // This runs automatically after every sale, so it must never put a dialog on
     // the counter — that was the popup appearing out of nowhere. It also has to
@@ -3670,7 +3714,8 @@ function _parseTxnRows(rows) {
     if (type === 'txn') {
       if (cur) txns.push(cur);
       cur = { txnId: r[1]||'', date: r[2]||'', time: r[3]||'', name: r[4]||'',
-              phone: r[5]||'', email: r[6]||'', addr: r[7]||'', total: r[12]||'', items: [] };
+              phone: r[5]||'', email: r[6]||'', addr: r[7]||'', total: r[12]||'',
+              docType: r[14]||'', docNumber: r[15]||'', items: [] };
     } else if (type === 'item' && cur) {
       cur.items.push({ pn: r[8]||'', desc: r[9]||'', qty: r[10]||'', ea: r[11]||'', sub: r[12]||'', sn: r[13]||'' });
     }
@@ -3678,7 +3723,8 @@ function _parseTxnRows(rows) {
   if (cur) txns.push(cur);
   const _num = v => parseFloat(String(v || '').replace(/[^0-9.\-]/g, '')) || 0;
   for (const t of txns) {
-    const parts = [t.txnId, t.date, t.name, t.phone, t.email, t.addr, String(t.total)];
+    const parts = [t.txnId, t.date, t.name, t.phone, t.email, t.addr, String(t.total),
+                   DOC_TITLES[t.docType] || t.docType, t.docNumber];
     for (const it of t.items) parts.push(it.pn, it.desc, it.sn);
     t._hay = parts.filter(Boolean).join(' ').toLowerCase();
     t._ts = Date.parse(t.date) || 0;
@@ -3788,7 +3834,7 @@ function _txnRowHtml(t, i) {
                   : `<span class="txn-name">—</span>`);
   return `<div class="txn-card" id="txnCard-${i}">
     <div class="txn-sum" onclick="toggleTxn(${i})">
-      <span class="txn-date">${_esch(t.date)||'—'}</span>
+      <span class="txn-date-block"><span class="txn-date">${_esch(t.date)||'—'}</span>${historyDocTypeTag(t.docType)}</span>
       ${nameCell}
       <span class="txn-meta">${n} item${n!==1?'s':''}</span>
       <span class="txn-total">${_fmtMoney(t.total)}</span>
@@ -3799,13 +3845,16 @@ function _txnRowHtml(t, i) {
 }
 function _txnDetailHtml(t, idx) {
   const meta = [t.time, t.phone, t.email, t.addr].filter(Boolean).map(_esch).join('  ·  ');
+  const docMeta = DOC_TITLES[t.docType]
+    ? DOC_TITLES[t.docType] + (t.docNumber ? ' No. ' + t.docNumber : '')
+    : '';
   const items = t.items.map(it => `<tr>
       <td>${_esch(it.pn)}</td><td>${_esch(it.desc)}</td>
       <td style="text-align:center;">${_esch(it.qty)}</td>
       <td style="text-align:right;">${_esch(it.ea)}</td>
       <td style="text-align:right;">${_esch(it.sub)}</td>
       <td>${it.sn ? '<b>'+_esch(it.sn)+'</b>' : ''}</td></tr>`).join('');
-  return `<div class="txn-meta-line">${meta}${meta?'  ·  ':''}<span class="txn-id">${_esch(t.txnId)}</span></div>
+  return `<div class="txn-meta-line">${docMeta ? '<b>' + _esch(docMeta) + '</b>  ·  ' : ''}${meta}${meta?'  ·  ':''}<span class="txn-id">${_esch(t.txnId)}</span></div>
     <table class="txn-items"><thead><tr>
       <th>Part #</th><th>Description</th><th>Qty</th><th>Ea</th><th>Sub</th><th>Serial #</th>
     </tr></thead><tbody>${items || '<tr><td colspan="6" style="color:#999;">No line items</td></tr>'}</tbody></table>
@@ -3835,6 +3884,7 @@ function loadTxnIntoPOS(i) {
   // duplicate Drive push.
   const _od = new Date(((t.date || '') + ' ' + (t.time || '')).trim());
   _reprintSource = { txnId: t.txnId || '', date: isNaN(_od.getTime()) ? new Date().toISOString() : _od.toISOString() };
+  setDocType(DOC_TITLES[t.docType] ? t.docType : 'receipt');
   // Customer — name field was saved as "name / company"; split it back.
   let name = t.name || '', company = '';
   if (name.includes(' / ')) { const p = name.split(' / '); name = p[0].trim(); company = p.slice(1).join(' / ').trim(); }
@@ -4553,13 +4603,12 @@ function updateSummary() {
     return;
   }
   const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
-  const cardFee = cardFeeActive ? subtotal * CARD_FEE_RATE : 0;
-  const tax = (subtotal + cardFee) * TAX_RATE;
+  const { tax, cardFee, total } = checkoutTotals(subtotal, cardFeeActive);
   document.getElementById('sumSubtotal').textContent = fmt(subtotal);
   document.getElementById('sumCardFee').textContent = fmt(cardFee);
   feeRow?.classList.toggle('hidden', !cardFeeActive);
   document.getElementById('sumTax').textContent = fmt(tax);
-  document.getElementById('sumTotal').textContent = fmt(subtotal + cardFee + tax);
+  document.getElementById('sumTotal').textContent = fmt(total);
   // Gross profit is measured against the goods, not the card fee or tax.
   updateInternalTotals(subtotal, true);
 }
@@ -4725,8 +4774,8 @@ function buildCopy2HTML() {
       <div class="mahalo-cell"><div class="mahalo">Mahalo for choosing us!</div></div>
       <div class="summary">
         <div class="sum-row"><span class="sum-label">Subtotal</span><span class="sum-val">${esc(subtotal)}</span></div>
-        ${cardFeeActive ? `<div class="sum-row"><span class="sum-label">Card fee (3%)</span><span class="sum-val">${esc(cardFee)}</span></div>` : ''}
         <div class="sum-row"><span class="sum-label">Tax</span><span class="sum-val">${esc(tax)}</span></div>
+        ${cardFeeActive ? `<div class="sum-row"><span class="sum-label">Card fee (3%)</span><span class="sum-val">${esc(cardFee)}</span></div>` : ''}
         <div class="sum-row total"><span class="sum-label">Total</span><span class="sum-val">${esc(total)}</span></div>
       </div>
     </div>
@@ -5113,9 +5162,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   const items = order.items || [];
   const subtotal = items.reduce((s, it) => s + (parseFloat(it.sub) || 0), 0);
   const cardFeeActive = !!order.toggles?.cardFee;
-  const cardFee = cardFeeActive ? subtotal * CARD_FEE_RATE : 0;
-  const tax = (subtotal + cardFee) * TAX_RATE;
-  const total = subtotal + cardFee + tax;
+  const { tax, cardFee, total } = checkoutTotals(subtotal, cardFeeActive);
   const anyMulti = items.some(it => (parseFloat(it.qty) || 1) !== 1);
 
   const rows = items.map(it => {
@@ -5190,8 +5237,8 @@ function buildEmailDocHTML(order, title, number, dateStr) {
     </table>
     <div style="margin-top:14px;margin-left:auto;width:240px;font-size:13px">
       <div style="${sumRow}"><span style="color:${PDF_MUTED}">Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>
-      ${cardFeeActive ? `<div style="${sumRow}"><span style="color:${PDF_MUTED}">Card fee (3%)</span><span>$${cardFee.toFixed(2)}</span></div>` : ''}
       <div style="${sumRow}"><span style="color:${PDF_MUTED}">Tax</span><span>$${tax.toFixed(2)}</span></div>
+      ${cardFeeActive ? `<div style="${sumRow}"><span style="color:${PDF_MUTED}">Card fee (3%)</span><span>$${cardFee.toFixed(2)}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:2px solid ${PDF_GREEN};font-weight:700;font-size:16px;color:${PDF_GREEN}"><span>Total</span><span>$${total.toFixed(2)}</span></div>
     </div>
     ${internalHtml}
@@ -5436,6 +5483,11 @@ const DOC_EPOCH  = Date.UTC(2025, 0, 1);   // numbering epoch — numbers count 
 let _docType        = 'receipt';
 let _pendingTxnDate = null;   // date reserved at print/email start, consumed by saveToHistory
 
+function historyDocTypeTag(type) {
+  const title = DOC_TITLES[type];
+  return title ? `<span class="doc-history-tag">${_esch(title)}</span>` : '';
+}
+
 function setDocType(t) {
   if (!DOC_TITLES[t]) return;
   _docType = t;
@@ -5646,7 +5698,7 @@ function renderHistory() {
       <div class="hist-entry">
         <div class="hist-entry-header" onclick="toggleHistEntry(${idx})">
           <span>
-            <span class="hist-entry-date">${dateStr} · ${timeStr}</span>
+            <span class="hist-entry-date">${dateStr} · ${timeStr}</span>${historyDocTypeTag(order.docType)}${order.docNumber ? `<span class="doc-history-number">No. ${_esch(order.docNumber)}</span>` : ''}
             ${order.customer?.name ? `<span class="hist-entry-cust"> — ${order.customer.name}</span>` : ''}
           </span>
           <span style="display:flex;align-items:center;gap:6px;">
