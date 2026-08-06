@@ -975,59 +975,97 @@ function handleSignIn() {
   }
   // This app always uses the shop account. Reuse its existing grant and avoid
   // forcing the account chooser; Google still prompts if authorization is missing.
-  tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
+  requestToken();
 }
 
 // ─── STAYING CONNECTED ─────────────────────────────────────────────────────
-// Reconnecting used to mean noticing the till was offline and pressing a button.
-// Now typing in the order grid quietly renews a stale token, so it is normally
-// back before anyone notices. Guarded hard, because a token request per keystroke
-// would be a popup storm: only when already signed in, only when the token is
-// actually stale, one attempt at a time, and at most once every two minutes.
+// Renewing the token opens Google's own window for about half a second. Nothing
+// in the page can stop that window taking focus while it is up — it is a real
+// browser window, and Google offers no quiet variant — so the only thing that
+// can be controlled is WHEN it appears. Typing used to be the trigger, which
+// guaranteed the worst possible moment: mid part number, every time.
 //
-// A silent renew works whenever the Google session is still alive — that is the
-// everyday case. If the session is gone Google needs a real click to show its
-// own window, and a keystroke is not a click, so the browser would block it.
-// The Admin button stays as that click.
+// The trigger is now a CLICK instead, and an early one: any click that is not
+// into a text field renews a token past 45 minutes old, ten minutes before the
+// 55-minute line where it would actually go stale. Clicks are everywhere in a
+// sale — a search result, a quantity stepper, a menu — so the renewal lands in
+// the gap between fields rather than inside one, and there is no caret to lose.
+//
+// It has to be a real gesture, not a timer: browsers only allow a popup that a
+// click opened, so a background renew would be silently swallowed by the popup
+// blocker. That is also why the old 55-minute setTimeout renew never carried its
+// weight, and why the Admin button remains the click that fixes a dead session
+// (a silent renew only works while the Google session itself is still alive).
+const TOKEN_STALE_MS = 55 * 60 * 1000;   // treat a token this old as unusable
+const TOKEN_RENEW_MS = 45 * 60 * 1000;   // renew on the next click once this old
+
 let _reconnectAt = 0, _reconnecting = false;
-function tokenIsFresh() {
-  const at = parseInt(localStorage.getItem('gTokenAt') || '0');
-  return !!accessToken && (Date.now() - at) < 55 * 60 * 1000;
+
+function tokenAge() {
+  return Date.now() - parseInt(localStorage.getItem('gTokenAt') || '0');
 }
+function tokenIsFresh() {
+  return !!accessToken && tokenAge() < TOKEN_STALE_MS;
+}
+
+// Any click that isn't landing in a text field is a chance to renew early. A
+// click into a field is skipped on purpose: someone is about to type there.
+document.addEventListener('pointerup', e => {
+  if (!tokenClient || !localStorage.getItem('gSignedIn')) return;
+  if (tokenAge() < TOKEN_RENEW_MS) return;
+  if (_reconnecting || Date.now() - _reconnectAt < 120000) return;
+  const t = e.target;
+  if (t && t.closest && t.closest('input, textarea, [contenteditable]')) return;
+  _reconnecting = true;
+  _reconnectAt = Date.now();
+  setTimeout(() => { _reconnecting = false; }, 8000);   // the GIS callback may never fire
+  requestToken();
+}, true);
+
+// Google's window takes focus while it is open and hands it back to the page,
+// not to the field. Restore the field and the caret position ourselves.
+function requestToken() {
+  if (!tokenClient) return;
+  const el = document.activeElement;
+  const keep = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') ? el : null;
+  if (keep) {
+    let start = null, end = null;
+    try { start = keep.selectionStart; end = keep.selectionEnd; } catch (e) {}
+    const restore = () => {
+      if (!document.body.contains(keep) || document.activeElement === keep) return;
+      keep.focus();
+      try { if (start !== null) keep.setSelectionRange(start, end); } catch (e) {}
+    };
+    [300, 900, 1800].forEach(ms => setTimeout(restore, ms));
+  }
+  tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
+}
+
 function ensureConnected(opts) {
   const wantRefresh = !!(opts && opts.refresh);
   if (!localStorage.getItem('gSignedIn') || !tokenClient) return;
   if (tokenIsFresh()) { if (wantRefresh) fetchFromDrive(); return; }
   if (_reconnecting) return;
-  if (!wantRefresh && Date.now() - _reconnectAt < 120000) return;   // typing path is rate-limited
+  if (!wantRefresh && Date.now() - _reconnectAt < 120000) return;   // background path is rate-limited
   _reconnecting = true;
   _reconnectAt = Date.now();
   setTimeout(() => { _reconnecting = false; }, 8000);   // the GIS callback may never fire
-  tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
+  requestToken();
 }
-// Any typing in the order grid is a reconnect trigger.
-document.addEventListener('input', e => {
-  const t = e.target;
-  if (!t || !t.closest || !t.closest('.wrap')) return;
-  if (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA') return;
-  ensureConnected();
-});
 // One click on Admin: reconnect if stale, refresh the catalog, show the panel.
 function openAdminMenu(event) {
   toggleMenu(event, 'adminMenu');
   if (document.getElementById('adminMenu')?.classList.contains('open')) ensureConnected({ refresh: true });
 }
 
-let _refreshTimer = null;
+// Kept as the one place that says "the token is ours now" — renewal itself is
+// driven by the click handler above, not by a timer the popup blocker would eat.
 function scheduleTokenRefresh() {
-  clearTimeout(_refreshTimer);
-  _refreshTimer = setTimeout(() => {
-    if (tokenClient && accessToken) tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
-  }, 55 * 60 * 1000);
+  _reconnectAt = 0;
+  _reconnecting = false;
 }
 
 function handleSignOut() {
-  clearTimeout(_refreshTimer);
   if (accessToken) google.accounts.oauth2.revoke(accessToken);
   accessToken = null;
   localStorage.removeItem('gSignedIn');
@@ -1165,7 +1203,7 @@ async function fetchFromDrive() {
   // If still no token, request one then re-call
   if (!accessToken) {
     setDriveStatus('Reconnecting…');
-    tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
+    requestToken();
     // fetchFromDrive will be called again from the token callback
     return;
   }
@@ -1188,7 +1226,7 @@ async function fetchFromDrive() {
       accessToken = null;
       localStorage.removeItem('gToken');
       setDriveStatus('Reconnecting…');
-      tokenClient.requestAccessToken({ prompt: '', login_hint: SHOP_GOOGLE_ACCOUNT });
+      requestToken();
       return;
     }
 
@@ -2084,12 +2122,28 @@ function playScanBeep(needsReview) {
       oscillator.start(start);
       oscillator.stop(start + duration + 0.01);
     };
+    // Flat-plateau tone: hard attack, steady body, hard cutoff — the definitive
+    // supermarket-scanner "beep", as opposed to a decaying chirp.
+    const blip = (start, duration, frequency, type, volume) => {
+      const oscillator = scanAudioContext.createOscillator();
+      const gain = scanAudioContext.createGain();
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.linearRampToValueAtTime(volume, start + 0.003);
+      gain.gain.setValueAtTime(volume, start + duration - 0.008);
+      gain.gain.linearRampToValueAtTime(0.0001, start + duration);
+      oscillator.connect(gain).connect(scanAudioContext.destination);
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.01);
+    };
     const now = scanAudioContext.currentTime;
     if (needsReview) {
       tone(now, 0.07, 620);
       tone(now + 0.10, 0.08, 430);
     } else {
-      tone(now, 0.115, 1850, 'square', 0.09);
+      blip(now, 0.16, 2000, 'square', 0.10);   // body
+      blip(now, 0.16, 1000, 'sine', 0.07);     // sub-octave for weight
     }
   } catch (e) {}
 }
