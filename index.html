@@ -988,19 +988,24 @@ function handleSignIn() {
 // can be controlled is WHEN it appears. Typing used to be the trigger, which
 // guaranteed the worst possible moment: mid part number, every time.
 //
-// The trigger is now a CLICK instead, and an early one: any click that is not
-// into a text field renews a token past 45 minutes old, ten minutes before the
-// 55-minute line where it would actually go stale. Clicks are everywhere in a
-// sale — a search result, a quantity stepper, a menu — so the renewal lands in
-// the gap between fields rather than inside one, and there is no caret to lose.
+// The trigger is now PRINTING — the Print button, Auto, or ⌘P. It is the one
+// moment in a sale where attention is already leaving the screen and no field is
+// being typed into, so a window flashing past costs nothing. It is also a real
+// gesture, which matters: browsers only allow a popup that a click or keypress
+// opened, so a timer-driven renew would be silently eaten by the popup blocker
+// (which is why the old 55-minute setTimeout renew never carried its weight).
 //
-// It has to be a real gesture, not a timer: browsers only allow a popup that a
-// click opened, so a background renew would be silently swallowed by the popup
-// blocker. That is also why the old 55-minute setTimeout renew never carried its
-// weight, and why the Admin button remains the click that fixes a dead session
-// (a silent renew only works while the Google session itself is still alive).
+// Every print renews, whatever the token's age, so each one pushes the clock out
+// a fresh hour. A till that prints at all through the day therefore never reaches
+// the 55-minute stale line at all. The only guard is a five-minute floor, so a
+// receipt followed by a reprint or a quote doesn't flash the window twice.
+//
+// If the shop does go quiet for over an hour the token does lapse, and that is
+// fine: sales and price changes are saved locally and marked pushed only on
+// success, so whatever piled up goes out on the next print. The Admin button
+// remains the click that revives a Google session that has actually ended.
 const TOKEN_STALE_MS = 55 * 60 * 1000;   // treat a token this old as unusable
-const TOKEN_RENEW_MS = 45 * 60 * 1000;   // renew on the next click once this old
+const RENEW_FLOOR_MS =  5 * 60 * 1000;   // don't renew twice inside one job
 
 let _reconnectAt = 0, _reconnecting = false;
 
@@ -1011,19 +1016,16 @@ function tokenIsFresh() {
   return !!accessToken && tokenAge() < TOKEN_STALE_MS;
 }
 
-// Any click that isn't landing in a text field is a chance to renew early. A
-// click into a field is skipped on purpose: someone is about to type there.
-document.addEventListener('pointerup', e => {
+// Called once per print job, from the single place every print path funnels
+// through.
+function renewOnPrint() {
   if (!tokenClient || !localStorage.getItem('gSignedIn')) return;
-  if (tokenAge() < TOKEN_RENEW_MS) return;
-  if (_reconnecting || Date.now() - _reconnectAt < 120000) return;
-  const t = e.target;
-  if (t && t.closest && t.closest('input, textarea, [contenteditable]')) return;
+  if (_reconnecting || Date.now() - _reconnectAt < RENEW_FLOOR_MS) return;
   _reconnecting = true;
   _reconnectAt = Date.now();
   setTimeout(() => { _reconnecting = false; }, 8000);   // the GIS callback may never fire
   requestToken();
-}, true);
+}
 
 // Google's window takes focus while it is open and hands it back to the page,
 // not to the field. Restore the field and the caret position ourselves.
@@ -5226,6 +5228,10 @@ let _directPrintInFlight = false;
 function prepareAndSaveForPrint() {
   if (_printPrepared) return;
   _printPrepared = true;
+  // Printing is also when an aging Google token is renewed — see STAYING
+  // CONNECTED. It goes first so the renewal callback lands after this sale is
+  // queued and flushes it along with anything else waiting.
+  renewOnPrint();
   preparePrint();
   saveToHistory();
   updatePriceChangesBadge();
