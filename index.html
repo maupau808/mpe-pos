@@ -997,15 +997,16 @@ function handleSignIn() {
 //
 // Every print renews, whatever the token's age, so each one pushes the clock out
 // a fresh hour. A till that prints at all through the day therefore never reaches
-// the 55-minute stale line at all. The only guard is a five-minute floor, so a
-// receipt followed by a reprint or a quote doesn't flash the window twice.
+// the 55-minute stale line. There is no minimum interval on purpose: a token
+// request costs nothing, and one print job can only ever fire one of them —
+// _printPrepared collapses the button, ⌘P, and beforeprint into a single call,
+// and the in-flight flag covers the rest.
 //
 // If the shop does go quiet for over an hour the token does lapse, and that is
 // fine: sales and price changes are saved locally and marked pushed only on
 // success, so whatever piled up goes out on the next print. The Admin button
 // remains the click that revives a Google session that has actually ended.
 const TOKEN_STALE_MS = 55 * 60 * 1000;   // treat a token this old as unusable
-const RENEW_FLOOR_MS =  5 * 60 * 1000;   // don't renew twice inside one job
 
 let _reconnectAt = 0, _reconnecting = false;
 
@@ -1020,7 +1021,7 @@ function tokenIsFresh() {
 // through.
 function renewOnPrint() {
   if (!tokenClient || !localStorage.getItem('gSignedIn')) return;
-  if (_reconnecting || Date.now() - _reconnectAt < RENEW_FLOOR_MS) return;
+  if (_reconnecting) return;
   _reconnecting = true;
   _reconnectAt = Date.now();
   setTimeout(() => { _reconnecting = false; }, 8000);   // the GIS callback may never fire
