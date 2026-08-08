@@ -1760,14 +1760,77 @@ function uniqueScanParts(parts) {
   });
 }
 
+// A scan has to beep the moment the part is recognized, so barcode lookup can
+// never run the full catalog text search. At 134k rows (plus supersede aliases)
+// that scan costs 100ms+ per call, an UNKNOWN code paid for the fuzzy
+// edit-distance pass on top, and the camera loop repeated the whole thing for
+// every symbol in view every 90ms — the beep was waiting on all of it.
+// This index precomputes the exact-PN bucket searchParts would have produced —
+// same supersede/alias handling, same sales-frequency order, same final filter —
+// so a scan resolves in one Map lookup. Rebuilt with the catalog.
+let scanExactIndex = null;
+
+function buildScanExactIndex() {
+  scanExactIndex = new Map();
+  if (!Array.isArray(partsArray) || !partsArray.length) return;
+  // First real row (in Master order) that owns each number, aliases excluded —
+  // the same row `partsArray.find(...)` picks inside searchParts.
+  const nonAliasByKey = new Map();
+  for (const p of partsArray) {
+    const nPN = p._nPN !== undefined ? p._nPN : (p._nPN = normalizePN(p.pn));
+    const nOG = p._nOG !== undefined ? p._nOG : (p._nOG = normalizePN(p.og));
+    if (p._supersedeAlias) continue;
+    if (nPN && !nonAliasByKey.has(nPN)) nonAliasByKey.set(nPN, p);
+    if (nOG && !nonAliasByKey.has(nOG)) nonAliasByKey.set(nOG, p);
+  }
+  const push = (key, record) => {
+    // The old code filtered searchParts' output down to records that still
+    // carried the scanned number. Apply that same filter here, not at scan time.
+    if (normalizePN(record.pn) !== key && normalizePN(record.og) !== key
+      && normalizePN(record._supersededFrom) !== key) return;
+    let list = scanExactIndex.get(key);
+    if (!list) scanExactIndex.set(key, list = []);
+    list.push(record);
+  };
+  for (const p of partsArray) {
+    const nPN = p._nPN, nOG = p._nOG;
+    const keys = nPN && nOG && nPN !== nOG ? [nPN, nOG] : [nPN || nOG];
+    for (const key of keys) {
+      if (!key) continue;
+      if (p._supersedeAlias) {
+        // The original obsolete row answers lookups by its old number, and a
+        // real row for the new number always outranks its alias.
+        if (key === nOG || nonAliasByKey.has(nPN)) continue;
+        push(key, p);
+        continue;
+      }
+      if (p.sup && normalizePN(p.sup) !== nPN) {
+        // An exact obsolete PN selects the current row, not the obsolete row's
+        // own price and description.
+        const current = nonAliasByKey.get(normalizePN(p.sup));
+        push(key, {
+          ...(current || p),
+          pn: current ? current.pn : p.sup,
+          og: current ? current.og : p.sup,
+          _supersededFrom: p.og || p.pn
+        });
+        continue;
+      }
+      push(key, p);
+    }
+  }
+  for (const [key, list] of scanExactIndex) {
+    // Array.prototype.sort is stable, so equal-frequency rows keep Master order.
+    if (list.length > 1) list.sort((a, b) => (b.f || 0) - (a.f || 0));
+    scanExactIndex.set(key, uniqueScanParts(list));
+  }
+}
+
 function exactScanParts(value) {
   const key = normalizePN(value);
   if (!key || !loaded) return [];
-  return uniqueScanParts(searchParts(String(value)).filter(part =>
-    normalizePN(part.pn) === key ||
-    normalizePN(part.og) === key ||
-    normalizePN(part._supersededFrom) === key
-  ));
+  if (!scanExactIndex) buildScanExactIndex();
+  return scanExactIndex.get(key) || [];
 }
 
 function exactWarrantyModelParts(value) {
@@ -2123,32 +2186,47 @@ function prepareScanAudio() {
   } catch (e) {}
 }
 
+// A cold AudioContext's first sound waits on the OS audio device waking up,
+// which reads as a scan that beeped late. Warm it on the first interaction of
+// the session — a counter scanner never gets a click first, so the keydown of
+// the scan burst itself would otherwise pay for it.
+function primeScanAudio() {
+  prepareScanAudio();
+  if (!scanAudioContext) return;
+  try {
+    const oscillator = scanAudioContext.createOscillator();
+    const gain = scanAudioContext.createGain();
+    gain.gain.setValueAtTime(0.0001, scanAudioContext.currentTime);
+    oscillator.connect(gain).connect(scanAudioContext.destination);
+    oscillator.start();
+    oscillator.stop(scanAudioContext.currentTime + 0.02);
+  } catch (e) {}
+}
+
+function primeScanAudioOnce() {
+  document.removeEventListener('pointerdown', primeScanAudioOnce, true);
+  document.removeEventListener('keydown', primeScanAudioOnce, true);
+  primeScanAudio();
+}
+document.addEventListener('pointerdown', primeScanAudioOnce, true);
+document.addEventListener('keydown', primeScanAudioOnce, true);
+
 function playScanBeep(needsReview) {
   try {
     prepareScanAudio();
     if (!scanAudioContext) return;
-    const tone = (start, duration, frequency, type = 'sine', volume = 0.18) => {
-      const oscillator = scanAudioContext.createOscillator();
-      const gain = scanAudioContext.createGain();
-      oscillator.type = type;
-      oscillator.frequency.setValueAtTime(frequency, start);
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(volume, start + 0.004);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-      oscillator.connect(gain).connect(scanAudioContext.destination);
-      oscillator.start(start);
-      oscillator.stop(start + duration + 0.01);
-    };
     // Flat-plateau tone: hard attack, steady body, hard cutoff — the definitive
-    // supermarket-scanner "beep", as opposed to a decaying chirp.
+    // supermarket-scanner "beep", as opposed to a decaying chirp. Kept SHORT:
+    // the beep marks the instant the item landed, so a long body just smears
+    // that instant and makes a fast scan sound like it lagged.
     const blip = (start, duration, frequency, type, volume) => {
       const oscillator = scanAudioContext.createOscillator();
       const gain = scanAudioContext.createGain();
       oscillator.type = type;
       oscillator.frequency.setValueAtTime(frequency, start);
       gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.linearRampToValueAtTime(volume, start + 0.003);
-      gain.gain.setValueAtTime(volume, start + duration - 0.008);
+      gain.gain.linearRampToValueAtTime(volume, start + 0.002);
+      gain.gain.setValueAtTime(volume, start + duration - 0.006);
       gain.gain.linearRampToValueAtTime(0.0001, start + duration);
       oscillator.connect(gain).connect(scanAudioContext.destination);
       oscillator.start(start);
@@ -2156,11 +2234,12 @@ function playScanBeep(needsReview) {
     };
     const now = scanAudioContext.currentTime;
     if (needsReview) {
-      tone(now, 0.07, 620);
-      tone(now + 0.10, 0.08, 430);
+      // Two descending blips — "nothing was added, look at the screen".
+      blip(now, 0.07, 620, 'square', 0.10);
+      blip(now + 0.09, 0.08, 400, 'square', 0.10);
     } else {
-      blip(now, 0.16, 2000, 'square', 0.10);   // body
-      blip(now, 0.16, 1000, 'sine', 0.07);     // sub-octave for weight
+      blip(now, 0.07, 2000, 'square', 0.11);   // body
+      blip(now, 0.07, 1000, 'sine', 0.08);     // sub-octave for weight
     }
   } catch (e) {}
 }
@@ -4392,6 +4471,9 @@ function synExpandHay(s) {
 // idle chunks so the first real keystroke is instant (no one-time cache build).
 // Chunked + setTimeout so it never blocks the UI, even with 100k+ parts.
 function warmUpSearch() {
+  // Every catalog load path lands here, so this is where the scan index is
+  // rebuilt — it must be ready before the first barcode can be scanned.
+  buildScanExactIndex();
   if (!Array.isArray(partsArray) || !partsArray.length) return;
   const build = start => {
     const end = Math.min(start + 5000, partsArray.length);
@@ -4426,7 +4508,10 @@ function searchParts(val) {
 
   const exact = [], startsWith = [], wordMatch = [];
   for (let p of partsArray) {
-    const normPN = normalizePN(p.pn), normOG = normalizePN(p.og);
+    // Normalizing both numbers for every row was two regex passes per part per
+    // keystroke. Cached once with the catalog (see buildScanExactIndex).
+    const normPN = p._nPN !== undefined ? p._nPN : (p._nPN = normalizePN(p.pn));
+    const normOG = p._nOG !== undefined ? p._nOG : (p._nOG = normalizePN(p.og));
     // 1) Part-number first — typing a PN (or its start) stays the priority workflow.
     if (normVal && (normPN === normVal || normOG === normVal)) {
       if (p._supersedeAlias) {
