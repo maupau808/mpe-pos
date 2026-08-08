@@ -1615,6 +1615,15 @@ const FALLBACK_RELEASE_AFTER_MISSES = 5;
 const FALLBACK_FULL_FRAME_EVERY = 11;
 const FALLBACK_RETRY_MS = 12;
 const SCAN_REPEAT_LOCKOUT_MS = 2250;
+// The 2250ms guard above exists because the camera keeps re-reading a label that
+// is still in view. A scan gun's trigger pull is a deliberate act instead, so
+// two pulls on the same part should be two lines — not a silently dropped scan.
+// DORMANT until there is a gun on the counter: with the flag false, the hardware
+// path keeps the camera's timing exactly as it is today. To try it once the gun
+// arrives, add ?fastRepeat=1 to the POS URL (no deploy); to make it permanent,
+// set SCAN_HARDWARE_FAST_REPEAT to true. Never applies to camera scans.
+const SCAN_HARDWARE_FAST_REPEAT = false;
+const SCAN_HARDWARE_REPEAT_LOCKOUT_MS = 400;
 const SCAN_CAMERA_KEY = 'mpeScanCameraId';
 let partCodePending = [];
 let partCodeLearned = {};
@@ -1742,10 +1751,19 @@ function pendingUnitPN() {
   return normalizePN(tbody.querySelector(`[data-row="${pendingUnitSerialRow}"].part-input`)?.dataset.partPn);
 }
 
-function claimScannedValue(value, now = Date.now()) {
+function hardwareFastRepeatEnabled() {
+  if (SCAN_HARDWARE_FAST_REPEAT) return true;
+  try { return new URLSearchParams(location.search).get('fastRepeat') === '1'; }
+  catch (e) { return false; }
+}
+
+function claimScannedValue(value, now = Date.now(), source = '') {
   const key = canonicalScannedCode(value);
   const lastAcceptedAt = scanRecentValues.get(key) || 0;
-  if (now - lastAcceptedAt < SCAN_REPEAT_LOCKOUT_MS) return false;
+  const lockout = source === 'hardware' && hardwareFastRepeatEnabled()
+    ? SCAN_HARDWARE_REPEAT_LOCKOUT_MS
+    : SCAN_REPEAT_LOCKOUT_MS;
+  if (now - lastAcceptedAt < lockout) return false;
   scanRecentValues.set(key, now);
   return true;
 }
@@ -2364,7 +2382,7 @@ function acceptDecodedScan(rawValue, format) {
     setScanStatus('Parts are still loading — try again in a moment', 'err');
     return;
   }
-  if (!claimScannedValue(raw)) return;
+  if (!claimScannedValue(raw, Date.now(), format)) return;
   const result = resolveScannedValue(raw);
   const serialCandidates = unitSerialCandidates(raw).filter(part => part.warranty);
   if (result.candidates.length === 0 && rowNeedsUnitSerial(pendingUnitSerialRow) && likelySecondUnitSerial(raw)) {
