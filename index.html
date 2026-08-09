@@ -20,6 +20,7 @@ html.dark, body.dark { background: #2f4339; }
 body.dark .wrap { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
 body.dark #uploadsModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
 body.dark #txnModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
+body.dark #phoneListModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
 @media print {
   body.dark .wrap, body.dark #uploadsModal .hist-panel { filter: none !important; }
   html.dark, body.dark { background: #fff; }
@@ -618,7 +619,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="internal" onclick="setDocType('internal')">Internal</button>
       </div>
       <button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button>
-      <button class="scan-btn" id="phoneListBtn" type="button" onclick="loadPhoneList()" title="Load the newest list sent from MPE Scan on the phone">Phone list</button>
+      <button class="scan-btn" id="phoneListBtn" type="button" onclick="openPhoneLists()" title="Pick a list sent from MPE Scan on the phone">Phone list</button>
       <span style="display:none">
         <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="internalPrintBtn"></button><button id="cardFeeBtn"></button>
       </span>
@@ -830,6 +831,21 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     </div>
     <div class="hist-count" id="txnCount"></div>
     <div class="hist-list" id="txnList"></div>
+  </div>
+</div>
+
+<!-- Lists sent from MPE Scan on the phone -->
+<div id="phoneListModal" class="hist-modal hidden">
+  <div class="hist-panel">
+    <div class="hist-header">
+      <div style="font-weight:600;font-size:15px;">📲 Phone lists</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button class="drive-btn refresh" id="phoneListRefreshBtn" onclick="openPhoneLists(true)">↻ Refresh</button>
+        <button class="drive-btn hist-close-btn" onclick="closePhoneLists()">✕ Close</button>
+      </div>
+    </div>
+    <div class="hist-count" id="phoneListCount"></div>
+    <div class="hist-list" id="phoneListList"></div>
   </div>
 </div>
 
@@ -6333,36 +6349,150 @@ function reprintOrder(idx) {
 // with a customer standing at the counter.
 const PHONE_LIST_SHEET = 'Lists';
 
-async function fetchNewestPhoneList() {
+const PHONE_LIST_SHOW = 5;
+let _phoneLists = [];
+
+// Two requests regardless of how big the tab gets: column B alone says where
+// each list starts and ends, then one range covers only the newest few.
+async function fetchRecentPhoneLists(limit = PHONE_LIST_SHOW) {
   let ids;
   try {
     ids = await sheetsGet(`${PHONE_LIST_SHEET}!B:B`);
   } catch (e) {
-    if (/not found|Unable to parse range/i.test(e.message)) return null;   // tab never created
+    if (/not found|Unable to parse range/i.test(e.message)) return [];   // tab never created
     throw e;
   }
-  let last = -1;
-  for (let i = ids.length - 1; i >= 1; i--) {         // row 1 is the header
-    if (String(ids[i]?.[0] || '').trim()) { last = i; break; }
+  // Walk backwards collecting distinct list ids, newest first.
+  const spans = [];
+  let end = -1;
+  for (let i = ids.length - 1; i >= 1; i--) {          // row 1 is the header
+    const id = String(ids[i]?.[0] || '').trim();
+    if (!id) continue;
+    if (end === -1) { end = i; continue; }
+    if (id !== String(ids[end][0]).trim()) {
+      spans.push({ id: String(ids[end][0]).trim(), first: i + 1, last: end });
+      if (spans.length >= limit) break;
+      end = i;
+    }
   }
-  if (last < 1) return null;
-  const listId = String(ids[last][0]).trim();
-  let first = last;
-  while (first > 1 && String(ids[first - 1]?.[0] || '').trim() === listId) first--;
-  const rows = await sheetsGet(`${PHONE_LIST_SHEET}!A${first + 1}:J${last + 1}`);
-  const lines = rows
-    .filter(r => String(r[1] || '').trim() === listId)
-    .map(r => ({
+  if (end !== -1 && spans.length < limit) {
+    const openId = String(ids[end][0]).trim();
+    if (!spans.some(s => s.id === openId)) {
+      let first = end;
+      while (first > 1 && String(ids[first - 1]?.[0] || '').trim() === openId) first--;
+      spans.push({ id: openId, first, last: end });
+    }
+  }
+  if (!spans.length) return [];
+
+  const lo = Math.min(...spans.map(s => s.first));
+  const hi = Math.max(...spans.map(s => s.last));
+  const rows = await sheetsGet(`${PHONE_LIST_SHEET}!A${lo + 1}:J${hi + 1}`);
+
+  const byId = new Map();
+  for (const r of rows) {
+    const id = String(r[1] || '').trim();
+    if (!id || !spans.some(s => s.id === id)) continue;
+    if (!byId.has(id)) byId.set(id, { listId: id, sentAt: String(r[0] || ''), lines: [] });
+    byId.get(id).lines.push({
       line:   parseInt(r[2], 10) || 0,
       pn:     String(r[3] || '').trim(),
       desc:   String(r[4] || '').trim(),
       make:   String(r[5] || '').trim(),
       qty:    Math.max(1, parseFloat(r[6]) || 1),
+      price:  parseFloat(r[7]) || 0,
       serial: String(r[8] || '').trim(),
       note:   String(r[9] || '').trim()
-    }))
-    .sort((a, b) => a.line - b.line);
-  return lines.length ? { listId, sentAt: String(rows[0]?.[0] || ''), lines } : null;
+    });
+  }
+  return spans
+    .map(s => byId.get(s.id))
+    .filter(l => l && l.lines.length)
+    .map(l => ({ ...l, lines: l.lines.sort((a, b) => a.line - b.line) }));
+}
+
+function phoneListAgo(sentAt) {
+  const d = sentAt ? new Date(sentAt) : null;
+  if (!d || isNaN(d)) return '';
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    + ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function togglePhoneList(idx) {
+  const body = document.getElementById(`plist-body-${idx}`);
+  const arrow = document.getElementById(`plist-toggle-${idx}`);
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  if (arrow) arrow.textContent = open ? '▼' : '▶';
+}
+
+function closePhoneLists() { document.getElementById('phoneListModal').classList.add('hidden'); }
+
+function renderPhoneLists() {
+  const box = document.getElementById('phoneListList');
+  const count = document.getElementById('phoneListCount');
+  count.textContent = _phoneLists.length
+    ? `${_phoneLists.length} recent list${_phoneLists.length === 1 ? '' : 's'} — newest first`
+    : '';
+  if (!_phoneLists.length) {
+    box.innerHTML = '<div class="hist-empty">No list has been sent from the phone yet.</div>';
+    return;
+  }
+  box.innerHTML = _phoneLists.map((l, idx) => {
+    const total = l.lines.reduce((s, it) => s + (it.price || 0) * it.qty, 0);
+    const units = l.lines.reduce((s, it) => s + it.qty, 0);
+    const rows = l.lines.map(it => `
+      <tr>
+        <td>${_esch(it.pn)}</td>
+        <td>${_esch(it.desc)}${it.serial ? `<div style="font-size:11px;color:#888;">SN ${_esch(it.serial)}</div>` : ''}${it.note ? `<div style="font-size:11px;color:#b26a00;">${_esch(it.note)}</div>` : ''}</td>
+        <td style="text-align:center;">${it.qty}</td>
+        <td style="text-align:right;">${it.price ? '$' + it.price.toFixed(2) : '—'}</td>
+      </tr>`).join('');
+    return `
+      <div class="hist-entry">
+        <div class="hist-entry-header" onclick="togglePhoneList(${idx})">
+          <span>
+            <span class="hist-entry-date">${_esch(phoneListAgo(l.sentAt))}</span>
+            <span class="hist-entry-cust"> — ${units} item${units === 1 ? '' : 's'}</span>
+          </span>
+          <span style="display:flex;align-items:center;gap:6px;">
+            <span class="hist-entry-total">${total ? '$' + total.toFixed(2) : ''}</span>
+            <span class="hist-entry-toggle" id="plist-toggle-${idx}">${idx === 0 ? '▼' : '▶'}</span>
+          </span>
+        </div>
+        <div class="hist-entry-body${idx === 0 ? ' open' : ''}" id="plist-body-${idx}">
+          <table class="hist-items-table">
+            <thead><tr><th>Part #</th><th>Description</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Ea.</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <button class="hist-reprint-btn" style="border-color:#2d7a3a;color:#2d7a3a;" onclick="applyPhoneList(${idx})">↩ Load this list</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function openPhoneLists(refresh) {
+  const btn = document.getElementById('phoneListBtn');
+  if (!(accessToken || localStorage.getItem('gToken'))) { _pendingAction = openPhoneLists; handleSignIn(); return; }
+  if (!loaded) { alert('Prices are still loading — try again in a moment.'); return; }
+  const label = btn ? btn.textContent : '';
+  if (btn && !refresh) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  const box = document.getElementById('phoneListList');
+  if (refresh) box.innerHTML = '<div class="hist-empty">Loading…</div>';
+  try {
+    _phoneLists = await fetchRecentPhoneLists();
+    document.getElementById('phoneListModal').classList.remove('hidden');
+    renderPhoneLists();
+  } catch (e) {
+    alert('Could not read phone lists: ' + e.message);
+  } finally {
+    if (btn && !refresh) { btn.disabled = false; btn.textContent = label; }
+  }
 }
 
 function sheetHasContent() {
@@ -6373,20 +6503,14 @@ function sheetHasContent() {
   return false;
 }
 
-async function loadPhoneList() {
-  const btn = document.getElementById('phoneListBtn');
-  if (!(accessToken || localStorage.getItem('gToken'))) { _pendingAction = loadPhoneList; handleSignIn(); return; }
-  if (!loaded) { alert('Prices are still loading — try again in a moment.'); return; }
-  const label = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+function applyPhoneList(idx) {
+  const found = _phoneLists[idx];
+  if (!found) return;
   try {
-    const found = await fetchNewestPhoneList();
-    if (!found) { alert('No list has been sent from the phone yet.'); return; }
-    const when = found.sentAt ? new Date(found.sentAt) : null;
-    const ago = when && !isNaN(when) ? Math.round((Date.now() - when.getTime()) / 60000) : null;
     if (sheetHasContent() && !confirm(
-        `Load phone list ${found.listId} (${found.lines.length} line${found.lines.length === 1 ? '' : 's'}`
-        + `${ago != null ? `, sent ${ago} min ago` : ''})?\n\nThis replaces what is on screen now.`)) return;
+        `Load the list sent ${phoneListAgo(found.sentAt)} (${found.lines.length} line`
+        + `${found.lines.length === 1 ? '' : 's'})?\n\nThis replaces what is on screen now.`)) return;
+    closePhoneLists();
 
     clearAll();
     while (NUM_ROWS < found.lines.length + 1) addRow();
@@ -6441,11 +6565,9 @@ async function loadPhoneList() {
     const notes = [];
     if (unmatched.length) notes.push(`${unmatched.length} line${unmatched.length === 1 ? ' needs' : 's need'} a part and price:\n  • ` + unmatched.join('\n  • '));
     if (missingSerial.length) notes.push(`${missingSerial.length} warranty unit${missingSerial.length === 1 ? ' still needs' : 's still need'} a serial:\n  • ` + missingSerial.join('\n  • '));
-    if (notes.length) alert(`Loaded ${found.listId}.\n\n` + notes.join('\n\n'));
+    if (notes.length) alert(`Loaded the list sent ${phoneListAgo(found.sentAt)}.\n\n` + notes.join('\n\n'));
   } catch (e) {
     alert('Could not load the phone list: ' + e.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = label; }
   }
 }
 
