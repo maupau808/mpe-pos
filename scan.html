@@ -80,6 +80,31 @@ button { cursor: pointer; border: none; background: none; }
 }
 .icon-btn:active { background: var(--line); }
 
+/* ── auth bar ───────────────────────────────────────────────────────────────
+   Google access tokens last an hour and cannot be refreshed without a server,
+   which the yard has no route to. So the page says so out loud and early —
+   finding out at the Send button means walking back. */
+.authbar {
+  display: none; align-items: center; gap: 10px; flex: none;
+  padding: 10px 14px; font-size: 13px; text-align: left;
+  border-bottom: 1px solid var(--line); width: 100%;
+}
+.authbar.show { display: flex; }
+.authbar.soon { background: rgba(224,165,60,.14); color: var(--warn); }
+.authbar.out  { background: rgba(232,112,95,.16); color: var(--err); }
+.authbar b { display: block; font-size: 13px; }
+.authbar span { display: block; font-size: 11.5px; opacity: .85; margin-top: 1px; }
+.authbar .authbar-main { flex: 1; min-width: 0; }
+/* Solid fill with dark ink: this button is the whole point of the bar, so it
+   must not sit at the same contrast as the tint behind it. */
+.authbar .authbar-go {
+  flex: none; border-radius: 8px; padding: 8px 15px; font-size: 13px; font-weight: 700;
+  border: none; color: #1a1207;
+}
+.authbar.soon .authbar-go { background: var(--warn); }
+.authbar.out  .authbar-go { background: var(--err); }
+.authbar .authbar-go:active { filter: brightness(.88); }
+
 /* ── camera ─────────────────────────────────────────────────────────────── */
 .cam-wrap {
   position: relative; flex: none;
@@ -279,6 +304,14 @@ body.show-cost .hero-cost { display: block; }
   <div class="feed-dot" id="feedDot" title="catalog status"></div>
   <button class="icon-btn" id="searchBtn" title="Search by name or number">&#9906;</button>
   <button class="icon-btn" id="setBtn" title="Settings">&#9881;</button>
+</div>
+
+<div class="authbar" id="authBar">
+  <div class="authbar-main">
+    <b id="authBarTitle"></b>
+    <span id="authBarNote"></span>
+  </div>
+  <button class="authbar-go" id="authBarGo">Sign in</button>
 </div>
 
 <div class="cam-wrap">
@@ -573,14 +606,58 @@ function needAuth(then) {
   openSheet('setSheet');
   return false;
 }
+// Google access tokens live an hour and there is no refresh token in a
+// browser-only client — that needs a server-side auth-code grant, and the yard
+// has no route to one. The window is treated as 55 minutes for safety.
+const TOKEN_LIFE_MS = 55 * 60 * 1000;
+const TOKEN_WARN_MS = 8 * 60 * 1000;
+
+function tokenMsLeft() {
+  if (!localStorage.getItem(K_TOKEN)) return 0;
+  const at = parseInt(localStorage.getItem(K_TOKEN_AT) || '0', 10);
+  return Math.max(0, at + TOKEN_LIFE_MS - Date.now());
+}
+function authState() {
+  const left = tokenMsLeft();
+  return left <= 0 ? 'out' : (left < TOKEN_WARN_MS ? 'soon' : 'ok');
+}
+
 function renderAuth() {
   const signed = !!token();
   $('signBtn').textContent = signed ? 'Refresh' : 'Sign in';
   $('signLabel').textContent = signed ? 'Signed in' : 'Google account';
   $('signHelp').textContent = signed
-    ? SHOP_GOOGLE_ACCOUNT
+    ? `${SHOP_GOOGLE_ACCOUNT} · ${Math.ceil(tokenMsLeft() / 60000)} min left`
     : 'Needed to load prices and save codes.';
+  renderAuthBar();
 }
+
+// The scanning hand is not watching the header, so an expiring sign-in gets a
+// bar of its own. Scanning keeps working either way — the catalog is cached and
+// the list is in local storage — so the wording says that rather than alarming.
+function renderAuthBar() {
+  const bar = $('authBar');
+  const state = authState();
+  bar.className = 'authbar' + (state === 'ok' ? '' : ' show ' + state);
+  if (state === 'ok') return;
+  const held = list.length ? `${list.length} line${list.length === 1 ? '' : 's'} saved on this phone.` : '';
+  if (state === 'out') {
+    $('authBarTitle').textContent = 'Signed out — sending needs a sign-in';
+    $('authBarNote').textContent = (held ? held + ' ' : '') + 'Keep scanning, prices still work.';
+    $('authBarGo').textContent = 'Sign in';
+  } else {
+    const mins = Math.ceil(tokenMsLeft() / 60000);
+    $('authBarTitle').textContent = `Sign-in expires in ${mins} min`;
+    $('authBarNote').textContent = (held ? held + ' ' : '') + 'Renew now and the walk back is covered.';
+    $('authBarGo').textContent = 'Renew';
+  }
+}
+
+// Re-check on everything that plausibly precedes a send: waking the phone,
+// coming back to the tab, a scan landing, and a slow tick while it sits idle.
+document.addEventListener('visibilitychange', () => { if (!document.hidden) renderAuth(); });
+window.addEventListener('focus', renderAuth);
+setInterval(renderAuth, 30000);
 
 // ── OFFLINE CACHE (IndexedDB) ─────────────────────────────────────────────
 // The yard has no reliable signal. The last good feed is kept verbatim as the
@@ -1389,7 +1466,7 @@ function addUnknown(raw, code, format) {
   });
 }
 
-function persistList() { save(K_LIST, list); renderList(); }
+function persistList() { save(K_LIST, list); renderList(); renderAuthBar(); }
 
 function renderList() {
   const rows = $('rows');
@@ -1399,6 +1476,8 @@ function renderList() {
   pill.className = 'pill' + (count ? '' : ' zero');
   const total = list.filter(e => !e.unresolved).reduce((s, e) => s + e.price * e.qty, 0);
   $('listSum').textContent = list.length ? money(total) : '';
+  const send = $('sendBtn');
+  send.textContent = authState() === 'out' ? 'Sign in to send' : 'Send to counter';
 
   if (!list.length) {
     rows.innerHTML = '<div class="empty-note">Scans land here.<br>Clearing is one tap — nothing is kept for you.</div>';
@@ -1685,6 +1764,10 @@ $('clearBtn').addEventListener('click', () => {
   list = []; persistList(); toast('List cleared');
 });
 $('signBtn').addEventListener('click', () => signIn());
+// Renewing only renews. Sending is a separate, deliberate act — the bar can
+// appear mid-yard with half a list scanned, and pushing that to the counter
+// because a token was refreshed would be its own bug.
+$('authBarGo').addEventListener('click', () => signIn());
 $('refreshBtn').addEventListener('click', () => { if (needAuth(() => loadFeed())) {} });
 $('flushBtn').addEventListener('click', () => {
   if (!pendingCodes.length) { toast('Nothing waiting'); return; }
@@ -1710,6 +1793,7 @@ bindSwitch($('beepSw'), K_BEEP, true, () => {});
 // ── BOOT ──────────────────────────────────────────────────────────────────
 renderList();
 renderPending();
+renderAuth();          // the bar must be right before GIS loads, and if it never does
 setFeedState('', 'Loading…');
 showHero({});
 
