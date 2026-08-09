@@ -6504,8 +6504,14 @@ async function fetchRecentPhoneLists(limit = PHONE_LIST_SHOW, onRetry) {
     const id = String(r[1] || '').trim();
     if (!id || !spans.some(s => s.id === id)) continue;
     if (!byId.has(id)) byId.set(id, { listId: id, sentAt: String(r[0] || ''), lines: [] });
-    byId.get(id).lines.push({
-      line:   parseInt(r[2], 10) || 0,
+    const entry = byId.get(id);
+    const line = parseInt(r[2], 10) || 0;
+    // A throttled append used to be replayed and could copy the same list
+    // block repeatedly. Line numbers are unique inside one list, so collapse
+    // those copies while preserving every real line.
+    if (entry.lines.some(item => item.line === line)) continue;
+    entry.lines.push({
+      line,
       pn:     String(r[3] || '').trim(),
       desc:   String(r[4] || '').trim(),
       make:   String(r[5] || '').trim(),

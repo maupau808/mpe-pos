@@ -557,12 +557,12 @@ function localDateYMD(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 let toastTimer = null;
-function toast(msg) {
+function toast(msg, duration = 2400) {
   const el = $('toast');
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+  toastTimer = setTimeout(() => el.classList.remove('show'), duration);
 }
 function save(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
 
@@ -1052,6 +1052,11 @@ function queueCodeBinding(rawCode, format, part) {
 const SHEETS_RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 
 async function sheetsFetch(url, init, options) {
+  // GETs and exact-range PUTs are safe to replay. POST appends are not: Google
+  // can accept one while returning a throttled/uncertain response, and replaying
+  // it creates duplicate rows. A caller must confirm a POST by reading its ID.
+  const retryThrottle = options?.retryThrottle
+    ?? String(init?.method || 'GET').toUpperCase() !== 'POST';
   for (let attempt = 0; ; attempt++) {
     const resp = await fetch(url, init);
     if (resp.ok) return resp;
@@ -1059,13 +1064,17 @@ async function sheetsFetch(url, init, options) {
     try { const j = await resp.json(); msg = j.error?.message || msg; } catch {}
     const throttled = resp.status === 429
       || /quota exceeded|requests per minute|rate limit/i.test(msg);
-    if (throttled && attempt < SHEETS_RETRY_MS.length) {
+    if (throttled && retryThrottle && attempt < SHEETS_RETRY_MS.length) {
       const waitMs = SHEETS_RETRY_MS[attempt];
       options?.onRetry?.(waitMs, attempt + 1);
       await new Promise(resolve => setTimeout(resolve, waitMs));
       continue;
     }
-    if (throttled) throw new Error('Google Sheets is still busy. Wait a minute and try again.');
+    if (throttled) {
+      const error = new Error('Google Sheets is still busy.');
+      error.sheetsThrottled = true;
+      throw error;
+    }
     throw new Error(msg);
   }
 }
@@ -1735,6 +1744,19 @@ $('searchInput').addEventListener('input', ev => {
 // ── SEND TO COUNTER ───────────────────────────────────────────────────────
 // Writes the list to the Bridge sheet's `Lists` tab and verifies it by
 // read-back before saying it landed. Nothing here touches prices.
+async function findSentListRange(listId, lineCount, options) {
+  const ids = await sheetsGet(`${LISTS_SHEET}!B:B`, options);
+  for (let i = 1; i < ids.length; i++) {       // row 1 is the header
+    if (String(ids[i]?.[0] || '').trim() !== listId) continue;
+    let complete = true;
+    for (let j = 1; j < lineCount; j++) {
+      if (String(ids[i + j]?.[0] || '').trim() !== listId) { complete = false; break; }
+    }
+    if (complete) return `${LISTS_SHEET}!A${i + 1}:J${i + lineCount}`;
+  }
+  return '';
+}
+
 async function sendList() {
   if (!list.length) { toast('Nothing in the list'); return; }
   // Catch a missing serial while the machine is still in front of you, not at
@@ -1749,10 +1771,11 @@ async function sendList() {
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
-    const retryOptions = { onRetry: () => { btn.textContent = 'Google busy — retrying…'; } };
+    const retryOptions = { onRetry: () => { btn.textContent = 'Google busy — checking…'; } };
     await ensureTab(LISTS_SHEET, LISTS_HEADER, retryOptions);
     const stamp = new Date();
-    const listId = 'L' + stamp.toISOString().slice(0, 19).replace(/[-:T]/g, '');
+    const nonce = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
+    const listId = 'L' + stamp.toISOString().slice(0, 19).replace(/[-:T]/g, '') + '-' + nonce;
     const ordered = list.slice().reverse();     // scan order reads better at the counter
     const rows = ordered.map((e, i) => [
       stamp.toISOString(), listId, i + 1,
@@ -1767,8 +1790,21 @@ async function sendList() {
       e.unresolved ? `unmatched code ${e.code}`
         : (e.warranty && !e.serial ? 'warranty unit — serial missing' : '')
     ]);
-    const result = await sheetsAppend(`${LISTS_SHEET}!A1`, rows, retryOptions);
-    const range = result?.updates?.updatedRange;
+    let range = '';
+    try {
+      // Exactly one append attempt. A throttled POST is uncertain, so never
+      // replay it; check the unique list ID instead.
+      const result = await sheetsAppend(`${LISTS_SHEET}!A1`, rows, retryOptions);
+      range = result?.updates?.updatedRange || '';
+    } catch (e) {
+      if (!e.sheetsThrottled) throw e;
+      btn.textContent = 'In transit — checking…';
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      range = await findSentListRange(listId, rows.length, retryOptions);
+      if (!range) {
+        throw new Error('Google did not confirm it. Nothing was resent — tap Send once to try again.');
+      }
+    }
     if (!range) throw new Error('append returned no range to verify');
     const written = await sheetsGet(range, retryOptions);
     if (written.length !== rows.length) throw new Error(`wrote ${written.length} of ${rows.length} lines`);
@@ -1776,7 +1812,7 @@ async function sendList() {
     if (missing) throw new Error('a line did not read back');
     toast(`Sent ${rows.length} line${rows.length === 1 ? '' : 's'} as ${listId}`);
   } catch (e) {
-    toast('Not sent: ' + e.message);
+    toast('Not sent: ' + e.message, 7000);
   } finally {
     btn.disabled = false; btn.textContent = label;
   }
