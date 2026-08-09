@@ -37,10 +37,13 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .scan-btn.review { border-color: #d7a34c; background: #fff8e8; color: #8a5700; }
 .scan-panel { width: 320px; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; border: none; border-radius: 6px; background: #18201c; overflow: hidden; }
 .scan-panel[hidden] { display: none; }
+.scan-slot { position: relative; display: inline-flex; align-items: center; }
+.scan-slot.live #scanBtn { visibility: hidden; }
+.scan-slot .scan-panel:not(.review-mode) { position: absolute; top: 50%; left: 0; width: 320px; max-width: none; transform: translateY(-50%); z-index: 6; cursor: pointer; box-shadow: 0 2px 10px rgba(0, 0, 0, .28); }
 .scan-panel.review-mode { width: 460px; min-width: 260px; margin-bottom: 16px; padding: 6px; border: 1px solid #c7cfc4; border-radius: 8px; background: #f7faf6; }
 .scan-panel.review-mode .scan-camera { display: none; }
 .scan-camera { position: relative; width: 100%; height: 60px; overflow: hidden; border-radius: 6px; background: #18201c; }
-.scan-camera video { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
+.scan-camera video { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; filter: grayscale(1) contrast(1.7) brightness(.55) blur(1px); }
 .scan-camera video.unmirror { transform: scaleX(-1); }
 .scan-info { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .scan-camera-select { display: block; min-width: 0; width: 100%; height: 29px; margin: 0 0 6px; padding: 3px 24px 3px 8px; border: 1px solid #d9dfd6; border-radius: 6px; background: #fff; color: #555; font: inherit; font-size: 11px; }
@@ -451,6 +454,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .btn-clear, .btn-print { flex: 1; text-align: center; padding: 10px; font-size: 14px; }
   .bottom-bar { flex-wrap: wrap; gap: 10px; }
   .bottom-bar .scan-panel:not(.review-mode) { position: static; }
+  .scan-slot .scan-panel:not(.review-mode) { width: min(320px, calc(100vw - 32px)); }
   .bottom-actions { margin-bottom: 0; }
   .scan-panel.review-mode { width: 100%; min-width: 100%; }
   .scan-camera { height: 60px; }
@@ -619,7 +623,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="quote" onclick="setDocType('quote')">Quote</button>
         <button class="doc-type-btn" data-doc="internal" onclick="setDocType('internal')">Internal</button>
       </div>
-      <button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button>
+      <span class="scan-slot" id="scanSlot"><button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button></span>
       <span style="display:none">
         <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="internalPrintBtn"></button><button id="cardFeeBtn"></button>
       </span>
@@ -702,8 +706,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 
 
   <div class="bottom-bar">
-    <div class="scan-panel" id="scanPanel" hidden>
-      <div class="scan-camera">
+    <div class="scan-panel" id="scanPanel" hidden onclick="scanPanelClick(event)">
+      <div class="scan-camera" title="Click to stop scanning">
         <video id="scanVideo" playsinline muted></video>
       </div>
       <div class="scan-info">
@@ -2425,6 +2429,7 @@ function chooseScanIssue(row, index) {
 
 function showNextScanIssue(preferredRow) {
   const panel = document.getElementById('scanPanel');
+  placeScanPanel(false);
   panel.hidden = false;
   panel.classList.add('review-mode');
   clearScanChoices();
@@ -2802,10 +2807,30 @@ async function changeScanCamera() {
   await startScanner();
 }
 
+function placeScanPanel(inToolbar) {
+  const panel = document.getElementById('scanPanel');
+  const slot = document.getElementById('scanSlot');
+  if (!panel || !slot) return;
+  const host = inToolbar ? slot : document.querySelector('.bottom-bar');
+  if (host && panel.parentElement !== host) {
+    if (inToolbar) host.appendChild(panel);
+    else host.prepend(panel);
+  }
+  slot.classList.toggle('live', inToolbar);
+}
+
+function scanPanelClick(event) {
+  const panel = document.getElementById('scanPanel');
+  if (!panel || panel.classList.contains('review-mode')) return;
+  if (event.target.closest('input, button, select, a')) return;
+  if (scanActive) stopScanner();
+}
+
 async function startScanner() {
   const startVersion = ++scanStartVersion;
   const panel = document.getElementById('scanPanel');
   const button = document.getElementById('scanBtn');
+  placeScanPanel(true);
   panel.hidden = false;
   panel.classList.remove('review-mode');
   clearScanChoices();
@@ -2897,6 +2922,7 @@ function stopScanner(hidePanel = true) {
   updateScanButton();
   clearScanChoices();
   const panel = document.getElementById('scanPanel');
+  placeScanPanel(false);
   if (scanIssues.size) showNextScanIssue();
   else if (hidePanel) panel.hidden = true;
 }
