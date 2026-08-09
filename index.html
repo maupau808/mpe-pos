@@ -284,6 +284,7 @@ body.doc-internal .sum-internal { display: block; }
 .hist-del-btn { font-size: 11px; padding: 2px 7px; border: none; border-radius: 4px; background: transparent; color: #bbb; cursor: pointer; line-height: 1; flex-shrink: 0; }
 .hist-del-btn:hover { background: #fee; color: #c00; }
 .hist-empty { text-align: center; color: #bbb; font-size: 13px; padding: 40px 0; }
+.phone-list-status { color: #666; }
 #uploadsPanelHistory { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
 .print-banner { border-radius: 7px; padding: 7px 12px; font-size: 12px; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .print-banner.ok  { background: #e8f5e9; color: #2d7a3a; border: 1px solid #a5d6a7; }
@@ -3719,18 +3720,31 @@ function switchUploadTab(tab) {
   if (isHistory) renderHistory();
   else renderPriceChanges();
 }
-async function sheetsGet(range) {
+const SHEETS_READ_RETRY_MS = [2000, 5000, 10000, 20000, 30000];
+
+async function sheetsGet(range, options) {
   const token = accessToken || localStorage.getItem('gToken');
   if (!token) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`;
-  const resp = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-  if (!resp.ok) {
+  for (let attempt = 0; ; attempt++) {
+    const resp = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (resp.ok) {
+      const j = await resp.json();
+      return j.values || [];
+    }
     let msg = `HTTP ${resp.status}`;
     try { const j = await resp.json(); msg = j.error?.message || msg; } catch {}
+    const throttled = resp.status === 429
+      || /quota exceeded|read requests per minute|rate limit/i.test(msg);
+    if (throttled && attempt < SHEETS_READ_RETRY_MS.length) {
+      const waitMs = SHEETS_READ_RETRY_MS[attempt];
+      if (options?.onRetry) options.onRetry(waitMs, attempt + 1);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+      continue;
+    }
+    if (throttled) throw new Error('Google Sheets is still busy. Wait a minute and try again.');
     throw new Error(msg);
   }
-  const j = await resp.json();
-  return j.values || [];
 }
 
 async function sheetsUpdate(range, rows) {
@@ -6413,13 +6427,14 @@ const PHONE_LIST_SHEET = 'Lists';
 
 const PHONE_LIST_SHOW = 5;
 let _phoneLists = [];
+let _phoneListsLoading = false;
 
 // Two requests regardless of how big the tab gets: column B alone says where
 // each list starts and ends, then one range covers only the newest few.
-async function fetchRecentPhoneLists(limit = PHONE_LIST_SHOW) {
+async function fetchRecentPhoneLists(limit = PHONE_LIST_SHOW, onRetry) {
   let ids;
   try {
-    ids = await sheetsGet(`${PHONE_LIST_SHEET}!B:B`);
+    ids = await sheetsGet(`${PHONE_LIST_SHEET}!B:B`, { onRetry });
   } catch (e) {
     if (/not found|Unable to parse range/i.test(e.message)) return [];   // tab never created
     throw e;
@@ -6449,7 +6464,7 @@ async function fetchRecentPhoneLists(limit = PHONE_LIST_SHOW) {
 
   const lo = Math.min(...spans.map(s => s.first));
   const hi = Math.max(...spans.map(s => s.last));
-  const rows = await sheetsGet(`${PHONE_LIST_SHEET}!A${lo + 1}:J${hi + 1}`);
+  const rows = await sheetsGet(`${PHONE_LIST_SHEET}!A${lo + 1}:J${hi + 1}`, { onRetry });
 
   const byId = new Map();
   for (const r of rows) {
@@ -6542,18 +6557,28 @@ async function openPhoneLists(refresh) {
   const btn = document.getElementById('phoneListBtn');
   if (!(accessToken || localStorage.getItem('gToken'))) { _pendingAction = openPhoneLists; handleSignIn(); return; }
   if (!loaded) { alert('Prices are still loading — try again in a moment.'); return; }
+  if (_phoneListsLoading) return;
+  _phoneListsLoading = true;
   const label = btn ? btn.textContent : '';
-  if (btn && !refresh) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  const refreshBtn = document.getElementById('phoneListRefreshBtn');
+  if (btn) { btn.disabled = true; if (!refresh) btn.textContent = 'Loading…'; }
+  if (refreshBtn) refreshBtn.disabled = true;
   const box = document.getElementById('phoneListList');
-  if (refresh) box.innerHTML = '<div class="hist-empty">Loading…</div>';
+  document.getElementById('phoneListCount').textContent = '';
+  document.getElementById('phoneListModal').classList.remove('hidden');
+  box.innerHTML = '<div class="hist-empty phone-list-status">Loading…</div>';
   try {
-    _phoneLists = await fetchRecentPhoneLists();
-    document.getElementById('phoneListModal').classList.remove('hidden');
+    const showRetry = () => {
+      box.innerHTML = '<div class="hist-empty phone-list-status">Google is busy — trying again automatically…</div>';
+    };
+    _phoneLists = await fetchRecentPhoneLists(PHONE_LIST_SHOW, showRetry);
     renderPhoneLists();
   } catch (e) {
-    alert('Could not read phone lists: ' + e.message);
+    box.innerHTML = `<div class="hist-empty phone-list-status">${_esch(e.message)}<br><br>Press Refresh to try again.</div>`;
   } finally {
-    if (btn && !refresh) { btn.disabled = false; btn.textContent = label; }
+    _phoneListsLoading = false;
+    if (btn) { btn.disabled = false; if (!refresh) btn.textContent = label; }
+    if (refreshBtn) refreshBtn.disabled = false;
   }
 }
 
