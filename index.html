@@ -340,6 +340,7 @@ body.doc-internal .sum-internal { display: block; }
    something is waiting, red when something actually failed. */
 .admin-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e67e22; vertical-align: middle; margin-left: 3px; }
 .admin-dot.err { background: #e53935; }
+.phone-list-dot { background: #2d7a3a; }
 .menu-panel .print-banner { margin: 0 0 6px; font-size: 11px; padding: 6px 9px; }
 .tr-row { display: flex; align-items: center; gap: 8px; }
 .menu-panel .drive-btn { display: block; width: 100%; text-align: left; margin: 0; border-radius: 6px; }
@@ -642,7 +643,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     </div>
     <div class="toolbar-right">
       <div class="tr-row">
-        <button class="menu-btn" id="phoneListBtn" type="button" onclick="openPhoneLists()" title="Pick a list sent from MPE Scan on the phone">Phone list</button>
+        <button class="menu-btn" id="phoneListBtn" type="button" onclick="openPhoneLists()" title="Pick a list sent from MPE Scan on the phone">Phone list<span class="admin-dot phone-list-dot" id="phoneListDot" style="display:none" aria-hidden="true"></span></button>
         <div class="menu-wrap">
           <button class="menu-btn" id="togglesBtn" onclick="toggleMenu(event,'togglesMenu')">Toggles <span class="caret">▾</span></button>
           <div class="menu-panel right" id="togglesMenu" onclick="event.stopPropagation()">
@@ -978,6 +979,7 @@ function initTokenClient() {
       syncCustomersFromSheet();
       flushPendingPartCodes();
       flushUnpushedTxns();   // auto-sync any transactions saved locally while signed out
+      schedulePhoneListNotice();
       if (_pendingAction) { const fn = _pendingAction; _pendingAction = null; fn(); }
     }
   });
@@ -995,6 +997,7 @@ function initTokenClient() {
       fetchFromDrive();
       syncCustomersFromSheet();
       flushPendingPartCodes();
+      schedulePhoneListNotice();
     }
     // If no session token, user clicks Refresh to re-auth with one popup
   }
@@ -1106,6 +1109,7 @@ function handleSignOut() {
   localStorage.removeItem('gSignedIn');
   localStorage.removeItem('gToken');
   localStorage.removeItem('gTokenAt');
+  if (_phoneListPollTimer) { clearTimeout(_phoneListPollTimer); _phoneListPollTimer = null; }
   setSignedOutUI();
 }
 
@@ -1229,7 +1233,7 @@ function maybeAutoRefresh() {
   if (sameDay && (now - _lastFetchAt) < 30 * 60 * 1000) return;   // already fresh today
   fetchFromDrive();
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); maybeAutoRefresh(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); maybeAutoRefresh(); schedulePhoneListNotice(1000); } });
 setInterval(() => { refreshStatusUI(); maybeAutoRefresh(); }, 60 * 1000);
 
 async function fetchFromDrive() {
@@ -3761,7 +3765,7 @@ async function sheetsGet(range, options) {
     try { const j = await resp.json(); msg = j.error?.message || msg; } catch {}
     const throttled = resp.status === 429
       || /quota exceeded|read requests per minute|rate limit/i.test(msg);
-    if (throttled && attempt < SHEETS_READ_RETRY_MS.length) {
+    if (throttled && options?.retryThrottle !== false && attempt < SHEETS_READ_RETRY_MS.length) {
       const waitMs = SHEETS_READ_RETRY_MS[attempt];
       if (options?.onRetry) options.onRetry(waitMs, attempt + 1);
       await new Promise(resolve => setTimeout(resolve, waitMs));
@@ -6482,8 +6486,62 @@ function reprintOrder(idx) {
 const PHONE_LIST_SHEET = 'Lists';
 
 const PHONE_LIST_SHOW = 5;
+const PHONE_LIST_SEEN_KEY = 'mpe_phone_list_seen';
+const PHONE_LIST_POLL_MS = 20000;
 let _phoneLists = [];
 let _phoneListsLoading = false;
+let _phoneListPollTimer = null;
+
+function setPhoneListNotice(show) {
+  const dot = document.getElementById('phoneListDot');
+  const btn = document.getElementById('phoneListBtn');
+  if (dot) dot.style.display = show ? '' : 'none';
+  if (btn) {
+    btn.title = show
+      ? 'New phone list available'
+      : 'Pick a list sent from MPE Scan on the phone';
+    btn.setAttribute('aria-label', show ? 'Phone list — new list available' : 'Phone list');
+  }
+}
+
+function markPhoneListSeen(listId) {
+  if (listId) localStorage.setItem(PHONE_LIST_SEEN_KEY, listId);
+  setPhoneListNotice(false);
+}
+
+async function pollPhoneListNotice() {
+  _phoneListPollTimer = null;
+  if ((accessToken || localStorage.getItem('gToken')) && !document.hidden && !_phoneListsLoading) {
+    try {
+      // One lightweight request only. Background notification checks never retry
+      // a Google throttle and never compete with a cashier's deliberate action.
+      const rows = await sheetsGet(`${PHONE_LIST_SHEET}!A:B`, { retryThrottle: false });
+      let newest = null;
+      for (let i = rows.length - 1; i >= 1; i--) {
+        const id = String(rows[i]?.[1] || '').trim();
+        if (id) { newest = { id, sentAt: String(rows[i]?.[0] || '') }; break; }
+      }
+      if (newest) {
+        const seen = localStorage.getItem(PHONE_LIST_SEEN_KEY);
+        if (seen) {
+          setPhoneListNotice(newest.id !== seen);
+        } else {
+          const sent = new Date(newest.sentAt).getTime();
+          if (!isNaN(sent) && Date.now() - sent < 30 * 60 * 1000) setPhoneListNotice(true);
+          else markPhoneListSeen(newest.id);
+        }
+      }
+    } catch (e) {
+      // Notification is optional; leave the last honest state and try later.
+    }
+  }
+  _phoneListPollTimer = setTimeout(pollPhoneListNotice, PHONE_LIST_POLL_MS);
+}
+
+function schedulePhoneListNotice(delay = 5000) {
+  if (_phoneListPollTimer) clearTimeout(_phoneListPollTimer);
+  _phoneListPollTimer = setTimeout(pollPhoneListNotice, delay);
+}
 
 // Two requests regardless of how big the tab gets: column B alone says where
 // each list starts and ends, then one range covers only the newest few.
@@ -6571,6 +6629,15 @@ function togglePhoneList(idx) {
 }
 
 function closePhoneLists() { document.getElementById('phoneListModal').classList.add('hidden'); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('phoneListModal');
+    if (modal && !modal.classList.contains('hidden')) {
+      e.preventDefault();
+      closePhoneLists();
+    }
+  }
+});
 
 function renderPhoneLists() {
   const box = document.getElementById('phoneListList');
@@ -6635,6 +6702,7 @@ async function openPhoneLists(refresh) {
     };
     _phoneLists = await fetchRecentPhoneLists(PHONE_LIST_SHOW, showRetry);
     renderPhoneLists();
+    if (_phoneLists[0]) markPhoneListSeen(_phoneLists[0].listId);
   } catch (e) {
     box.innerHTML = `<div class="hist-empty phone-list-status">${_esch(e.message)}<br><br>Press Refresh to try again.</div>`;
   } finally {
