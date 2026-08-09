@@ -500,6 +500,11 @@ const K_LIST     = 'mpeScanList';
 const K_COST     = 'mpeScanShowCost';
 const K_THEME    = 'mpeScanTheme';
 const K_BEEP     = 'mpeScanBeep';
+// Whichever Google account actually signed in last on THIS phone. The shop
+// account is only the fallback for a phone that has never signed in, so a
+// device that legitimately uses another account is not sent to the picker
+// every hour when its token lapses.
+const K_ACCOUNT  = 'gAccount';
 
 // ── STATE ─────────────────────────────────────────────────────────────────
 let accessToken = null;
@@ -572,12 +577,30 @@ function cachedToken() {
 }
 function token() { return accessToken || cachedToken(); }
 
+function lastAccount() { return localStorage.getItem(K_ACCOUNT) || SHOP_GOOGLE_ACCOUNT; }
+
+// The token response carries no identity, so the account is read back from
+// Drive — `about` is covered by the drive.readonly grant this page already has,
+// which keeps the scope list unchanged.
+async function rememberAccount(t) {
+  try {
+    const r = await fetch('https://www.googleapis.com/drive/v3/about?fields=user/emailAddress',
+      { headers: { Authorization: `Bearer ${t}` } });
+    if (!r.ok) return;
+    const email = (await r.json())?.user?.emailAddress;
+    if (email && email !== localStorage.getItem(K_ACCOUNT)) {
+      localStorage.setItem(K_ACCOUNT, email);
+      renderAuth();
+    }
+  } catch (e) { /* the hint is an optimization, never a blocker */ }
+}
+
 function initTokenClient() {
   if (!window.google?.accounts?.oauth2) return;
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
-    login_hint: SHOP_GOOGLE_ACCOUNT,
+    login_hint: lastAccount(),
     callback: resp => {
       if (resp.error) {
         if (resp.error !== 'access_denied' && resp.error !== 'user_cancel') toast('Sign-in failed: ' + resp.error);
@@ -587,6 +610,7 @@ function initTokenClient() {
       localStorage.setItem(K_TOKEN, resp.access_token);
       localStorage.setItem(K_TOKEN_AT, Date.now().toString());
       localStorage.setItem(K_SIGNED, '1');
+      rememberAccount(resp.access_token);
       renderAuth();
       loadFeed();
       flushPendingCodes();
@@ -598,7 +622,11 @@ function initTokenClient() {
 function signIn(then) {
   pendingAfterAuth = then || null;
   if (!tokenClient) { toast('Sign-in not ready yet — try again in a moment'); return; }
-  tokenClient.requestAccessToken();
+  // `prompt: ''` is what the counter POS passes, and it is the whole reason the
+  // till never sees the account chooser: with an existing grant Google reuses it
+  // silently. It still prompts when there is no grant yet, or when the hinted
+  // account is not signed in on this phone.
+  tokenClient.requestAccessToken({ prompt: '', login_hint: lastAccount() });
 }
 function needAuth(then) {
   if (token()) { then(); return true; }
@@ -627,7 +655,7 @@ function renderAuth() {
   $('signBtn').textContent = signed ? 'Refresh' : 'Sign in';
   $('signLabel').textContent = signed ? 'Signed in' : 'Google account';
   $('signHelp').textContent = signed
-    ? `${SHOP_GOOGLE_ACCOUNT} · ${Math.ceil(tokenMsLeft() / 60000)} min left`
+    ? `${lastAccount()} · ${Math.ceil(tokenMsLeft() / 60000)} min left`
     : 'Needed to load prices and save codes.';
   renderAuthBar();
 }

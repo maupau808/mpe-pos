@@ -2047,9 +2047,12 @@ function packageListPrice(pn) {
   return Number.isFinite(price) && price > 0 ? price : null;
 }
 
-// Remember a scanned unit that could belong to a deal, so the re-grouping pass
-// below can move it. Quantity has to stay at 1: a line that means "3 of these"
-// is not a specific unit with a specific serial, and is left alone.
+// Remember a unit that could belong to a deal, so the re-grouping pass below can
+// move it. A serial is optional: the everyday counter scan is the product
+// barcode on the box, and waiting for a serial would leave a battery and a
+// charger sitting there as two full-price lines. Quantity has to stay at 1: a
+// line that means "3 of these" is not a specific unit with a specific serial,
+// and is left alone.
 function trackPackageUnit(row, serial) {
   const tr = tbody.querySelector(`tr[data-row="${row}"]`);
   const pn = normalizePN(tbody.querySelector(`[data-row="${row}"].part-input`)?.dataset.partPn);
@@ -2079,6 +2082,11 @@ function collectPackageRows() {
       delete tr.dataset.pkgUnits; delete tr.dataset.pkgDeal; delete tr.dataset.pkgPrice;
       continue;
     }
+    // Serials are read off the row, not out of the remembered copy: a serial
+    // typed by hand never went through the scanner, and re-grouping from the
+    // stale copy would blank it the next time a row moved.
+    const snInputs = tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);
+    units.forEach((unit, k) => { if (snInputs[k]) unit.sn = snInputs[k].value.trim(); });
     tracked.push({ row: i, deal: tr.dataset.pkgDeal || '', units });
   }
   return tracked;
@@ -2166,8 +2174,10 @@ function writePackageRow(row, group) {
 }
 
 // Re-group every remembered unit and rewrite the rows if the answer changed.
-// Returns the deal the given serial now sits in, so the scanner can say so.
-function applyPackageDeals(latestSerial) {
+// Returns the deal the just-scanned unit now sits in, so the scanner can say so.
+// It is found by serial when there is one and by the row it landed on otherwise,
+// because a product barcode carries no serial to match against.
+function applyPackageDeals(latestSerial, latestRow) {
   const tracked = collectPackageRows();
   if (!tracked.length) return null;
   const units = tracked.flatMap(t => t.units);
@@ -2177,7 +2187,11 @@ function applyPackageDeals(latestSerial) {
 
   const shape = list => JSON.stringify(list.map(g => [g.deal || '', (g.units || []).map(u => u.sn)]));
   const next = groups.map(g => ({ deal: g.deal ? g.deal.pn : '', units: g.units }));
-  const landed = groups.find(g => g.deal && g.units.some(u => u.sn && u.sn === latestSerial));
+  // bestPackaging hands the very same unit objects back out, so the unit that
+  // arrived on `latestRow` can be followed into whichever group took it.
+  const fresh = Number.isInteger(latestRow) ? (tracked.find(t => t.row === latestRow)?.units || []) : [];
+  const landed = groups.find(g => g.deal && g.units.some(
+    u => (u.sn && u.sn === latestSerial) || fresh.includes(u)));
   if (shape(tracked) === shape(next)) return landed ? landed.deal : null;
 
   const rows = tracked.map(t => t.row);
@@ -2371,6 +2385,10 @@ function fillScannedPart(part, requestedRow) {
   ensureScannerMobileRow(row);
   applyMobilePart(row, part);
   pendingUnitSerialRow = part.warranty && rowNeedsUnitSerial(row) ? row : null;
+  // Remember it for packaging now. Most package components reach the counter as
+  // a plain product barcode, and their serial — if they even have one — is
+  // scanned or typed afterwards.
+  trackPackageUnit(row, '');
   addEmptyRowAfterScan(row);
   const version = ++scanStatusVersion;
   setScanStatus(`Added ${part.og || part.pn} — ${part.desc || ''}`, 'ok');
@@ -2526,8 +2544,15 @@ function acceptDecodedScan(rawValue, format) {
   }
   const needsReview = result.candidates.length !== 1;
   playScanBeep(needsReview);
-  if (!needsReview) fillScannedPart(result.candidates[0]);
-  else saveScanForReview(raw, format, result.candidates);
+  if (needsReview) { saveScanForReview(raw, format, result.candidates); return; }
+  const row = fillScannedPart(result.candidates[0]);
+  // The ordinary product-barcode path is how a battery and a charger actually
+  // arrive, so the deals have to be re-grouped here too, not only after a serial.
+  const deal = applyPackageDeals('', row);
+  if (deal) {
+    ++scanStatusVersion;
+    setScanStatus(packageDealStatus(deal), 'ok');
+  }
 }
 
 // USB, Bluetooth HID, and 2.4 GHz dongle scanners type very quickly and finish
@@ -4979,10 +5004,18 @@ function applyPart(i, part, options) {
   if (correctedScanIssue) {
     if (correctedScanIssue.serial && part.warranty) {
       fillRowSerial(i, correctedScanIssue.serial);
-      const deal = applyPackageDeals(correctedScanIssue.serial);
+      const deal = applyPackageDeals(correctedScanIssue.serial, i);
       if (deal) setScanStatus(packageDealStatus(deal), 'ok');
     }
-    else queuePartCodeBinding(correctedScanIssue, part);
+    else {
+      queuePartCodeBinding(correctedScanIssue, part);
+      // A reviewed row is a real line now, so it joins the packaging just like
+      // a clean scan would have. Remembered here because this runs inside the
+      // row fill, before the scanner's own trackPackageUnit gets its turn.
+      trackPackageUnit(i, '');
+      const deal = applyPackageDeals('', i);
+      if (deal) setScanStatus(packageDealStatus(deal), 'ok');
+    }
     updateScanNext();
     updateScanButton();
     if (!scanActive) setTimeout(showNextScanIssue, 0);
@@ -6640,6 +6673,10 @@ function applyPhoneList(idx) {
         if (item.serial) fillRowSerial(i, item.serial);   // also remembers the unit for packaging
         else missingSerial.push(part.desc || part.pn);
       }
+      // A phone list carries a serial only for units the yard could identify, so
+      // remembering has to happen either way or an unserialised battery and
+      // charger would load as two full-price lines.
+      trackPackageUnit(i, item.serial || '');
       updateSubtotal(i);
       updateMobileSubtotal(i);
     });
