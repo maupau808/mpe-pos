@@ -1651,6 +1651,9 @@ function queuePartCodeBinding(issue, part) {
   const code = canonicalScannedCode(issue?.rawValue);
   const pn = String(part?.pn || part?.og || '').trim();
   if (!code || !pn) return;
+  // Nothing that failed the packaging test may become a binding, even if it
+  // somehow reached a review row — this is the write that would outlive the sale.
+  if (ignorableScanCode(issue?.rawValue)) return;
   const record = {
     code,
     pn,
@@ -1868,6 +1871,69 @@ function distributorPartCandidates(value) {
     if (candidates.length) return candidates;
   }
   return [];
+}
+
+// Honda's 2D parts-label code is not a bare part number — it packs the printed
+// label into one delimited string:
+//   00HB;;17701-ZM3-003;1;MB4H17G;JAPAN;JP;392;;;;
+// header, part number, quantity, lot code, country, country code. Rather than
+// trust a field position that could move between suppliers or label revisions,
+// take the one field Master actually knows. Two matches or none means we stay
+// out of it: an unrecognized scan costs a keystroke, a confidently wrong part
+// costs a wrong invoice line.
+const STRUCTURED_SCAN_DELIMITERS = /[;|\t\x1D]/;
+
+function structuredScanParts(rawValue) {
+  const raw = String(rawValue || '');
+  if (!STRUCTURED_SCAN_DELIMITERS.test(raw)) return [];
+  const hits = [];
+  const seen = new Set();
+  for (const field of raw.split(STRUCTURED_SCAN_DELIMITERS)) {
+    const key = normalizePN(field);
+    // Under four characters is a quantity or a country code, never a field
+    // worth testing — and Master does carry real two-digit numbers (Felco 23).
+    if (key.length < 4 || seen.has(key)) continue;
+    seen.add(key);
+    const candidates = exactScanParts(key);
+    if (candidates.length) hits.push(candidates);
+  }
+  return hits.length === 1 ? hits[0] : [];
+}
+
+// Every parts label prints more than one barcode. Beside the part number sit a
+// quantity ("1"), a country code ("840"), a lot code — all scannable, none of
+// them a part. They matter because an unrecognized scan is offered for
+// correction, and correcting it BINDS that code to the part permanently, here
+// and on every other terminal through the Codes sheet. Bind "1" once and every
+// quantity barcode in the shop resolves to that part, beeping like a good scan.
+//
+// Only codes that already failed to resolve reach this, which is what keeps
+// genuinely short part numbers (Felco 23, ECHO 1106, SCAG 1000) working. What it
+// catches is dropped outright — no row, no review, and nothing that can ever be
+// learned.
+function ignorableScanCode(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return true;
+  // A delimited payload whose part number we could not find is a label dump, not
+  // a code: it carries a lot number, so it would never scan the same way twice.
+  if (STRUCTURED_SCAN_DELIMITERS.test(raw)) return true;
+  if (/^\d{1,4}$/.test(raw)) return true;
+  return normalizePN(raw).length < 3;
+}
+
+// Several symbols share one label. Prefer the one that resolves to a part, then
+// anything that is not obvious packaging noise, and only then the detector's
+// first (normally the aimed-at) symbol — so when a quantity barcode is all that
+// can be read, it still reaches the ignore path and says so out loud.
+function preferredScanSymbol(items) {
+  const values = [...new Map((items || [])
+    .map(item => [String(item.rawValue || '').trim(), item])).values()]
+    .filter(item => String(item.rawValue || '').trim());
+  if (!values.length) return null;
+  const resolved = values.filter(item => resolveScannedValue(item.rawValue).candidates.length === 1);
+  if (resolved.length === 1) return resolved[0];
+  const usable = values.filter(item => !ignorableScanCode(item.rawValue));
+  return usable[0] || values[0];
 }
 
 function buildWarrantyModelMap() {
@@ -2103,6 +2169,9 @@ function resolveScannedValue(rawValue) {
   // An imported or counter-bound barcode is authoritative. Direct matching is
   // for Code 128 / similar labels whose decoded text is the part number itself.
   let candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
+  // A structured label payload carries the part number inside it. Pull it out
+  // before any prefix or model guess gets a look at the whole string.
+  if (!mappedPN && candidates.length === 0) candidates = structuredScanParts(rawValue);
   // PACE prepends a brand code that Master intentionally omits. Strip only a
   // known distributor prefix, then require an exact PN and Make match so the
   // same digits under another brand cannot resolve accidentally.
@@ -2418,6 +2487,13 @@ function acceptDecodedScan(rawValue, format) {
     saveScanForReview(raw, format, serialCandidates, { serial: raw });
     return;
   }
+  if (result.candidates.length === 0 && ignorableScanCode(raw)) {
+    // Deliberately silent. A beep here would be read as "that one counted", and
+    // the operator is usually still sweeping the label for the real barcode.
+    ++scanStatusVersion;
+    setScanStatus(`Ignored ${raw} — packaging barcode, not a part`, 'warn');
+    return;
+  }
   const needsReview = result.candidates.length !== 1;
   playScanBeep(needsReview);
   if (!needsReview) fillScannedPart(result.candidates[0]);
@@ -2558,16 +2634,12 @@ async function scanCameraFrame() {
     scanDetectBusy = true;
     try {
       const found = await scanDetector.detect(video);
-      const values = [...new Map(found.map(item => [String(item.rawValue || '').trim(), item])).values()].filter(item => item.rawValue);
-      if (!values.length) {
+      const item = preferredScanSymbol(found);
+      if (!item) {
         scanAbsentFrames++;
         if (scanAbsentFrames >= 3) scanLastValue = '';
       } else {
         scanAbsentFrames = 0;
-        // If several symbols are visible, prefer the sole one that resolves to a
-        // part. Otherwise the detector's first (normally the aimed-at) symbol wins.
-        const resolved = values.filter(item => resolveScannedValue(item.rawValue).candidates.length === 1);
-        const item = resolved.length === 1 ? resolved[0] : values[0];
         await acceptCameraDecodedValue(item.rawValue, item.format, item);
       }
     } catch (e) {
@@ -2628,7 +2700,8 @@ async function scanFallbackCameraFrame() {
       context.drawImage(video, sampleX, sampleY, sampleW, sampleH, -width / 2, -height / 2, width, height);
       const found = await scanFallbackDetector.detect(canvas);
       if (!scanActive) return;
-      if (found.length) await acceptCameraDecodedValue(found[0].rawValue, found[0].format || 'zxing-wasm', found[0], canvas);
+      const pick = preferredScanSymbol(found);
+      if (pick) await acceptCameraDecodedValue(pick.rawValue, pick.format || 'zxing-wasm', pick, canvas);
       else {
         scanAbsentFrames++;
         if (scanAbsentFrames >= FALLBACK_RELEASE_AFTER_MISSES) scanLastValue = '';
