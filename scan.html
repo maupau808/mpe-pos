@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#12140f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>MPE Scan</title>
+<link rel="icon" href="data:,">
+<style>
+/* ── MPE Scan — shop lookup tool ───────────────────────────────────────────
+   Dark shell on purpose: this is used outdoors and in the yard with the
+   camera live, where a white page fights the sun and washes out the preview.
+   The accent green and type treatment are the POS's, so it still reads MPE.
+   Light mode is a toggle for anyone who wants it. */
+:root {
+  --bg: #12140f;
+  --panel: #1c1f19;
+  --panel-2: #24281f;
+  --line: #333a2c;
+  --text: #f2f4ee;
+  --muted: #9aa48d;
+  --dim: #6d7562;
+  --accent: #7dc98a;
+  --accent-ink: #12140f;
+  --warn: #e0a53c;
+  --err: #e8705f;
+  --shadow: 0 6px 24px rgba(0,0,0,.45);
+}
+html[data-theme="light"] {
+  --bg: #f4f6f1;
+  --panel: #ffffff;
+  --panel-2: #f7faf5;
+  --line: #e1e7de;
+  --text: #1a1a1a;
+  --muted: #6f7a67;
+  --dim: #a4ac9c;
+  --accent: #2d7a3a;
+  --accent-ink: #ffffff;
+  --warn: #a9701a;
+  --err: #c2382a;
+  --shadow: 0 6px 24px rgba(0,0,0,.10);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* dvh keeps the layout honest under Safari's collapsing toolbar; the vh line
+     below it is the fallback for anything that does not know dvh. */
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overscroll-behavior-y: contain;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: none; background: none; }
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+.top {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+  background: var(--panel); flex: none;
+}
+.brand { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
+.brand span { color: var(--accent); }
+.top-spacer { flex: 1; }
+.feed-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); flex: none; }
+.feed-dot.ok { background: var(--accent); }
+.feed-dot.warn { background: var(--warn); }
+.feed-dot.err { background: var(--err); }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--muted);
+  display: flex; align-items: center; justify-content: center; font-size: 15px;
+}
+.icon-btn:active { background: var(--line); }
+
+/* ── camera ─────────────────────────────────────────────────────────────── */
+.cam-wrap {
+  position: relative; flex: none;
+  height: 34vh; min-height: 190px; max-height: 300px;
+  background: #000; overflow: hidden;
+}
+.cam-wrap video {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  background: #000;
+}
+/* The ponyfill path draws from a canvas copy, so the preview is not mirrored;
+   the native path on a rear camera is not mirrored either. Nothing to flip. */
+.reticle {
+  position: absolute; inset: 0; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.reticle i {
+  display: block; width: 78%; height: 26%;
+  border: 2px solid rgba(255,255,255,.55); border-radius: 12px;
+  box-shadow: 0 0 0 100vmax rgba(0,0,0,.28);
+}
+.cam-idle {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  background: var(--panel); color: var(--muted); text-align: center; padding: 16px;
+}
+.cam-idle.hidden { display: none; }
+.big-start {
+  background: var(--accent); color: var(--accent-ink);
+  font-size: 16px; font-weight: 700; padding: 13px 26px; border-radius: 11px;
+}
+.cam-note { font-size: 12.5px; max-width: 34ch; color: var(--dim); }
+.cam-status {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 6px 12px; font-size: 12px; background: rgba(0,0,0,.55); color: #fff;
+}
+.cam-status.warn { color: #ffd88a; }
+.cam-status.err { color: #ffb3a7; }
+.cam-stop {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(0,0,0,.55); color: #fff; font-size: 12px;
+  padding: 6px 11px; border-radius: 8px;
+}
+
+/* ── hero result ────────────────────────────────────────────────────────── */
+.hero {
+  flex: none; padding: 14px 16px 12px; border-bottom: 1px solid var(--line);
+  background: var(--panel); min-height: 118px;
+}
+.hero.empty .hero-desc { color: var(--dim); font-weight: 400; font-size: 15px; }
+.hero-make { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); min-height: 14px; }
+.hero-desc { font-size: 19px; font-weight: 600; line-height: 1.25; margin: 3px 0 7px; word-break: break-word; }
+.hero-priceline { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.hero-price { font-size: 38px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+.hero-price.sale { color: var(--accent); }
+.hero-was { font-size: 15px; color: var(--muted); text-decoration: line-through; }
+.hero-sale-tag {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent-ink); background: var(--accent); padding: 3px 7px; border-radius: 5px;
+}
+.hero-meta { margin-top: 7px; font-size: 12px; color: var(--muted); word-break: break-all; }
+.hero-cost { margin-top: 4px; font-size: 12px; color: var(--warn); display: none; }
+body.show-cost .hero-cost { display: block; }
+.hero.flag .hero-desc { color: var(--warn); }
+.hero.bad .hero-desc { color: var(--err); }
+
+/* ── actions ────────────────────────────────────────────────────────────── */
+.acts { flex: none; display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.act {
+  flex: 1; border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+  border-radius: 10px; padding: 11px 8px; font-size: 14px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+}
+.act:active { background: var(--line); }
+.act.count { flex: 0 0 auto; min-width: 62px; }
+.pill {
+  background: var(--accent); color: var(--accent-ink);
+  border-radius: 10px; padding: 1px 7px; font-size: 12px; font-weight: 700;
+}
+.pill.zero { background: var(--line); color: var(--muted); }
+
+/* ── list ───────────────────────────────────────────────────────────────── */
+.list-wrap { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.list-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: var(--bg);
+  border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted);
+}
+.list-head b { color: var(--text); font-size: 13px; }
+.list-head .top-spacer { flex: 1; }
+.mini {
+  font-size: 12px; color: var(--muted); border: 1px solid var(--line);
+  background: var(--panel-2); border-radius: 7px; padding: 5px 9px;
+}
+.mini:active { background: var(--line); }
+.mini.go { color: var(--accent); border-color: var(--accent); }
+.row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-bottom: 1px solid var(--line);
+}
+.row-main { flex: 1; min-width: 0; }
+.row-desc { font-size: 14px; line-height: 1.3; word-break: break-word; }
+.row-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; word-break: break-all; }
+.row.unresolved .row-desc { color: var(--warn); font-weight: 600; }
+.row-price { font-size: 14px; font-weight: 600; white-space: nowrap; text-align: right; }
+.row-price small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); text-decoration: line-through; }
+.qty { display: flex; align-items: center; gap: 2px; flex: none; }
+.qty button {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--muted); font-size: 17px; line-height: 1;
+}
+.qty button:active { background: var(--line); }
+.qty span { min-width: 22px; text-align: center; font-size: 14px; font-weight: 600; }
+.empty-note { padding: 26px 20px; text-align: center; color: var(--dim); font-size: 13px; }
+
+/* ── sheets (search / settings) ─────────────────────────────────────────── */
+.sheet {
+  position: fixed; inset: 0; z-index: 30; display: none;
+  background: rgba(0,0,0,.55); align-items: flex-end;
+}
+.sheet.open { display: flex; }
+.sheet-panel {
+  background: var(--panel); width: 100%; max-height: 88vh; max-height: 88dvh;
+  border-radius: 16px 16px 0 0; box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.sheet-top {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-bottom: 1px solid var(--line); flex: none;
+}
+.sheet-title { font-size: 15px; font-weight: 700; flex: 1; }
+.sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.search-input {
+  width: 100%; font-size: 16px; /* 16px or iOS zooms the page on focus */
+  padding: 11px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+  -webkit-appearance: none;
+}
+.search-input:focus { outline: none; border-color: var(--muted); }
+.sheet-pad { padding: 12px 14px; flex: none; }
+.hit { padding: 11px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: center; }
+.hit-main { flex: 1; min-width: 0; }
+.hit-desc { font-size: 14px; line-height: 1.3; }
+.hit-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.hit-price { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.bind-banner {
+  padding: 10px 14px; background: var(--panel-2); border-bottom: 1px solid var(--line);
+  font-size: 12.5px; color: var(--muted);
+}
+.bind-banner b { color: var(--warn); word-break: break-all; }
+.set-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 14px; border-bottom: 1px solid var(--line);
+}
+.set-row .set-main { flex: 1; }
+.set-label { font-size: 14px; }
+.set-help { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.sw { width: 46px; height: 27px; border-radius: 14px; background: var(--line); position: relative; flex: none; transition: background .15s; }
+.sw i { position: absolute; top: 3px; left: 3px; width: 21px; height: 21px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+.sw.on { background: var(--accent); }
+.sw.on i { transform: translateX(19px); background: var(--accent-ink); }
+.danger { color: var(--err); }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%); z-index: 60;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+  padding: 10px 16px; border-radius: 11px; font-size: 13px; box-shadow: var(--shadow);
+  max-width: 88vw; text-align: center; opacity: 0; pointer-events: none;
+  transition: opacity .18s;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand">MPE <span>Scan</span></div>
+  <div class="top-spacer"></div>
+  <div class="feed-dot" id="feedDot" title="catalog status"></div>
+  <button class="icon-btn" id="searchBtn" title="Search by name or number">&#9906;</button>
+  <button class="icon-btn" id="setBtn" title="Settings">&#9881;</button>
+</div>
+
+<div class="cam-wrap">
+  <video id="cam" playsinline muted autoplay></video>
+  <div class="reticle"><i></i></div>
+  <button class="cam-stop" id="camStop" hidden>Stop</button>
+  <div class="cam-idle" id="camIdle">
+    <button class="big-start" id="startBtn">Start camera</button>
+    <div class="cam-note" id="camNote">Point at a barcode. Every scan shows its price and drops into the list below.</div>
+  </div>
+  <div class="cam-status" id="camStatus" hidden></div>
+</div>
+
+<div class="hero empty" id="hero">
+  <div class="hero-make" id="heroMake"></div>
+  <div class="hero-desc" id="heroDesc">Nothing scanned yet</div>
+  <div class="hero-priceline">
+    <div class="hero-price" id="heroPrice"></div>
+    <div class="hero-was" id="heroWas" hidden></div>
+    <div class="hero-sale-tag" id="heroTag" hidden>Sale</div>
+  </div>
+  <div class="hero-meta" id="heroMeta"></div>
+  <div class="hero-cost" id="heroCost"></div>
+</div>
+
+<div class="acts">
+  <button class="act" id="againBtn">Scan</button>
+  <button class="act count" id="listBtn">List <span class="pill zero" id="listCount">0</span></button>
+</div>
+
+<div class="list-wrap">
+  <div class="list-head">
+    <b>List</b>
+    <span id="listSum"></span>
+    <div class="top-spacer"></div>
+    <button class="mini go" id="sendBtn">Send to counter</button>
+    <button class="mini" id="clearBtn">Clear</button>
+  </div>
+  <div id="rows"></div>
+</div>
+
+<!-- search / bind sheet -->
+<div class="sheet" id="searchSheet">
+  <div class="sheet-panel">
+    <div class="sheet-top">
+      <div class="sheet-title" id="searchTitle">Search catalog</div>
+      <button class="mini" id="searchClose">Close</button>
+    </div>
+    <div class="bind-banner" id="bindBanner" hidden></div>
+    <div class="sheet-pad">
+      <input class="search-input" id="searchInput" type="search" placeholder="Part number or description"
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    </div>
+    <div class="sheet-body" id="searchResults"></div>
+  </div>
+</div>
+
+<!-- settings sheet -->
+<div class="sheet" id="setSheet">
+  <div class="sheet-panel">
+    <div class="sheet-top">
+      <div class="sheet-title">Settings</div>
+      <button class="mini" id="setClose">Close</button>
+    </div>
+    <div class="sheet-body">
+      <div class="set-row" id="signRow">
+        <div class="set-main">
+          <div class="set-label" id="signLabel">Google account</div>
+          <div class="set-help" id="signHelp">Needed to load prices and save codes.</div>
+        </div>
+        <button class="mini go" id="signBtn">Sign in</button>
+      </div>
+      <div class="set-row">
+        <div class="set-main">
+          <div class="set-label">Refresh prices</div>
+          <div class="set-help" id="feedHelp">—</div>
+        </div>
+        <button class="mini" id="refreshBtn">Refresh</button>
+      </div>
+      <div class="set-row" id="costRow">
+        <div class="set-main">
+          <div class="set-label">Show cost and margin</div>
+          <div class="set-help">Off by default so nothing sensitive is on screen in front of a customer.</div>
+        </div>
+        <div class="sw" id="costSw"><i></i></div>
+      </div>
+      <div class="set-row" id="themeRow">
+        <div class="set-main">
+          <div class="set-label">Light theme</div>
+          <div class="set-help">Dark is easier to read against a live camera outdoors.</div>
+        </div>
+        <div class="sw" id="themeSw"><i></i></div>
+      </div>
+      <div class="set-row" id="beepRow">
+        <div class="set-main">
+          <div class="set-label">Beep on scan</div>
+          <div class="set-help">The beep marks the moment a part was recognized.</div>
+        </div>
+        <div class="sw on" id="beepSw"><i></i></div>
+      </div>
+      <div class="set-row">
+        <div class="set-main">
+          <div class="set-label">Unsent barcodes</div>
+          <div class="set-help" id="pendHelp">—</div>
+        </div>
+        <button class="mini" id="flushBtn">Send now</button>
+      </div>
+      <div class="set-row">
+        <div class="set-main">
+          <div class="set-label danger">Forget this device's saved codes</div>
+          <div class="set-help">Only clears the local copy. Codes already sent to the shop sheet stay.</div>
+        </div>
+        <button class="mini" id="forgetBtn">Forget</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   MPE Scan — phone lookup + list tool.
+
+   READ-ONLY on pricing. It reads the same gzipped Drive POS JSON feed the
+   counter POS reads and applies the same sale rules, so a price quoted here
+   is the price the register charges. It writes exactly two things, both to
+   the Bridge sheet and both verified by read-back: barcode->part bindings on
+   the `Codes` tab (the queue the server already ingests into part_codes.db)
+   and a sent list on the `Lists` tab.
+
+   WRITES TO:     Bridge sheet `Codes` and `Lists` tabs; browser storage
+   DOES NOT TOUCH: master.db, MASTERPRICE.xlsx, List/Cost/MSRP, the POS feed,
+                   QBO, transactions, or anything the counter POS owns.
+
+   This is deliberately a separate page from index.html. The counter POS is
+   a transaction machine with customers, discounts, packages, serials and
+   printing; this is a lookup loop. Keeping them apart means iterating on the
+   phone tool can never break the register.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+// ── CONFIG (shared with index.html — keep in step) ─────────────────────────
+const SHEETS_ID       = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
+const CLIENT_ID       = '726499104385-oa324nvlc69sdbj915dikimmh1sqvv1r.apps.googleusercontent.com';
+const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
+const POS_JSON_FILE_ID = '1I4pT1MUWAm2cIkch2T7JW_hKt3wcLIyd';
+// Narrower than the POS's grant on purpose: this page never composes mail.
+const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets';
+
+const CODES_SHEET  = 'Codes';
+const CODES_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Added'];
+const LISTS_SHEET  = 'Lists';
+const LISTS_HEADER = ['Sent', 'List', 'Line', 'Part Number', 'Description', 'Make', 'Qty', 'Price', 'Note'];
+
+const DISTRIBUTOR_PART_PREFIXES = [
+  { prefix: 'SC', make: 'SCAG' },
+  { prefix: 'GV', make: 'SCAG' },
+  { prefix: 'WR', make: 'WRIGHT' },
+  { prefix: 'BB', make: 'BLUEBIRD' }
+];
+const STRUCTURED_SCAN_DELIMITERS = /[;|\t\x1D]/;
+
+// Camera tuning lifted verbatim from the POS's proven fallback loop. The
+// 2250ms repeat guard exists because the camera keeps re-reading a label that
+// is still in view; it is not a debounce on the user.
+const SCAN_REPEAT_LOCKOUT_MS       = 2250;
+const FALLBACK_SCAN_ANGLES         = [8, -8, 15, -15];
+const FALLBACK_TILT_AFTER_MISSES   = 6;
+const FALLBACK_RELEASE_AFTER_MISSES = 5;
+const FALLBACK_FULL_FRAME_EVERY    = 11;
+const FALLBACK_RETRY_MS            = 12;
+const SCAN_FORMATS = ['code_128','code_39','codabar','data_matrix','ean_13','ean_8','itf','qr_code','upc_a','upc_e'];
+
+// localStorage keys. `gToken`/`gSignedIn` and the learned-code map are shared
+// with index.html on purpose — same origin, so signing in at the counter
+// signs in here, and a code learned anywhere resolves everywhere.
+const K_TOKEN    = 'gToken';
+const K_TOKEN_AT = 'gTokenAt';
+const K_SIGNED   = 'gSignedIn';
+const K_LEARNED  = 'mpePartCodeLearned';
+const K_PENDING  = 'mpeScanCodePending';   // own queue so the two pages cannot interleave a flush
+const K_LIST     = 'mpeScanList';
+const K_COST     = 'mpeScanShowCost';
+const K_THEME    = 'mpeScanTheme';
+const K_BEEP     = 'mpeScanBeep';
+
+// ── STATE ─────────────────────────────────────────────────────────────────
+let accessToken = null;
+let tokenClient = null;
+let pendingAfterAuth = null;
+let partsArray = [];
+let loaded = false;
+let saleRules = [];
+let serialNumberMap = {};
+let partCodeMap = {};
+let unitSerialPrefixRules = [];
+let unitSerialCandidateRules = [];
+let learnedCodes = {};
+let pendingCodes = [];
+let scanExactIndex = null;
+let warrantyModelMap = new Map();
+let list = [];
+let feedStamp = '';
+let bindTarget = null;         // list entry awaiting a manual part match
+let flushPromise = null;
+
+try { learnedCodes = JSON.parse(localStorage.getItem(K_LEARNED) || '{}') || {}; } catch (e) { learnedCodes = {}; }
+try { pendingCodes = JSON.parse(localStorage.getItem(K_PENDING) || '[]') || []; } catch (e) { pendingCodes = []; }
+try { list = JSON.parse(localStorage.getItem(K_LIST) || '[]') || []; } catch (e) { list = []; }
+
+const $ = id => document.getElementById(id);
+
+// ── SMALL HELPERS ─────────────────────────────────────────────────────────
+function normalizePN(pn) {
+  return String(pn || '').replace(/[\s\-\.]/g, '').toUpperCase().trim();
+}
+function canonicalScannedCode(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  if (/^\d+$/.test(s) && s.length <= 14) return s.padStart(14, '0');
+  return s.toUpperCase();
+}
+function canonicalSerialNumber(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+function money(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '';
+  return '$' + v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function localDateYMD(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+let toastTimer = null;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+function save(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
+
+// ── GOOGLE AUTH ───────────────────────────────────────────────────────────
+// Same browser-side GIS client the POS uses. That is correct HERE (a static
+// GitHub Pages app with no server of its own) and is not the pattern the
+// server-served Tools/Dashboard pages are barred from.
+function cachedToken() {
+  const t = localStorage.getItem(K_TOKEN);
+  const at = parseInt(localStorage.getItem(K_TOKEN_AT) || '0', 10);
+  return t && (Date.now() - at) < 55 * 60 * 1000 ? t : null;
+}
+function token() { return accessToken || cachedToken(); }
+
+function initTokenClient() {
+  if (!window.google?.accounts?.oauth2) return;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    login_hint: SHOP_GOOGLE_ACCOUNT,
+    callback: resp => {
+      if (resp.error) {
+        if (resp.error !== 'access_denied' && resp.error !== 'user_cancel') toast('Sign-in failed: ' + resp.error);
+        return;
+      }
+      accessToken = resp.access_token;
+      localStorage.setItem(K_TOKEN, resp.access_token);
+      localStorage.setItem(K_TOKEN_AT, Date.now().toString());
+      localStorage.setItem(K_SIGNED, '1');
+      renderAuth();
+      loadFeed();
+      flushPendingCodes();
+      const fn = pendingAfterAuth; pendingAfterAuth = null; if (fn) fn();
+    }
+  });
+  renderAuth();
+}
+function signIn(then) {
+  pendingAfterAuth = then || null;
+  if (!tokenClient) { toast('Sign-in not ready yet — try again in a moment'); return; }
+  tokenClient.requestAccessToken();
+}
+function needAuth(then) {
+  if (token()) { then(); return true; }
+  toast('Sign in to continue');
+  openSheet('setSheet');
+  return false;
+}
+function renderAuth() {
+  const signed = !!token();
+  $('signBtn').textContent = signed ? 'Refresh' : 'Sign in';
+  $('signLabel').textContent = signed ? 'Signed in' : 'Google account';
+  $('signHelp').textContent = signed
+    ? SHOP_GOOGLE_ACCOUNT
+    : 'Needed to load prices and save codes.';
+}
+
+// ── OFFLINE CACHE (IndexedDB) ─────────────────────────────────────────────
+// The yard has no reliable signal. The last good feed is kept verbatim as the
+// gzipped bytes so a cold start out there still answers prices.
+function idb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('mpeScan', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function cachePut(key, value) {
+  try {
+    const db = await idb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put(value, key);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) {}
+}
+async function cacheGet(key) {
+  try {
+    const db = await idb();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction('kv', 'readonly');
+      const r = tx.objectStore('kv').get(key);
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  } catch (e) { return undefined; }
+}
+
+// ── CATALOG FEED ──────────────────────────────────────────────────────────
+function setFeedState(state, help) {
+  const dot = $('feedDot');
+  dot.className = 'feed-dot' + (state ? ' ' + state : '');
+  if (help) $('feedHelp').textContent = help;
+}
+
+async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
+  if (typeof DecompressionStream === 'undefined') throw new Error('browser too old to read the feed');
+  const stream = new Blob([arrayBuffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+  const feed = JSON.parse(await new Response(stream).text());
+  if (!feed || !Array.isArray(feed.parts) || !feed.parts.length) throw new Error('empty feed');
+
+  // Mirrors the POS: a superseded number gets an alias row so scanning the old
+  // number still lands on the item, while `_salePn`/`_saleOg` keep the sale
+  // rule pointed at the canonical identity.
+  const parts = [];
+  for (const e of feed.parts) {
+    parts.push(e);
+    if (e.sup && e.sup !== e.pn) parts.push({ ...e, pn: e.sup, og: e.pn, _supersedeAlias: true, _salePn: e.pn, _saleOg: e.og });
+  }
+  saleRules = normalizeSaleRules(feed.sales);
+  serialNumberMap = feed.serials && typeof feed.serials === 'object' ? feed.serials : {};
+  loadUnitSerialRules(feed.codes && typeof feed.codes === 'object' ? feed.codes : {});
+  for (const [code, pn] of Object.entries(learnedCodes)) {
+    const key = canonicalScannedCode(code);
+    if (key && pn) partCodeMap[key] = normalizePN(pn);
+  }
+  partsArray = parts;
+  scanExactIndex = null;
+  buildWarrantyModelMap();
+  loaded = true;
+  feedStamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  setFeedState(sourceLabel === 'cache' ? 'warn' : 'ok',
+    `${feed.parts.length.toLocaleString()} parts · ${sourceLabel === 'cache' ? 'cached copy' : 'updated ' + feedStamp}`);
+  return feed;
+}
+
+async function loadFeed({ quiet = false } = {}) {
+  const t = token();
+  if (t) {
+    try {
+      const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${POS_JSON_FILE_ID}?alt=media`, {
+        cache: 'no-store', headers: { Authorization: `Bearer ${t}` }
+      });
+      if (resp.ok) {
+        const ab = await resp.arrayBuffer();
+        await loadPosJsonBytes(ab, 'Drive');
+        await cachePut('feed', ab);
+        if (!quiet) toast('Prices updated');
+        return true;
+      }
+      if (resp.status === 401) { localStorage.removeItem(K_TOKEN); accessToken = null; renderAuth(); }
+    } catch (e) { /* fall through to cache */ }
+  }
+  const cached = await cacheGet('feed');
+  if (cached) {
+    try { await loadPosJsonBytes(cached, 'cache'); if (!quiet) toast('Offline — using the last saved prices'); return true; }
+    catch (e) {}
+  }
+  setFeedState('err', t ? 'Could not load the price feed' : 'Sign in to load prices');
+  return false;
+}
+
+function normalizeSaleRules(rules) {
+  if (!Array.isArray(rules)) return [];
+  return rules.filter(rule => {
+    const discount = Number(rule?.discount);
+    return rule && rule.enabled === true && normalizePN(rule.pn) &&
+      Number.isFinite(discount) && discount > 0 &&
+      /^\d{4}-\d{2}-\d{2}$/.test(String(rule.start || '')) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(String(rule.end || '')) &&
+      rule.start <= rule.end;
+  }).map(rule => {
+    const regular = Number(rule.from);
+    const discount = Number(rule.discount);
+    return {
+      id: String(rule.id == null ? '' : rule.id),
+      pn: String(rule.pn || ''), make: String(rule.make || '').trim(), og: String(rule.og || ''),
+      discount, regular: Number.isFinite(regular) && regular > discount ? regular : 0,
+      start: String(rule.start), end: String(rule.end)
+    };
+  });
+}
+
+function activeSaleForPart(part, today = localDateYMD()) {
+  if (!part || !normalizePN(part.pn)) return null;
+  const partPn = normalizePN(part._salePn || part.pn);
+  const partMake = String(part.make || '').trim().toLowerCase();
+  const partOg = normalizePN(part._salePn ? part._saleOg : part.og);
+  return saleRules.filter(rule =>
+    today >= rule.start && today <= rule.end &&
+    normalizePN(rule.pn) === partPn &&
+    rule.make.toLowerCase() === partMake &&
+    normalizePN(rule.og) === partOg
+  ).sort((a, b) => b.start.localeCompare(a.start) || a.id.localeCompare(b.id))[0] || null;
+}
+
+// What the customer pays, and what (if anything) is struck through beside it.
+function pricing(part) {
+  const listPrice = Number(part?.list);
+  const sale = activeSaleForPart(part);
+  if (!sale || !Number.isFinite(listPrice)) return { price: listPrice, was: 0, onSale: false };
+  // An MSRP anchor raises only the struck-through regular price; the charged
+  // price still lands exactly on Master's List.
+  const regular = sale.regular > 0 ? sale.regular : listPrice;
+  const price = sale.regular > 0 ? listPrice : Math.max(0, listPrice - sale.discount);
+  return { price, was: regular > price ? regular : 0, onSale: regular > price };
+}
+
+// ── SCAN RESOLUTION (mirrors the POS) ─────────────────────────────────────
+function loadUnitSerialRules(codes) {
+  partCodeMap = {};
+  unitSerialPrefixRules = [];
+  const candidateGroups = new Map();
+  for (const [rawCode, rawPN] of Object.entries(codes || {})) {
+    const code = String(rawCode || '').toUpperCase();
+    const pn = normalizePN(rawPN);
+    if (!pn) continue;
+    if (code.startsWith('@UNIT-EXACT:')) {
+      const serial = canonicalSerialNumber(code.slice(12));
+      if (serial) serialNumberMap[serial] = pn;
+      continue;
+    }
+    if (code.startsWith('@UNIT-PREFIX:')) {
+      const prefix = canonicalSerialNumber(code.slice(13));
+      if (prefix) unitSerialPrefixRules.push({ prefix, pns: [pn] });
+      continue;
+    }
+    if (code.startsWith('@UNIT-CANDIDATE:')) {
+      const prefix = canonicalSerialNumber(code.slice(16).split(':')[0]);
+      if (!prefix) continue;
+      if (!candidateGroups.has(prefix)) candidateGroups.set(prefix, new Set());
+      candidateGroups.get(prefix).add(pn);
+      continue;
+    }
+    partCodeMap[canonicalScannedCode(code)] = pn;
+  }
+  unitSerialPrefixRules.sort((a, b) => b.prefix.length - a.prefix.length);
+  unitSerialCandidateRules = Array.from(candidateGroups, ([prefix, pns]) => ({ prefix, pns: Array.from(pns) }))
+    .sort((a, b) => b.prefix.length - a.prefix.length);
+}
+
+function uniqueScanParts(parts) {
+  const seen = new Set(); const out = [];
+  for (const p of parts || []) {
+    const key = `${normalizePN(p.pn)}|${normalizePN(p.og)}|${String(p.make || '').trim().toUpperCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(p);
+  }
+  return out;
+}
+
+function buildScanExactIndex() {
+  scanExactIndex = new Map();
+  if (!partsArray.length) return;
+  const nonAliasByKey = new Map();
+  for (const p of partsArray) {
+    const nPN = p._nPN !== undefined ? p._nPN : (p._nPN = normalizePN(p.pn));
+    const nOG = p._nOG !== undefined ? p._nOG : (p._nOG = normalizePN(p.og));
+    if (p._supersedeAlias) continue;
+    if (nPN && !nonAliasByKey.has(nPN)) nonAliasByKey.set(nPN, p);
+    if (nOG && !nonAliasByKey.has(nOG)) nonAliasByKey.set(nOG, p);
+  }
+  const push = (key, record) => {
+    if (normalizePN(record.pn) !== key && normalizePN(record.og) !== key
+      && normalizePN(record._supersededFrom) !== key) return;
+    let bucket = scanExactIndex.get(key);
+    if (!bucket) scanExactIndex.set(key, bucket = []);
+    bucket.push(record);
+  };
+  for (const p of partsArray) {
+    const nPN = p._nPN, nOG = p._nOG;
+    const keys = nPN && nOG && nPN !== nOG ? [nPN, nOG] : [nPN || nOG];
+    for (const key of keys) {
+      if (!key) continue;
+      if (p._supersedeAlias) {
+        if (key === nOG || nonAliasByKey.has(nPN)) continue;
+        push(key, p);
+        continue;
+      }
+      if (p.sup && normalizePN(p.sup) !== nPN) {
+        const current = nonAliasByKey.get(normalizePN(p.sup));
+        push(key, {
+          ...(current || p),
+          pn: current ? current.pn : p.sup,
+          og: current ? current.og : p.sup,
+          _supersededFrom: p.og || p.pn
+        });
+        continue;
+      }
+      push(key, p);
+    }
+  }
+  for (const [key, bucket] of scanExactIndex) {
+    if (bucket.length > 1) bucket.sort((a, b) => (b.f || 0) - (a.f || 0));  // stable: ties keep Master order
+    scanExactIndex.set(key, uniqueScanParts(bucket));
+  }
+}
+function exactScanParts(value) {
+  const key = normalizePN(value);
+  if (!key || !loaded) return [];
+  if (!scanExactIndex) buildScanExactIndex();
+  return scanExactIndex.get(key) || [];
+}
+
+function buildWarrantyModelMap() {
+  warrantyModelMap = new Map();
+  for (const p of partsArray) {
+    if (!p.warranty) continue;
+    const first = String(p.desc || '').trim().split(/\s+/)[0];
+    const key = normalizePN(first);
+    if (key.length < 2) continue;
+    if (!warrantyModelMap.has(key)) warrantyModelMap.set(key, []);
+    warrantyModelMap.get(key).push(p);
+  }
+}
+function exactWarrantyModelParts(value) {
+  const key = normalizePN(value);
+  if (!key || !loaded) return [];
+  return uniqueScanParts(warrantyModelMap.get(key) || []);
+}
+
+function structuredScanParts(rawValue) {
+  const raw = String(rawValue || '');
+  if (!STRUCTURED_SCAN_DELIMITERS.test(raw)) return [];
+  const hits = []; const seen = new Set();
+  for (const field of raw.split(STRUCTURED_SCAN_DELIMITERS)) {
+    const key = normalizePN(field);
+    if (key.length < 4 || seen.has(key)) continue;
+    seen.add(key);
+    const candidates = exactScanParts(key);
+    if (candidates.length) hits.push(candidates);
+  }
+  return hits.length === 1 ? hits[0] : [];
+}
+
+function distributorPartCandidates(value) {
+  const code = String(value || '').toUpperCase().replace(/[\s\-.]/g, '');
+  if (!code || !loaded) return [];
+  for (const rule of DISTRIBUTOR_PART_PREFIXES) {
+    if (!code.startsWith(rule.prefix) || code.length === rule.prefix.length) continue;
+    const hits = exactScanParts(code.slice(rule.prefix.length))
+      .filter(p => String(p.make || '').trim().toUpperCase() === rule.make);
+    if (hits.length) return hits;
+  }
+  return [];
+}
+
+function unitSerialCandidates(rawValue) {
+  const serial = canonicalSerialNumber(rawValue);
+  if (!serial) return [];
+  const exactPN = serialNumberMap[serial];
+  if (exactPN) return exactScanParts(exactPN);
+  const exactPrefix = unitSerialPrefixRules.find(rule => serial.startsWith(rule.prefix));
+  if (exactPrefix) return uniqueScanParts(exactPrefix.pns.flatMap(exactScanParts));
+  const candidatePrefix = unitSerialCandidateRules.find(rule => serial.startsWith(rule.prefix));
+  return candidatePrefix ? uniqueScanParts(candidatePrefix.pns.flatMap(exactScanParts)) : [];
+}
+
+// Every parts label prints more than one barcode — a quantity ("1"), a country
+// code ("840"), a lot code. Correcting one of those would BIND it to a part
+// permanently, here and on every terminal through the Codes sheet. Bind "1"
+// once and every quantity barcode in the shop resolves to that part. Only
+// codes that already failed to resolve reach this, which is what keeps real
+// short part numbers (Felco 23, ECHO 1106, SCAG 1000) working.
+function ignorableScanCode(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return true;
+  if (STRUCTURED_SCAN_DELIMITERS.test(raw)) return true;   // label dump with a lot number: never scans the same twice
+  if (/^\d{1,4}$/.test(raw)) return true;
+  return normalizePN(raw).length < 3;
+}
+
+// A serial is unique to one physical machine, so binding it as a product
+// barcode would be wrong forever. Detect the shape and refuse to offer it.
+function looksLikeSerial(rawValue) {
+  const v = String(rawValue || '').trim();
+  return v.length >= 6 && v.length <= 30 && /[A-Z]/i.test(v) && /\d/.test(v) && /^[A-Z0-9 -]+$/i.test(v);
+}
+
+function resolveScannedValue(rawValue) {
+  const code = canonicalScannedCode(rawValue);
+  const mappedPN = code ? partCodeMap[code] : '';
+  let candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
+  if (!mappedPN && !candidates.length) candidates = structuredScanParts(rawValue);
+  if (!mappedPN && !candidates.length) candidates = distributorPartCandidates(rawValue);
+  if (!mappedPN && !candidates.length) candidates = exactWarrantyModelParts(rawValue);
+  // A known unit serial identifies the machine it belongs to. Last, so a real
+  // part number never loses to a serial rule.
+  if (!mappedPN && !candidates.length) candidates = unitSerialCandidates(rawValue);
+  return { code, mappedPN, candidates };
+}
+
+function preferredScanSymbol(items) {
+  const values = [...new Map((items || [])
+    .map(i => [String(i.rawValue || '').trim(), i])).values()]
+    .filter(i => String(i.rawValue || '').trim());
+  if (!values.length) return null;
+  const resolved = values.filter(i => resolveScannedValue(i.rawValue).candidates.length === 1);
+  if (resolved.length === 1) return resolved[0];
+  const usable = values.filter(i => !ignorableScanCode(i.rawValue));
+  return usable[0] || values[0];
+}
+
+// ── BARCODE BINDING QUEUE (Codes tab) ─────────────────────────────────────
+function queueCodeBinding(rawCode, format, part) {
+  const code = canonicalScannedCode(rawCode);
+  const pn = String(part?.pn || part?.og || '').trim();
+  if (!code || !pn) return;
+  if (ignorableScanCode(rawCode)) return;   // must never outlive the moment
+  if (looksLikeSerial(rawCode) && !partCodeMap[code]) return;
+  const record = { code, pn, format: String(format || ''), source: 'scan-phone', added: new Date().toISOString() };
+  const at = pendingCodes.findIndex(i => canonicalScannedCode(i.code) === code);
+  if (at >= 0) pendingCodes[at] = record; else pendingCodes.push(record);
+  save(K_PENDING, pendingCodes);
+  learnedCodes[code] = normalizePN(pn);
+  save(K_LEARNED, learnedCodes);
+  partCodeMap[code] = normalizePN(pn);
+  renderPending();
+  flushPendingCodes();
+}
+
+async function sheetsGet(range) {
+  const t = token(); if (!t) throw new Error('Not signed in');
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`;
+  const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + t } });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return (await resp.json()).values || [];
+}
+async function sheetsUpdate(range, rows) {
+  const t = token(); if (!t) throw new Error('Not signed in');
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+  const resp = await fetch(url, {
+    method: 'PUT',
+    headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: rows })
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return true;
+}
+async function sheetsAppend(range, rows) {
+  const t = token(); if (!t) throw new Error('Not signed in');
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`
+    + ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: rows })
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return await resp.json();
+}
+async function sheetsBatchUpdate(requests) {
+  const t = token(); if (!t) throw new Error('Not signed in');
+  const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}:batchUpdate`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests })
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return true;
+}
+async function tabExists(title) {
+  const t = token(); if (!t) throw new Error('Not signed in');
+  const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}?fields=sheets.properties`,
+    { headers: { Authorization: 'Bearer ' + t } });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return ((await resp.json()).sheets || []).some(s => s.properties.title === title);
+}
+// Create the tab if missing and prove its header, so an append can never land
+// in columns that mean something else.
+async function ensureTab(title, header) {
+  if (!(await tabExists(title))) await sheetsBatchUpdate([{ addSheet: { properties: { title } } }]);
+  const last = String.fromCharCode(64 + header.length);
+  let row = await sheetsGet(`${title}!A1:${last}1`);
+  if (!row.length || !row[0]?.some(v => String(v || '').trim())) {
+    await sheetsUpdate(`${title}!A1`, [header]);
+    row = await sheetsGet(`${title}!A1:${last}1`);
+  }
+  if (!row.length || header.some((v, i) => row[0]?.[i] !== v)) throw new Error(`${title} header could not be verified`);
+}
+
+async function _flushPendingCodes() {
+  if (!pendingCodes.length || !token()) return;
+  try {
+    await ensureTab(CODES_SHEET, CODES_HEADER);
+    while (pendingCodes.length) {
+      const batch = pendingCodes.slice();
+      const result = await sheetsAppend(`${CODES_SHEET}!A1`,
+        batch.map(i => [i.code, i.pn, i.format, i.source, i.added]));
+      const range = result?.updates?.updatedRange;
+      if (!range) throw new Error('append returned no range to verify');
+      const written = await sheetsGet(range);
+      const confirmed = new Set(written.map(r => `${canonicalScannedCode(r[0])}|${normalizePN(r[1])}`));
+      const missing = batch.find(i => !confirmed.has(`${canonicalScannedCode(i.code)}|${normalizePN(i.pn)}`));
+      if (missing) throw new Error(`code ${missing.code} was not found after append`);
+      pendingCodes = pendingCodes.slice(batch.length);
+      save(K_PENDING, pendingCodes);
+      renderPending();
+    }
+  } catch (e) {
+    console.warn('Code sync deferred:', e.message);   // stays queued; nothing is lost
+  }
+}
+function flushPendingCodes() {
+  if (flushPromise) return flushPromise;
+  flushPromise = _flushPendingCodes().finally(() => { flushPromise = null; });
+  return flushPromise;
+}
+function renderPending() {
+  $('pendHelp').textContent = pendingCodes.length
+    ? `${pendingCodes.length} waiting to reach the shop sheet`
+    : 'All sent.';
+}
+
+// ── AUDIO ─────────────────────────────────────────────────────────────────
+let audioCtx = null;
+function primeAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) {}
+}
+document.addEventListener('pointerdown', primeAudio, { once: true, capture: true });
+
+function beep(kind) {
+  if (!JSON.parse(localStorage.getItem(K_BEEP) ?? 'true')) return;
+  try {
+    primeAudio();
+    if (!audioCtx) return;
+    const blip = (start, dur, freq, type, vol) => {
+      const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.linearRampToValueAtTime(vol, start + 0.002);
+      gain.gain.setValueAtTime(vol, start + dur - 0.006);
+      gain.gain.linearRampToValueAtTime(0.0001, start + dur);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(start); osc.stop(start + dur + 0.01);
+    };
+    const now = audioCtx.currentTime;
+    if (kind === 'unknown') { blip(now, 0.07, 620, 'square', 0.10); blip(now + 0.09, 0.08, 400, 'square', 0.10); }
+    else if (kind === 'ignore') { blip(now, 0.05, 300, 'sine', 0.07); }
+    else { blip(now, 0.07, 2000, 'square', 0.11); blip(now, 0.07, 1000, 'sine', 0.08); }
+  } catch (e) {}
+}
+function buzz(pattern) { try { navigator.vibrate?.(pattern); } catch (e) {} }
+
+// ── CAMERA ────────────────────────────────────────────────────────────────
+let scanActive = false, scanStream = null, scanTimer = null, scanBusy = false;
+let scanDetector = null, fallbackDetector = null, fallbackLoad = null;
+let cropCanvas = null, fullCanvas = null, angleIndex = 0, frameCount = 0;
+let absentFrames = 0, startVersion = 0, wakeLock = null;
+const recentValues = new Map();
+
+function setCamStatus(msg, kind) {
+  const el = $('camStatus');
+  if (!msg) { el.hidden = true; return; }
+  el.hidden = false; el.textContent = msg;
+  el.className = 'cam-status' + (kind ? ' ' + kind : '');
+}
+
+function loadPonyfill() {
+  if (fallbackLoad) return fallbackLoad;
+  fallbackLoad = new Promise((resolve, reject) => {
+    const init = async () => {
+      const api = window.BarcodeDetectionAPI;
+      if (!api?.BarcodeDetector || !api?.prepareZXingModule) { reject(new Error('camera decoder did not initialize')); return; }
+      try {
+        await api.prepareZXingModule({
+          overrides: { locateFile: p => p.endsWith('.wasm') ? new URL('zxing_reader.wasm', location.href).href : p },
+          fireImmediately: true
+        });
+        resolve(api);
+      } catch (err) { reject(err); }
+    };
+    if (window.BarcodeDetectionAPI?.BarcodeDetector) { init(); return; }
+    const s = document.createElement('script');
+    s.src = new URL('barcode-detector-ponyfill.js', location.href).href;
+    s.onload = init;
+    s.onerror = () => reject(new Error('camera decoder could not load'));
+    document.head.appendChild(s);
+  }).catch(err => { fallbackLoad = null; throw err; });
+  return fallbackLoad;
+}
+
+async function nativeFrame() {
+  if (!scanActive) return;
+  const video = $('cam');
+  if (!scanBusy && video?.readyState >= 2) {
+    scanBusy = true;
+    try {
+      const item = preferredScanSymbol(await scanDetector.detect(video));
+      if (!item) { absentFrames++; }
+      else { absentFrames = 0; acceptScan(item.rawValue, item.format); }
+    } catch (e) {
+      if (scanActive) setCamStatus('Camera error: ' + e.message, 'err');
+    } finally { scanBusy = false; }
+  }
+  if (scanActive) scanTimer = setTimeout(nativeFrame, 90);
+}
+
+// The ponyfill path, tuned exactly as the POS tuned it: straight-on passes by
+// default, a 2x centre magnification every third pass for dense parts-box
+// codes, tilts only after straight-on has been failing, and never a horizontal
+// crop (that would shave a wide Code 128's quiet zone or end characters).
+async function fallbackFrame() {
+  if (!scanActive) return;
+  const video = $('cam');
+  if (!scanBusy && video?.readyState >= 2) {
+    scanBusy = true;
+    const tilted = absentFrames >= FALLBACK_TILT_AFTER_MISSES && frameCount % 2 === 1;
+    const zoomed = !tilted && frameCount % 3 === 2;
+    try {
+      const fullFrame = frameCount > 0 && frameCount % FALLBACK_FULL_FRAME_EVERY === 0;
+      const sourceY = fullFrame ? 0 : Math.round(video.videoHeight * 0.10);
+      const width = video.videoWidth;
+      const height = fullFrame ? video.videoHeight : Math.round(video.videoHeight * 0.80);
+      if (!width || !height) { scanBusy = false; scanTimer = setTimeout(fallbackFrame, FALLBACK_RETRY_MS); return; }
+      if (fullFrame && !fullCanvas) fullCanvas = document.createElement('canvas');
+      if (!fullFrame && !cropCanvas) cropCanvas = document.createElement('canvas');
+      const canvas = fullFrame ? fullCanvas : cropCanvas;
+      if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const angle = tilted ? FALLBACK_SCAN_ANGLES[angleIndex] : 0;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, width, height);
+      ctx.translate(width / 2, height / 2);
+      if (angle) ctx.rotate(angle * Math.PI / 180);
+      const sampleW = zoomed ? Math.round(width / 2) : width;
+      const sampleH = zoomed ? Math.round(height / 2) : height;
+      const sampleX = Math.round((width - sampleW) / 2);
+      const sampleY = sourceY + Math.round((height - sampleH) / 2);
+      ctx.drawImage(video, sampleX, sampleY, sampleW, sampleH, -width / 2, -height / 2, width, height);
+      const pick = preferredScanSymbol(await fallbackDetector.detect(canvas));
+      if (!scanActive) return;
+      if (pick) { absentFrames = 0; acceptScan(pick.rawValue, pick.format || 'zxing-wasm'); }
+      else { absentFrames++; }
+    } catch (e) {
+      absentFrames++;
+    } finally {
+      scanBusy = false;
+      if (tilted) angleIndex = (angleIndex + 1) % FALLBACK_SCAN_ANGLES.length;
+      frameCount++;
+    }
+  }
+  if (scanActive) scanTimer = setTimeout(fallbackFrame, FALLBACK_RETRY_MS);
+}
+
+function claimScannedValue(value, now = Date.now()) {
+  const key = canonicalScannedCode(value);
+  if (now - (recentValues.get(key) || 0) < SCAN_REPEAT_LOCKOUT_MS) return false;
+  recentValues.set(key, now);
+  return true;
+}
+
+async function startCamera() {
+  const version = ++startVersion;
+  primeAudio();
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setCamStatus('This browser cannot open a camera', 'err');
+    return;
+  }
+  if (!window.isSecureContext) {
+    setCamStatus('Camera needs a https:// address', 'err');
+    return;
+  }
+  setCamStatus('Starting camera…');
+  $('camIdle').classList.add('hidden');
+  try {
+    const video = $('cam');
+    // `environment` is a hint, not a guarantee — some Android front cameras win
+    // it, but every phone honours it for the rear lens in practice.
+    const constraints = w => ({ video: { facingMode: { ideal: 'environment' }, width: { ideal: w }, height: { ideal: Math.round(w * 9 / 16) } }, audio: false });
+    if ('BarcodeDetector' in window) {
+      const supported = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : SCAN_FORMATS;
+      const formats = SCAN_FORMATS.filter(f => supported.includes(f));
+      scanDetector = formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
+      scanStream = await navigator.mediaDevices.getUserMedia(constraints(1280));
+      if (version !== startVersion) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; return; }
+      video.srcObject = scanStream;
+      await video.play();
+      scanActive = true; absentFrames = 0;
+      afterCameraUp();
+      nativeFrame();
+    } else {
+      // iOS Safari and desktop Safari/Firefox land here: no native detector,
+      // so the pinned ZXing-C++ WASM build does the decoding.
+      setCamStatus('Loading scanner…');
+      const api = await loadPonyfill();
+      if (version !== startVersion) return;
+      fallbackDetector = new api.BarcodeDetector({ formats: SCAN_FORMATS });
+      scanStream = await navigator.mediaDevices.getUserMedia(constraints(1920));
+      if (version !== startVersion) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; return; }
+      const track = scanStream.getVideoTracks()[0];
+      try {
+        if (track?.getCapabilities?.().focusMode?.includes('continuous')) {
+          await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+        }
+      } catch (e) {}
+      video.srcObject = scanStream;
+      await video.play();
+      scanActive = true; absentFrames = 0; angleIndex = 0; frameCount = 0;
+      afterCameraUp();
+      fallbackFrame();
+    }
+  } catch (e) {
+    if (version !== startVersion) return;
+    stopCamera();
+    setCamStatus(e.name === 'NotAllowedError'
+      ? 'Camera permission was not allowed — enable it in browser settings'
+      : 'Could not start camera: ' + e.message, 'err');
+  }
+}
+
+async function afterCameraUp() {
+  $('camStop').hidden = false;
+  $('againBtn').textContent = 'Stop scanning';
+  setCamStatus('Ready — point at a barcode');
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) {}
+}
+
+function stopCamera() {
+  startVersion++;
+  scanActive = false; scanBusy = false;
+  if (scanTimer) clearTimeout(scanTimer);
+  scanTimer = null;
+  if (scanStream) scanStream.getTracks().forEach(t => t.stop());
+  scanStream = null;
+  fallbackDetector = null; cropCanvas = null; fullCanvas = null;
+  const video = $('cam');
+  if (video) video.srcObject = null;
+  try { wakeLock?.release(); } catch (e) {}
+  wakeLock = null;
+  $('camStop').hidden = true;
+  $('camIdle').classList.remove('hidden');
+  $('startBtn').textContent = 'Start camera';
+  $('againBtn').textContent = 'Scan';
+  setCamStatus('');
+}
+
+// Releasing the camera when the page is backgrounded is not politeness — iOS
+// suspends the stream anyway and comes back to a frozen black preview.
+document.addEventListener('visibilitychange', () => { if (document.hidden && scanActive) stopCamera(); });
+
+// ── ACCEPTING A SCAN ──────────────────────────────────────────────────────
+function acceptScan(rawValue, format) {
+  const raw = String(rawValue || '').trim();
+  if (!raw || !claimScannedValue(raw)) return;
+
+  if (!loaded) { showHero({ bad: true, desc: 'Prices are not loaded yet', meta: raw }); beep('unknown'); return; }
+
+  // Resolve FIRST. The packaging-noise filter below must only ever see codes
+  // that already failed to resolve — that ordering is what keeps genuinely
+  // short part numbers (Felco 23, ECHO 1106, SCAG 1000) working, since they
+  // are indistinguishable from a quantity barcode by shape alone.
+  const { code, candidates } = resolveScannedValue(raw);
+  if (candidates.length === 1) {
+    addToList(candidates[0], { code, format });
+    beep('ok'); buzz(35);
+    if (scanActive) setCamStatus('Ready — point at a barcode');   // clears a previous "ignored" warning
+    return;
+  }
+  if (candidates.length > 1) {
+    // Genuinely ambiguous. Show the choice rather than guessing a price.
+    openSearch({ pick: candidates, code, format, title: 'Which one?' });
+    beep('unknown'); buzz([25, 60, 25]);
+    return;
+  }
+  // Nothing resolved. Packaging noise is dropped outright — no hero, no list
+  // row, and nothing that could ever be offered for binding.
+  if (ignorableScanCode(raw)) {
+    setCamStatus('Ignored a packaging barcode — aim at the part number', 'warn');
+    beep('ignore');
+    return;
+  }
+  addUnknown(raw, code, format);
+  beep('unknown'); buzz([25, 60, 25]);
+}
+
+// ── LIST ──────────────────────────────────────────────────────────────────
+function entryFromPart(part, { code = '', format = '' } = {}) {
+  const p = pricing(part);
+  return {
+    id: 'e' + Date.now().toString(36) + Math.floor(performance.now() % 1000),
+    pn: String(part.pn || ''), og: String(part.og || ''), make: String(part.make || ''),
+    desc: String(part.desc || ''), price: p.price, was: p.was, onSale: p.onSale,
+    cost: Number(part.cost) || 0, qty: 1, code, format, unresolved: false, at: Date.now()
+  };
+}
+
+function addToList(part, meta) {
+  const entry = entryFromPart(part, meta);
+  // Same part scanned twice is a quantity, which is what a pick list wants and
+  // is harmless when you are only checking a price.
+  const twin = list.find(e => !e.unresolved && normalizePN(e.pn) === normalizePN(entry.pn)
+    && String(e.make).toUpperCase() === String(entry.make).toUpperCase());
+  if (twin) twin.qty += 1;
+  else list.unshift(entry);
+  persistList();
+  showHero({
+    make: entry.make, desc: entry.desc, price: entry.price, was: entry.was, onSale: entry.onSale,
+    meta: [entry.pn, entry.og && normalizePN(entry.og) !== normalizePN(entry.pn) ? 'was ' + entry.og : '']
+      .filter(Boolean).join(' · '),
+    cost: entry.cost
+  });
+  // Deliberately NO binding here. A scan that already resolved — by direct part
+  // number, a distributor prefix, a warranty model, or a unit serial rule —
+  // resolves the same way on every terminal without help, so writing it to the
+  // Codes sheet would add thousands of redundant rows for the server to ingest
+  // and teach part_codes.db nothing. Bindings are written only where knowledge
+  // is actually created: a human matching an unknown code, or picking which
+  // part an ambiguous one meant. Both live in chooseHit().
+}
+
+function addUnknown(raw, code, format) {
+  const serialish = looksLikeSerial(raw);
+  const entry = {
+    id: 'u' + Date.now().toString(36) + Math.floor(performance.now() % 1000),
+    pn: '', og: '', make: '', desc: raw, price: 0, was: 0, onSale: false, cost: 0,
+    qty: 1, code, format, unresolved: true, serialish, at: Date.now()
+  };
+  const twin = list.find(e => e.unresolved && e.code === code);
+  if (twin) twin.qty += 1; else list.unshift(entry);
+  persistList();
+  showHero({
+    flag: true,
+    desc: serialish ? 'Not a known serial number' : 'Not in the catalog',
+    meta: raw + (serialish ? ' — serial numbers are never saved as barcodes' : ' — tap it in the list to match it to a part'),
+  });
+}
+
+function persistList() { save(K_LIST, list); renderList(); }
+
+function renderList() {
+  const rows = $('rows');
+  const count = list.reduce((n, e) => n + e.qty, 0);
+  const pill = $('listCount');
+  pill.textContent = count;
+  pill.className = 'pill' + (count ? '' : ' zero');
+  const total = list.filter(e => !e.unresolved).reduce((s, e) => s + e.price * e.qty, 0);
+  $('listSum').textContent = list.length ? money(total) : '';
+
+  if (!list.length) {
+    rows.innerHTML = '<div class="empty-note">Scans land here.<br>Clearing is one tap — nothing is kept for you.</div>';
+    return;
+  }
+  rows.replaceChildren(...list.map(e => {
+    const div = document.createElement('div');
+    div.className = 'row' + (e.unresolved ? ' unresolved' : '');
+    div.dataset.id = e.id;
+    const sub = e.unresolved
+      ? (e.serialish ? 'Serial-shaped code — tap to look up the unit' : 'Tap to match this code to a part')
+      : [e.make, e.pn].filter(Boolean).join(' · ');
+    const priceCell = e.unresolved ? ''
+      : `<div class="row-price">${money(e.price * e.qty)}${e.was ? `<small>${money(e.was * e.qty)}</small>` : ''}</div>`;
+    div.innerHTML = `
+      <div class="row-main" data-act="open">
+        <div class="row-desc">${escapeHTML(e.unresolved ? e.desc : e.desc || e.pn)}</div>
+        <div class="row-sub">${escapeHTML(sub)}</div>
+      </div>
+      ${priceCell}
+      <div class="qty">
+        <button data-act="minus" aria-label="less">&minus;</button>
+        <span>${e.qty}</span>
+        <button data-act="plus" aria-label="more">+</button>
+      </div>`;
+    return div;
+  }));
+}
+function escapeHTML(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+$('rows').addEventListener('click', ev => {
+  const row = ev.target.closest('.row'); if (!row) return;
+  const act = ev.target.closest('[data-act]')?.dataset.act;
+  const entry = list.find(e => e.id === row.dataset.id); if (!entry) return;
+  if (act === 'plus') { entry.qty += 1; persistList(); return; }
+  if (act === 'minus') {
+    entry.qty -= 1;
+    if (entry.qty <= 0) list = list.filter(e => e.id !== entry.id);
+    persistList();
+    return;
+  }
+  if (entry.unresolved) openSearch({ bind: entry });
+  else showHero({
+    make: entry.make, desc: entry.desc, price: entry.price, was: entry.was,
+    onSale: entry.onSale, meta: entry.pn, cost: entry.cost
+  });
+});
+
+// ── HERO ──────────────────────────────────────────────────────────────────
+const HERO_IDLE = { desc: 'Nothing scanned yet', meta: 'Same prices the counter charges, sale rules included.' };
+function showHero({ make = '', desc = '', price = null, was = 0, onSale = false, meta = '', cost = 0, flag = false, bad = false } = {}) {
+  if (!desc && price == null) { desc = HERO_IDLE.desc; meta = meta || HERO_IDLE.meta; }
+  const hero = $('hero');
+  hero.className = 'hero' + (flag ? ' flag' : '') + (bad ? ' bad' : '') + (price == null ? ' empty' : '');
+  $('heroMake').textContent = make;
+  $('heroDesc').textContent = desc;
+  $('heroPrice').textContent = price == null ? '' : money(price);
+  $('heroPrice').className = 'hero-price' + (onSale ? ' sale' : '');
+  $('heroWas').hidden = !was; $('heroWas').textContent = was ? money(was) : '';
+  $('heroTag').hidden = !onSale;
+  $('heroMeta').textContent = meta;
+  $('heroCost').textContent = cost > 0 && price > 0
+    ? `Cost ${money(cost)} · margin ${((price - cost) / price * 100).toFixed(1)}%`
+    : (cost > 0 ? `Cost ${money(cost)}` : '');
+}
+
+// ── SEARCH ────────────────────────────────────────────────────────────────
+// Deliberately simpler than the POS's ranked/fuzzy search: on a phone the job
+// is "find the thing I am holding", and exact number, then prefix, then a
+// description match with the best-selling rows first covers that.
+function searchParts(query, limit = 40) {
+  const q = String(query || '').trim();
+  if (q.length < 2 || !loaded) return [];
+  const nq = normalizePN(q);
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const exact = [], prefix = [], text = [];
+  for (const p of partsArray) {
+    if (p._supersedeAlias) continue;
+    const nPN = p._nPN !== undefined ? p._nPN : (p._nPN = normalizePN(p.pn));
+    const nOG = p._nOG !== undefined ? p._nOG : (p._nOG = normalizePN(p.og));
+    if (nq && (nPN === nq || nOG === nq)) { exact.push(p); continue; }
+    if (nq.length >= 3 && (nPN.startsWith(nq) || nOG.startsWith(nq))) { prefix.push(p); continue; }
+    const hay = `${p.desc || ''} ${p.make || ''} ${p.pn || ''}`.toLowerCase();
+    if (words.every(w => hay.includes(w))) text.push(p);
+    if (exact.length + prefix.length + text.length > 600) break;
+  }
+  const byFreq = (a, b) => (b.f || 0) - (a.f || 0);
+  prefix.sort(byFreq); text.sort(byFreq);
+  return uniqueScanParts([...exact, ...prefix, ...text]).slice(0, limit);
+}
+
+function openSearch({ bind = null, pick = null, code = '', format = '', title = '' } = {}) {
+  bindTarget = bind ? { entry: bind } : (pick ? { code, format } : null);
+  $('searchTitle').textContent = title || (bind ? 'Match this code' : 'Search catalog');
+  const banner = $('bindBanner');
+  if (bind) {
+    banner.hidden = false;
+    banner.innerHTML = bind.serialish
+      ? `Looking up <b>${escapeHTML(bind.desc)}</b>. Choosing a part shows its price. A serial number is never saved as a barcode.`
+      : `Pick the part for <b>${escapeHTML(bind.desc)}</b>. This saves the code for every terminal in the shop.`;
+  } else if (pick) {
+    banner.hidden = false;
+    banner.innerHTML = `<b>${escapeHTML(code)}</b> matches more than one part. Pick the right one.`;
+  } else {
+    banner.hidden = true;
+  }
+  openSheet('searchSheet');
+  const input = $('searchInput');
+  input.value = '';
+  if (pick) renderHits(pick);
+  else {
+    renderHits([]);
+    setTimeout(() => input.focus(), 120);
+  }
+}
+
+function renderHits(parts) {
+  const box = $('searchResults');
+  if (!parts.length) {
+    box.innerHTML = `<div class="empty-note">${loaded ? 'Type a part number or a few words.' : 'Prices are not loaded yet.'}</div>`;
+    return;
+  }
+  box.replaceChildren(...parts.map(p => {
+    const pr = pricing(p);
+    const div = document.createElement('div');
+    div.className = 'hit';
+    div.innerHTML = `
+      <div class="hit-main">
+        <div class="hit-desc">${escapeHTML(p.desc || p.pn)}</div>
+        <div class="hit-sub">${escapeHTML([p.make, p.pn].filter(Boolean).join(' · '))}</div>
+      </div>
+      <div class="hit-price">${money(pr.price)}</div>`;
+    div.addEventListener('click', () => chooseHit(p));
+    return div;
+  }));
+}
+
+function chooseHit(part) {
+  const target = bindTarget;
+  closeSheet('searchSheet');
+  if (target?.entry) {
+    const entry = target.entry;
+    const p = pricing(part);
+    // A serial-shaped code identifies one machine, so it resolves the row but
+    // is never written to the Codes sheet as a product barcode.
+    if (entry.code && !entry.serialish) queueCodeBinding(entry.code, entry.format, part);
+    Object.assign(entry, {
+      pn: String(part.pn || ''), og: String(part.og || ''), make: String(part.make || ''),
+      desc: String(part.desc || ''), price: p.price, was: p.was, onSale: p.onSale,
+      cost: Number(part.cost) || 0, unresolved: false
+    });
+    persistList();
+    toast(entry.serialish ? 'Matched — serial not saved as a barcode' : 'Saved for the whole shop');
+  } else if (target?.code) {
+    // Choosing between real candidates settles what that code means, so it is
+    // worth saving — unless it is serial-shaped, which belongs to one machine.
+    if (!looksLikeSerial(target.code)) queueCodeBinding(target.code, target.format, part);
+    addToList(part, { code: target.code, format: target.format });
+    bindTarget = null;
+    return;
+  } else {
+    addToList(part, {});
+    return;
+  }
+  bindTarget = null;
+  showHero({
+    make: part.make, desc: part.desc, price: pricing(part).price, was: pricing(part).was,
+    onSale: pricing(part).onSale, meta: part.pn, cost: Number(part.cost) || 0
+  });
+}
+
+let searchTimer = null;
+$('searchInput').addEventListener('input', ev => {
+  clearTimeout(searchTimer);
+  const q = ev.target.value;
+  searchTimer = setTimeout(() => renderHits(searchParts(q)), 130);
+});
+
+// ── SEND TO COUNTER ───────────────────────────────────────────────────────
+// Writes the list to the Bridge sheet's `Lists` tab and verifies it by
+// read-back before saying it landed. Nothing here touches prices.
+async function sendList() {
+  if (!list.length) { toast('Nothing in the list'); return; }
+  if (!needAuth(sendList)) return;
+  const btn = $('sendBtn');
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await ensureTab(LISTS_SHEET, LISTS_HEADER);
+    const stamp = new Date();
+    const listId = 'L' + stamp.toISOString().slice(0, 19).replace(/[-:T]/g, '');
+    const ordered = list.slice().reverse();     // scan order reads better at the counter
+    const rows = ordered.map((e, i) => [
+      stamp.toISOString(), listId, i + 1,
+      e.unresolved ? '' : e.pn,
+      e.unresolved ? e.desc : e.desc,
+      e.unresolved ? '' : e.make,
+      e.qty,
+      e.unresolved ? '' : e.price,
+      e.unresolved ? `unmatched code ${e.code}` : ''
+    ]);
+    const result = await sheetsAppend(`${LISTS_SHEET}!A1`, rows);
+    const range = result?.updates?.updatedRange;
+    if (!range) throw new Error('append returned no range to verify');
+    const written = await sheetsGet(range);
+    if (written.length !== rows.length) throw new Error(`wrote ${written.length} of ${rows.length} lines`);
+    const missing = rows.find((r, i) => String(written[i]?.[2] ?? '') !== String(r[2]));
+    if (missing) throw new Error('a line did not read back');
+    toast(`Sent ${rows.length} line${rows.length === 1 ? '' : 's'} as ${listId}`);
+  } catch (e) {
+    toast('Not sent: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+// ── SHEETS / SETTINGS UI ──────────────────────────────────────────────────
+function openSheet(id) { $(id).classList.add('open'); }
+function closeSheet(id) { $(id).classList.remove('open'); }
+for (const id of ['searchSheet', 'setSheet']) {
+  $(id).addEventListener('click', ev => { if (ev.target.id === id) closeSheet(id); });
+}
+$('searchClose').addEventListener('click', () => { bindTarget = null; closeSheet('searchSheet'); });
+$('setClose').addEventListener('click', () => closeSheet('setSheet'));
+$('searchBtn').addEventListener('click', () => openSearch({}));
+$('setBtn').addEventListener('click', () => { renderAuth(); renderPending(); openSheet('setSheet'); });
+
+$('startBtn').addEventListener('click', startCamera);
+$('camStop').addEventListener('click', stopCamera);
+// The big button is the thumb target; the small Stop on the preview is for
+// when the camera is the only thing on screen.
+$('againBtn').addEventListener('click', () => { scanActive ? stopCamera() : startCamera(); });
+$('listBtn').addEventListener('click', () => {
+  document.querySelector('.list-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+$('sendBtn').addEventListener('click', sendList);
+$('clearBtn').addEventListener('click', () => {
+  if (!list.length) return;
+  if (!confirm(`Clear all ${list.length} line${list.length === 1 ? '' : 's'}?`)) return;
+  list = []; persistList(); toast('List cleared');
+});
+$('signBtn').addEventListener('click', () => signIn());
+$('refreshBtn').addEventListener('click', () => { if (needAuth(() => loadFeed())) {} });
+$('flushBtn').addEventListener('click', () => {
+  if (!pendingCodes.length) { toast('Nothing waiting'); return; }
+  if (needAuth(() => flushPendingCodes().then(() => toast(pendingCodes.length ? 'Still queued — will retry' : 'Sent')))) {}
+});
+$('forgetBtn').addEventListener('click', () => {
+  if (!confirm('Forget this device’s saved barcodes?')) return;
+  learnedCodes = {}; save(K_LEARNED, learnedCodes);
+  toast('Local codes forgotten');
+});
+
+function bindSwitch(el, key, def, onChange) {
+  let on = def;
+  try { const v = localStorage.getItem(key); if (v !== null) on = JSON.parse(v); } catch (e) {}
+  const apply = () => { el.classList.toggle('on', on); onChange(on); };
+  el.addEventListener('click', () => { on = !on; save(key, on); apply(); });
+  apply();
+}
+bindSwitch($('costSw'), K_COST, false, on => document.body.classList.toggle('show-cost', on));
+bindSwitch($('themeSw'), K_THEME, false, on => document.documentElement.dataset.theme = on ? 'light' : 'dark');
+bindSwitch($('beepSw'), K_BEEP, true, () => {});
+
+// ── BOOT ──────────────────────────────────────────────────────────────────
+renderList();
+renderPending();
+setFeedState('', 'Loading…');
+showHero({});
+
+(async function boot() {
+  // Cache first so the page is useful before the network answers.
+  const cached = await cacheGet('feed');
+  if (cached) { try { await loadPosJsonBytes(cached, 'cache'); } catch (e) {} }
+  const waitForGis = setInterval(() => {
+    if (window.google?.accounts?.oauth2) { clearInterval(waitForGis); initTokenClient(); }
+  }, 200);
+  setTimeout(() => clearInterval(waitForGis), 15000);
+  if (token()) { loadFeed({ quiet: true }); flushPendingCodes(); }
+  else if (!loaded) setFeedState('err', 'Sign in to load prices');
+})();
+</script>
+</body>
+</html>
