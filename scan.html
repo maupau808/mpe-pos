@@ -195,6 +195,21 @@ body.show-cost .hero-cost { display: block; }
 .qty button:active { background: var(--line); }
 .qty span { min-width: 22px; text-align: center; font-size: 14px; font-weight: 600; }
 .empty-note { padding: 26px 20px; text-align: center; color: var(--dim); font-size: 13px; }
+/* Warranty rows carry a serial field, so they stop being a single flex line. */
+.row.has-sn { flex-wrap: wrap; }
+.row.has-sn .row-main { flex: 1 1 60%; }
+.sn-line { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+.sn-line label { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--warn); flex: none; }
+.sn-line.done label { color: var(--accent); }
+.sn-input {
+  flex: 1; min-width: 0; font-size: 16px;  /* 16px or iOS zooms on focus */
+  padding: 7px 9px; border-radius: 8px; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--warn); -webkit-appearance: none; text-transform: uppercase;
+}
+.sn-line.done .sn-input { border-color: var(--line); }
+.sn-input:focus { outline: none; border-color: var(--muted); }
+/* Serials are upper-cased as typed; the hint should not be shouted too. */
+.sn-input::placeholder { text-transform: none; color: var(--dim); }
 
 /* ── sheets (search / settings) ─────────────────────────────────────────── */
 .sheet {
@@ -417,7 +432,9 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googl
 const CODES_SHEET  = 'Codes';
 const CODES_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Added'];
 const LISTS_SHEET  = 'Lists';
-const LISTS_HEADER = ['Sent', 'List', 'Line', 'Part Number', 'Description', 'Make', 'Qty', 'Price', 'Note'];
+// Serial rides with the line: the counter POS fills the warranty serial field
+// from it, which is the whole reason a unit can be scanned out on the floor.
+const LISTS_HEADER = ['Sent', 'List', 'Line', 'Part Number', 'Description', 'Make', 'Qty', 'Price', 'Serial', 'Note'];
 
 const DISTRIBUTOR_PART_PREFIXES = [
   { prefix: 'SC', make: 'SCAG' },
@@ -879,17 +896,23 @@ function looksLikeSerial(rawValue) {
   return v.length >= 6 && v.length <= 30 && /[A-Z]/i.test(v) && /\d/.test(v) && /^[A-Z0-9 -]+$/i.test(v);
 }
 
+// `via` reports HOW a scan matched, which the caller needs: a match through the
+// unit-serial rules means the scanned value IS that machine's serial number, and
+// that serial has to reach the counter with the line or the whole floor-scanning
+// trip has to be repeated at the register.
 function resolveScannedValue(rawValue) {
   const code = canonicalScannedCode(rawValue);
   const mappedPN = code ? partCodeMap[code] : '';
-  let candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
-  if (!mappedPN && !candidates.length) candidates = structuredScanParts(rawValue);
-  if (!mappedPN && !candidates.length) candidates = distributorPartCandidates(rawValue);
-  if (!mappedPN && !candidates.length) candidates = exactWarrantyModelParts(rawValue);
-  // A known unit serial identifies the machine it belongs to. Last, so a real
-  // part number never loses to a serial rule.
-  if (!mappedPN && !candidates.length) candidates = unitSerialCandidates(rawValue);
-  return { code, mappedPN, candidates };
+  // A bound code is authoritative and never falls through: if its part is gone
+  // from Master that is an orphan to report, not a reason to guess again.
+  if (mappedPN) return { code, mappedPN, candidates: exactScanParts(mappedPN), via: 'code' };
+  let c = exactScanParts(rawValue);        if (c.length) return { code, mappedPN, candidates: c, via: 'direct' };
+  c = structuredScanParts(rawValue);       if (c.length) return { code, mappedPN, candidates: c, via: 'structured' };
+  c = distributorPartCandidates(rawValue); if (c.length) return { code, mappedPN, candidates: c, via: 'distributor' };
+  c = exactWarrantyModelParts(rawValue);   if (c.length) return { code, mappedPN, candidates: c, via: 'model' };
+  // Last, so a real part number never loses to a serial rule.
+  c = unitSerialCandidates(rawValue);      if (c.length) return { code, mappedPN, candidates: c, via: 'serial' };
+  return { code, mappedPN, candidates: [], via: '' };
 }
 
 function preferredScanSymbol(items) {
@@ -969,8 +992,11 @@ async function tabExists(title) {
   return ((await resp.json()).sheets || []).some(s => s.properties.title === title);
 }
 // Create the tab if missing and prove its header, so an append can never land
-// in columns that mean something else.
+// in columns that mean something else. Cached per session: this costs up to
+// three round trips, and the send has a walking customer attached to it.
+const ensuredTabs = new Set();
 async function ensureTab(title, header) {
+  if (ensuredTabs.has(title)) return;
   if (!(await tabExists(title))) await sheetsBatchUpdate([{ addSheet: { properties: { title } } }]);
   const last = String.fromCharCode(64 + header.length);
   let row = await sheetsGet(`${title}!A1:${last}1`);
@@ -978,7 +1004,10 @@ async function ensureTab(title, header) {
     await sheetsUpdate(`${title}!A1`, [header]);
     row = await sheetsGet(`${title}!A1:${last}1`);
   }
-  if (!row.length || header.some((v, i) => row[0]?.[i] !== v)) throw new Error(`${title} header could not be verified`);
+  if (!row.length || header.some((v, i) => row[0]?.[i] !== v)) {
+    throw new Error(`${title} header is not ${header.join('/')} — fix or rename the tab`);
+  }
+  ensuredTabs.add(title);
 }
 
 async function _flushPendingCodes() {
@@ -1257,9 +1286,10 @@ function acceptScan(rawValue, format) {
   // that already failed to resolve — that ordering is what keeps genuinely
   // short part numbers (Felco 23, ECHO 1106, SCAG 1000) working, since they
   // are indistinguishable from a quantity barcode by shape alone.
-  const { code, candidates } = resolveScannedValue(raw);
+  const { code, candidates, via } = resolveScannedValue(raw);
   if (candidates.length === 1) {
-    addToList(candidates[0], { code, format });
+    // A serial-rule match means the scanned value is this machine's serial.
+    addToList(candidates[0], { code, format, serial: via === 'serial' ? raw : '' });
     beep('ok'); buzz(35);
     if (scanActive) setCamStatus('Ready — point at a barcode');   // clears a previous "ignored" warning
     return;
@@ -1270,6 +1300,24 @@ function acceptScan(rawValue, format) {
     beep('unknown'); buzz([25, 60, 25]);
     return;
   }
+  // Model-then-serial. Some units label the printed model rather than a code
+  // the serial rules know, so scanning the unit and then its serial fills the
+  // line we just made. This is what covers Maruyama and any unit whose serial
+  // prefix is ambiguous, and it is why an unknown alphanumeric is not
+  // immediately treated as a mystery barcode.
+  const awaiting = list.find(e => e.warranty && !e.serial);
+  if (awaiting && looksLikeSerial(raw)) {
+    awaiting.serial = raw.trim();
+    persistList();
+    showHero({
+      make: awaiting.make, desc: awaiting.desc, price: awaiting.price, was: awaiting.was,
+      onSale: awaiting.onSale, meta: `Serial ${awaiting.serial}`, cost: awaiting.cost
+    });
+    beep('ok'); buzz(35);
+    if (scanActive) setCamStatus('Serial captured — next item');
+    return;
+  }
+
   // Nothing resolved. Packaging noise is dropped outright — no hero, no list
   // row, and nothing that could ever be offered for binding.
   if (ignorableScanCode(raw)) {
@@ -1282,29 +1330,37 @@ function acceptScan(rawValue, format) {
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────────
-function entryFromPart(part, { code = '', format = '' } = {}) {
+function entryFromPart(part, { code = '', format = '', serial = '' } = {}) {
   const p = pricing(part);
   return {
     id: 'e' + Date.now().toString(36) + Math.floor(performance.now() % 1000),
     pn: String(part.pn || ''), og: String(part.og || ''), make: String(part.make || ''),
     desc: String(part.desc || ''), price: p.price, was: p.was, onSale: p.onSale,
-    cost: Number(part.cost) || 0, qty: 1, code, format, unresolved: false, at: Date.now()
+    cost: Number(part.cost) || 0, qty: 1, code, format,
+    warranty: !!part.warranty, serial: String(serial || '').trim(),
+    unresolved: false, at: Date.now()
   };
 }
 
 function addToList(part, meta) {
   const entry = entryFromPart(part, meta);
   // Same part scanned twice is a quantity, which is what a pick list wants and
-  // is harmless when you are only checking a price.
-  const twin = list.find(e => !e.unresolved && normalizePN(e.pn) === normalizePN(entry.pn)
+  // is harmless when you are only checking a price. A warranty unit is the
+  // exception: each one is a distinct machine with its own serial, so merging
+  // two of them would silently destroy one of the serials.
+  const twin = entry.warranty ? null : list.find(e => !e.unresolved && !e.warranty
+    && normalizePN(e.pn) === normalizePN(entry.pn)
     && String(e.make).toUpperCase() === String(entry.make).toUpperCase());
   if (twin) twin.qty += 1;
   else list.unshift(entry);
   persistList();
   showHero({
     make: entry.make, desc: entry.desc, price: entry.price, was: entry.was, onSale: entry.onSale,
-    meta: [entry.pn, entry.og && normalizePN(entry.og) !== normalizePN(entry.pn) ? 'was ' + entry.og : '']
-      .filter(Boolean).join(' · '),
+    meta: [
+      entry.pn,
+      entry.og && normalizePN(entry.og) !== normalizePN(entry.pn) ? 'was ' + entry.og : '',
+      entry.serial ? 'Serial ' + entry.serial : (entry.warranty ? 'scan the serial next' : '')
+    ].filter(Boolean).join(' · '),
     cost: entry.cost
   });
   // Deliberately NO binding here. A scan that already resolved — by direct part
@@ -1368,6 +1424,20 @@ function renderList() {
         <span>${e.qty}</span>
         <button data-act="plus" aria-label="more">+</button>
       </div>`;
+    // A warranty unit without its serial is an unfinished line — it will reach
+    // the counter needing the machine back at the desk. Show that on the floor,
+    // while the unit is still in reach, and let it be typed if the label will
+    // not scan.
+    if (e.warranty && !e.unresolved) {
+      const sn = document.createElement('div');
+      sn.className = 'sn-line' + (e.serial ? ' done' : '');
+      sn.innerHTML = `<label>SN</label>
+        <input class="sn-input" type="text" inputmode="latin" autocomplete="off" autocorrect="off"
+               autocapitalize="characters" spellcheck="false"
+               placeholder="scan or type the serial" value="${escapeHTML(e.serial)}">`;
+      div.appendChild(sn);
+      div.classList.add('has-sn');
+    }
     return div;
   }));
 }
@@ -1375,7 +1445,20 @@ function escapeHTML(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Typing a serial must not re-render the list under the cursor, so the model is
+// updated and saved on every keystroke but the row is only redrawn on blur.
+$('rows').addEventListener('input', ev => {
+  const input = ev.target.closest('.sn-input'); if (!input) return;
+  const entry = list.find(e => e.id === input.closest('.row')?.dataset.id); if (!entry) return;
+  entry.serial = input.value.trim().toUpperCase();
+  save(K_LIST, list);
+});
+$('rows').addEventListener('change', ev => {
+  if (ev.target.closest('.sn-input')) renderList();
+});
+
 $('rows').addEventListener('click', ev => {
+  if (ev.target.closest('.sn-input')) return;   // tapping the serial field is not a row tap
   const row = ev.target.closest('.row'); if (!row) return;
   const act = ev.target.closest('[data-act]')?.dataset.act;
   const entry = list.find(e => e.id === row.dataset.id); if (!entry) return;
@@ -1491,10 +1574,14 @@ function chooseHit(part) {
     // A serial-shaped code identifies one machine, so it resolves the row but
     // is never written to the Codes sheet as a product barcode.
     if (entry.code && !entry.serialish) queueCodeBinding(entry.code, entry.format, part);
+    // For a serial-shaped row the raw scan (still in desc at this point) IS the
+    // machine's serial, so matching the unit captures it rather than losing it.
+    const capturedSerial = entry.serialish ? String(entry.desc || '').trim().toUpperCase() : '';
     Object.assign(entry, {
       pn: String(part.pn || ''), og: String(part.og || ''), make: String(part.make || ''),
       desc: String(part.desc || ''), price: p.price, was: p.was, onSale: p.onSale,
-      cost: Number(part.cost) || 0, unresolved: false
+      cost: Number(part.cost) || 0, warranty: !!part.warranty,
+      serial: capturedSerial || entry.serial || '', unresolved: false
     });
     persistList();
     toast(entry.serialish ? 'Matched — serial not saved as a barcode' : 'Saved for the whole shop');
@@ -1528,6 +1615,13 @@ $('searchInput').addEventListener('input', ev => {
 // read-back before saying it landed. Nothing here touches prices.
 async function sendList() {
   if (!list.length) { toast('Nothing in the list'); return; }
+  // Catch a missing serial while the machine is still in front of you, not at
+  // the counter with the customer waiting.
+  const noSerial = list.filter(e => e.warranty && !e.unresolved && !e.serial);
+  if (noSerial.length && !confirm(
+      `${noSerial.length} warranty unit${noSerial.length === 1 ? '' : 's'} ${noSerial.length === 1 ? 'has' : 'have'} no serial:\n\n`
+      + noSerial.map(e => '• ' + e.desc).join('\n')
+      + '\n\nSend anyway? You will have to enter the serial at the counter.')) return;
   if (!needAuth(sendList)) return;
   const btn = $('sendBtn');
   const label = btn.textContent;
@@ -1540,11 +1634,15 @@ async function sendList() {
     const rows = ordered.map((e, i) => [
       stamp.toISOString(), listId, i + 1,
       e.unresolved ? '' : e.pn,
-      e.unresolved ? e.desc : e.desc,
+      e.desc,
       e.unresolved ? '' : e.make,
       e.qty,
       e.unresolved ? '' : e.price,
-      e.unresolved ? `unmatched code ${e.code}` : ''
+      // Leading apostrophe so Sheets cannot reinterpret a numeric serial as a
+      // number and drop its leading zeros on the way to the counter.
+      e.serial ? "'" + e.serial : '',
+      e.unresolved ? `unmatched code ${e.code}`
+        : (e.warranty && !e.serial ? 'warranty unit — serial missing' : '')
     ]);
     const result = await sheetsAppend(`${LISTS_SHEET}!A1`, rows);
     const range = result?.updates?.updatedRange;

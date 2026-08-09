@@ -618,6 +618,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="internal" onclick="setDocType('internal')">Internal</button>
       </div>
       <button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button>
+      <button class="scan-btn" id="phoneListBtn" type="button" onclick="loadPhoneList()" title="Load the newest list sent from MPE Scan on the phone">Phone list</button>
       <span style="display:none">
         <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="internalPrintBtn"></button><button id="cardFeeBtn"></button>
       </span>
@@ -6314,6 +6315,138 @@ function reprintOrder(idx) {
     }
   });
   updateSummary();
+}
+
+// ─── PHONE LIST (MPE Scan → counter) ───────────────────────────────────────
+// WRITES TO:      this page's rows only — nothing is written to any sheet here
+// TRIGGER:        Trevor clicks "Phone list" after sending a list from scan.html
+// DOES NOT TOUCH: Master, prices, the POS feed, Codes, or the Lists tab itself
+//
+// Reads the newest list off the Bridge `Lists` tab and rebuilds it as an
+// ordinary sale: today's List price and today's sale rules apply, exactly as if
+// each line had been scanned here. The phone's price is deliberately ignored —
+// it is a quote from minutes ago, and the register must charge from Master.
+//
+// The tab is read in two small requests rather than one big one: column B alone
+// locates the newest list, then only that list's rows are fetched. That keeps
+// the load flat as the tab grows instead of slowly turning into a full download
+// with a customer standing at the counter.
+const PHONE_LIST_SHEET = 'Lists';
+
+async function fetchNewestPhoneList() {
+  let ids;
+  try {
+    ids = await sheetsGet(`${PHONE_LIST_SHEET}!B:B`);
+  } catch (e) {
+    if (/not found|Unable to parse range/i.test(e.message)) return null;   // tab never created
+    throw e;
+  }
+  let last = -1;
+  for (let i = ids.length - 1; i >= 1; i--) {         // row 1 is the header
+    if (String(ids[i]?.[0] || '').trim()) { last = i; break; }
+  }
+  if (last < 1) return null;
+  const listId = String(ids[last][0]).trim();
+  let first = last;
+  while (first > 1 && String(ids[first - 1]?.[0] || '').trim() === listId) first--;
+  const rows = await sheetsGet(`${PHONE_LIST_SHEET}!A${first + 1}:J${last + 1}`);
+  const lines = rows
+    .filter(r => String(r[1] || '').trim() === listId)
+    .map(r => ({
+      line:   parseInt(r[2], 10) || 0,
+      pn:     String(r[3] || '').trim(),
+      desc:   String(r[4] || '').trim(),
+      make:   String(r[5] || '').trim(),
+      qty:    Math.max(1, parseFloat(r[6]) || 1),
+      serial: String(r[8] || '').trim(),
+      note:   String(r[9] || '').trim()
+    }))
+    .sort((a, b) => a.line - b.line);
+  return lines.length ? { listId, sentAt: String(rows[0]?.[0] || ''), lines } : null;
+}
+
+function sheetHasContent() {
+  for (let i = 0; i < NUM_ROWS; i++) {
+    const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+    if (input && (input.dataset.partPn || input.value.trim())) return true;
+  }
+  return false;
+}
+
+async function loadPhoneList() {
+  const btn = document.getElementById('phoneListBtn');
+  if (!(accessToken || localStorage.getItem('gToken'))) { _pendingAction = loadPhoneList; handleSignIn(); return; }
+  if (!loaded) { alert('Prices are still loading — try again in a moment.'); return; }
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    const found = await fetchNewestPhoneList();
+    if (!found) { alert('No list has been sent from the phone yet.'); return; }
+    const when = found.sentAt ? new Date(found.sentAt) : null;
+    const ago = when && !isNaN(when) ? Math.round((Date.now() - when.getTime()) / 60000) : null;
+    if (sheetHasContent() && !confirm(
+        `Load phone list ${found.listId} (${found.lines.length} line${found.lines.length === 1 ? '' : 's'}`
+        + `${ago != null ? `, sent ${ago} min ago` : ''})?\n\nThis replaces what is on screen now.`)) return;
+
+    clearAll();
+    while (NUM_ROWS < found.lines.length + 1) addRow();
+    buildMobileRows();
+    for (let i = 0; i < NUM_ROWS; i++) clearRow(i);
+
+    const unmatched = [], missingSerial = [];
+    found.lines.forEach((item, i) => {
+      const part = item.pn ? findPartByPn(item.pn) : null;
+      if (!part) {
+        // The phone could not match this one, or the part has left Master since.
+        // It is put on screen as a priced-by-hand line rather than dropped, so
+        // it cannot silently disappear between the floor and the register.
+        unmatched.push(item.desc || item.note || '(blank)');
+        const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+        if (input) {
+          input.value = item.pn || item.desc || '';
+          input.className = 'part-input';
+          input.dataset.isOther = '1';
+          input.readOnly = false;
+        }
+        const descEl = document.getElementById(`desc-${i}`);
+        if (descEl) {
+          descEl.textContent = item.desc || item.note || '';
+          descEl.className = 'cell-desc cell-editable';
+          descEl.contentEditable = 'true';
+          descEl.dataset.row = i;
+          descEl.dataset.isOther = '1';
+        }
+        document.getElementById(`qty-${i}`).value = item.qty;
+        return;
+      }
+      ensureScannerMobileRow(i);
+      applyMobilePart(i, part);                       // updates both views, applies today's sale
+      document.getElementById(`qty-${i}`).value = item.qty;
+      const mobileQty = document.getElementById(`mqty-${i}`);
+      if (mobileQty) mobileQty.value = item.qty;
+      if (part.warranty) {
+        renderSNFields(i, item.qty, part.pn);
+        if (item.serial) fillRowSerial(i, item.serial);   // also remembers the unit for packaging
+        else missingSerial.push(part.desc || part.pn);
+      }
+      updateSubtotal(i);
+      updateMobileSubtotal(i);
+    });
+
+    // Loose units must be re-grouped or a battery-and-charger pair loaded from
+    // the phone would be charged as two singles instead of the package price.
+    applyPackageDeals();
+    updateSummary();
+
+    const notes = [];
+    if (unmatched.length) notes.push(`${unmatched.length} line${unmatched.length === 1 ? ' needs' : 's need'} a part and price:\n  • ` + unmatched.join('\n  • '));
+    if (missingSerial.length) notes.push(`${missingSerial.length} warranty unit${missingSerial.length === 1 ? ' still needs' : 's still need'} a serial:\n  • ` + missingSerial.join('\n  • '));
+    if (notes.length) alert(`Loaded ${found.listId}.\n\n` + notes.join('\n\n'));
+  } catch (e) {
+    alert('Could not load the phone list: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
 }
 
 function exportHistory() {
