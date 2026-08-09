@@ -1120,10 +1120,10 @@ async function tabExists(title, options) {
     { headers: { Authorization: 'Bearer ' + t } }, options);
   return ((await resp.json()).sheets || []).some(s => s.properties.title === title);
 }
-// Create the tab if missing and prove its header, so an append can never land
-// in columns that mean something else. Cached per session: this costs up to
-// three round trips, and the send has a walking customer attached to it.
-const ensuredTabs = new Set();
+// Lists and Codes are permanent Bridge tabs with fixed schemas. Treat them as
+// provisioned so every new phone session does not spend two reads proving the
+// same setup before its first write. Unknown future tabs still use the guard.
+const ensuredTabs = new Set([LISTS_SHEET, CODES_SHEET]);
 async function ensureTab(title, header, options) {
   if (ensuredTabs.has(title)) return;
   if (!(await tabExists(title, options))) await sheetsBatchUpdate([{ addSheet: { properties: { title } } }], options);
@@ -1784,7 +1784,7 @@ async function sendList() {
         + noSerial.map(e => '• ' + e.desc).join('\n')
         + '\n\nSend anyway? You will have to enter the serial at the counter.')) return;
     if (!needAuth(sendList)) return;
-    const retryOptions = { onRetry: () => { btn.textContent = 'Rate limit — waiting…'; } };
+    const retryOptions = { onRetry: () => { btn.textContent = 'Google limit — waiting…'; } };
     await ensureTab(LISTS_SHEET, LISTS_HEADER, retryOptions);
     const stamp = new Date();
     const nonce = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
