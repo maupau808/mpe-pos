@@ -39,7 +39,7 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .scan-panel[hidden] { display: none; }
 .scan-slot { position: relative; display: inline-flex; align-items: center; }
 .scan-slot.live #scanBtn { visibility: hidden; }
-.scan-slot .scan-panel:not(.review-mode) { position: absolute; top: 50%; left: 0; width: 320px; max-width: none; transform: translateY(-50%); z-index: 6; cursor: pointer; box-shadow: 0 2px 10px rgba(0, 0, 0, .28); }
+.scan-slot .scan-panel:not(.review-mode) { position: absolute; bottom: 0; left: 0; width: 320px; max-width: none; z-index: 6; cursor: pointer; box-shadow: 0 2px 10px rgba(0, 0, 0, .28); }
 .scan-panel.review-mode { width: 460px; min-width: 260px; margin-bottom: 16px; padding: 6px; border: 1px solid #c7cfc4; border-radius: 8px; background: #f7faf6; }
 .scan-panel.review-mode .scan-camera { display: none; }
 .scan-camera { position: relative; width: 100%; height: 60px; overflow: hidden; border-radius: 6px; background: #18201c; }
@@ -2817,7 +2817,26 @@ function placeScanPanel(inToolbar) {
     else host.prepend(panel);
   }
   slot.classList.toggle('live', inToolbar);
+  if (!inToolbar) panel.style.left = '';
 }
+
+// Centre the live preview in the clear toolbar space between the doc-type
+// buttons and the right-hand controls without moving either of them.
+function centerScanPanel() {
+  const panel = document.getElementById('scanPanel');
+  const slot = document.getElementById('scanSlot');
+  const docSel = document.querySelector('.doc-type-sel');
+  const right = document.querySelector('.toolbar-right');
+  if (!panel || !slot || !docSel || !right) return;
+  if (panel.parentElement !== slot || panel.hidden || panel.classList.contains('review-mode')) return;
+  if (slot.offsetParent !== docSel.offsetParent || docSel.offsetParent !== right.offsetParent) return;
+  const gapStart = docSel.offsetLeft + docSel.offsetWidth;
+  const gapEnd = right.offsetLeft;
+  const left = gapStart + (gapEnd - gapStart - panel.offsetWidth) / 2 - slot.offsetLeft;
+  panel.style.left = `${Math.round(left)}px`;
+}
+
+window.addEventListener('resize', centerScanPanel);
 
 function scanPanelClick(event) {
   const panel = document.getElementById('scanPanel');
@@ -2833,6 +2852,7 @@ async function startScanner() {
   placeScanPanel(true);
   panel.hidden = false;
   panel.classList.remove('review-mode');
+  centerScanPanel();
   clearScanChoices();
   updateScanNext();
   setScanStatus('Starting camera…');
