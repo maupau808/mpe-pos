@@ -3767,7 +3767,7 @@ async function sheetsGet(range, options) {
       await new Promise(resolve => setTimeout(resolve, waitMs));
       continue;
     }
-    if (throttled) throw new Error('Google Sheets is still busy. Wait a minute and try again.');
+    if (throttled) throw new Error('Google rate limit reached. Wait a minute and try again.');
     throw new Error(msg);
   }
 }
@@ -6608,7 +6608,7 @@ async function openPhoneLists(refresh) {
   box.innerHTML = '<div class="hist-empty phone-list-status">Loading…</div>';
   try {
     const showRetry = () => {
-      box.innerHTML = '<div class="hist-empty phone-list-status">Google is busy — trying again automatically…</div>';
+      box.innerHTML = '<div class="hist-empty phone-list-status">Google rate limit reached — waiting before retry…</div>';
     };
     _phoneLists = await fetchRecentPhoneLists(PHONE_LIST_SHOW, showRetry);
     renderPhoneLists();

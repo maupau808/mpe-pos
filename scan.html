@@ -525,6 +525,8 @@ let list = [];
 let feedStamp = '';
 let bindTarget = null;         // list entry awaiting a manual part match
 let flushPromise = null;
+let deferredCodeFlushTimer = null;
+let listSendActive = false;
 
 try { learnedCodes = JSON.parse(localStorage.getItem(K_LEARNED) || '{}') || {}; } catch (e) { learnedCodes = {}; }
 try { pendingCodes = JSON.parse(localStorage.getItem(K_PENDING) || '[]') || []; } catch (e) { pendingCodes = []; }
@@ -613,7 +615,6 @@ function initTokenClient() {
       rememberAccount(resp.access_token);
       renderAuth();
       loadFeed();
-      flushPendingCodes();
       const fn = pendingAfterAuth; pendingAfterAuth = null; if (fn) fn();
     }
   });
@@ -1046,7 +1047,6 @@ function queueCodeBinding(rawCode, format, part) {
   save(K_LEARNED, learnedCodes);
   partCodeMap[code] = normalizePN(pn);
   renderPending();
-  flushPendingCodes();
 }
 
 const SHEETS_RETRY_MS = [2000, 5000, 10000, 20000, 30000];
@@ -1071,7 +1071,7 @@ async function sheetsFetch(url, init, options) {
       continue;
     }
     if (throttled) {
-      const error = new Error('Google Sheets is still busy.');
+      const error = new Error('Google rate limit reached.');
       error.sheetsThrottled = true;
       throw error;
     }
@@ -1166,10 +1166,18 @@ function flushPendingCodes() {
   flushPromise = _flushPendingCodes().finally(() => { flushPromise = null; });
   return flushPromise;
 }
+function schedulePendingCodesFlush() {
+  if (!pendingCodes.length || deferredCodeFlushTimer) return;
+  deferredCodeFlushTimer = setTimeout(async () => {
+    deferredCodeFlushTimer = null;
+    if (listSendActive) { schedulePendingCodesFlush(); return; }
+    await flushPendingCodes();
+  }, 15000);
+}
 function renderPending() {
   $('pendHelp').textContent = pendingCodes.length
-    ? `${pendingCodes.length} waiting to reach the shop sheet`
-    : 'All sent.';
+    ? `${pendingCodes.length} saved locally — syncs after Send`
+    : 'All synced.';
 }
 
 // ── AUDIO ─────────────────────────────────────────────────────────────────
@@ -1529,7 +1537,7 @@ function renderList() {
   const total = list.filter(e => !e.unresolved).reduce((s, e) => s + e.price * e.qty, 0);
   $('listSum').textContent = list.length ? money(total) : '';
   const send = $('sendBtn');
-  send.textContent = authState() === 'out' ? 'Sign in to send' : 'Send to counter';
+  if (!listSendActive) send.textContent = authState() === 'out' ? 'Sign in to send' : 'Send to counter';
 
   if (!list.length) {
     rows.innerHTML = '<div class="empty-note">Scans land here.<br>Clearing is one tap — nothing is kept for you.</div>';
@@ -1715,7 +1723,7 @@ function chooseHit(part) {
       serial: capturedSerial || entry.serial || '', unresolved: false
     });
     persistList();
-    toast(entry.serialish ? 'Matched — serial not saved as a barcode' : 'Saved for the whole shop');
+    toast(entry.serialish ? 'Matched — serial not saved as a barcode' : 'Saved locally — syncs after Send');
   } else if (target?.code) {
     // Choosing between real candidates settles what that code means, so it is
     // worth saving — unless it is serial-shaped, which belongs to one machine.
@@ -1769,9 +1777,10 @@ async function sendList() {
   if (!needAuth(sendList)) return;
   const btn = $('sendBtn');
   const label = btn.textContent;
+  listSendActive = true;
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
-    const retryOptions = { onRetry: () => { btn.textContent = 'Google busy — checking…'; } };
+    const retryOptions = { onRetry: () => { btn.textContent = 'Rate limit — waiting…'; } };
     await ensureTab(LISTS_SHEET, LISTS_HEADER, retryOptions);
     const stamp = new Date();
     const nonce = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
@@ -1811,9 +1820,11 @@ async function sendList() {
     const missing = rows.find((r, i) => String(written[i]?.[2] ?? '') !== String(r[2]));
     if (missing) throw new Error('a line did not read back');
     toast(`Sent ${rows.length} line${rows.length === 1 ? '' : 's'} as ${listId}`);
+    schedulePendingCodesFlush();
   } catch (e) {
     toast('Not sent: ' + e.message, 7000);
   } finally {
+    listSendActive = false;
     btn.disabled = false; btn.textContent = label;
   }
 }
@@ -1885,7 +1896,7 @@ showHero({});
     if (window.google?.accounts?.oauth2) { clearInterval(waitForGis); initTokenClient(); }
   }, 200);
   setTimeout(() => clearInterval(waitForGis), 15000);
-  if (token()) { loadFeed({ quiet: true }); flushPendingCodes(); }
+  if (token()) loadFeed({ quiet: true });
   else if (!loaded) setFeedState('err', 'Sign in to load prices');
 })();
 </script>
