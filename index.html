@@ -1093,7 +1093,10 @@ function ensureConnected(opts) {
 // One click on Admin: reconnect if stale, refresh the catalog, show the panel.
 function openAdminMenu(event) {
   toggleMenu(event, 'adminMenu');
-  if (document.getElementById('adminMenu')?.classList.contains('open')) ensureConnected({ refresh: true });
+  if (document.getElementById('adminMenu')?.classList.contains('open')) {
+    ensureConnected({ refresh: true });
+    refreshScanCameras();
+  }
 }
 
 // Kept as the one place that says "the token is ours now" — renewal itself is
@@ -2814,6 +2817,13 @@ async function refreshScanCameras() {
     if (saved && cameras.some(camera => camera.deviceId === saved)) select.value = saved;
     else if (saved) localStorage.removeItem(SCAN_CAMERA_KEY);
   } catch (error) {}
+}
+
+// Continuity Camera often becomes available after the page is already open —
+// when the iPhone is locked/mounted or connected by USB. Keep Admin's picker in
+// step with macOS instead of requiring a page reload or scanner restart.
+if (navigator.mediaDevices?.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', refreshScanCameras);
 }
 
 async function openScanCamera(width, height) {
