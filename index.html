@@ -1684,12 +1684,13 @@ function persistLearnedPartCodes() {
 }
 
 function queuePartCodeBinding(issue, part) {
-  const code = canonicalScannedCode(issue?.rawValue);
+  const sourceCode = issue?.bindCode || issue?.rawValue;
+  const code = canonicalScannedCode(sourceCode);
   const pn = String(part?.pn || part?.og || '').trim();
   if (!code || !pn) return;
   // Nothing that failed the packaging test may become a binding, even if it
   // somehow reached a review row — this is the write that would outlive the sale.
-  if (ignorableScanCode(issue?.rawValue)) return;
+  if (ignorableScanCode(sourceCode)) return;
   const record = {
     code,
     pn,
@@ -1896,6 +1897,36 @@ function exactWarrantyModelParts(value) {
   return uniqueScanParts(warrantyModelMap.get(key) || []);
 }
 
+function stihlUnitModelParts(model) {
+  const key = normalizePN(model);
+  if (!key || !loaded) return [];
+  return uniqueScanParts(partsArray.filter(part =>
+    part.warranty
+    && String(part.make || '').trim().toUpperCase() === 'STIHL'
+    && normalizePN(part.desc).startsWith(key)
+  ));
+}
+
+// STIHL's unit Data Matrix is a pipe-delimited equipment record. The leading
+// fields are stable product UPC, serial, type code, and printed model, e.g.:
+//   886661620968|448789975|MA01-011-5831|MSA 220.0 TC|...
+// It outranks every ordinary barcode/model/serial path because one scan names
+// both the product and the physical machine.
+function stihlUnitDataMatrix(rawValue) {
+  const fields = String(rawValue || '').split('|').map(value => value.trim());
+  if (fields.length < 4) return null;
+  const [productCode, serialRaw, typeCode, model] = fields;
+  if (!/^886661\d{6}$/.test(productCode) || !/^\d{7,12}$/.test(serialRaw)
+      || !/^M[A-Z0-9]{2,3}[-\d]/i.test(typeCode) || !/^[A-Z]{2,4}\s+\d/i.test(model)) return null;
+  const serial = canonicalSerialNumber(serialRaw);
+  const mappedPN = partCodeMap[canonicalScannedCode(productCode)] || '';
+  let candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(productCode);
+  if (!candidates.length) candidates = exactScanParts(typeCode);
+  if (!candidates.length) candidates = unitSerialCandidates(serial);
+  if (!candidates.length) candidates = stihlUnitModelParts(model);
+  return { productCode, serial, typeCode, model, mappedPN, candidates };
+}
+
 function distributorPartCandidates(value) {
   const code = String(value || '').toUpperCase().replace(/[\s\-.]/g, '');
   if (!code || !loaded) return [];
@@ -1966,6 +1997,8 @@ function preferredScanSymbol(items) {
     .map(item => [String(item.rawValue || '').trim(), item])).values()]
     .filter(item => String(item.rawValue || '').trim());
   if (!values.length) return null;
+  const stihlUnit = values.find(item => stihlUnitDataMatrix(item.rawValue));
+  if (stihlUnit) return stihlUnit;
   const resolved = values.filter(item => resolveScannedValue(item.rawValue).candidates.length === 1);
   if (resolved.length === 1) return resolved[0];
   const usable = values.filter(item => !ignorableScanCode(item.rawValue));
@@ -2214,6 +2247,12 @@ function applyPackageDeals(latestSerial, latestRow) {
 }
 
 function resolveScannedValue(rawValue) {
+  const unit = stihlUnitDataMatrix(rawValue);
+  if (unit) return {
+    code: canonicalScannedCode(unit.productCode), mappedPN: unit.mappedPN,
+    candidates: unit.candidates, via: 'stihl-unit', serial: unit.serial,
+    model: unit.model, bindCode: unit.productCode
+  };
   const code = canonicalScannedCode(rawValue);
   const mappedPN = code ? partCodeMap[code] : '';
   // An imported or counter-bound barcode is authoritative. Direct matching is
@@ -2230,7 +2269,7 @@ function resolveScannedValue(rawValue) {
   // number. Exact first-token matching is intentionally warranty-only so a
   // model scan can safely become the first half of model-then-serial entry.
   if (!mappedPN && candidates.length === 0) candidates = exactWarrantyModelParts(rawValue);
-  return { code, mappedPN, candidates };
+  return { code, mappedPN, candidates, via: '', serial: '', model: '', bindCode: '' };
 }
 
 function stihlModelFromDescription(description) {
@@ -2411,7 +2450,8 @@ function fillScannedPart(part, requestedRow) {
 function saveScanForReview(rawValue, format, candidates, options = {}) {
   const row = Number.isInteger(options.row) ? options.row : firstOpenScanRow();
   ensureScannerMobileRow(row);
-  scanIssues.set(row, { rawValue, format: format || '', candidates, serial: options.serial || '' });
+  scanIssues.set(row, { rawValue, format: format || '', candidates,
+    serial: options.serial || '', bindCode: options.bindCode || '' });
   const input = tbody.querySelector(`[data-row="${row}"].part-input`);
   if (input) {
     input.value = rawValue;
@@ -2508,6 +2548,24 @@ function acceptDecodedScan(rawValue, format) {
   }
   if (!claimScannedValue(raw, Date.now(), format)) return;
   const result = resolveScannedValue(raw);
+  if (result.via === 'stihl-unit') {
+    if (result.candidates.length === 1) {
+      playScanBeep(false);
+      const row = fillScannedPart(result.candidates[0]);
+      fillRowSerial(row, result.serial);
+      const deal = applyPackageDeals(result.serial, row);
+      ++scanStatusVersion;
+      setScanStatus(deal ? packageDealStatus(deal) : `Added ${result.model} · SN ${result.serial}`, 'ok');
+      updateScanNext();
+      updateScanButton();
+      return;
+    }
+    playScanBeep(result.candidates.length !== 1);
+    saveScanForReview(result.model, format, result.candidates, {
+      serial: result.serial, bindCode: result.bindCode
+    });
+    return;
+  }
   const serialCandidates = unitSerialCandidates(raw).filter(part => part.warranty);
   if (result.candidates.length === 0 && rowNeedsUnitSerial(pendingUnitSerialRow) && likelySecondUnitSerial(raw)) {
     const waitingPN = pendingUnitPN();
@@ -5040,6 +5098,7 @@ function applyPart(i, part, options) {
   if (correctedScanIssue) {
     if (correctedScanIssue.serial && part.warranty) {
       fillRowSerial(i, correctedScanIssue.serial);
+      if (correctedScanIssue.bindCode) queuePartCodeBinding(correctedScanIssue, part);
       const deal = applyPackageDeals(correctedScanIssue.serial, i);
       if (deal) setScanStatus(packageDealStatus(deal), 'ok');
     }

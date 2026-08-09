@@ -944,6 +944,36 @@ function exactWarrantyModelParts(value) {
   return uniqueScanParts(warrantyModelMap.get(key) || []);
 }
 
+function stihlUnitModelParts(model) {
+  const key = normalizePN(model);
+  if (!key || !loaded) return [];
+  return uniqueScanParts(partsArray.filter(part =>
+    part.warranty
+    && String(part.make || '').trim().toUpperCase() === 'STIHL'
+    && normalizePN(part.desc).startsWith(key)
+  ));
+}
+
+// STIHL's unit Data Matrix is a pipe-delimited equipment record. The leading
+// fields are stable product UPC, serial, type code, and printed model, e.g.:
+//   886661620968|448789975|MA01-011-5831|MSA 220.0 TC|...
+// It is the only label symbol that identifies both the product and the physical
+// machine, so it resolves before every ordinary barcode/model/serial path.
+function stihlUnitDataMatrix(rawValue) {
+  const fields = String(rawValue || '').split('|').map(value => value.trim());
+  if (fields.length < 4) return null;
+  const [productCode, serialRaw, typeCode, model] = fields;
+  if (!/^886661\d{6}$/.test(productCode) || !/^\d{7,12}$/.test(serialRaw)
+      || !/^M[A-Z0-9]{2,3}[-\d]/i.test(typeCode) || !/^[A-Z]{2,4}\s+\d/i.test(model)) return null;
+  const serial = canonicalSerialNumber(serialRaw);
+  const mappedPN = partCodeMap[canonicalScannedCode(productCode)] || '';
+  let candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(productCode);
+  if (!candidates.length) candidates = exactScanParts(typeCode);
+  if (!candidates.length) candidates = unitSerialCandidates(serial);
+  if (!candidates.length) candidates = stihlUnitModelParts(model);
+  return { productCode, serial, typeCode, model, mappedPN, candidates };
+}
+
 function structuredScanParts(rawValue) {
   const raw = String(rawValue || '');
   if (!STRUCTURED_SCAN_DELIMITERS.test(raw)) return [];
@@ -1007,6 +1037,12 @@ function looksLikeSerial(rawValue) {
 // that serial has to reach the counter with the line or the whole floor-scanning
 // trip has to be repeated at the register.
 function resolveScannedValue(rawValue) {
+  const unit = stihlUnitDataMatrix(rawValue);
+  if (unit) return {
+    code: canonicalScannedCode(unit.productCode), mappedPN: unit.mappedPN,
+    candidates: unit.candidates, via: 'stihl-unit', serial: unit.serial,
+    model: unit.model, bindCode: unit.productCode
+  };
   const code = canonicalScannedCode(rawValue);
   const mappedPN = code ? partCodeMap[code] : '';
   // A bound code is authoritative and never falls through: if its part is gone
@@ -1026,6 +1062,8 @@ function preferredScanSymbol(items) {
     .map(i => [String(i.rawValue || '').trim(), i])).values()]
     .filter(i => String(i.rawValue || '').trim());
   if (!values.length) return null;
+  const stihlUnit = values.find(item => stihlUnitDataMatrix(item.rawValue));
+  if (stihlUnit) return stihlUnit;
   const resolved = values.filter(i => resolveScannedValue(i.rawValue).candidates.length === 1);
   if (resolved.length === 1) return resolved[0];
   const usable = values.filter(i => !ignorableScanCode(i.rawValue));
@@ -1423,17 +1461,26 @@ function acceptScan(rawValue, format) {
   // that already failed to resolve — that ordering is what keeps genuinely
   // short part numbers (Felco 23, ECHO 1106, SCAG 1000) working, since they
   // are indistinguishable from a quantity barcode by shape alone.
-  const { code, candidates, via } = resolveScannedValue(raw);
+  const { code, candidates, via, serial = '', model = '', bindCode = '' } = resolveScannedValue(raw);
   if (candidates.length === 1) {
     // A serial-rule match means the scanned value is this machine's serial.
-    addToList(candidates[0], { code, format, serial: via === 'serial' ? raw : '' });
+    addToList(candidates[0], { code, format, serial: via === 'serial' ? raw : serial });
     beep('ok'); buzz(35);
     if (scanActive) setCamStatus('Ready — point at a barcode');   // clears a previous "ignored" warning
     return;
   }
   if (candidates.length > 1) {
     // Genuinely ambiguous. Show the choice rather than guessing a price.
-    openSearch({ pick: candidates, code, format, title: 'Which one?' });
+    openSearch({ pick: candidates, code: bindCode || code, format, serial,
+      title: model ? `Which ${model}?` : 'Which one?' });
+    beep('unknown'); buzz([25, 60, 25]);
+    return;
+  }
+  if (via === 'stihl-unit') {
+    const modelChoices = searchParts(model).filter(part => part.warranty
+      && String(part.make || '').trim().toUpperCase() === 'STIHL');
+    openSearch({ pick: modelChoices, code: bindCode || code, format, serial,
+      title: `Match ${model}` });
     beep('unknown'); buzz([25, 60, 25]);
     return;
   }
@@ -1658,8 +1705,8 @@ function searchParts(query, limit = 40) {
   return uniqueScanParts([...exact, ...prefix, ...text]).slice(0, limit);
 }
 
-function openSearch({ bind = null, pick = null, code = '', format = '', title = '' } = {}) {
-  bindTarget = bind ? { entry: bind } : (pick ? { code, format } : null);
+function openSearch({ bind = null, pick = null, code = '', format = '', serial = '', title = '' } = {}) {
+  bindTarget = bind ? { entry: bind } : (pick ? { code, format, serial } : null);
   $('searchTitle').textContent = title || (bind ? 'Match this code' : 'Search catalog');
   const banner = $('bindBanner');
   if (bind) {
@@ -1728,7 +1775,7 @@ function chooseHit(part) {
     // Choosing between real candidates settles what that code means, so it is
     // worth saving — unless it is serial-shaped, which belongs to one machine.
     if (!looksLikeSerial(target.code)) queueCodeBinding(target.code, target.format, part);
-    addToList(part, { code: target.code, format: target.format });
+    addToList(part, { code: target.code, format: target.format, serial: target.serial || '' });
     bindTarget = null;
     return;
   } else {
