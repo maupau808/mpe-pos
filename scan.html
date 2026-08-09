@@ -1766,20 +1766,24 @@ async function findSentListRange(listId, lineCount, options) {
 }
 
 async function sendList() {
-  if (!list.length) { toast('Nothing in the list'); return; }
-  // Catch a missing serial while the machine is still in front of you, not at
-  // the counter with the customer waiting.
-  const noSerial = list.filter(e => e.warranty && !e.unresolved && !e.serial);
-  if (noSerial.length && !confirm(
-      `${noSerial.length} warranty unit${noSerial.length === 1 ? '' : 's'} ${noSerial.length === 1 ? 'has' : 'have'} no serial:\n\n`
-      + noSerial.map(e => '• ' + e.desc).join('\n')
-      + '\n\nSend anyway? You will have to enter the serial at the counter.')) return;
-  if (!needAuth(sendList)) return;
+  if (listSendActive) return;
   const btn = $('sendBtn');
   const label = btn.textContent;
   listSendActive = true;
   btn.disabled = true; btn.textContent = 'Sending…';
+  // Let the locked state paint before validation, auth, or a warning dialog.
+  // This makes the first tap visible and closes the multi-tap window completely.
+  await new Promise(resolve => requestAnimationFrame(resolve));
   try {
+    if (!list.length) { toast('Nothing in the list'); return; }
+    // Catch a missing serial while the machine is still in front of you, not at
+    // the counter with the customer waiting.
+    const noSerial = list.filter(e => e.warranty && !e.unresolved && !e.serial);
+    if (noSerial.length && !confirm(
+        `${noSerial.length} warranty unit${noSerial.length === 1 ? '' : 's'} ${noSerial.length === 1 ? 'has' : 'have'} no serial:\n\n`
+        + noSerial.map(e => '• ' + e.desc).join('\n')
+        + '\n\nSend anyway? You will have to enter the serial at the counter.')) return;
+    if (!needAuth(sendList)) return;
     const retryOptions = { onRetry: () => { btn.textContent = 'Rate limit — waiting…'; } };
     await ensureTab(LISTS_SHEET, LISTS_HEADER, retryOptions);
     const stamp = new Date();
