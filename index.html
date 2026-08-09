@@ -549,6 +549,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .wf-fill { flex:1; border-bottom: 1px solid #000; height: 22px; min-width: 0; }
   .wf-val { font-weight: 600; flex: 1; }
   .wf-gap { flex: 0 0 auto; white-space: nowrap; }
+  .wf-note { font-size: 11px; font-weight: 400; color: #444; white-space: nowrap; }
   #sig-warranty-form { width: 100%; max-width: none; break-inside: avoid; page-break-inside: avoid; }
   .wf-contact-line { display: grid; grid-template-columns: 50% 50%; gap: 0; }
   .wf-phone-group { display: flex; align-items: flex-end; gap: 8px; min-width: 0; }
@@ -5234,7 +5235,7 @@ function buildWarrantyForm() {
     + `<div class="wf-line">${L('Name / Organization')} ${fill(name)}</div>`
     + `<div class="wf-line">${L('Address')} ${fill(addr)}</div>`
     + `<div class="wf-line">${L('Town')} ${fill(city)} <span class="wf-gap">State:</span> ${fill(state, 'flex:0 0 84px')} <span class="wf-gap">Zip:</span> ${fill(zip, 'flex:0 0 180px')}</div>`
-    + `<div class="wf-line wf-contact-line"><div class="wf-phone-group">${L('Phone')} ${fill(phone)} <span class="wf-label">Email:</span></div>${fill(email)}</div>`;
+    + `<div class="wf-line wf-contact-line"><div class="wf-phone-group">${L('Phone')} ${fill(phone)} <span class="wf-label">Email <span class="wf-note">(optional)</span>:</span></div>${fill(email)}</div>`;
 }
 
 function buildInvoiceSig() {
