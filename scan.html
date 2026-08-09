@@ -1049,65 +1049,80 @@ function queueCodeBinding(rawCode, format, part) {
   flushPendingCodes();
 }
 
-async function sheetsGet(range) {
+const SHEETS_RETRY_MS = [2000, 5000, 10000, 20000, 30000];
+
+async function sheetsFetch(url, init, options) {
+  for (let attempt = 0; ; attempt++) {
+    const resp = await fetch(url, init);
+    if (resp.ok) return resp;
+    let msg = `HTTP ${resp.status}`;
+    try { const j = await resp.json(); msg = j.error?.message || msg; } catch {}
+    const throttled = resp.status === 429
+      || /quota exceeded|requests per minute|rate limit/i.test(msg);
+    if (throttled && attempt < SHEETS_RETRY_MS.length) {
+      const waitMs = SHEETS_RETRY_MS[attempt];
+      options?.onRetry?.(waitMs, attempt + 1);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+      continue;
+    }
+    if (throttled) throw new Error('Google Sheets is still busy. Wait a minute and try again.');
+    throw new Error(msg);
+  }
+}
+async function sheetsGet(range, options) {
   const t = token(); if (!t) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`;
-  const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + t } });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const resp = await sheetsFetch(url, { headers: { Authorization: 'Bearer ' + t } }, options);
   return (await resp.json()).values || [];
 }
-async function sheetsUpdate(range, rows) {
+async function sheetsUpdate(range, rows, options) {
   const t = token(); if (!t) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
-  const resp = await fetch(url, {
+  await sheetsFetch(url, {
     method: 'PUT',
     headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values: rows })
-  });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  }, options);
   return true;
 }
-async function sheetsAppend(range, rows) {
+async function sheetsAppend(range, rows, options) {
   const t = token(); if (!t) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`
     + ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
-  const resp = await fetch(url, {
+  const resp = await sheetsFetch(url, {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values: rows })
-  });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  }, options);
   return await resp.json();
 }
-async function sheetsBatchUpdate(requests) {
+async function sheetsBatchUpdate(requests, options) {
   const t = token(); if (!t) throw new Error('Not signed in');
-  const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}:batchUpdate`, {
+  await sheetsFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}:batchUpdate`, {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
     body: JSON.stringify({ requests })
-  });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  }, options);
   return true;
 }
-async function tabExists(title) {
+async function tabExists(title, options) {
   const t = token(); if (!t) throw new Error('Not signed in');
-  const resp = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}?fields=sheets.properties`,
-    { headers: { Authorization: 'Bearer ' + t } });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const resp = await sheetsFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}?fields=sheets.properties`,
+    { headers: { Authorization: 'Bearer ' + t } }, options);
   return ((await resp.json()).sheets || []).some(s => s.properties.title === title);
 }
 // Create the tab if missing and prove its header, so an append can never land
 // in columns that mean something else. Cached per session: this costs up to
 // three round trips, and the send has a walking customer attached to it.
 const ensuredTabs = new Set();
-async function ensureTab(title, header) {
+async function ensureTab(title, header, options) {
   if (ensuredTabs.has(title)) return;
-  if (!(await tabExists(title))) await sheetsBatchUpdate([{ addSheet: { properties: { title } } }]);
+  if (!(await tabExists(title, options))) await sheetsBatchUpdate([{ addSheet: { properties: { title } } }], options);
   const last = String.fromCharCode(64 + header.length);
-  let row = await sheetsGet(`${title}!A1:${last}1`);
+  let row = await sheetsGet(`${title}!A1:${last}1`, options);
   if (!row.length || !row[0]?.some(v => String(v || '').trim())) {
-    await sheetsUpdate(`${title}!A1`, [header]);
-    row = await sheetsGet(`${title}!A1:${last}1`);
+    await sheetsUpdate(`${title}!A1`, [header], options);
+    row = await sheetsGet(`${title}!A1:${last}1`, options);
   }
   if (!row.length || header.some((v, i) => row[0]?.[i] !== v)) {
     throw new Error(`${title} header is not ${header.join('/')} — fix or rename the tab`);
@@ -1734,7 +1749,8 @@ async function sendList() {
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = 'Sending…';
   try {
-    await ensureTab(LISTS_SHEET, LISTS_HEADER);
+    const retryOptions = { onRetry: () => { btn.textContent = 'Google busy — retrying…'; } };
+    await ensureTab(LISTS_SHEET, LISTS_HEADER, retryOptions);
     const stamp = new Date();
     const listId = 'L' + stamp.toISOString().slice(0, 19).replace(/[-:T]/g, '');
     const ordered = list.slice().reverse();     // scan order reads better at the counter
@@ -1751,10 +1767,10 @@ async function sendList() {
       e.unresolved ? `unmatched code ${e.code}`
         : (e.warranty && !e.serial ? 'warranty unit — serial missing' : '')
     ]);
-    const result = await sheetsAppend(`${LISTS_SHEET}!A1`, rows);
+    const result = await sheetsAppend(`${LISTS_SHEET}!A1`, rows, retryOptions);
     const range = result?.updates?.updatedRange;
     if (!range) throw new Error('append returned no range to verify');
-    const written = await sheetsGet(range);
+    const written = await sheetsGet(range, retryOptions);
     if (written.length !== rows.length) throw new Error(`wrote ${written.length} of ${rows.length} lines`);
     const missing = rows.find((r, i) => String(written[i]?.[2] ?? '') !== String(r[2]));
     if (missing) throw new Error('a line did not read back');
