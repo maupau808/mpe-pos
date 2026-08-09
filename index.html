@@ -45,6 +45,16 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .scan-camera { position: relative; width: 100%; height: 60px; overflow: hidden; border-radius: 6px; background: #18201c; }
 .scan-camera video { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; filter: grayscale(1) contrast(1.7) brightness(.55) blur(1px); }
 .scan-camera video.unmirror { transform: scaleX(-1); }
+.scan-aim { position: absolute; inset: 0; pointer-events: none; }
+.scan-aim i { position: absolute; border: 0 solid rgba(255, 255, 255, .6); }
+.scan-aim i.tl { top: 6px; left: 6px; width: 11px; height: 11px; border-top-width: 1px; border-left-width: 1px; }
+.scan-aim i.tr { top: 6px; right: 6px; width: 11px; height: 11px; border-top-width: 1px; border-right-width: 1px; }
+.scan-aim i.bl { bottom: 6px; left: 6px; width: 11px; height: 11px; border-bottom-width: 1px; border-left-width: 1px; }
+.scan-aim i.br { bottom: 6px; right: 6px; width: 11px; height: 11px; border-bottom-width: 1px; border-right-width: 1px; }
+.scan-aim i.cross { top: 50%; left: 50%; width: 15px; height: 15px; transform: translate(-50%, -50%); }
+.scan-aim i.cross::before, .scan-aim i.cross::after { content: ''; position: absolute; background: rgba(255, 255, 255, .75); }
+.scan-aim i.cross::before { top: 50%; left: 0; width: 100%; height: 1px; }
+.scan-aim i.cross::after { left: 50%; top: 0; width: 1px; height: 100%; }
 .scan-info { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .scan-camera-select { display: block; min-width: 0; width: 100%; height: 29px; margin: 0 0 6px; padding: 3px 24px 3px 8px; border: 1px solid #d9dfd6; border-radius: 6px; background: #fff; color: #555; font: inherit; font-size: 11px; }
 .scan-camera-select:focus { outline: 1px solid #aeb8ac; outline-offset: 1px; }
@@ -709,6 +719,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="scan-panel" id="scanPanel" hidden onclick="scanPanelClick(event)">
       <div class="scan-camera" title="Click to stop scanning">
         <video id="scanVideo" playsinline muted></video>
+        <div class="scan-aim" aria-hidden="true"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i><i class="cross"></i></div>
       </div>
       <div class="scan-info">
         <div class="scan-status" id="scanStatus">Starting camera…</div>
