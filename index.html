@@ -37,8 +37,7 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .scan-btn.review { border-color: #d7a34c; background: #fff8e8; color: #8a5700; }
 .scan-panel { width: 320px; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; border: none; border-radius: 6px; background: #18201c; overflow: hidden; }
 .scan-panel[hidden] { display: none; }
-.scan-slot { position: relative; display: inline-flex; align-items: center; }
-.scan-slot.live #scanBtn { visibility: hidden; }
+.scan-slot { position: relative; display: inline-flex; align-items: center; align-self: stretch; width: 0; }
 .scan-slot .scan-panel:not(.review-mode) { position: absolute; bottom: 0; left: 0; width: 320px; max-width: none; z-index: 6; cursor: pointer; box-shadow: 0 2px 10px rgba(0, 0, 0, .28); }
 .scan-panel.review-mode { width: 460px; min-width: 260px; margin-bottom: 16px; padding: 6px; border: 1px solid #c7cfc4; border-radius: 8px; background: #f7faf6; }
 .scan-panel.review-mode .scan-camera { display: none; }
@@ -328,7 +327,9 @@ body.doc-internal .sum-internal { display: block; }
 .menu-btn:hover { background: #f3f6f2; }
 /* Icon-only siblings of .menu-btn — same box, square, so the toolbar row keeps
    one control height. Their meaning lives in the title tooltip. */
-.icon-btn { font-size: 14px; line-height: 1; width: 32px; height: 30px; padding: 0; border: 1px solid #c7cfc4; border-radius: 7px; background: #fff; color: #333; cursor: pointer; font-family: inherit; }
+.icon-btn { position: relative; font-size: 14px; line-height: 1; width: 32px; height: 30px; padding: 0; border: 1px solid #c7cfc4; border-radius: 7px; background: #fff; color: #333; cursor: pointer; font-family: inherit; }
+.icon-btn svg { display: block; margin: 0 auto; }
+.icon-btn .admin-dot { position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; margin: 0; }
 .icon-btn:hover { background: #f3f6f2; }
 .icon-btn:disabled { opacity: .55; cursor: default; }
 .caret { color: #999; font-size: 10px; }
@@ -344,6 +345,7 @@ body.doc-internal .sum-internal { display: block; }
 .menu-panel .print-banner { margin: 0 0 6px; font-size: 11px; padding: 6px 9px; }
 .tr-row { display: flex; align-items: center; gap: 8px; }
 .menu-panel .drive-btn { display: block; width: 100%; text-align: left; margin: 0; border-radius: 6px; }
+.menu-panel .scan-btn { display: block; width: 100%; text-align: left; margin: 0 0 6px; padding: 6px 9px; border-radius: 6px; }
 .menu-check { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 13px; color: #333; cursor: pointer; border-radius: 6px; white-space: nowrap; }
 .menu-check:hover { background: #eef1ec; }
 .menu-check input { width: 15px; height: 15px; cursor: pointer; }
@@ -635,7 +637,10 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="quote" onclick="setDocType('quote')">Quote</button>
         <button class="doc-type-btn" data-doc="internal" onclick="setDocType('internal')">Internal</button>
       </div>
-      <span class="scan-slot" id="scanSlot"><button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button></span>
+      <!-- The button itself lives in Admin; this empty slot is the toolbar
+           anchor the live preview still takes over, so opening the camera
+           never moves a button or a row. -->
+      <span class="scan-slot" id="scanSlot"></span>
       <span style="display:none">
         <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="internalPrintBtn"></button><button id="cardFeeBtn"></button>
       </span>
@@ -643,7 +648,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     </div>
     <div class="toolbar-right">
       <div class="tr-row">
-        <button class="menu-btn" id="phoneListBtn" type="button" onclick="openPhoneLists()" title="Pick a list sent from MPE Scan on the phone">Phone list<span class="admin-dot phone-list-dot" id="phoneListDot" style="display:none" aria-hidden="true"></span></button>
         <div class="menu-wrap">
           <button class="menu-btn" id="togglesBtn" onclick="toggleMenu(event,'togglesMenu')">Toggles <span class="caret">▾</span></button>
           <div class="menu-panel right" id="togglesMenu" onclick="event.stopPropagation()">
@@ -654,6 +658,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <label class="menu-check"><input type="checkbox" id="tgCardFee" onchange="toggleCardFee(this.checked)"> 💳 Card fee (3%)</label>
           </div>
         </div>
+        <button class="icon-btn" id="phoneListBtn" type="button" onclick="openPhoneLists()" aria-label="Phone list" title="Phone list — pick a list sent from MPE Scan on the phone"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.2.4 2.4.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.4 0 .7-.2 1l-2.3 2.2z"/></svg><span class="admin-dot phone-list-dot" id="phoneListDot" style="display:none" aria-hidden="true"></span></button>
         <button class="icon-btn" id="emailDocBtn" onclick="emailDoc()" title="Email — attach the colour PDF to a Gmail draft">✉</button>
         <button class="icon-btn" id="exportPdfBtn" onclick="exportPdf()" title="Export PDF — download the colour copy">⬇</button>
         <div class="menu-wrap">
@@ -662,6 +667,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <div id="printBanner" class="print-banner" style="display:none"></div>
             <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span> <span id="dataBadge" class="pc-badge" style="display:none"></span></div>
             <div id="dataStatus" class="data-status"></div>
+            <button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button>
             <select class="scan-camera-select" id="scanCameraSelect" aria-label="Scanner camera" title="Scanner camera" onchange="changeScanCamera()">
               <option value="">Default camera</option>
             </select>
@@ -2388,6 +2394,10 @@ document.addEventListener('pointerdown', primeScanAudioOnce, true);
 document.addEventListener('keydown', primeScanAudioOnce, true);
 
 function playScanBeep(needsReview) {
+  // The hardware scanner beeps on its own, so a second beep from the page is
+  // just an echo. The page beeps only while the camera preview is open, where
+  // nothing else confirms the read.
+  if (!scanActive) return;
   try {
     prepareScanAudio();
     if (!scanAudioContext) return;
@@ -3057,6 +3067,9 @@ function stopScanner(hidePanel = true) {
 }
 
 function toggleScanner() {
+  // The button lives in the Admin panel, which would otherwise sit on top of
+  // the live preview it just opened.
+  document.querySelectorAll('.menu-panel.open').forEach(p => p.classList.remove('open'));
   if (scanActive) stopScanner();
   else if (scanIssues.size) showNextScanIssue();
   else startScanner();
