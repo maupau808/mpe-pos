@@ -2830,7 +2830,7 @@ function runScanCommand(raw) {
   const now = Date.now();
   // Print and Clear are guarded against a double trigger pull. Quantity is not:
   // a labour code is meant to be pulled again to add another half hour.
-  const guarded = /^(PRINT|AUTO|CLEAR|UNDO)$/.test(body);
+  const guarded = /^(PRINT|CLEAR|UNDO)$/.test(body);
   if (guarded && body === _lastScanCommand && now - _lastScanCommandAt < SCAN_COMMAND_REPEAT_MS) return;
   _lastScanCommand = body;
   _lastScanCommandAt = now;
@@ -2848,19 +2848,36 @@ function runScanCommand(raw) {
     return;
   }
 
-  // Both `DOC=INVOICE` and a bare `INVOICE`: the short form keeps the printed
-  // label narrow enough to sit two-up on the strip.
-  const doc = body.match(/^(?:DOC=)?(RECEIPT|INVOICE|QUOTE|INTERNAL)$/);
-  if (doc) {
-    setDocType(doc[1].toLowerCase());
-    flashScanCommand(doc[1].charAt(0) + doc[1].slice(1).toLowerCase(), 'ok');
+  // ADD=<PN> or ADD=<PN>:<qty> — a service or labour sticker. Stacking is the
+  // point: a second pull of the labour code is another half hour, not a second
+  // line. Master owns the price; the sticker only says which row and how much.
+  const add = body.match(/^ADD=([A-Z0-9]+)(?::(\d{1,3}))?$/);
+  if (add) {
+    const part = findPartByPn(add[1]);
+    if (!part) { flashScanCommand(`${add[1]} is not in Master`, 'err'); return; }
+    const step = add[2] ? parseInt(add[2], 10) : 1;
+    const name = (part.desc || part.pn).length > 40 ? (part.desc || part.pn).slice(0, 38).trim() + '…' : (part.desc || part.pn);
+    let row = -1;
+    for (let i = 0; i < NUM_ROWS; i++) {
+      const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+      if (input && normalizePN(input.dataset.partPn) === normalizePN(part.pn)) { row = i; break; }
+    }
+    if (row < 0) {
+      row = fillScannedPart(part);
+      if (step !== 1) setRowQuantity(row, step);
+      flashScanCommand(`${name}${step !== 1 ? ` · ${step}` : ''}`, 'ok');
+    } else {
+      const landed = setRowQuantity(row, (parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1) + step);
+      flashScanCommand(`${name} → ${landed}`, 'ok');
+    }
+    updateSummary();
     return;
   }
 
-  if (body === 'PRINT' || body === 'AUTO') {
+  if (body === 'PRINT') {
     if (!sheetHasContent()) { flashScanCommand('Nothing to print yet', 'err'); return; }
-    flashScanCommand(body === 'AUTO' ? 'Printing at the counter…' : 'Print…', 'ok');
-    if (body === 'AUTO') autoPrint(); else printQuote();
+    flashScanCommand('Printing…', 'ok');
+    autoPrint();          // falls back to the print dialog on its own if the till has no service
     return;
   }
 
@@ -2874,16 +2891,28 @@ function runScanCommand(raw) {
     return;
   }
 
+  // Undo takes back the last thing that happened, whichever it was: normally
+  // that is the last line, but straight after a Clear the whole sale is what
+  // went missing and the sheet is empty, so there is no line to take back.
   if (body === 'UNDO') {
-    if (!_clearedSale || !_clearedSale.length) { flashScanCommand('Nothing to undo', 'err'); return; }
-    if (sheetHasContent() && !confirm('Put the cleared sale back? This replaces what is on screen now.')) return;
-    const restored = _clearedSale;
-    // Rebuilt at today's List and today's sale rules, like any loaded list.
-    const outcome = loadSaleLines(restored);
-    _clearedSale = null;
-    flashScanCommand(`Put back ${restored.length} line${restored.length === 1 ? '' : 's'}`
-      + (outcome.unmatched.length ? ` · ${outcome.unmatched.length} need${outcome.unmatched.length === 1 ? 's' : ''} a price` : ''),
-      outcome.unmatched.length ? 'warn' : 'ok');
+    if (!sheetHasContent()) {
+      if (!_clearedSale || !_clearedSale.length) { flashScanCommand('Nothing to undo', 'err'); return; }
+      const restored = _clearedSale;
+      // Rebuilt at today's List and today's sale rules, like any loaded list.
+      const outcome = loadSaleLines(restored);
+      _clearedSale = null;
+      flashScanCommand(`Put back ${restored.length} line${restored.length === 1 ? '' : 's'}`
+        + (outcome.unmatched.length ? ` · ${outcome.unmatched.length} need${outcome.unmatched.length === 1 ? 's' : ''} a price` : ''),
+        outcome.unmatched.length ? 'warn' : 'ok');
+      return;
+    }
+    const row = lastFilledSaleRow();
+    if (row < 0) { flashScanCommand('Nothing to undo', 'err'); return; }
+    const name = document.getElementById(`desc-${row}`)?.textContent.trim()
+      || tbody.querySelector(`[data-row="${row}"].part-input`)?.value.trim() || `line ${row + 1}`;
+    clearRow(row);        // the same path as the row's own × — the next scan refills it
+    updateSummary();
+    flashScanCommand(`Removed ${name}`, 'warn');
     return;
   }
 
