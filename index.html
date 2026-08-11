@@ -195,6 +195,16 @@ body.doc-internal .sum-internal { display: block; }
 .btn-big:hover { background: #eef5ef; }
 .bottom-bar { position: relative; display: flex; align-items: flex-end; gap: 16px; margin-bottom: 1rem; }
 .bottom-bar .scan-panel:not(.review-mode) { position: absolute; top: 0; left: 0; }
+/* Command-barcode feedback: floats above the Clear/Print row so a message can
+   never move the line items, and reads from arm's length across the counter. */
+.scan-command-flash { position: absolute; left: 0; bottom: calc(100% + 8px); display: none;
+  max-width: 520px; padding: 8px 13px; border: 1px solid #c7cfc4; border-left: 4px solid #2f4339;
+  border-radius: 8px; background: #fff; color: #222; font-size: 14px; font-weight: 600;
+  box-shadow: 0 3px 12px rgba(0,0,0,.14); z-index: 7; }
+.scan-command-flash.show { display: block; }
+.scan-command-flash.ok { border-left-color: #2d7a3a; }
+.scan-command-flash.warn { border-left-color: #d7a34c; }
+.scan-command-flash.err { border-left-color: #c62828; color: #8a1c19; }
 .bottom-actions { display: flex; gap: 10px; margin-bottom: 1rem; }
 .btn-danger { color: #c62828; border-color: #ef9a9a; }
 .btn-danger:hover { background: #fff5f5; border-color: #e53935; }
@@ -478,7 +488,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 @media print {
   body { background: #fff; padding: 0; zoom: 1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .wrap { border: none; border-radius: 0; padding: 1.2rem; max-width: 100%; }
-  .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, #printBanner, .doc-screen-title, .bottom-actions { display: none !important; }
+  .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, #printBanner, .doc-screen-title, .bottom-actions, .scan-command-flash { display: none !important; }
   .qty-input { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; border: none; background: transparent; font-size: 14px; padding: 0; pointer-events: none; width: auto; text-align: center; color: #000 !important; -webkit-text-fill-color: #000 !important; }
   .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .part-input { border: none; background: transparent; font-size: 14px; font-weight: 500; padding: 0; pointer-events: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
@@ -739,6 +749,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         </form>
       </div>
     </div>
+    <div class="scan-command-flash" id="scanCommandFlash" aria-live="polite"></div>
     <div class="bottom-actions">
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
       <button class="btn-big btn-filled" onclick="printQuote()">🖨 Print</button>
@@ -2551,6 +2562,12 @@ function showNextScanIssue(preferredRow) {
 function acceptDecodedScan(rawValue, format) {
   const raw = String(rawValue || '').trim();
   if (!raw) return;
+  // Commands run before the catalog check: Print and Clear have nothing to do
+  // with parts being loaded, and the counter should not be stuck if they aren't.
+  if (isScanCommand(raw)) {
+    if (format === 'hardware') runScanCommand(raw);
+    return;
+  }
   if (!loaded) {
     playScanBeep(true);
     setScanStatus('Parts are still loading — try again in a moment', 'err');
@@ -2661,6 +2678,13 @@ function restoreHardwareScanOrigin(origin) {
   }
 }
 
+let commandKeyBuffer = '', commandKeyLastAt = 0, commandKeyOrigin = null;
+function resetCommandKeyCapture() {
+  commandKeyBuffer = '';
+  commandKeyLastAt = 0;
+  commandKeyOrigin = null;
+}
+
 function resetHardwareScanCapture() {
   hardwareScanBuffer = '';
   hardwareScanStartedAt = 0;
@@ -2671,9 +2695,32 @@ function resetHardwareScanCapture() {
 function onHardwareScanKeydown(event) {
   if (event.defaultPrevented || event.isComposing || event.repeat || event.ctrlKey || event.metaKey || event.altKey) {
     resetHardwareScanCapture();
+    resetCommandKeyCapture();
     return;
   }
   const now = performance.now();
+  // A second, slow buffer so a command can also be TYPED, not only scanned. It
+  // starts only on "~", which no part number contains, so it can never swallow
+  // ordinary keying — and the burst test below stays untouched.
+  if (event.key === 'Enter' && isScanCommand(commandKeyBuffer)) {
+    const typed = commandKeyBuffer;
+    const origin = commandKeyOrigin;
+    resetCommandKeyCapture();
+    resetHardwareScanCapture();
+    event.preventDefault();
+    event.stopPropagation();
+    restoreHardwareScanOrigin(origin);
+    runScanCommand(typed);
+    return;
+  }
+  if (event.key.length === 1) {
+    if (now - commandKeyLastAt > 4000) resetCommandKeyCapture();
+    if (!commandKeyBuffer && event.key === '~') commandKeyOrigin = snapshotHardwareScanOrigin(event.target);
+    if (commandKeyBuffer || event.key === '~') { commandKeyBuffer += event.key; commandKeyLastAt = now; }
+  } else if (event.key !== 'Shift') {
+    resetCommandKeyCapture();
+  }
+
   if (event.key === 'Enter') {
     const value = hardwareScanBuffer;
     const origin = hardwareScanOrigin;
@@ -2704,6 +2751,151 @@ function onHardwareScanKeydown(event) {
 }
 
 document.addEventListener('keydown', onHardwareScanKeydown, true);
+
+// ─── COMMAND BARCODES (the paper strip at the counter) ─────────────────────
+//
+// TRIGGER:  a scanned label whose payload starts with ~MPE:
+// WHY:      not everyone at the counter will touch a keyboard, and quantity is
+//           the slowest thing to key during a busy sale. A printed strip of
+//           labels finishes a sale with the trigger alone.
+//
+// "~" never appears in a part number, so a command can never be taken for one,
+// and the test is a prefix check — an ordinary scan pays nothing for it.
+//
+// HARDWARE SCANS ONLY. A camera stares at whatever is in front of it and would
+// re-fire Clear every frame; the strip lives at the counter beside the trigger
+// scanner, so the restriction costs nothing.
+const SCAN_COMMAND_PREFIX = '~MPE:';
+const SCAN_COMMAND_REPEAT_MS = 900;
+let _lastScanCommand = '', _lastScanCommandAt = 0;
+let _clearedSale = null;
+
+function isScanCommand(value) {
+  return String(value || '').trim().toUpperCase().startsWith(SCAN_COMMAND_PREFIX);
+}
+
+// Feedback sits above the Clear/Print buttons, where the eye already is for
+// these commands, and floats so a message never moves the line items.
+function flashScanCommand(message, kind) {
+  const el = document.getElementById('scanCommandFlash');
+  if (!el) return;
+  el.textContent = message;
+  el.className = 'scan-command-flash show' + (kind ? ' ' + kind : '');
+  clearTimeout(flashScanCommand._timer);
+  flashScanCommand._timer = setTimeout(() => { el.className = 'scan-command-flash'; },
+                                       kind === 'err' ? 6000 : 3000);
+}
+
+function lastFilledSaleRow() {
+  for (let i = NUM_ROWS - 1; i >= 0; i--) {
+    const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+    if (input && (input.dataset.partPn || input.value.trim())) return i;
+  }
+  return -1;
+}
+
+// The delegated input handler owns subtotal, line discount, summary and serial
+// fields, so the quantity is set the way a person sets it rather than beside it.
+function setRowQuantity(i, next) {
+  const field = document.getElementById(`qty-${i}`);
+  if (!field) return null;
+  const value = Math.max(1, Math.min(999, Math.round(next)));
+  field.value = value;
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  return value;
+}
+
+// What a sale needs to come back exactly: Master does the rest on restore.
+function captureSaleLines() {
+  const out = [];
+  for (let i = 0; i < NUM_ROWS; i++) {
+    const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+    if (!input) continue;
+    const pn = input.dataset.partPn || '';
+    const typed = input.value.trim();
+    if (!pn && !typed) continue;
+    const serial = tbody.querySelector(`tr[data-sn-for="${i}"] .sn-input`)?.value.trim() || '';
+    out.push({
+      pn,
+      desc: document.getElementById(`desc-${i}`)?.textContent.trim() || typed,
+      qty: parseInt(document.getElementById(`qty-${i}`)?.value, 10) || 1,
+      serial,
+    });
+  }
+  return out;
+}
+
+function runScanCommand(raw) {
+  const body = String(raw).trim().slice(SCAN_COMMAND_PREFIX.length).trim().toUpperCase();
+  const now = Date.now();
+  // Print and Clear are guarded against a double trigger pull. Quantity is not:
+  // a labour code is meant to be pulled again to add another half hour.
+  const guarded = /^(PRINT|AUTO|CLEAR|UNDO)$/.test(body);
+  if (guarded && body === _lastScanCommand && now - _lastScanCommandAt < SCAN_COMMAND_REPEAT_MS) return;
+  _lastScanCommand = body;
+  _lastScanCommandAt = now;
+
+  const qty = body.match(/^QTY([=+-])(\d{1,3})$/);
+  if (qty) {
+    const row = lastFilledSaleRow();
+    if (row < 0) { flashScanCommand('Scan a part first — no line to set a quantity on', 'err'); return; }
+    const current = parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1;
+    const amount = parseInt(qty[2], 10);
+    const next = qty[1] === '=' ? amount : qty[1] === '+' ? current + amount : current - amount;
+    const landed = setRowQuantity(row, next);
+    const name = document.getElementById(`desc-${row}`)?.textContent.trim();
+    flashScanCommand(`Line ${row + 1}${name ? ' · ' + name : ''} → qty ${landed}`, 'ok');
+    return;
+  }
+
+  // Both `DOC=INVOICE` and a bare `INVOICE`: the short form keeps the printed
+  // label narrow enough to sit two-up on the strip.
+  const doc = body.match(/^(?:DOC=)?(RECEIPT|INVOICE|QUOTE|INTERNAL)$/);
+  if (doc) {
+    setDocType(doc[1].toLowerCase());
+    flashScanCommand(doc[1].charAt(0) + doc[1].slice(1).toLowerCase(), 'ok');
+    return;
+  }
+
+  if (body === 'PRINT' || body === 'AUTO') {
+    if (!sheetHasContent()) { flashScanCommand('Nothing to print yet', 'err'); return; }
+    flashScanCommand(body === 'AUTO' ? 'Printing at the counter…' : 'Print…', 'ok');
+    if (body === 'AUTO') autoPrint(); else printQuote();
+    return;
+  }
+
+  if (body === 'CLEAR') {
+    if (!sheetHasContent()) { flashScanCommand('Already empty', 'ok'); return; }
+    // Stashed BEFORE the wipe: a misfired trigger pull costs one scan of Undo,
+    // not a retyped sale with a customer standing at the counter.
+    _clearedSale = captureSaleLines();
+    clearAll();
+    flashScanCommand(`Cleared ${_clearedSale.length} line${_clearedSale.length === 1 ? '' : 's'} — scan Undo to put it back`, 'warn');
+    return;
+  }
+
+  if (body === 'UNDO') {
+    if (!_clearedSale || !_clearedSale.length) { flashScanCommand('Nothing to undo', 'err'); return; }
+    if (sheetHasContent() && !confirm('Put the cleared sale back? This replaces what is on screen now.')) return;
+    const restored = _clearedSale;
+    // Rebuilt at today's List and today's sale rules, like any loaded list.
+    const outcome = loadSaleLines(restored);
+    _clearedSale = null;
+    flashScanCommand(`Put back ${restored.length} line${restored.length === 1 ? '' : 's'}`
+      + (outcome.unmatched.length ? ` · ${outcome.unmatched.length} need${outcome.unmatched.length === 1 ? 's' : ''} a price` : ''),
+      outcome.unmatched.length ? 'warn' : 'ok');
+    return;
+  }
+
+  if (body === 'CARDFEE') {
+    toggleCardFee();
+    const on = document.getElementById('cardFeeBtn')?.classList.contains('active');
+    flashScanCommand(on ? 'Card fee on (3%)' : 'Card fee off', 'ok');
+    return;
+  }
+
+  flashScanCommand(`Unknown command barcode: ${body}`, 'err');
+}
 
 function acceptCameraDecodedValue(rawValue, format) {
   const value = String(rawValue || '').trim();
@@ -6802,6 +6994,68 @@ function sheetHasContent() {
   return false;
 }
 
+// Rebuild the whole sale from a list of {pn, desc, qty, serial} lines.
+// Shared by the phone-list chooser and the Undo command barcode so a restored
+// sale goes through the same Master lookup, sale rules, serial fields and
+// package re-grouping as a loaded one. Prices in the list are ignored on
+// purpose: the sale is rebuilt at today's List and today's sale rules.
+function loadSaleLines(lines) {
+  const unmatched = [], missingSerial = [];
+  clearAll();
+  while (NUM_ROWS < lines.length + 1) addRow();
+  buildMobileRows();
+  for (let i = 0; i < NUM_ROWS; i++) clearRow(i);
+
+  lines.forEach((item, i) => {
+    const part = item.pn ? findPartByPn(item.pn) : null;
+    if (!part) {
+      // The list could not match this one, or the part has left Master since.
+      // It is put on screen as a priced-by-hand line rather than dropped, so
+      // it cannot silently disappear between the list and the register.
+      unmatched.push(item.desc || item.note || '(blank)');
+      const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+      if (input) {
+        input.value = item.pn || item.desc || '';
+        input.className = 'part-input';
+        input.dataset.isOther = '1';
+        input.readOnly = false;
+      }
+      const descEl = document.getElementById(`desc-${i}`);
+      if (descEl) {
+        descEl.textContent = item.desc || item.note || '';
+        descEl.className = 'cell-desc cell-editable';
+        descEl.contentEditable = 'true';
+        descEl.dataset.row = i;
+        descEl.dataset.isOther = '1';
+      }
+      document.getElementById(`qty-${i}`).value = item.qty;
+      return;
+    }
+    ensureScannerMobileRow(i);
+    applyMobilePart(i, part);                       // updates both views, applies today's sale
+    document.getElementById(`qty-${i}`).value = item.qty;
+    const mobileQty = document.getElementById(`mqty-${i}`);
+    if (mobileQty) mobileQty.value = item.qty;
+    if (part.warranty) {
+      renderSNFields(i, item.qty, part.pn);
+      if (item.serial) fillRowSerial(i, item.serial);   // also remembers the unit for packaging
+      else missingSerial.push(part.desc || part.pn);
+    }
+    // A list carries a serial only for units that could be identified, so
+    // remembering has to happen either way or an unserialised battery and
+    // charger would load as two full-price lines.
+    trackPackageUnit(i, item.serial || '');
+    updateSubtotal(i);
+    updateMobileSubtotal(i);
+  });
+
+  // Loose units must be re-grouped or a battery-and-charger pair loaded from
+  // a list would be charged as two singles instead of the package price.
+  applyPackageDeals();
+  updateSummary();
+  return { unmatched, missingSerial };
+}
+
 function applyPhoneList(idx) {
   const found = _phoneLists[idx];
   if (!found) return;
@@ -6811,59 +7065,8 @@ function applyPhoneList(idx) {
         + `${found.lines.length === 1 ? '' : 's'})?\n\nThis replaces what is on screen now.`)) return;
     closePhoneLists();
 
-    clearAll();
-    while (NUM_ROWS < found.lines.length + 1) addRow();
-    buildMobileRows();
-    for (let i = 0; i < NUM_ROWS; i++) clearRow(i);
-
-    const unmatched = [], missingSerial = [];
-    found.lines.forEach((item, i) => {
-      const part = item.pn ? findPartByPn(item.pn) : null;
-      if (!part) {
-        // The phone could not match this one, or the part has left Master since.
-        // It is put on screen as a priced-by-hand line rather than dropped, so
-        // it cannot silently disappear between the floor and the register.
-        unmatched.push(item.desc || item.note || '(blank)');
-        const input = tbody.querySelector(`[data-row="${i}"].part-input`);
-        if (input) {
-          input.value = item.pn || item.desc || '';
-          input.className = 'part-input';
-          input.dataset.isOther = '1';
-          input.readOnly = false;
-        }
-        const descEl = document.getElementById(`desc-${i}`);
-        if (descEl) {
-          descEl.textContent = item.desc || item.note || '';
-          descEl.className = 'cell-desc cell-editable';
-          descEl.contentEditable = 'true';
-          descEl.dataset.row = i;
-          descEl.dataset.isOther = '1';
-        }
-        document.getElementById(`qty-${i}`).value = item.qty;
-        return;
-      }
-      ensureScannerMobileRow(i);
-      applyMobilePart(i, part);                       // updates both views, applies today's sale
-      document.getElementById(`qty-${i}`).value = item.qty;
-      const mobileQty = document.getElementById(`mqty-${i}`);
-      if (mobileQty) mobileQty.value = item.qty;
-      if (part.warranty) {
-        renderSNFields(i, item.qty, part.pn);
-        if (item.serial) fillRowSerial(i, item.serial);   // also remembers the unit for packaging
-        else missingSerial.push(part.desc || part.pn);
-      }
-      // A phone list carries a serial only for units the yard could identify, so
-      // remembering has to happen either way or an unserialised battery and
-      // charger would load as two full-price lines.
-      trackPackageUnit(i, item.serial || '');
-      updateSubtotal(i);
-      updateMobileSubtotal(i);
-    });
-
-    // Loose units must be re-grouped or a battery-and-charger pair loaded from
-    // the phone would be charged as two singles instead of the package price.
-    applyPackageDeals();
-    updateSummary();
+    const listOutcome = loadSaleLines(found.lines);
+    const unmatched = listOutcome.unmatched, missingSerial = listOutcome.missingSerial;
 
     const notes = [];
     if (unmatched.length) notes.push(`${unmatched.length} line${unmatched.length === 1 ? ' needs' : 's need'} a part and price:\n  • ` + unmatched.join('\n  • '));
