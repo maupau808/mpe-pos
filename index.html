@@ -2571,6 +2571,14 @@ function acceptDecodedScan(rawValue, format) {
   // Any ordinary scan cancels a half-finished Clear confirmation. A packaging
   // code between the two pulls must never leave Clear armed.
   _pendingClearAt = 0;
+  // A license is not a part. It fills the customer fields and stops here, before
+  // the catalog, the dedupe guard, review, and the binding queue ever see it.
+  if (looksLikeLicensePayload(raw)) {
+    const info = parseLicensePayload(raw);
+    if (info) applyLicenseScan(info);
+    else setScanStatus('License scan was not readable — try again', 'err');
+    return;
+  }
   if (!loaded) {
     playScanBeep(true);
     setScanStatus('Parts are still loading — try again in a moment', 'err');
@@ -2729,8 +2737,17 @@ function onHardwareScanKeydown(event) {
     const origin = hardwareScanOrigin;
     const elapsed = hardwareScanLastAt - hardwareScanStartedAt;
     const averageGap = elapsed / Math.max(1, value.length - 1);
-    const scannerLike = value.length >= 4 && now - hardwareScanLastAt <= 140 && elapsed <= 1500 && averageGap <= 70;
+    const burstLike = now - hardwareScanLastAt <= 140 && elapsed <= 1500 && averageGap <= 70;
+    const scannerLike = value.length >= 4 && burstLike;
     resetHardwareScanCapture();
+    // A license arrives as a burst of Enter-separated lines; gather them all
+    // before anything treats one of them as a part number.
+    if (licenseCapturing() || (burstLike && licenseCaptureOpens(value))) {
+      event.preventDefault();
+      event.stopPropagation();
+      pushLicenseSegment(value, origin);
+      return;
+    }
     if (!scannerLike) return;
     event.preventDefault();
     event.stopPropagation();
@@ -2800,6 +2817,154 @@ function flashScanCommand(message, kind) {
   clearTimeout(flashScanCommand._timer);
   flashScanCommand._timer = setTimeout(() => { el.className = 'scan-command-flash'; },
                                        kind === 'err' ? 6000 : 3000);
+}
+
+// ─── DRIVER LICENSE SCAN (warranty registration) ───────────────────────────
+//
+// TRIGGER:  the PDF417 barcode on the back of a US/Canada license or state ID
+// WHY:      the warranty form asks the customer to hand-print their name and
+//           address, and then we have to read it. One scan fills those fields
+//           legibly and the customer is left writing only a phone number.
+//
+// ONLY name and address are taken. Date of birth, license number, height, eye
+// colour, sex, issue/expiry and every other AAMVA element are parsed past and
+// discarded: nothing but name/street/city/state/zip reaches a field, a print,
+// the sale history, Bridge, or the barcode-binding queue, and the raw payload
+// is never stored or logged. That is a deliberate boundary — a warranty
+// registration does not need an ID number, and a counter machine should not be
+// holding one.
+//
+// The format is AAMVA's DL/ID Card Design Standard (published, not
+// proprietary): an "ANSI <issuer>" header, then subfiles of three-letter
+// element IDs one per line. Hawaii is compliant, as is every US state.
+const DL_ELEMENT_FIELDS = {
+  DCS: 'last', DAB: 'last',            // family name (v2+, v1)
+  DAC: 'first', DCT: 'first',          // given name
+  DAD: 'middle',
+  DAA: 'fullName',                     // v1 combined name, used only as a fallback
+  DAG: 'street', DAH: 'street2',
+  DAI: 'city', DAJ: 'state', DAK: 'zip'
+};
+let _lastLicenseFillAt = 0;
+
+function looksLikeLicensePayload(raw) {
+  const text = String(raw || '');
+  if (text.length < 40 || !/ANSI\s?\d{6}/.test(text)) return false;
+  return /(^|[\r\n])(?:DL|ID)?(?:DCS|DAC|DAA|DAQ)/.test(text);
+}
+
+// Card data is stored in all caps. The printed warranty form reads better in
+// ordinary case, and that is also how customers pulled from QBO already look.
+function licenseTitleCase(value) {
+  const KEEP_UPPER = new Set(['PO','NE','NW','SE','SW','US','HI','II','III','IV','JR','SR']);
+  return String(value || '').trim().toLowerCase().replace(/[a-z']+/g, word => {
+    const upper = word.toUpperCase();
+    if (KEEP_UPPER.has(upper)) return upper;
+    return word.replace(/(^|')([a-z])/g, (m, lead, ch) => lead + ch.toUpperCase());
+  });
+}
+
+function parseLicensePayload(raw) {
+  const found = {};
+  String(raw || '').split(/[\r\n]+/).forEach(rawLine => {
+    // Strip the record/segment separators and the subfile designator that sits
+    // in front of the first element ("DLDAQH01234567").
+    const line = rawLine.replace(/[\x00-\x1f]/g, '').trim().replace(/^(?:DL|ID)(?=[A-Z]{3})/, '');
+    const match = /^([A-Z]{3})(.*)$/.exec(line);
+    if (!match) return;
+    const field = DL_ELEMENT_FIELDS[match[1]];
+    // Everything not in the map — DBB, DAQ, DAU, DBA and the rest — falls out here.
+    if (!field || found[field]) return;
+    const value = match[2].trim();
+    // "NONE" and "unavail" are what cards carry for a genuinely empty element.
+    if (!value || /^(NONE|UNAVAIL(ABLE)?)$/i.test(value)) return;
+    found[field] = value;
+  });
+  let first = found.first || '', last = found.last || '';
+  if (!first && !last && found.fullName) {
+    const parts = found.fullName.split(/[,$]/).map(s => s.trim());
+    last = parts[0] || ''; first = parts[1] || '';
+  }
+  const street = [found.street, found.street2].filter(Boolean).join(' ');
+  if (!last && !street) return null;
+  // Cards carry ZIP+4, but the counter's zip field is sized for five digits and
+  // a warranty registration has never wanted the other four.
+  const zip = String(found.zip || '').replace(/\D/g, '').slice(0, 5);
+  return {
+    name:   licenseTitleCase([first, last].filter(Boolean).join(' ')),
+    addr:   licenseTitleCase(street),
+    city:   licenseTitleCase(found.city || ''),
+    state:  String(found.state || '').toUpperCase().slice(0, 2),
+    zip
+  };
+}
+
+function applyLicenseScan(info) {
+  // The camera stares at whatever is in front of it and would re-fill the same
+  // card every frame.
+  const now = Date.now();
+  if (now - _lastLicenseFillAt < 3000) return;
+  _lastLicenseFillAt = now;
+  document.getElementById('custPanel')?.classList.remove('hidden');
+  closeCustDD();
+  // Only non-empty values are written, so a scan never blanks something that is
+  // already on screen — the phone and email typed a moment ago stay put.
+  const set = (id, value) => { const el = document.getElementById(id); if (el && value) el.value = value; };
+  set('custName', info.name);
+  set('custAddr', info.addr);
+  set('custCity', info.city);
+  set('custState', info.state);
+  set('custZip', info.zip);
+  playScanBeep(false);
+  const who = info.name || [info.city, info.state].filter(Boolean).join(', ') || 'customer';
+  ++scanStatusVersion;
+  setScanStatus(`License scanned — filled ${who}`, 'ok');
+  flashScanCommand(`License scanned — filled ${who}`, 'ok');
+}
+
+// A license PDF417 reaches a keyboard-wedge scanner as many Enter-separated
+// lines rather than one value, so the lines are gathered until the burst stops
+// and parsed once. Capture starts only on the card's own opening "@" or ANSI
+// header, which no product barcode carries.
+let licenseCaptureBuffer = '', licenseCaptureOrigin = null, licenseCaptureStartedAt = 0, licenseCaptureTimer = 0;
+const LICENSE_CAPTURE_IDLE_MS = 400, LICENSE_CAPTURE_MAX_MS = 5000, LICENSE_CAPTURE_MAX_CHARS = 4000;
+
+function licenseCaptureOpens(value) {
+  const text = String(value || '');
+  return /^@\s*$/.test(text) || /ANSI\s?\d{6}/.test(text);
+}
+function licenseCapturing() { return licenseCaptureTimer !== 0; }
+function resetLicenseCapture() {
+  clearTimeout(licenseCaptureTimer);
+  licenseCaptureTimer = 0;
+  licenseCaptureBuffer = '';
+  licenseCaptureOrigin = null;
+  licenseCaptureStartedAt = 0;
+}
+function pushLicenseSegment(segment, origin) {
+  if (!licenseCaptureTimer) {
+    licenseCaptureBuffer = '';
+    licenseCaptureOrigin = origin;
+    licenseCaptureStartedAt = performance.now();
+  }
+  licenseCaptureBuffer += String(segment || '') + '\n';
+  clearTimeout(licenseCaptureTimer);
+  if (licenseCaptureBuffer.length > LICENSE_CAPTURE_MAX_CHARS
+      || performance.now() - licenseCaptureStartedAt > LICENSE_CAPTURE_MAX_MS) {
+    resetLicenseCapture();
+    flashScanCommand('License scan was not readable — try again', 'err');
+    return;
+  }
+  licenseCaptureTimer = setTimeout(finishLicenseCapture, LICENSE_CAPTURE_IDLE_MS);
+}
+function finishLicenseCapture() {
+  const payload = licenseCaptureBuffer;
+  const origin = licenseCaptureOrigin;
+  resetLicenseCapture();
+  restoreHardwareScanOrigin(origin);
+  const info = looksLikeLicensePayload(payload) ? parseLicensePayload(payload) : null;
+  if (info) applyLicenseScan(info);
+  else flashScanCommand('License scan was not readable — try again', 'err');
 }
 
 function lastFilledSaleRow() {
@@ -3231,7 +3396,8 @@ async function startScanner() {
     await refreshScanCameras();
     const forceFallback = isLocalPos() && new URLSearchParams(location.search).get('zxingTest') === '1';
     if (!forceFallback && 'BarcodeDetector' in window) {
-      const wanted = ['code_128', 'code_39', 'codabar', 'data_matrix', 'ean_13', 'ean_8', 'itf', 'qr_code', 'upc_a', 'upc_e'];
+      // pdf417 is here for the back of a driver license, not for parts.
+      const wanted = ['code_128', 'code_39', 'codabar', 'data_matrix', 'ean_13', 'ean_8', 'itf', 'pdf417', 'qr_code', 'upc_a', 'upc_e'];
       const supported = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : wanted;
       const formats = wanted.filter(format => supported.includes(format));
       scanDetector = formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
@@ -3258,7 +3424,7 @@ async function startScanner() {
       if (startVersion !== scanStartVersion) return;
       const video = document.getElementById('scanVideo');
       scanFallbackDetector = new BarcodeDetectionAPI.BarcodeDetector({
-        formats: ['code_128', 'code_39', 'codabar', 'data_matrix', 'ean_13', 'ean_8', 'itf', 'qr_code', 'upc_a', 'upc_e']
+        formats: ['code_128', 'code_39', 'codabar', 'data_matrix', 'ean_13', 'ean_8', 'itf', 'pdf417', 'qr_code', 'upc_a', 'upc_e']
       });
       scanStream = await openScanCamera(1920, 1080);
       if (startVersion !== scanStartVersion) {
