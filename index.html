@@ -205,6 +205,17 @@ body.doc-internal .sum-internal { display: block; }
 .scan-command-flash.ok { border-left-color: #2d7a3a; }
 .scan-command-flash.warn { border-left-color: #d7a34c; }
 .scan-command-flash.err { border-left-color: #c62828; color: #8a1c19; }
+/* Shown only when a licence scan fails, so the card's shape can be read back
+   without any of the card's data leaving the counter. */
+.license-diag { display: none; margin-bottom: 1rem; padding: 10px 12px; border: 1px solid #c7cfc4;
+  border-left: 4px solid #c62828; border-radius: 8px; background: #fff; }
+.license-diag.show { display: block; }
+.license-diag h4 { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: #8a1c19; }
+.license-diag pre { margin: 0; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+  line-height: 1.45; color: #333; white-space: pre-wrap; word-break: break-all; }
+.license-diag button { margin-top: 8px; font: inherit; font-size: 11px; padding: 5px 8px;
+  border: 1px solid #b9c5b8; border-radius: 5px; background: #fff; color: #2f4339; cursor: pointer; }
+.license-diag button:hover { background: #eef5ef; }
 .bottom-actions { display: flex; gap: 10px; margin-bottom: 1rem; }
 .btn-danger { color: #c62828; border-color: #ef9a9a; }
 .btn-danger:hover { background: #fff5f5; border-color: #e53935; }
@@ -730,6 +741,12 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <input class="cust-input" id="custPhone" placeholder="Phone" autocomplete="off" type="tel" oninput="custSuggest('phone')" onkeydown="custDDKey(event)">
     <input class="cust-input" id="custEmail" placeholder="Email" autocomplete="off" type="email">
     <div class="dropdown cust-dd" id="custDD"></div>
+  </div>
+
+  <div class="license-diag" id="licenseDiag">
+    <h4>License scan could not be read</h4>
+    <pre id="licenseDiagText"></pre>
+    <button type="button" onclick="hideLicenseScanProblem()">Close</button>
   </div>
 
 
@@ -2576,7 +2593,10 @@ function acceptDecodedScan(rawValue, format) {
   if (looksLikeLicensePayload(raw)) {
     const info = parseLicensePayload(raw);
     if (info) applyLicenseScan(info);
-    else setScanStatus('License scan was not readable — try again', 'err');
+    else {
+      setScanStatus('License scan was not readable — details below the customer fields', 'err');
+      showLicenseScanProblem(raw, format);
+    }
     return;
   }
   if (!loaded) {
@@ -2849,8 +2869,11 @@ let _lastLicenseFillAt = 0;
 
 function looksLikeLicensePayload(raw) {
   const text = String(raw || '');
-  if (text.length < 40 || !/ANSI\s?\d{6}/.test(text)) return false;
-  return /(^|[\r\n])(?:DL|ID)?(?:DCS|DAC|DAA|DAQ)/.test(text);
+  // The "ANSI <6-digit issuer>" header is specific enough to carry the check on
+  // its own, so the element IDs are looked for anywhere rather than at the start
+  // of a line — a wedge that strips the line breaks still has to be recognised.
+  if (text.length < 40 || !/ANSI\s?\d{6}/i.test(text)) return false;
+  return /DCS|DAC|DAA|DAQ|DAG/i.test(text);
 }
 
 // Card data is stored in all caps. The printed warranty form reads better in
@@ -2864,18 +2887,40 @@ function licenseTitleCase(value) {
   });
 }
 
-function parseLicensePayload(raw) {
-  const found = {};
-  String(raw || '').split(/[\r\n]+/).forEach(rawLine => {
+// One [tag, value] pair per element. The card puts one element per line, but a
+// keyboard-wedge scanner that is not configured to send the line breaks hands
+// over one long string instead — so if line splitting finds almost nothing,
+// split on the element IDs themselves. Every AAMVA ID is D + A-D + a letter, or
+// a jurisdiction-specific Z + two letters, and no other tag may end a value.
+function licenseElementPairs(payload) {
+  const text = String(payload || '');
+  const lineTags = [];
+  text.split(/[\r\n]+/).forEach(rawLine => {
     // Strip the record/segment separators and the subfile designator that sits
     // in front of the first element ("DLDAQH01234567").
-    const line = rawLine.replace(/[\x00-\x1f]/g, '').trim().replace(/^(?:DL|ID)(?=[A-Z]{3})/, '');
-    const match = /^([A-Z]{3})(.*)$/.exec(line);
-    if (!match) return;
-    const field = DL_ELEMENT_FIELDS[match[1]];
+    const line = rawLine.replace(/[\x00-\x1f]/g, '').trim().replace(/^(?:DL|ID)(?=[A-Za-z]{3})/i, '');
+    const match = /^([A-Za-z]{3})(.*)$/.exec(line);
+    if (match) lineTags.push([match[1].toUpperCase(), match[2]]);
+  });
+  const usable = pairs => pairs.filter(pair => DL_ELEMENT_FIELDS[pair[0]]).length;
+  if (usable(lineTags) >= 2) return lineTags;
+  const flat = text.replace(/[\x00-\x1f]/g, ' ');
+  const marks = [];
+  const idRe = /D[A-D][A-Za-z]|Z[A-Za-z]{2}/gi;
+  let hit;
+  while ((hit = idRe.exec(flat))) marks.push([hit[0].toUpperCase(), hit.index]);
+  const flatTags = marks.map(([tag, at], i) =>
+    [tag, flat.slice(at + 3, i + 1 < marks.length ? marks[i + 1][1] : flat.length)]);
+  return usable(flatTags) > usable(lineTags) ? flatTags : lineTags;
+}
+
+function parseLicensePayload(raw) {
+  const found = {};
+  licenseElementPairs(raw).forEach(([tag, rawValue]) => {
+    const field = DL_ELEMENT_FIELDS[tag];
     // Everything not in the map — DBB, DAQ, DAU, DBA and the rest — falls out here.
     if (!field || found[field]) return;
-    const value = match[2].trim();
+    const value = String(rawValue).trim();
     // "NONE" and "unavail" are what cards carry for a genuinely empty element.
     if (!value || /^(NONE|UNAVAIL(ABLE)?)$/i.test(value)) return;
     found[field] = value;
@@ -2899,7 +2944,47 @@ function parseLicensePayload(raw) {
   };
 }
 
+// A card that will not parse is a scanner-configuration question, and the answer
+// is in the SHAPE of what arrived — where the line breaks fell, whether the case
+// survived, which element IDs came through. So the report shows exactly that and
+// nothing else: element IDs and value LENGTHS, and a masked outline in which
+// every letter becomes A and every digit 9. No name, address, date of birth, or
+// number from the card can appear in it, which is what makes it safe to hand to
+// anyone helping debug the scanner.
+function licenseScanDiagnostic(payload, via) {
+  const text = String(payload || '');
+  const elements = licenseElementPairs(text)
+    .map(([tag, value]) => tag + '(' + String(value).trim().length + ')').join(' ');
+  const shape = text.slice(0, 320)
+    .replace(/\r\n?/g, '\n').replace(/[\x00-\x09\x0b-\x1f]/g, '·')
+    .replace(/[A-Z]/g, 'A').replace(/[a-z]/g, 'a').replace(/[0-9]/g, '9')
+    .replace(/\n/g, '⏎\n');
+  return [
+    'source: ' + (via === 'hardware' ? 'USB/wedge scanner' : 'camera'),
+    'characters: ' + text.length + '   lines: ' + text.split(/[\r\n]/).length,
+    'ANSI header: ' + (/ANSI\s?\d{6}/.test(text) ? 'yes' : 'no'),
+    'elements: ' + (elements || '(none)'),
+    '',
+    'shape (letters shown as A, digits as 9):',
+    shape
+  ].join('\n');
+}
+
+function showLicenseScanProblem(payload, via) {
+  const box = document.getElementById('licenseDiag');
+  const text = document.getElementById('licenseDiagText');
+  if (!box || !text) return;
+  text.textContent = licenseScanDiagnostic(payload, via);
+  box.classList.add('show');
+  box.scrollIntoView({ block: 'nearest' });
+}
+function hideLicenseScanProblem() {
+  const box = document.getElementById('licenseDiag');
+  if (box) { box.classList.remove('show'); document.getElementById('licenseDiagText').textContent = ''; }
+}
+
 function applyLicenseScan(info) {
+  hideLicenseScanProblem();
   // The camera stares at whatever is in front of it and would re-fill the same
   // card every frame.
   const now = Date.now();
@@ -2931,7 +3016,7 @@ const LICENSE_CAPTURE_IDLE_MS = 400, LICENSE_CAPTURE_MAX_MS = 5000, LICENSE_CAPT
 
 function licenseCaptureOpens(value) {
   const text = String(value || '');
-  return /^@\s*$/.test(text) || /ANSI\s?\d{6}/.test(text);
+  return /^@\s*$/.test(text) || /ANSI\s?\d{6}/i.test(text);
 }
 function licenseCapturing() { return licenseCaptureTimer !== 0; }
 function resetLicenseCapture() {
@@ -2963,8 +3048,10 @@ function finishLicenseCapture() {
   resetLicenseCapture();
   restoreHardwareScanOrigin(origin);
   const info = looksLikeLicensePayload(payload) ? parseLicensePayload(payload) : null;
-  if (info) applyLicenseScan(info);
-  else flashScanCommand('License scan was not readable — try again', 'err');
+  if (info) { applyLicenseScan(info); return; }
+  flashScanCommand('License scan was not readable — details below the customer fields', 'err');
+  document.getElementById('custPanel')?.classList.remove('hidden');
+  showLicenseScanProblem(payload, 'hardware');
 }
 
 function lastFilledSaleRow() {
