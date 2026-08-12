@@ -2766,12 +2766,23 @@ function onHardwareScanKeydown(event) {
     const burstLike = now - hardwareScanLastAt <= 140 && elapsed <= 1500 && averageGap <= 70;
     const scannerLike = value.length >= 4 && burstLike;
     resetHardwareScanCapture();
-    // A license arrives as a burst of Enter-separated lines; gather them all
-    // before anything treats one of them as a part number.
-    if (licenseCapturing() || (burstLike && licenseCaptureOpens(value))) {
+    // A license arrives as a burst of Enter-separated lines, and a slow scanner
+    // stalls partway through: gather them all, including the late ones, before
+    // anything can treat one of them as a part number.
+    if (licenseCapturing()
+        || (burstLike && licenseCaptureOpens(value))
+        || (licenseExpectingMore() && licenseSegmentLikely(value))) {
       event.preventDefault();
       event.stopPropagation();
       pushLicenseSegment(value, origin);
+      return;
+    }
+    // The tail of a card that has already filled the fields. Dropped outright —
+    // the fields are set, and these lines are nothing the sale wants.
+    if (licenseSwallowingTail() && licenseSegmentLikely(value)) {
+      event.preventDefault();
+      event.stopPropagation();
+      restoreHardwareScanOrigin(origin);
       return;
     }
     if (!scannerLike) return;
@@ -3021,47 +3032,103 @@ function applyLicenseScan(info) {
 // lines rather than one value, so the lines are gathered until the burst stops
 // and parsed once. Capture starts only on the card's own opening "@" or ANSI
 // header, which no product barcode carries.
-let licenseCaptureBuffer = '', licenseCaptureOrigin = null, licenseCaptureStartedAt = 0, licenseCaptureTimer = 0;
-const LICENSE_CAPTURE_IDLE_MS = 400, LICENSE_CAPTURE_MAX_MS = 5000, LICENSE_CAPTURE_MAX_CHARS = 4000;
+let licenseCaptureBuffer = '', licenseCaptureOrigin = null, licenseCaptureStartedAt = 0,
+    licenseCaptureTimer = 0, licenseFragment = '', licenseReportTimer = 0,
+    licenseStragglerUntil = 0, licenseTailUntil = 0;
+// A real counter scanner was seen sending "@", then pausing for most of a second
+// before the rest of the card. An idle timer alone therefore cannot decide where
+// a card ends: it closed early and the remaining lines typed themselves into a
+// product row. So a card is finished by its own CONTENT — the moment the payload
+// carries a whole name and address — and the timers are only backstops, with a
+// straggler window that lets late lines rejoin the buffer they belong to.
+const LICENSE_CAPTURE_IDLE_MS = 2000;   // a slow wedge stalls mid-card
+const LICENSE_CAPTURE_MAX_MS = 12000;   // hard stop on a scanner that never finishes
+const LICENSE_CAPTURE_MAX_CHARS = 4000;
+const LICENSE_STRAGGLER_MS = 8000;      // late lines rejoin the card they belong to
+const LICENSE_TAIL_MS = 4000;           // the card's tail, after the fields are filled
 
 function licenseCaptureOpens(value) {
   const text = String(value || '');
   return /^@\s*$/.test(text) || /ANSI\s?\d{6}/i.test(text);
 }
+// Only ever consulted inside a straggler or tail window, which is what keeps an
+// ordinary part number that happens to contain "DAK" out of this path.
+function licenseSegmentLikely(value) {
+  const text = String(value || '');
+  return text.length > 3 && /D[A-D][A-Z]/i.test(text);
+}
 function licenseCapturing() { return licenseCaptureTimer !== 0; }
-function resetLicenseCapture() {
+function licenseExpectingMore() { return performance.now() < licenseStragglerUntil; }
+function licenseSwallowingTail() { return performance.now() < licenseTailUntil; }
+
+function pushLicenseSegment(segment, origin) {
+  if (!licenseCaptureTimer) {
+    // Rejoin whatever a premature finish left behind, so a scanner that pauses
+    // mid-card produces one payload rather than two useless halves.
+    licenseCaptureBuffer = licenseExpectingMore() ? licenseFragment : '';
+    licenseFragment = '';
+    licenseCaptureOrigin = origin;
+    licenseCaptureStartedAt = performance.now();
+    clearTimeout(licenseReportTimer);
+    licenseReportTimer = 0;
+  }
+  licenseCaptureBuffer += String(segment || '') + '\n';
+  licenseStragglerUntil = performance.now() + LICENSE_STRAGGLER_MS;
+  clearTimeout(licenseCaptureTimer);
+  licenseCaptureTimer = -1;               // capturing, between timers
+  if (licenseCaptureBuffer.length > LICENSE_CAPTURE_MAX_CHARS
+      || performance.now() - licenseCaptureStartedAt > LICENSE_CAPTURE_MAX_MS) {
+    finishLicenseCapture();
+    return;
+  }
+  // Finish on content, not on a clock: the counter should not sit deaf waiting
+  // out a timer for a card that has already given up everything we want.
+  const info = looksLikeLicensePayload(licenseCaptureBuffer)
+    ? parseLicensePayload(licenseCaptureBuffer) : null;
+  if (info && info.name && info.addr && info.city && info.state && info.zip) {
+    finishLicenseCapture();
+    return;
+  }
+  licenseCaptureTimer = setTimeout(finishLicenseCapture, LICENSE_CAPTURE_IDLE_MS);
+}
+
+function finishLicenseCapture() {
+  const payload = licenseCaptureBuffer;
+  const origin = licenseCaptureOrigin;
   clearTimeout(licenseCaptureTimer);
   licenseCaptureTimer = 0;
   licenseCaptureBuffer = '';
   licenseCaptureOrigin = null;
   licenseCaptureStartedAt = 0;
-}
-function pushLicenseSegment(segment, origin) {
-  if (!licenseCaptureTimer) {
-    licenseCaptureBuffer = '';
-    licenseCaptureOrigin = origin;
-    licenseCaptureStartedAt = performance.now();
-  }
-  licenseCaptureBuffer += String(segment || '') + '\n';
-  clearTimeout(licenseCaptureTimer);
-  if (licenseCaptureBuffer.length > LICENSE_CAPTURE_MAX_CHARS
-      || performance.now() - licenseCaptureStartedAt > LICENSE_CAPTURE_MAX_MS) {
-    resetLicenseCapture();
-    flashScanCommand('License scan was not readable — try again', 'err');
-    return;
-  }
-  licenseCaptureTimer = setTimeout(finishLicenseCapture, LICENSE_CAPTURE_IDLE_MS);
-}
-function finishLicenseCapture() {
-  const payload = licenseCaptureBuffer;
-  const origin = licenseCaptureOrigin;
-  resetLicenseCapture();
   restoreHardwareScanOrigin(origin);
   const info = looksLikeLicensePayload(payload) ? parseLicensePayload(payload) : null;
-  if (info) { applyLicenseScan(info); return; }
+  if (info) {
+    licenseFragment = '';
+    licenseStragglerUntil = 0;
+    // The card still has lines after its address — issue date, endorsements,
+    // audit number. They are dropped, not typed into the sale.
+    licenseTailUntil = performance.now() + LICENSE_TAIL_MS;
+    applyLicenseScan(info);
+    return;
+  }
+  // Hold the fragment instead of reporting straight away: the rest of the card
+  // may still be on its way, and it must not reach a product row.
+  licenseFragment = payload;
+  clearTimeout(licenseReportTimer);
+  licenseReportTimer = setTimeout(reportLicenseScanFailure,
+    Math.max(0, licenseStragglerUntil - performance.now()));
+}
+
+function reportLicenseScanFailure() {
+  clearTimeout(licenseReportTimer);
+  licenseReportTimer = 0;
+  const held = licenseFragment;
+  licenseFragment = '';
+  licenseStragglerUntil = 0;
+  if (!held) return;
   flashScanCommand('License scan was not readable — details below the customer fields', 'err');
   document.getElementById('custPanel')?.classList.remove('hidden');
-  showLicenseScanProblem(payload, 'hardware');
+  showLicenseScanProblem(held, 'hardware');
 }
 
 function lastFilledSaleRow() {
