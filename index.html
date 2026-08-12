@@ -499,7 +499,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 @media screen {
   #scannerModeView { display: none; }
   body.scanner-mode-active .wrap > :not(#scannerModeView) { display: none !important; }
-  body.scanner-mode-active .wrap { max-width: 1280px; padding: 0; overflow: hidden; }
+  body.scanner-mode-active .wrap { max-width: 1280px; padding: 0; overflow: visible; }
   body.scanner-mode-active #scannerModeView { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(270px, .85fr); min-height: min(620px, calc(100vh - 24px)); background: #fffdfa; color: #1a1a1a; }
   body.dark.scanner-mode-active #scannerModeView { background: #1d211e; color: #f3f5f1; }
   .scanner-mode-list { min-width: 0; padding: 20px 22px; border-right: 1px solid #d6ded5; }
@@ -518,7 +518,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-price { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .scanner-mode-empty { padding: 26px 0; color: #667066; font-size: 18px; }
   body.dark .scanner-mode-empty { color: #aeb7ae; }
-  .scanner-mode-side { display: flex; flex-direction: column; gap: 22px; padding: 24px 20px 20px; background: #f2f5f0; }
+  .scanner-mode-side { position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; gap: 22px; min-height: min(620px, calc(100vh - 24px)); padding: 24px 20px 20px; background: #f2f5f0; box-sizing: border-box; }
   body.dark .scanner-mode-side { background: #252b26; }
   .scanner-mode-ready { color: #2f5a3f; font-size: 23px; font-weight: 700; line-height: 1.15; }
   body.dark .scanner-mode-ready { color: #b7c8bb; }
@@ -545,7 +545,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   @media (max-width: 720px) {
     body.scanner-mode-active #scannerModeView { grid-template-columns: 1fr; min-height: 100vh; }
     .scanner-mode-list { padding: 16px; border-right: 0; }
-    .scanner-mode-side { gap: 16px; padding: 18px 16px; }
+    .scanner-mode-side { position: static; min-height: 0; gap: 16px; padding: 18px 16px; }
     .scanner-mode-total-block { margin-top: 0; }
     .scanner-mode-description { font-size: 17px; }
   }
@@ -1053,7 +1053,10 @@ const tbody = document.getElementById('searchRows');
 window.addEventListener('load', () => {
   // Local scanner testing uses the current server feed directly. GitHub Pages
   // keeps the existing instant-cache + Drive refresh path.
-  if (isLocalPos()) loadLocalPosFeed();
+  if (isLocalPos() && new URLSearchParams(location.search).has('scannerFixture')) {
+    // The local reliability harness injects its deterministic feed after load.
+  }
+  else if (isLocalPos()) loadLocalPosFeed();
   else tryLoadFromDB();
   // Init token client then silently re-auth if previously signed in
   if (window.google) initTokenClient();
@@ -1516,6 +1519,7 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   buildWarrantyModelMap();
   loaded = true;
   warmUpSearch();
+  flushPendingCatalogScans();
   const pc = document.getElementById('partsCount');
   if (pc) { pc.textContent = partsArray.length.toLocaleString() + ' parts loaded'; pc.style.color = '#2d7a3a'; }
   refreshStatusUI();
@@ -1628,6 +1632,7 @@ function parseAndLoad(name, binaryData) {
         partsArray = e.data.parts;
         loaded = true;
         warmUpSearch();
+        flushPendingCatalogScans();
         if (pc) { pc.textContent = partsArray.length.toLocaleString() + ' parts loaded'; pc.style.color = '#2d7a3a'; }
         refreshStatusUI();
       } else {
@@ -1684,6 +1689,7 @@ function parseAndLoadSync(name, binaryData) {
     });
     loaded = true;
     warmUpSearch();
+    flushPendingCatalogScans();
     if (pc) { pc.textContent = partsArray.length.toLocaleString() + ' parts loaded'; pc.style.color = '#2d7a3a'; }
   } catch(err) {
     if (pc) { pc.textContent = 'Error loading file'; pc.style.color = '#e53935'; }
@@ -1755,6 +1761,7 @@ let hardwareScanBuffer = '';
 let hardwareScanStartedAt = 0;
 let hardwareScanLastAt = 0;
 let hardwareScanOrigin = null;
+const pendingCatalogScans = [];
 let pendingUnitSerialRow = null;
 const PART_CODES_SHEET = 'Codes';
 const PART_CODES_SHEET_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Added'];
@@ -1784,12 +1791,15 @@ const SCAN_REPEAT_LOCKOUT_MS = 2250;
 // that is simply sitting in front of it, and an unguarded repeat would fill the
 // sale with duplicates. 100ms only collapses an instant double-transmit; a real
 // presentation-mode gun needs its own same-code delay set on the scanner.
-// DORMANT until there is a gun on the counter: with the flag false, the hardware
-// path keeps the camera's timing exactly as it is today. To try it once the gun
-// arrives, add ?fastRepeat=1 to the POS URL (no deploy); to make it permanent,
-// set SCAN_HARDWARE_FAST_REPEAT to true. Never applies to camera scans.
-const SCAN_HARDWARE_FAST_REPEAT = false;
+// The counter gun is a deliberate trigger scanner, so its short guard is the
+// production default. The camera keeps the longer guard below because it stares
+// continuously at a label. ?fastRepeat=0 remains a rollback switch.
+const SCAN_HARDWARE_FAST_REPEAT = true;
 const SCAN_HARDWARE_REPEAT_LOCKOUT_MS = 100;
+const SCAN_HARDWARE_INTERKEY_MAX_MS = 350;
+const SCAN_HARDWARE_SUFFIX_MAX_MS = 350;
+const SCAN_HARDWARE_TOTAL_MAX_MS = 2500;
+const SCAN_HARDWARE_AVERAGE_MAX_MS = 70;
 const SCAN_CAMERA_KEY = 'mpeScanCameraId';
 let partCodePending = [];
 let partCodeLearned = {};
@@ -1922,9 +1932,12 @@ function pendingUnitPN() {
 }
 
 function hardwareFastRepeatEnabled() {
-  if (SCAN_HARDWARE_FAST_REPEAT) return true;
-  try { return new URLSearchParams(location.search).get('fastRepeat') === '1'; }
-  catch (e) { return false; }
+  try {
+    const override = new URLSearchParams(location.search).get('fastRepeat');
+    if (override === '0') return false;
+    if (override === '1') return true;
+  } catch (e) {}
+  return SCAN_HARDWARE_FAST_REPEAT;
 }
 
 function claimScannedValue(value, now = Date.now(), source = '') {
@@ -2562,6 +2575,18 @@ function addEmptyRowAfterScan(row) {
   ensureScannerMobileRow(NUM_ROWS - 1);
 }
 
+function revealScannedResult(row) {
+  window.requestAnimationFrame(() => {
+    if (_scannerModeActive) {
+      const latest = document.querySelector('#scannerModeLines .scanner-mode-line:last-child');
+      latest?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    const line = tbody.querySelector(`tr[data-row="${row}"]`);
+    line?.scrollIntoView({ block: 'nearest' });
+  });
+}
+
 function fillScannedPart(part, requestedRow) {
   const row = Number.isInteger(requestedRow) ? requestedRow : firstOpenScanRow();
   ensureScannerMobileRow(row);
@@ -2576,6 +2601,7 @@ function fillScannedPart(part, requestedRow) {
   setScanStatus(`Added ${part.og || part.pn} — ${part.desc || ''}`, 'ok');
   updateScanNext();
   updateScanButton();
+  revealScannedResult(row);
   setTimeout(() => {
     if (scanActive && scanStatusVersion === version)
       setScanStatus('Ready — scan the next item');
@@ -2623,6 +2649,7 @@ function saveScanForReview(rawValue, format, candidates, options = {}) {
     : `Saved row ${row + 1} for review — keep scanning`, 'warn');
   updateScanNext();
   updateScanButton();
+  revealScannedResult(row);
 }
 
 function focusScanIssue(row) {
@@ -2675,7 +2702,13 @@ function showNextScanIssue(preferredRow) {
   if (next) next.textContent = `${scanIssues.size} row${scanIssues.size === 1 ? '' : 's'} still need review`;
 }
 
-function acceptDecodedScan(rawValue, format) {
+function flushPendingCatalogScans() {
+  if (!loaded || !pendingCatalogScans.length) return;
+  const queued = pendingCatalogScans.splice(0);
+  queued.forEach(scan => acceptDecodedScan(scan.raw, scan.format, { claimed: true }));
+}
+
+function acceptDecodedScan(rawValue, format, options = {}) {
   const raw = String(rawValue || '').trim();
   if (!raw) return;
   // Commands run before the catalog check: Print and Clear have nothing to do
@@ -2698,12 +2731,15 @@ function acceptDecodedScan(rawValue, format) {
     }
     return;
   }
+  if (!options.claimed && !claimScannedValue(raw, options.acceptedAt || Date.now(), format)) return;
   if (!loaded) {
-    playScanBeep(true);
-    setScanStatus('Parts are still loading — try again in a moment', 'err');
+    pendingCatalogScans.push({ raw, format });
+    const count = pendingCatalogScans.length;
+    const message = `Held ${count} scan${count === 1 ? '' : 's'} — adding ${count === 1 ? 'it' : 'them'} when parts finish loading`;
+    setScanStatus(message, 'warn');
+    if (format === 'hardware') flashScanCommand(message, 'warn');
     return;
   }
-  if (!claimScannedValue(raw, Date.now(), format)) return;
   const result = resolveScannedValue(raw);
   if (result.via === 'stihl-unit') {
     if (result.candidates.length === 1) {
@@ -2761,7 +2797,9 @@ function acceptDecodedScan(rawValue, format) {
     // Deliberately silent. A beep here would be read as "that one counted", and
     // the operator is usually still sweeping the label for the real barcode.
     ++scanStatusVersion;
-    setScanStatus(`Ignored ${raw} — packaging barcode, not a part`, 'warn');
+    const message = `Ignored ${raw} — packaging barcode, scan the part number`;
+    setScanStatus(message, 'warn');
+    if (format === 'hardware') flashScanCommand(message, 'warn');
     return;
   }
   const needsReview = result.candidates.length !== 1;
@@ -2822,17 +2860,33 @@ function resetHardwareScanCapture() {
   hardwareScanOrigin = null;
 }
 
+// Event timestamps are stamped when the browser receives the scanner key, not
+// when a busy page finally runs this handler. Using performance.now() here made
+// a product search or render pause split a real scan into discarded fragments.
+function hardwareKeyTime(event) {
+  const stamp = Number(event?.timeStamp);
+  if (!Number.isFinite(stamp) || stamp <= 0) return performance.now();
+  const origin = Number(performance.timeOrigin) || (Date.now() - performance.now());
+  return stamp > 1e12 ? stamp - origin : stamp;
+}
+
+function hardwareKeyWallTime(eventTime) {
+  const origin = Number(performance.timeOrigin) || (Date.now() - performance.now());
+  return Math.round(origin + eventTime);
+}
+
 function onHardwareScanKeydown(event) {
   if (event.defaultPrevented || event.isComposing || event.repeat || event.ctrlKey || event.metaKey || event.altKey) {
     resetHardwareScanCapture();
     resetCommandKeyCapture();
     return;
   }
-  const now = performance.now();
+  const now = hardwareKeyTime(event);
   // A second, slow buffer so a command can also be TYPED, not only scanned. It
   // starts only on "~", which no part number contains, so it can never swallow
   // ordinary keying — and the burst test below stays untouched.
-  if (event.key === 'Enter' && isScanCommand(commandKeyBuffer)) {
+  const isScanTerminator = event.key === 'Enter' || event.key === 'Tab';
+  if (isScanTerminator && isScanCommand(commandKeyBuffer)) {
     const typed = commandKeyBuffer;
     const origin = commandKeyOrigin;
     resetCommandKeyCapture();
@@ -2851,13 +2905,22 @@ function onHardwareScanKeydown(event) {
     resetCommandKeyCapture();
   }
 
-  if (event.key === 'Enter') {
+  if (isScanTerminator) {
     const value = hardwareScanBuffer;
     const origin = hardwareScanOrigin;
     const elapsed = hardwareScanLastAt - hardwareScanStartedAt;
     const averageGap = elapsed / Math.max(1, value.length - 1);
-    const burstLike = now - hardwareScanLastAt <= 140 && elapsed <= 1500 && averageGap <= 70;
-    const scannerLike = value.length >= 4 && burstLike;
+    const suffixGap = now - hardwareScanLastAt;
+    const burstLike = suffixGap <= SCAN_HARDWARE_SUFFIX_MAX_MS
+      && elapsed <= SCAN_HARDWARE_TOTAL_MAX_MS
+      && averageGap <= SCAN_HARDWARE_AVERAGE_MAX_MS;
+    // Short real part numbers (23, 1000) and the 1-3 digit quantity codes on
+    // packaging still come from the gun. A near-instant suffix distinguishes
+    // those short scans from normal one-character typing without imposing the
+    // old four-character blind spot.
+    const shortScannerLike = value.length >= 1 && value.length < 4
+      && suffixGap <= 35 && elapsed <= Math.max(35, (value.length - 1) * 70);
+    const scannerLike = (value.length >= 4 && burstLike) || shortScannerLike;
     resetHardwareScanCapture();
     // A license arrives as a burst of Enter-separated lines, and a slow scanner
     // stalls partway through: gather them all, including the late ones, before
@@ -2883,14 +2946,14 @@ function onHardwareScanKeydown(event) {
     event.stopPropagation();
     restoreHardwareScanOrigin(origin);
     closeAllDropdowns();
-    acceptDecodedScan(value, 'hardware');
+    acceptDecodedScan(value, 'hardware', { acceptedAt: hardwareKeyWallTime(now) });
     return;
   }
   if (event.key.length !== 1) {
-    if (now - hardwareScanLastAt > 140) resetHardwareScanCapture();
+    if (now - hardwareScanLastAt > SCAN_HARDWARE_INTERKEY_MAX_MS) resetHardwareScanCapture();
     return;
   }
-  if (!hardwareScanBuffer || now - hardwareScanLastAt > 140) {
+  if (!hardwareScanBuffer || now - hardwareScanLastAt > SCAN_HARDWARE_INTERKEY_MAX_MS) {
     hardwareScanBuffer = event.key;
     hardwareScanStartedAt = now;
     hardwareScanOrigin = snapshotHardwareScanOrigin(event.target);
@@ -3034,6 +3097,7 @@ function syncScannerModeView(message, state) {
 }
 
 function setScannerModeActive(active, options = {}) {
+  if (active && _docType !== 'receipt') return;
   _scannerModeActive = !!active;
   document.body.classList.toggle('scanner-mode-active', _scannerModeActive);
   document.getElementById('scannerModeView')?.setAttribute('aria-hidden', String(!_scannerModeActive));
@@ -3043,6 +3107,7 @@ function setScannerModeActive(active, options = {}) {
     _scannerIdleTimer = null;
     renderScannerModeAutoPrintCode();
     syncScannerModeView(options.message, options.state);
+    revealScannedResult(lastFilledSaleRow());
   } else {
     resetScannerModeIdleTimer();
   }

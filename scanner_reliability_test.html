@@ -1,0 +1,498 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>POS scanner reliability tests</title>
+<style>
+body { font: 14px/1.45 system-ui, sans-serif; margin: 20px; }
+.pass { color: #176b2c; } .fail { color: #a51d25; font-weight: 700; }
+iframe { position: fixed; width: 1200px; height: 800px; left: -2000px; top: 0; }
+</style>
+<h1>POS scanner reliability tests</h1>
+<div id="summary">Running…</div>
+<ol id="results"></ol>
+<iframe id="pos"></iframe>
+<script>
+const results = [];
+const pos = document.getElementById('pos');
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const waitFor = async (check, timeout = 30000) => {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    if (check()) return;
+    await sleep(25);
+  }
+  throw new Error('timed out');
+};
+const record = (name, ok, detail = '') => {
+  results.push({ name, ok, detail });
+  const li = document.createElement('li');
+  li.className = ok ? 'pass' : 'fail';
+  li.textContent = `${ok ? 'PASS' : 'FAIL'} — ${name}${detail ? `: ${detail}` : ''}`;
+  document.getElementById('results').appendChild(li);
+};
+const test = async (name, fn) => {
+  try { await fn(); record(name, true); }
+  catch (error) { record(name, false, error.message); }
+};
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const frameWindow = frame => frame.contentWindow;
+const loaded = frame => /^\d[\d,]* parts(?: loaded)?$/.test(frame.contentDocument.getElementById('partsCount')?.textContent || '');
+const TEST_FEED = {
+  parts: [
+    { pn: 'TEST1001', og: 'TEST1001', desc: 'Scanner test item one', make: 'TEST', list: 10, cost: 5 },
+    { pn: 'TEST2002', og: 'TEST2002', desc: 'Scanner test item two', make: 'TEST', list: 20, cost: 10 },
+    { pn: 'TEST3003', og: 'TEST3003', desc: 'Scanner test item three', make: 'TEST', list: 30, cost: 15 },
+    { pn: '23', og: '23', desc: 'Short scanner test item', make: 'TEST', list: 4, cost: 2 },
+    { pn: '5555', og: '5555', desc: 'Distributor prefix test item', make: 'SCAG', list: 40, cost: 20 },
+    { pn: 'UNIT1', og: 'UNIT1', desc: 'MX100 test unit', make: 'STIHL', list: 100, cost: 50, warranty: true },
+    { pn: 'OLD1', og: 'OLD1', sup: 'NEW1', desc: 'Superseded scanner item', make: 'TEST', list: 5, cost: 2 },
+    { pn: 'NEW1', og: 'NEW1', desc: 'Current scanner item', make: 'TEST', list: 6, cost: 3 },
+    { pn: 'AMBIG1', og: 'AMBIG1', desc: 'Ambiguous scanner item A', make: 'TEST A', list: 7, cost: 3 },
+    { pn: 'AMBIG1', og: 'AMBIG1', desc: 'Ambiguous scanner item B', make: 'TEST B', list: 8, cost: 4 },
+    { pn: 'LABOR', og: 'LABOR', desc: 'Labor', make: 'SERVICE', list: 1, cost: 0 },
+    { pn: 'METALHEADSWAP', og: 'METALHEADSWAP', desc: 'Fixed head installation', make: 'SERVICE', list: 1, cost: 0 },
+  ],
+  sales: [], serials: {},
+  codes: {
+    '1234567890123': 'TEST2002',
+    '886661123456': 'UNIT1',
+    '@UNIT-EXACT:SERIAL123': 'UNIT1',
+    '@UNIT-PREFIX:SNX': 'UNIT1',
+  },
+};
+async function loadFixture(frame, delayMs = 0) {
+  if (delayMs) await sleep(delayMs);
+  const stream = new Blob([JSON.stringify(TEST_FEED)]).stream().pipeThrough(new CompressionStream('gzip'));
+  const bytes = await new Response(stream).arrayBuffer();
+  await frameWindow(frame).loadPosJsonBytes(bytes, 'scanner-test');
+}
+const filledRows = frame => [...frame.contentDocument.querySelectorAll('#searchRows tr[data-row] .part-input')]
+  .filter(input => input.dataset.partPn).map(input => input.dataset.partPn);
+const allProductValues = frame => [...frame.contentDocument.querySelectorAll('#searchRows tr[data-row] .part-input')]
+  .map(input => input.value);
+let acquisitionClock = 0;
+function makeKey(key, stamp, init = {}) {
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+  Object.defineProperty(event, 'timeStamp', { value: stamp });
+  if (init.isComposing) Object.defineProperty(event, 'isComposing', { value: true });
+  return event;
+}
+function applyTextDefault(target, key, event) {
+  if (event.defaultPrevented || key.length !== 1 || !(target instanceof target.ownerDocument.defaultView.HTMLInputElement
+      || target instanceof target.ownerDocument.defaultView.HTMLTextAreaElement) || target.readOnly) return;
+  const start = typeof target.selectionStart === 'number' ? target.selectionStart : target.value.length;
+  const end = typeof target.selectionEnd === 'number' ? target.selectionEnd : start;
+  target.value = target.value.slice(0, start) + key + target.value.slice(end);
+  try { target.setSelectionRange(start + key.length, start + key.length); } catch (error) {}
+  target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: key }));
+}
+async function burst(frame, value, options = {}) {
+  const doc = frame.contentDocument;
+  const target = options.target || doc.body;
+  const step = options.acquisitionStep ?? 5;
+  const deliveryDelay = options.deliveryDelay ?? 0;
+  const suffixGap = options.suffixGap ?? step;
+  acquisitionClock = Math.max(acquisitionClock + (options.burstGap ?? 3000), frameWindow(frame).performance.now());
+  let stamp = acquisitionClock;
+  let lastKeyStamp = stamp;
+  let keyIndex = 0;
+  for (const key of String(value)) {
+    lastKeyStamp = stamp;
+    const event = makeKey(key, stamp, options.keyInit || {});
+    target.dispatchEvent(event);
+    if (options.simulateDefault) applyTextDefault(target, key, event);
+    stamp += options.acquisitionDelays?.[keyIndex++] ?? step;
+    if (deliveryDelay) await sleep(deliveryDelay);
+  }
+  const enter = makeKey(options.terminator || 'Enter', lastKeyStamp + suffixGap, options.enterInit || {});
+  target.dispatchEvent(enter);
+  acquisitionClock = lastKeyStamp + suffixGap;
+  return enter.defaultPrevented;
+}
+function reset(frame, type = 'receipt') {
+  const win = frameWindow(frame);
+  win.clearAll();
+  win.setDocType(type);
+  win.setScannerModeActive(false);
+}
+function chooseCodes(win) {
+  const preferred = ['TEST1001', 'TEST2002', 'TEST3003', '23', '1106', '1000', '664240', '668790'];
+  const unique = preferred.filter(value => win.resolveScannedValue(value).candidates.length === 1);
+  if (unique.length >= 3) return unique.slice(0, 3);
+  const parts = win.eval('partsArray');
+  const seen = new Set(unique);
+  for (const part of parts) {
+    const value = String(part.og || part.pn || '').trim();
+    if (value && !seen.has(value) && win.resolveScannedValue(value).candidates.length === 1) {
+      unique.push(value); seen.add(value);
+      if (unique.length >= 3) break;
+    }
+  }
+  return unique;
+}
+
+pos.addEventListener('load', async () => {
+  try {
+    await loadFixture(pos, 1);
+    await waitFor(() => loaded(pos));
+    const win = frameWindow(pos);
+    const [codeA, codeB, codeC] = chooseCodes(win);
+    assert(codeA && codeB && codeC, 'three unique test parts not found');
+
+    await test('regular mode accepts a hardware burst', async () => {
+      reset(pos); await burst(pos, codeA);
+      assert(filledRows(pos).length === 1, 'scan did not add one row');
+    });
+
+    await test('product-field focus is restored', async () => {
+      reset(pos); const input = pos.contentDocument.querySelector('#searchRows .part-input');
+      input.value = 'KEEP'; input.focus(); input.setSelectionRange(2, 2);
+      await burst(pos, codeA, { target: input, simulateDefault: true });
+      assert(input.value === 'KEEP' && input.selectionStart === 2, 'focused product field was changed');
+      assert(filledRows(pos).length === 1, 'focused-field scan did not add');
+    });
+
+    await test('customer-field focus is restored', async () => {
+      reset(pos); const input = pos.contentDocument.getElementById('custName');
+      input.value = 'KEEP CUSTOMER'; input.focus(); input.setSelectionRange(4, 4);
+      await burst(pos, codeB, { target: input, simulateDefault: true });
+      assert(input.value === 'KEEP CUSTOMER' && input.selectionStart === 4, 'customer field was changed');
+      assert(filledRows(pos).length === 1, 'customer-focus scan did not add');
+    });
+
+    await test('textarea focus is restored', async () => {
+      reset(pos); const area = pos.contentDocument.createElement('textarea');
+      area.value = 'KEEP'; pos.contentDocument.body.appendChild(area); area.focus(); area.setSelectionRange(1, 3);
+      await burst(pos, codeC, { target: area, simulateDefault: true });
+      assert(area.value === 'KEEP' && area.selectionStart === 1 && area.selectionEnd === 3, 'textarea changed');
+      assert(filledRows(pos).length === 1, 'textarea-focus scan did not add'); area.remove();
+    });
+
+    await test('select focus is restored', async () => {
+      reset(pos); const select = pos.contentDocument.createElement('select');
+      select.innerHTML = '<option>A</option><option selected>B</option>'; pos.contentDocument.body.appendChild(select); select.focus();
+      await burst(pos, codeA, { target: select });
+      assert(select.selectedIndex === 1 && filledRows(pos).length === 1, 'select state or scan changed'); select.remove();
+    });
+
+    await test('contenteditable focus is restored', async () => {
+      reset(pos); const edit = pos.contentDocument.createElement('div');
+      edit.contentEditable = 'true'; edit.innerHTML = '<b>KEEP</b>'; pos.contentDocument.body.appendChild(edit); edit.focus();
+      await burst(pos, codeB, { target: edit });
+      assert(edit.innerHTML === '<b>KEEP</b>' && filledRows(pos).length === 1, 'contenteditable state or scan changed'); edit.remove();
+    });
+
+    await test('Scanner Mode accepts with a hidden field still focused', async () => {
+      reset(pos); const input = pos.contentDocument.getElementById('custName'); input.value = 'KEEP'; input.focus();
+      win.setScannerModeActive(true); await burst(pos, codeA, { target: input, simulateDefault: true });
+      assert(input.value === 'KEEP', 'hidden focused field changed');
+      assert(pos.contentDocument.body.classList.contains('scanner-mode-active'), 'Scanner Mode exited');
+      assert(filledRows(pos).length === 1, 'Scanner Mode scan did not add');
+      assert(!/Scan an item/.test(pos.contentDocument.getElementById('scannerModeLines').textContent), 'Scanner Mode view did not update');
+    });
+
+    for (const type of ['invoice', 'quote', 'internal']) {
+      await test(`${type} accepts scans but cannot enter Scanner Mode`, async () => {
+        reset(pos, type); win.setScannerModeActive(true); await burst(pos, codeB);
+        assert(!pos.contentDocument.body.classList.contains('scanner-mode-active'), 'Scanner Mode took over document');
+        assert(filledRows(pos).length === 1, 'regular document scan did not add');
+      });
+    }
+
+    await test('browser workload cannot split an acquired scan', async () => {
+      reset(pos); const input = pos.contentDocument.getElementById('custName'); input.value = 'KEEP'; input.focus();
+      await burst(pos, codeC, { target: input, simulateDefault: true, deliveryDelay: 165, acquisitionStep: 5 });
+      assert(input.value === 'KEEP', 'delayed delivery leaked into focused field');
+      assert(filledRows(pos).length === 1, 'delayed delivery scan was discarded');
+    });
+
+    await test('wireless transport pause inside a scan is tolerated', async () => {
+      reset(pos); const delays = Array(codeA.length).fill(5); delays[Math.floor(codeA.length / 2)] = 250;
+      await burst(pos, codeA, { acquisitionDelays: delays });
+      assert(filledRows(pos).length === 1, 'mid-scan transport pause split the code');
+    });
+
+    await test('Tab scanner suffix works like Enter', async () => {
+      reset(pos); const prevented = await burst(pos, codeB, { terminator: 'Tab' });
+      assert(prevented && filledRows(pos).length === 1, 'Tab-suffix scan was dropped');
+    });
+
+    await test('ordinary slow typing is not captured', async () => {
+      reset(pos); const input = pos.contentDocument.getElementById('custName'); input.value = ''; input.focus();
+      const prevented = await burst(pos, 'ABCD', { target: input, simulateDefault: true, acquisitionStep: 100, suffixGap: 100 });
+      assert(!prevented && input.value === 'ABCD' && filledRows(pos).length === 0, 'normal typing was treated as a scan');
+    });
+
+    await test('ordinary Product-field entry still selects a part', async () => {
+      reset(pos); const input = pos.contentDocument.querySelector('#searchRows .part-input'); input.focus();
+      await burst(pos, codeA, { target: input, simulateDefault: true, acquisitionStep: 120, suffixGap: 120 });
+      assert(filledRows(pos).length === 1, 'normal product entry did not select');
+    });
+
+    await test('modifier/composition/repeat events reset capture', async () => {
+      reset(pos);
+      await burst(pos, codeA, { keyInit: { altKey: true } });
+      await burst(pos, codeB, { keyInit: { isComposing: true } });
+      await burst(pos, codeC, { keyInit: { repeat: true } });
+      assert(filledRows(pos).length === 0, 'invalid keyboard state produced a scan');
+    });
+
+    const shortCode = ['23'].find(value => win.resolveScannedValue(value).candidates.length === 1);
+    if (shortCode) await test('two-character real part number scans', async () => {
+      reset(pos); await burst(pos, shortCode, { suffixGap: 5 });
+      assert(filledRows(pos).length === 1, 'short part was dropped');
+    });
+
+    await test('one-digit packaging code gives visible feedback', async () => {
+      reset(pos); await burst(pos, '1', { suffixGap: 5 });
+      assert(filledRows(pos).length === 0, 'packaging code became a part');
+      const flash = pos.contentDocument.getElementById('scanCommandFlash').textContent;
+      assert(/packaging barcode/i.test(flash), 'packaging ignore was silent');
+    });
+
+    await test('Scanner Mode shows packaging feedback without adding', async () => {
+      reset(pos); win.setScannerModeActive(true); await burst(pos, '1', { suffixGap: 5 });
+      assert(filledRows(pos).length === 0, 'Scanner Mode packaging code became a part');
+      assert(/packaging barcode/i.test(pos.contentDocument.getElementById('scannerModeStatus').textContent), 'Scanner Mode hid packaging feedback');
+    });
+
+    await test('different rapid scans both add', async () => {
+      reset(pos); await burst(pos, codeA, { burstGap: 3000 }); await burst(pos, codeB, { burstGap: 20 });
+      assert(filledRows(pos).length === 2, 'different rapid scan was dropped');
+    });
+
+    await test('instant electrical duplicate is collapsed', async () => {
+      reset(pos); await burst(pos, codeA, { burstGap: 3000 }); await burst(pos, codeA, { burstGap: 20 });
+      assert(filledRows(pos).length === 1, 'instant duplicate was added');
+    });
+
+    await test('two deliberate same-item pulls both add', async () => {
+      reset(pos); await burst(pos, codeB, { burstGap: 3000 }); await burst(pos, codeB, { burstGap: 120 });
+      assert(filledRows(pos).length === 2, 'second trigger pull was dropped');
+    });
+
+    await test('rush of repeated same-item pulls loses nothing', async () => {
+      reset(pos);
+      for (let i = 0; i < 20; i++) await burst(pos, codeA, { burstGap: i ? 120 : 3000 });
+      assert(filledRows(pos).length === 20, `expected 20 lines, got ${filledRows(pos).length}`);
+    });
+
+    await test('rush of mixed rapid scans loses nothing', async () => {
+      reset(pos); const expected = [];
+      for (let i = 0; i < 60; i++) {
+        const code = i % 2 ? codeB : codeA; expected.push(code);
+        await burst(pos, code, { burstGap: i ? 20 : 3000 });
+      }
+      assert(filledRows(pos).length === expected.length, `expected ${expected.length} lines, got ${filledRows(pos).length}`);
+      assert(filledRows(pos).every((pn, i) => pn === expected[i]), 'rapid scan order changed');
+    });
+
+    await test('regular POS keeps the newest rush row visible', async () => {
+      reset(pos);
+      for (let i = 0; i < 20; i++) await burst(pos, i % 2 ? codeB : codeA, { burstGap: i ? 20 : 3000 });
+      await sleep(100);
+      const matches = [...pos.contentDocument.querySelectorAll('#searchRows .part-input.matched')];
+      const rect = matches.at(-1).closest('tr').getBoundingClientRect();
+      assert(rect.top >= 0 && rect.bottom <= win.innerHeight, 'newest regular row landed off-screen');
+    });
+
+    await test('Scanner Mode keeps newest row, status, and totals visible', async () => {
+      reset(pos); win.setScannerModeActive(true);
+      for (let i = 0; i < 20; i++) await burst(pos, i % 2 ? codeB : codeA, { burstGap: i ? 20 : 3000 });
+      await sleep(100);
+      const latest = pos.contentDocument.querySelector('#scannerModeLines .scanner-mode-line:last-child').getBoundingClientRect();
+      const side = pos.contentDocument.querySelector('.scanner-mode-side').getBoundingClientRect();
+      assert(latest.top >= 0 && latest.bottom <= win.innerHeight, 'newest Scanner Mode row landed off-screen');
+      assert(side.top >= 0 && side.bottom <= win.innerHeight,
+        `Scanner Mode status/totals left the viewport (${Math.round(side.top)}–${Math.round(side.bottom)} of ${win.innerHeight}, scroll ${Math.round(win.scrollY)})`);
+    });
+
+    await test('entering Scanner Mode on a long sale shows its newest row', async () => {
+      reset(pos);
+      for (let i = 0; i < 20; i++) await burst(pos, i % 2 ? codeB : codeA, { burstGap: i ? 20 : 3000 });
+      win.setScannerModeActive(true); await sleep(100);
+      const latest = pos.contentDocument.querySelector('#scannerModeLines .scanner-mode-line:last-child').getBoundingClientRect();
+      assert(latest.top >= 0 && latest.bottom <= win.innerHeight, 'existing sale opened above its newest row');
+    });
+
+    await test('camera retains the long same-label guard', async () => {
+      reset(pos); acquisitionClock += 3000;
+      const base = win.performance.timeOrigin + acquisitionClock;
+      win.acceptDecodedScan(codeA, 'code_128', { acceptedAt: base });
+      win.acceptDecodedScan(codeA, 'code_128', { acceptedAt: base + 500 });
+      assert(filledRows(pos).length === 1, 'camera repeat guard failed');
+      win.acceptDecodedScan(codeA, 'code_128', { acceptedAt: base + 2300 });
+      assert(filledRows(pos).length === 2, 'camera did not rearm after guard');
+      acquisitionClock += 2300;
+    });
+
+    await test('camera accepts different rapid labels', async () => {
+      reset(pos); acquisitionClock += 3000;
+      const base = win.performance.timeOrigin + acquisitionClock;
+      win.acceptDecodedScan(codeA, 'code_128', { acceptedAt: base });
+      win.acceptDecodedScan(codeB, 'code_128', { acceptedAt: base + 20 });
+      assert(filledRows(pos).length === 2, 'different camera label was dropped');
+      acquisitionClock += 20;
+    });
+
+    await test('camera scan updates Scanner Mode', async () => {
+      reset(pos); win.setScannerModeActive(true); acquisitionClock += 3000;
+      win.acceptDecodedScan(codeC, 'code_128', { acceptedAt: win.performance.timeOrigin + acquisitionClock });
+      assert(filledRows(pos).length === 1, 'camera scan did not add in Scanner Mode');
+      assert(pos.contentDocument.getElementById('scannerModeLines').textContent.includes('Scanner test item three'), 'Scanner Mode did not render camera scan');
+    });
+
+    await test('unknown scans remain visible for review', async () => {
+      reset(pos); const unknown = 'ZZZ-NOT-A-REAL-PART-90817';
+      await burst(pos, unknown);
+      assert(pos.contentDocument.querySelectorAll('[data-scan-issue="1"]').length >= 1, 'unknown scan disappeared');
+      assert(/review/i.test(pos.contentDocument.getElementById('scanStatus').textContent), 'review status missing');
+    });
+
+    await test('mapped retail barcode resolves exactly', async () => {
+      reset(pos); await burst(pos, '1234567890123');
+      assert(filledRows(pos)[0] === 'TEST2002', 'mapped barcode chose the wrong part');
+    });
+
+    await test('structured supplier label resolves its embedded part', async () => {
+      reset(pos); await burst(pos, '00HB;;TEST1001;1;LOT77;JAPAN;JP;392;;;;');
+      assert(filledRows(pos)[0] === 'TEST1001', 'structured label did not resolve');
+    });
+
+    await test('distributor-prefixed part resolves within its Make', async () => {
+      reset(pos); await burst(pos, 'SC5555');
+      assert(filledRows(pos)[0] === '5555', 'distributor prefix did not resolve');
+    });
+
+    await test('superseded number selects the current part', async () => {
+      reset(pos); await burst(pos, 'OLD1');
+      assert(filledRows(pos)[0] === 'NEW1', 'superseded scan did not choose current part');
+    });
+
+    await test('ambiguous exact match remains reviewable', async () => {
+      reset(pos); await burst(pos, 'AMBIG1');
+      assert(pos.contentDocument.querySelectorAll('[data-scan-issue="1"]').length >= 1, 'ambiguous scan disappeared');
+      assert(/multiple parts/i.test(pos.contentDocument.querySelector('#searchRows .not-found')?.textContent || ''), 'ambiguity was not explained');
+    });
+
+    await test('warranty model then serial fills one row', async () => {
+      reset(pos); await burst(pos, 'MX100'); await burst(pos, 'ABC12345');
+      assert(filledRows(pos).length === 1 && filledRows(pos)[0] === 'UNIT1', 'model/serial created the wrong lines');
+      const serial = pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value;
+      assert(serial === 'ABC12345', 'second scan did not fill serial');
+    });
+
+    await test('known unit serial resolves unit and displays serial', async () => {
+      reset(pos); win.setScannerModeActive(true); await burst(pos, 'SERIAL123');
+      assert(filledRows(pos)[0] === 'UNIT1', 'known serial did not resolve unit');
+      assert(/SN SERIAL123/.test(pos.contentDocument.getElementById('scannerModeLines').textContent), 'Scanner Mode omitted serial');
+    });
+
+    await test('unit-prefix serial resolves unit', async () => {
+      reset(pos); await burst(pos, 'SNX0001');
+      assert(filledRows(pos)[0] === 'UNIT1', 'serial prefix did not resolve unit');
+      assert(pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value === 'SNX0001', 'serial prefix value was not kept');
+    });
+
+    await test('STIHL Data Matrix resolves unit and serial together', async () => {
+      reset(pos); await burst(pos, '886661123456|448789975|MA01-011-5831|MX 100.0 TC|TEST');
+      assert(filledRows(pos)[0] === 'UNIT1', 'Data Matrix did not resolve unit');
+      assert(pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value === '448789975', 'Data Matrix serial was lost');
+    });
+
+    await test('Clear command still requires and accepts two pulls', async () => {
+      reset(pos); await burst(pos, codeC);
+      const clear = '~MPE2:Q7X4:CLEAR:2D9M';
+      await burst(pos, clear, { burstGap: 3000 });
+      assert(filledRows(pos).length === 1, 'first Clear pull cleared sale');
+      await burst(pos, clear, { burstGap: 120 });
+      assert(filledRows(pos).length === 0, 'second Clear pull did not clear sale');
+    });
+
+    await test('Undo command removes the last scanned line', async () => {
+      reset(pos); await burst(pos, codeA); await burst(pos, '~MPE2:Q7X4:UNDO:5R8P');
+      assert(filledRows(pos).length === 0, 'Undo did not remove line');
+    });
+
+    await test('service ADD command deliberately stacks', async () => {
+      reset(pos); const add = '~MPE2:Q7X4:ADD-LABOR-30:4H6W';
+      await burst(pos, add); await burst(pos, add, { burstGap: 120 });
+      assert(filledRows(pos)[0] === 'LABOR', 'service command did not add Labor');
+      assert(pos.contentDocument.getElementById('qty-0').value === '60', 'service command did not stack quantity');
+    });
+
+    await test('Scanner Mode click exits without clearing the sale', async () => {
+      reset(pos); await burst(pos, codeB); win.setScannerModeActive(true);
+      pos.contentDocument.getElementById('scannerModeView').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, isPrimary: true }));
+      assert(!pos.contentDocument.body.classList.contains('scanner-mode-active'), 'click did not exit Scanner Mode');
+      assert(filledRows(pos).length === 1, 'Scanner Mode exit cleared sale');
+    });
+
+    await test('fast-repeat rollback restores the long hardware guard', async () => {
+      const rollback = document.createElement('iframe'); rollback.src = 'index.html?fastRepeat=0&scannerFixture=1'; document.body.appendChild(rollback);
+      await new Promise(resolve => rollback.addEventListener('load', resolve, { once: true })); await loadFixture(rollback, 1); await waitFor(() => loaded(rollback));
+      await burst(rollback, codeA, { burstGap: 3000 }); await burst(rollback, codeA, { burstGap: 120 });
+      assert(filledRows(rollback).length === 1, 'rollback did not restore long guard');
+      await burst(rollback, codeA, { burstGap: 2300 });
+      assert(filledRows(rollback).length === 2, 'rollback guard did not rearm'); rollback.remove();
+    });
+
+    await test('scan received during catalog load is replayed in order', async () => {
+      const fresh = document.createElement('iframe'); fresh.src = 'index.html?fastRepeat=1&scannerFixture=500&fresh=' + Date.now();
+      fresh.style.cssText = pos.style.cssText; document.body.appendChild(fresh);
+      await new Promise(resolve => fresh.addEventListener('load', resolve, { once: true }));
+      const freshWin = frameWindow(fresh);
+      const beforeReady = !loaded(fresh);
+      await burst(fresh, codeA, { burstGap: 3000 });
+      await burst(fresh, codeA, { burstGap: 120 });
+      await loadFixture(fresh, 500);
+      await waitFor(() => loaded(fresh)); await waitFor(() => filledRows(fresh).length === 2);
+      assert(beforeReady, 'test feed loaded before early-scan check');
+      assert(filledRows(fresh).length === 2, 'held scans were not replayed');
+      fresh.remove();
+    });
+
+    await test('startup rush queues every scan without reordering', async () => {
+      const fresh = document.createElement('iframe'); fresh.src = 'index.html?fastRepeat=1&scannerFixture=1000&fresh=' + Date.now();
+      document.body.appendChild(fresh); await new Promise(resolve => fresh.addEventListener('load', resolve, { once: true }));
+      const expected = [];
+      for (let i = 0; i < 25; i++) {
+        const code = i % 2 ? codeB : codeA; expected.push(code);
+        await burst(fresh, code, { burstGap: i ? 20 : 3000 });
+      }
+      assert(filledRows(fresh).length === 0, 'startup scans ran before catalog readiness');
+      await loadFixture(fresh, 500); await waitFor(() => filledRows(fresh).length === expected.length);
+      assert(filledRows(fresh).every((pn, i) => pn === expected[i]), 'startup queue lost or reordered scans'); fresh.remove();
+    });
+
+    await test('Scanner Mode holds and then renders a startup scan', async () => {
+      const fresh = document.createElement('iframe'); fresh.src = 'index.html?fastRepeat=1&scannerFixture=500&fresh=' + Date.now();
+      document.body.appendChild(fresh); await new Promise(resolve => fresh.addEventListener('load', resolve, { once: true }));
+      frameWindow(fresh).setScannerModeActive(true); await burst(fresh, codeC, { burstGap: 3000 });
+      assert(/Held 1 scan/.test(fresh.contentDocument.getElementById('scannerModeStatus').textContent), 'held-scan feedback missing');
+      await loadFixture(fresh, 300); await waitFor(() => filledRows(fresh).length === 1);
+      assert(fresh.contentDocument.getElementById('scannerModeLines').textContent.includes('Scanner test item three'), 'held scan did not render'); fresh.remove();
+    });
+
+    await test('license data never becomes a product scan', async () => {
+      reset(pos); const fakeLicense = '@\nANSI 6360000000000000\nDAQTEST000\nDCSDOE\nDACJANE\nDAG123 TEST ST\nDAIANYTOWN\nDAJHI\nDAK967930000';
+      win.acceptDecodedScan(fakeLicense, 'hardware', { acceptedAt: Date.now() + 300000 });
+      assert(/jane/i.test(pos.contentDocument.getElementById('custName').value), 'license did not fill customer');
+      assert(filledRows(pos).length === 0, 'license became a sale line');
+    });
+
+    await test('rows expand when every visible row is full', async () => {
+      reset(pos); await burst(pos, codeA); await burst(pos, codeB); await burst(pos, codeC); await burst(pos, codeA);
+      assert(filledRows(pos).length === 4, 'fourth scan did not add');
+      assert(pos.contentDocument.querySelectorAll('#searchRows tr[data-row]').length >= 4, 'row table did not expand');
+    });
+  } catch (error) {
+    record('test harness setup', false, error.message);
+  } finally {
+    const failed = results.filter(result => !result.ok).length;
+    document.getElementById('summary').textContent = `${results.length - failed}/${results.length} passed`;
+    document.body.dataset.done = '1';
+    document.body.dataset.failed = String(failed);
+  }
+});
+pos.src = 'index.html?fastRepeat=1&scannerFixture=1';
+</script>

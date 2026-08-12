@@ -1,6 +1,7 @@
 *
 !index.html
 !scan.html
+!scanner_reliability_test.html
 !.gitignore
 !.github/
 !.github/workflows/
