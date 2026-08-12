@@ -1688,12 +1688,18 @@ const SCAN_REPEAT_LOCKOUT_MS = 2250;
 // The 2250ms guard above exists because the camera keeps re-reading a label that
 // is still in view. A scan gun's trigger pull is a deliberate act instead, so
 // two pulls on the same part should be two lines — not a silently dropped scan.
+// 100ms is short enough to be invisible: no one double-pulls a trigger faster
+// than ~200ms, so back-to-back scans of the same item ring straight through.
+// It is not 0 because a gun set to presentation/auto-sense mode re-reads a label
+// that is simply sitting in front of it, and an unguarded repeat would fill the
+// sale with duplicates. 100ms only collapses an instant double-transmit; a real
+// presentation-mode gun needs its own same-code delay set on the scanner.
 // DORMANT until there is a gun on the counter: with the flag false, the hardware
 // path keeps the camera's timing exactly as it is today. To try it once the gun
 // arrives, add ?fastRepeat=1 to the POS URL (no deploy); to make it permanent,
 // set SCAN_HARDWARE_FAST_REPEAT to true. Never applies to camera scans.
 const SCAN_HARDWARE_FAST_REPEAT = false;
-const SCAN_HARDWARE_REPEAT_LOCKOUT_MS = 400;
+const SCAN_HARDWARE_REPEAT_LOCKOUT_MS = 100;
 const SCAN_CAMERA_KEY = 'mpeScanCameraId';
 let partCodePending = [];
 let partCodeLearned = {};
@@ -2817,7 +2823,11 @@ const SCAN_COMMANDS = new Map([
   ['~MPE2:Q7X4:ADD-FIXED-HEAD:7T2C', 'ADD=METALHEADSWAP'],
 ]);
 const SCAN_COMMAND_REPEAT_MS = 900;
-const CLEAR_CONFIRM_MIN_MS = 250;
+// No minimum gap: two pulls as fast as the trigger repeats must clear. The old
+// 250ms floor rejected a fast double pull and silently re-armed instead, so the
+// operator had to pull a third time. Clear is still two scans, and a misfire is
+// one scan of Undo away.
+const CLEAR_CONFIRM_MIN_MS = 0;
 const CLEAR_CONFIRM_MAX_MS = 4000;
 let _lastScanCommand = '', _lastScanCommandAt = 0;
 let _clearedSale = null;
