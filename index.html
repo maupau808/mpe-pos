@@ -500,7 +500,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   #scannerModeView { display: none; }
   body.scanner-mode-active .wrap > :not(#scannerModeView) { display: none !important; }
   body.scanner-mode-active .wrap { max-width: 1280px; padding: 0; overflow: hidden; }
-  body.scanner-mode-active #scannerModeView { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(320px, .85fr); min-height: min(620px, calc(100vh - 24px)); background: #fffdfa; color: #1a1a1a; }
+  body.scanner-mode-active #scannerModeView { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(270px, .85fr); min-height: min(620px, calc(100vh - 24px)); background: #fffdfa; color: #1a1a1a; }
   body.dark.scanner-mode-active #scannerModeView { background: #1d211e; color: #f3f5f1; }
   .scanner-mode-list { min-width: 0; padding: 20px 22px; border-right: 1px solid #d6ded5; }
   body.dark .scanner-mode-list { border-color: #434b43; }
@@ -537,10 +537,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-total-label { color: #667066; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   body.dark .scanner-mode-total-label { color: #aeb7ae; }
   .scanner-mode-total { font-size: clamp(42px, 5vw, 64px); font-weight: 700; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
-  .scanner-mode-commands { display: grid; gap: 8px; }
-  .scanner-mode-command { display: grid; gap: 4px; padding: 8px 10px 9px; border: 1px solid #9eaa9e; background: #fff; color: #1a1a1a; }
-  .scanner-mode-command-label { color: #2f5a3f; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-  .scanner-mode-command-code { display: block; width: 100%; height: 48px; shape-rendering: crispEdges; }
+  .scanner-mode-auto-print { display: grid; justify-items: center; gap: 5px; width: 116px; margin-left: auto; padding: 7px; border: 1px solid #2f5a3f; background: #fff; color: #1a1a1a; }
+  .scanner-mode-auto-print-label { color: #2f5a3f; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-align: center; text-transform: uppercase; }
+  .scanner-mode-auto-print-code { display: block; width: 96px; height: 96px; shape-rendering: crispEdges; }
   .scanner-mode-full-pos { width: 100%; min-height: 48px; border: 1px solid #9eaa9e; border-radius: 5px; background: transparent; color: inherit; font: inherit; font-size: 16px; font-weight: 600; letter-spacing: .015em; }
   .scanner-mode-full-pos:focus-visible { outline: 3px solid #2f5a3f; outline-offset: 3px; }
   .scanner-mode-exit-cue { color: #5e685f; font-size: 13px; font-weight: 600; letter-spacing: .02em; text-align: center; }
@@ -780,8 +779,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <div class="scanner-mode-ready">Scanner ready</div>
         <div id="scannerModeStatus" class="scanner-mode-status">Ready for the next scan</div>
       </div>
-      <button type="button" class="scanner-mode-full-pos" onclick="setScannerModeActive(false)">Full POS</button>
-      <div class="scanner-mode-exit-cue">Click anywhere for Full POS</div>
       <div class="scanner-mode-total-block">
         <div class="scanner-mode-totals">
           <div class="scanner-mode-total-row"><span>Subtotal</span><span id="scannerModeSubtotal">—</span></div>
@@ -791,21 +788,13 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <div id="scannerModeTotal" class="scanner-mode-total">—</div>
           </div>
         </div>
-        <div class="scanner-mode-commands" aria-label="Scanner commands">
-          <div class="scanner-mode-command">
-            <div class="scanner-mode-command-label">Print</div>
-            <svg class="scanner-mode-command-code" data-scanner-command="PRINT" role="img" aria-label="Print command barcode"></svg>
-          </div>
-          <div class="scanner-mode-command">
-            <div class="scanner-mode-command-label">Undo</div>
-            <svg class="scanner-mode-command-code" data-scanner-command="UNDO" role="img" aria-label="Undo command barcode"></svg>
-          </div>
-          <div class="scanner-mode-command">
-            <div class="scanner-mode-command-label">Clear · scan twice</div>
-            <svg class="scanner-mode-command-code" data-scanner-command="CLEAR" role="img" aria-label="Clear command barcode; scan twice"></svg>
-          </div>
+        <div class="scanner-mode-auto-print" aria-label="Auto Print command QR code">
+          <div class="scanner-mode-auto-print-label">Scan to Print</div>
+          <svg id="scannerModeAutoPrintCode" class="scanner-mode-auto-print-code" viewBox="0 0 37 37" role="img" aria-label="Auto Print QR code"></svg>
         </div>
       </div>
+      <button type="button" class="scanner-mode-full-pos" onclick="setScannerModeActive(false)">Full POS</button>
+      <div class="scanner-mode-exit-cue">Click anywhere for Full POS</div>
     </aside>
   </section>
 
@@ -2942,42 +2931,63 @@ const SCAN_COMMANDS = new Map([
 ]);
 const SCANNER_DEFAULT_KEY = 'mpePosScannerDefault';
 const SCANNER_IDLE_MS = 3 * 60 * 1000;
-const SCANNER_COMMAND_BAR_WIDTHS = new Map([
-  ['PRINT', '2112141311411131233131211321132232113212212113313121313311212212313212213131212311312313111133212133113212213112221123312211321133212311312331112'],
-  ['UNDO', '2112141311411131233131211321132232113212212113313121313311212212313212212131311133211123131331213212212132122311313112223131211331212331112'],
-  ['CLEAR', '2112141311411131233131211321132232113212212113313121313311212212313212211313211321311321131113232311313212212232111123133211221131232212132331112'],
-]);
+const AUTO_PRINT_QR_MODULES = [
+  '11111110000101011100001111111',
+  '10000010011101001000001000001',
+  '10111010011100011001001011101',
+  '10111010011010101000101011101',
+  '10111010101110110011101011101',
+  '10000010000101110111001000001',
+  '11111110101010101010101111111',
+  '00000000101111000000000000000',
+  '00110011110011001011011010000',
+  '10000101100101110110110110110',
+  '11011110001101010101101101110',
+  '10111100100100110010100010000',
+  '00000010100111010011100100001',
+  '11101000001001010011110101000',
+  '01111111011111111001000010011',
+  '10101001010000010010001011011',
+  '01010010011101010011100011100',
+  '00000000001010111111010000110',
+  '10110110001100000100010000100',
+  '00001001111101011001010111110',
+  '01101110110111000100111110011',
+  '00000000100100011101100010000',
+  '11111110111101010110101010110',
+  '10000010010011010100100010001',
+  '10111010011011111100111110010',
+  '10111010111000111101000011110',
+  '10111010110110001110010001001',
+  '10000010010000111000010110010',
+  '11111110010000000101111001010',
+];
 let _scannerModeDefault = false;
 let _scannerModeActive = false;
 let _scannerIdleTimer = null;
 
-function renderScannerModeCommandCodes() {
+function renderScannerModeAutoPrintCode() {
+  const code = document.getElementById('scannerModeAutoPrintCode');
+  if (!code || code.childElementCount) return;
   const svgNS = 'http://www.w3.org/2000/svg';
-  document.querySelectorAll('[data-scanner-command]').forEach(code => {
-    if (code.childElementCount) return;
-    const widths = SCANNER_COMMAND_BAR_WIDTHS.get(code.dataset.scannerCommand);
-    if (!widths) return;
-    const quiet = 16;
-    const bars = [];
-    let x = quiet;
-    let dark = true;
-    for (const digit of widths) {
-      const width = Number(digit);
-      if (dark) bars.push(`M${x} 0h${width}v48h-${width}z`);
-      x += width;
-      dark = !dark;
+  const white = document.createElementNS(svgNS, 'rect');
+  white.setAttribute('width', '37');
+  white.setAttribute('height', '37');
+  white.setAttribute('fill', '#fff');
+  const modules = document.createElementNS(svgNS, 'path');
+  let path = '';
+  AUTO_PRINT_QR_MODULES.forEach((row, y) => {
+    let x = 0;
+    while (x < row.length) {
+      if (row[x] !== '1') { x += 1; continue; }
+      const start = x;
+      while (x < row.length && row[x] === '1') x += 1;
+      path += `M${start + 4} ${y + 4}h${x - start}v1h-${x - start}z`;
     }
-    code.setAttribute('viewBox', `0 0 ${x + quiet} 48`);
-    code.setAttribute('preserveAspectRatio', 'none');
-    const white = document.createElementNS(svgNS, 'rect');
-    white.setAttribute('width', '100%');
-    white.setAttribute('height', '48');
-    white.setAttribute('fill', '#fff');
-    const modules = document.createElementNS(svgNS, 'path');
-    modules.setAttribute('d', bars.join(''));
-    modules.setAttribute('fill', '#000');
-    code.append(white, modules);
   });
+  modules.setAttribute('d', path);
+  modules.setAttribute('fill', '#000');
+  code.append(white, modules);
 }
 
 function resetScannerModeIdleTimer() {
@@ -3062,7 +3072,7 @@ function setScannerModeActive(active, options = {}) {
   if (_scannerModeActive) {
     clearTimeout(_scannerIdleTimer);
     _scannerIdleTimer = null;
-    renderScannerModeCommandCodes();
+    renderScannerModeAutoPrintCode();
     syncScannerModeView(options.message, options.state);
   } else {
     resetScannerModeIdleTimer();
@@ -8094,7 +8104,7 @@ function clearCustFields() {
 
 buildRows();
 buildMobileRows();
-renderScannerModeCommandCodes();
+renderScannerModeAutoPrintCode();
 _scannerModeDefault = localStorage.getItem(SCANNER_DEFAULT_KEY) === '1';
 document.getElementById('scannerModeDefault').checked = _scannerModeDefault;
 setScannerModeActive(_scannerModeDefault);
