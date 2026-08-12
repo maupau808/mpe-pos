@@ -496,7 +496,56 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 }
 .print-header { display: none; }
 .print-titlerow { display: none; }
+@media screen {
+  #scannerModeView { display: none; }
+  body.scanner-mode-active .wrap > :not(#scannerModeView) { display: none !important; }
+  body.scanner-mode-active .wrap { max-width: 1280px; padding: 0; overflow: hidden; }
+  body.scanner-mode-active #scannerModeView { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(270px, .85fr); min-height: min(620px, calc(100vh - 24px)); background: #fffdfa; color: #1a1a1a; }
+  body.dark.scanner-mode-active #scannerModeView { background: #1d211e; color: #f3f5f1; }
+  .scanner-mode-list { min-width: 0; padding: 20px 22px; border-right: 1px solid #d6ded5; }
+  body.dark .scanner-mode-list { border-color: #434b43; }
+  .scanner-mode-list-head { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 12px; color: #667066; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+  body.dark .scanner-mode-list-head { color: #aeb7ae; }
+  .scanner-mode-lines { border-top: 1px solid #e1e7de; }
+  body.dark .scanner-mode-lines { border-color: #353d36; }
+  .scanner-mode-line { display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; align-items: center; gap: 14px; min-height: 74px; border-bottom: 1px solid #e1e7de; }
+  body.dark .scanner-mode-line { border-color: #353d36; }
+  .scanner-mode-qty { color: #667066; font-size: 18px; font-variant-numeric: tabular-nums; }
+  body.dark .scanner-mode-qty { color: #aeb7ae; }
+  .scanner-mode-description { min-width: 0; font-size: 19px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .scanner-mode-price { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .scanner-mode-empty { padding: 26px 0; color: #667066; font-size: 18px; }
+  body.dark .scanner-mode-empty { color: #aeb7ae; }
+  .scanner-mode-side { display: flex; flex-direction: column; gap: 22px; padding: 24px 20px 20px; background: #f2f5f0; }
+  body.dark .scanner-mode-side { background: #252b26; }
+  .scanner-mode-ready { color: #2f5a3f; font-size: 23px; font-weight: 700; line-height: 1.15; }
+  body.dark .scanner-mode-ready { color: #b7c8bb; }
+  .scanner-mode-status { margin-top: 9px; color: #5e685f; font-size: 15px; line-height: 1.35; }
+  body.dark .scanner-mode-status { color: #c1c9c1; }
+  .scanner-mode-status.ok { color: #2f6c3f; }
+  .scanner-mode-status.warn { color: #805600; }
+  .scanner-mode-status.err { color: #8e2f32; }
+  .scanner-mode-total-block { margin-top: auto; }
+  .scanner-mode-total-label { color: #667066; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+  body.dark .scanner-mode-total-label { color: #aeb7ae; }
+  .scanner-mode-total { margin: 5px 0 18px; font-size: clamp(42px, 5vw, 64px); font-weight: 700; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+  .scanner-mode-print-reminder { padding: 15px 12px; border: 1px solid #2f5a3f; background: #2f5a3f; color: #fff; font-size: 17px; font-weight: 700; line-height: 1.2; text-align: center; }
+  .scanner-mode-commands { margin-top: 12px; color: #5e685f; font-size: 13px; line-height: 1.4; text-align: center; }
+  body.dark .scanner-mode-commands { color: #c1c9c1; }
+  .scanner-mode-full-pos { width: 100%; min-height: 48px; border: 1px solid #9eaa9e; border-radius: 5px; background: transparent; color: inherit; font: inherit; font-size: 16px; font-weight: 600; letter-spacing: .015em; }
+  .scanner-mode-full-pos:focus-visible { outline: 3px solid #2f5a3f; outline-offset: 3px; }
+  .scanner-mode-exit-cue { color: #5e685f; font-size: 13px; font-weight: 600; letter-spacing: .02em; text-align: center; }
+  body.dark .scanner-mode-exit-cue { color: #c1c9c1; }
+  @media (max-width: 720px) {
+    body.scanner-mode-active #scannerModeView { grid-template-columns: 1fr; min-height: 100vh; }
+    .scanner-mode-list { padding: 16px; border-right: 0; }
+    .scanner-mode-side { gap: 16px; padding: 18px 16px; }
+    .scanner-mode-total-block { margin-top: 0; }
+    .scanner-mode-description { font-size: 17px; }
+  }
+}
 @media print {
+  #scannerModeView { display: none !important; }
   body { background: #fff; padding: 0; zoom: 1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .wrap { border: none; border-radius: 0; padding: 1.2rem; max-width: 100%; }
   .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, #printBanner, .doc-screen-title, .bottom-actions, .scan-command-flash { display: none !important; }
@@ -682,12 +731,14 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="icon-btn" id="phoneListBtn" type="button" onclick="openPhoneLists()" aria-label="Phone list" title="Phone list — pick a list sent from MPE Scan on the phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><line x1="10.6" y1="5.4" x2="13.4" y2="5.4" stroke-width="1.4" stroke-linecap="round"/><line x1="10.4" y1="18.6" x2="13.6" y2="18.6" stroke-width="1.4" stroke-linecap="round"/></svg><span class="admin-dot phone-list-dot" id="phoneListDot" style="display:none" aria-hidden="true"></span></button>
         <button class="icon-btn" id="emailDocBtn" onclick="emailDoc()" title="Email — attach the colour PDF to a Gmail draft">✉</button>
         <button class="icon-btn" id="exportPdfBtn" onclick="exportPdf()" title="Export PDF — download the colour copy">⬇</button>
+        <button class="menu-btn" id="scannerModeBtn" type="button" onclick="setScannerModeActive(true)">Scanner Mode</button>
         <div class="menu-wrap">
           <button class="menu-btn" id="adminMenuBtn" onclick="openAdminMenu(event)" title="Reconnect, refresh and uploads">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
           <div class="menu-panel right" id="adminMenu" onclick="event.stopPropagation()">
             <div id="printBanner" class="print-banner" style="display:none"></div>
             <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span> <span id="dataBadge" class="pc-badge" style="display:none"></span></div>
             <div id="dataStatus" class="data-status"></div>
+            <label class="menu-check"><input type="checkbox" id="scannerModeDefault" onchange="setScannerModeDefault(this.checked)"> Start in Scanner Mode</label>
             <button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button>
             <select class="scan-camera-select" id="scanCameraSelect" aria-label="Scanner camera" title="Scanner camera" onchange="changeScanCamera()">
               <option value="">Default camera</option>
@@ -704,6 +755,32 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <div id="docScreenTitle" class="doc-screen-title"></div>
     </div>
   </div>
+
+  <section id="scannerModeView" aria-live="polite" aria-label="Scanner mode">
+    <div class="scanner-mode-list">
+      <div class="scanner-mode-list-head">
+        <span>Current sale</span>
+        <span id="scannerModeCount">0 pieces</span>
+      </div>
+      <div id="scannerModeLines" class="scanner-mode-lines">
+        <div class="scanner-mode-empty">Scan an item to begin</div>
+      </div>
+    </div>
+    <aside class="scanner-mode-side">
+      <div>
+        <div class="scanner-mode-ready">Scanner ready</div>
+        <div id="scannerModeStatus" class="scanner-mode-status">Ready for the next scan</div>
+      </div>
+      <div class="scanner-mode-total-block">
+        <div class="scanner-mode-total-label">Total</div>
+        <div id="scannerModeTotal" class="scanner-mode-total">—</div>
+        <div class="scanner-mode-print-reminder">Scan PRINT label to print</div>
+        <div class="scanner-mode-commands">Scan Undo for last line · Scan Clear twice to clear</div>
+      </div>
+      <button type="button" class="scanner-mode-full-pos" onclick="setScannerModeActive(false)">Full POS</button>
+      <div class="scanner-mode-exit-cue">Click anywhere for Full POS</div>
+    </aside>
+  </section>
 
   <div class="print-titlerow">
     <span class="print-doctitle" id="printDocTitle"></span>
@@ -2376,9 +2453,11 @@ function ensureScannerMobileRow(i) {
 
 function setScanStatus(message, state) {
   const el = document.getElementById('scanStatus');
-  if (!el) return;
-  el.textContent = message;
-  el.className = 'scan-status' + (state ? ` ${state}` : '');
+  if (el) {
+    el.textContent = message;
+    el.className = 'scan-status' + (state ? ` ${state}` : '');
+  }
+  syncScannerModeView(message, state);
 }
 
 function updateScanNext() {
@@ -2549,6 +2628,7 @@ function chooseScanIssue(row, index) {
 }
 
 function showNextScanIssue(preferredRow) {
+  setScannerModeActive(false);
   const panel = document.getElementById('scanPanel');
   placeScanPanel(false);
   panel.hidden = false;
@@ -2833,6 +2913,84 @@ const SCAN_COMMANDS = new Map([
   ['~MPE2:Q7X4:ADD-LABOR-30:4H6W', 'ADD=LABOR:30'],
   ['~MPE2:Q7X4:ADD-FIXED-HEAD:7T2C', 'ADD=METALHEADSWAP'],
 ]);
+const SCANNER_DEFAULT_KEY = 'mpePosScannerDefault';
+let _scannerModeDefault = false;
+let _scannerModeActive = false;
+
+function syncScannerModeView(message, state) {
+  const view = document.getElementById('scannerModeView');
+  const linesEl = document.getElementById('scannerModeLines');
+  if (!view || !linesEl) return;
+  const rows = [];
+  let pieces = 0;
+  tbody?.querySelectorAll('tr[data-row]').forEach(row => {
+    const index = Number(row.dataset.row);
+    const input = row.querySelector('.part-input');
+    const subtotal = document.getElementById(`sub-${index}`);
+    const rawSubtotal = subtotal?.dataset.val;
+    const hasSubtotal = rawSubtotal !== undefined && rawSubtotal !== '' && !isNaN(parseFloat(rawSubtotal));
+    if (!input || (!input.dataset.partPn && !input.value.trim() && !hasSubtotal)) return;
+    const qty = parseFloat(document.getElementById(`qty-${index}`)?.value) || 1;
+    const description = document.getElementById(`desc-${index}`)?.textContent.trim() || input.value.trim() || 'Item';
+    const price = subtotal instanceof HTMLInputElement ? subtotal.value.trim() : subtotal?.textContent.trim();
+    rows.push({ qty, description, price: price || '—' });
+    pieces += qty;
+  });
+  linesEl.replaceChildren();
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'scanner-mode-empty';
+    empty.textContent = 'Scan an item to begin';
+    linesEl.appendChild(empty);
+  } else {
+    rows.forEach(line => {
+      const item = document.createElement('div');
+      item.className = 'scanner-mode-line';
+      const qty = document.createElement('div');
+      qty.className = 'scanner-mode-qty';
+      qty.textContent = `×${line.qty}`;
+      const description = document.createElement('div');
+      description.className = 'scanner-mode-description';
+      description.textContent = line.description;
+      const price = document.createElement('div');
+      price.className = 'scanner-mode-price';
+      price.textContent = line.price;
+      item.append(qty, description, price);
+      linesEl.appendChild(item);
+    });
+  }
+  document.getElementById('scannerModeCount').textContent = `${pieces} piece${pieces === 1 ? '' : 's'}`;
+  document.getElementById('scannerModeTotal').textContent = document.getElementById('sumTotal')?.textContent.trim() || '—';
+  const statusEl = document.getElementById('scannerModeStatus');
+  const scanStatus = document.getElementById('scanStatus');
+  const statusText = (message ?? scanStatus?.textContent.trim()) || 'Ready for the next scan';
+  const statusState = state ?? ['ok', 'warn', 'err'].find(name => scanStatus?.classList.contains(name));
+  statusEl.textContent = statusText;
+  statusEl.className = 'scanner-mode-status' + (statusState ? ` ${statusState}` : '');
+}
+
+function setScannerModeActive(active, options = {}) {
+  _scannerModeActive = !!active;
+  document.body.classList.toggle('scanner-mode-active', _scannerModeActive);
+  document.getElementById('scannerModeView')?.setAttribute('aria-hidden', String(!_scannerModeActive));
+  document.getElementById('scannerModeBtn')?.setAttribute('aria-pressed', String(_scannerModeActive));
+  if (_scannerModeActive) syncScannerModeView(options.message, options.state);
+}
+
+function setScannerModeDefault(enabled) {
+  _scannerModeDefault = !!enabled;
+  localStorage.setItem(SCANNER_DEFAULT_KEY, _scannerModeDefault ? '1' : '0');
+  const checkbox = document.getElementById('scannerModeDefault');
+  if (checkbox) checkbox.checked = _scannerModeDefault;
+  setScannerModeActive(_scannerModeDefault);
+}
+
+document.getElementById('scannerModeView')?.addEventListener('pointerdown', event => {
+  if (event.isPrimary === false) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  setScannerModeActive(false);
+});
 const SCAN_COMMAND_REPEAT_MS = 900;
 // No minimum gap: two pulls as fast as the trigger repeats must clear. The old
 // 250ms floor rejected a fast double pull and silently re-armed instead, so the
@@ -3026,6 +3184,7 @@ function applyLicenseScan(info) {
   ++scanStatusVersion;
   setScanStatus(`License scanned — filled ${who}`, 'ok');
   flashScanCommand(`License scanned — filled ${who}`, 'ok');
+  setScannerModeActive(false);
 }
 
 // A license PDF417 reaches a keyboard-wedge scanner as many Enter-separated
@@ -5844,6 +6003,7 @@ function updateSummary() {
     document.getElementById('sumTotal').textContent = '—';
     feeRow?.classList.add('hidden');
     updateInternalTotals(0, false);
+    syncScannerModeView();
     return;
   }
   const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
@@ -5855,6 +6015,7 @@ function updateSummary() {
   document.getElementById('sumTotal').textContent = fmt(total);
   // Gross profit is measured against the goods, not the card fee or tax.
   updateInternalTotals(subtotal, true);
+  syncScannerModeView();
 }
 
 function clearAll() {
@@ -6312,6 +6473,10 @@ async function autoPrint() {
   cleanupPrint();
   _printPrepared = false;
   _directPrintInFlight = false;
+  if (_scannerModeDefault) {
+    clearAll();
+    setScannerModeActive(true, { message: 'Printed — ready for the next sale', state: 'ok' });
+  }
 }
 
 window.addEventListener('beforeprint', prepareAndSaveForPrint);
@@ -6319,6 +6484,9 @@ window.addEventListener('afterprint', () => {
   cleanupPrint();
   showPrintBanner();
   _printPrepared = false;
+  if (_scannerModeDefault) {
+    setScannerModeActive(true, { message: 'Print window closed — sale kept. Scan Clear twice for the next sale.', state: 'warn' });
+  }
 });
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'p') { e.preventDefault(); printQuote(); }
@@ -6739,6 +6907,7 @@ function historyDocTypeTag(type) {
 
 function setDocType(t) {
   if (!DOC_TITLES[t]) return;
+  if (t !== 'receipt') setScannerModeActive(false);
   _docType = t;
   document.querySelectorAll('#docTypeSel .doc-type-btn').forEach(b => b.classList.toggle('active', b.dataset.doc === t));
   // Drives the on-screen Cost / Gross Profit / Margin block. Kept separate from
@@ -7825,6 +7994,9 @@ function clearCustFields() {
 
 buildRows();
 buildMobileRows();
+_scannerModeDefault = localStorage.getItem(SCANNER_DEFAULT_KEY) === '1';
+document.getElementById('scannerModeDefault').checked = _scannerModeDefault;
+setScannerModeActive(_scannerModeDefault);
 updateScreenDocTitle();
 
 // ─── MOBILE ROWS ────────────────────────────────────────────────────────────
