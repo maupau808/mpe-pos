@@ -461,6 +461,20 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 1, 'Scanner Mode exit cleared sale');
     });
 
+    await test('Scanner Mode exit bar is large, red, and below the item rows', async () => {
+      reset(pos); win.setScannerModeActive(true);
+      const lines = pos.contentDocument.getElementById('scannerModeLines');
+      const bar = pos.contentDocument.querySelector('.scanner-mode-exit-bar');
+      assert(bar && lines.nextElementSibling === bar, 'exit bar is not directly below the item rows');
+      const barRect = bar.getBoundingClientRect();
+      const linesRect = lines.getBoundingClientRect();
+      const style = win.getComputedStyle(bar);
+      assert(barRect.height >= 64, `exit bar is only ${Math.round(barRect.height)}px tall`);
+      assert(Math.abs(barRect.width - linesRect.width) <= 1, 'exit bar does not span the item rows');
+      assert(style.backgroundColor === 'rgb(198, 40, 40)', `exit bar is not danger red (${style.backgroundColor})`);
+      assert(/regular pos/i.test(bar.textContent), 'exit bar does not name the destination');
+    });
+
     await test('fast-repeat rollback restores the long hardware guard', async () => {
       const rollback = document.createElement('iframe'); rollback.src = 'index.html?fastRepeat=0&scannerFixture=1'; document.body.appendChild(rollback);
       await new Promise(resolve => rollback.addEventListener('load', resolve, { once: true })); await loadFixture(rollback, 1); await waitFor(() => loaded(rollback));
