@@ -60,6 +60,7 @@ const TEST_FEED = {
     '1234567890123': 'TEST2002',
     '886661123456': 'UNIT1',
     '@UNIT-EXACT:SERIAL123': 'UNIT1',
+    '@UNIT-EXACT:SERIAL456': 'UNIT1',
     '@UNIT-PREFIX:SNX': 'UNIT1',
     '@UNIT-EXACT:EAMT3283123': '664240',
     '@UNIT-EXACT:EAMT3203003': '668790',
@@ -402,6 +403,20 @@ pos.addEventListener('load', async () => {
       reset(pos); win.setScannerModeActive(true); await burst(pos, 'SERIAL123');
       assert(filledRows(pos)[0] === 'UNIT1', 'known serial did not resolve unit');
       assert(/SN SERIAL123/.test(pos.contentDocument.getElementById('scannerModeLines').textContent), 'Scanner Mode omitted serial');
+    });
+
+    await test('same unit serials merge across nonconsecutive scans', async () => {
+      reset(pos); await burst(pos, 'SERIAL123'); await burst(pos, codeA); await burst(pos, 'SERIAL456');
+      assert(filledRows(pos).join(',') === 'UNIT1,TEST1001', 'same unit created another sale line');
+      assert(pos.contentDocument.getElementById('qty-0').value === '2', 'same unit quantity did not increase');
+      const serials = [...pos.contentDocument.querySelectorAll('tr[data-sn-for="0"] .sn-input')].map(input => input.value);
+      assert(serials.join(',') === 'SERIAL123,SERIAL456', `serial fields were ${serials.join(',')}`);
+    });
+
+    await test('rescanning the same unit serial does not increase quantity', async () => {
+      reset(pos); await burst(pos, 'SERIAL123'); await burst(pos, 'SERIAL123');
+      assert(filledRows(pos).length === 1, 'duplicate serial created another sale line');
+      assert(pos.contentDocument.getElementById('qty-0').value === '1', 'duplicate serial increased quantity');
     });
 
     await test('unit-prefix serial resolves unit', async () => {

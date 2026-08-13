@@ -2439,6 +2439,44 @@ function fillRowSerial(row, serial) {
   return true;
 }
 
+// A second serialized unit of the same Master item belongs on the existing
+// sale line, even when other products were scanned in between. Package
+// components stay as separate physical units because their re-grouping logic
+// needs one tracked row per battery, charger, or other component.
+function appendSerialToMatchingUnitRow(part, serial) {
+  const pn = normalizePN(part?.pn);
+  const value = String(serial || '').trim();
+  const serialKey = canonicalSerialNumber(value);
+  if (!part?.warranty || !pn || !serialKey || packageComponentPNs().has(pn)) return null;
+
+  let targetRow = null;
+  for (let row = 0; row < NUM_ROWS; row++) {
+    const input = tbody.querySelector(`[data-row="${row}"].part-input`);
+    const tr = tbody.querySelector(`tr[data-row="${row}"]`);
+    if (normalizePN(input?.dataset.partPn) !== pn || tr?.dataset.pkgUnits) continue;
+    const serialInputs = Array.from(tbody.querySelectorAll(`tr[data-sn-for="${row}"] .sn-input`));
+    if (serialInputs.some(field => canonicalSerialNumber(field.value) === serialKey))
+      return { row, qty: parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1, duplicate: true };
+    if (targetRow === null) targetRow = row;
+  }
+  if (targetRow === null) return null;
+
+  let fields = Array.from(tbody.querySelectorAll(`tr[data-sn-for="${targetRow}"] .sn-input`));
+  let field = fields.find(input => !input.value.trim());
+  let qty = parseInt(document.getElementById(`qty-${targetRow}`)?.value, 10) || 1;
+  if (!field) {
+    qty = setRowQuantity(targetRow, qty + 1);
+    fields = Array.from(tbody.querySelectorAll(`tr[data-sn-for="${targetRow}"] .sn-input`));
+    field = fields.find(input => !input.value.trim());
+  }
+  if (!field) return null;
+  field.value = value;
+  if (pendingUnitSerialRow === targetRow && !rowNeedsUnitSerial(targetRow)) pendingUnitSerialRow = null;
+  updateSummary();
+  revealScannedResult(targetRow);
+  return { row: targetRow, qty, duplicate: false };
+}
+
 function firstOpenScanRow() {
   for (let i = 0; i < NUM_ROWS; i++) {
     const input = tbody.querySelector(`[data-row="${i}"].part-input`);
@@ -2747,6 +2785,16 @@ function acceptDecodedScan(rawValue, format, options = {}) {
   if (result.via === 'stihl-unit') {
     if (result.candidates.length === 1) {
       playScanBeep(false);
+      const merged = appendSerialToMatchingUnitRow(result.candidates[0], result.serial);
+      if (merged) {
+        ++scanStatusVersion;
+        setScanStatus(merged.duplicate
+          ? `SN ${result.serial} is already on row ${merged.row + 1}`
+          : `Row ${merged.row + 1} → qty ${merged.qty} · SN ${result.serial}`, merged.duplicate ? 'warn' : 'ok');
+        updateScanNext();
+        updateScanButton();
+        return;
+      }
       const row = fillScannedPart(result.candidates[0]);
       fillRowSerial(row, result.serial);
       const deal = applyPackageDeals(result.serial, row);
@@ -2780,6 +2828,16 @@ function acceptDecodedScan(rawValue, format, options = {}) {
   }
   if (serialCandidates.length === 1) {
     playScanBeep(false);
+    const merged = appendSerialToMatchingUnitRow(serialCandidates[0], raw);
+    if (merged) {
+      ++scanStatusVersion;
+      setScanStatus(merged.duplicate
+        ? `SN ${raw} is already on row ${merged.row + 1}`
+        : `Row ${merged.row + 1} → qty ${merged.qty} · SN ${raw}`, merged.duplicate ? 'warn' : 'ok');
+      updateScanNext();
+      updateScanButton();
+      return;
+    }
     const row = fillScannedPart(serialCandidates[0]);
     fillRowSerial(row, raw);
     const deal = applyPackageDeals(raw);
