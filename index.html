@@ -4312,7 +4312,8 @@ function onPriceEdit(i) {
     priceEl.dataset.price = price;
     const _pInput = tbody.querySelector(`[data-row="${i}"].part-input`);
     const _listP = parseFloat(_pInput?.dataset.list) || 0;
-    if (_listP && Math.abs(price - _listP) > 0.001) logPriceChange(i, price, _listP);
+    if (_pInput?.dataset.isOther === '1') logOtherSuggestion(i);
+    else if (_listP && Math.abs(price - _listP) > 0.001) logPriceChange(i, price, _listP);
     else clearPriceChange(i);
     const cost = parseFloat(document.getElementById(`cost-${i}`)?.dataset.cost) || 0;
     const margin = marginText(cost, price);
@@ -4358,6 +4359,7 @@ function onCostEdit(i) {
   // Log cost change into price changes store
   const inp = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (!inp?.dataset.partPn) return;
+  if (inp.dataset.isOther === '1') { logOtherSuggestion(i); return; }
   const make = (inp.dataset.partMake || '').trim();
   if (!make || /^other$/i.test(make)) return;
   const origCost = parseFloat(costEl.dataset.origCost) || 0;
@@ -4618,6 +4620,7 @@ function onDescEdit(i) {
   const origDesc = descEl.dataset.origDesc || '';
   const inp = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (!inp?.dataset.partPn) return;
+  if (inp.dataset.isOther === '1') { logOtherSuggestion(i); return; }
   const make = (inp.dataset.partMake || '').trim();
   if (!make || /^other$/i.test(make)) return;
   if (newDesc === origDesc) { clearDescChange(i); return; }
@@ -4652,6 +4655,37 @@ function clearDescChange(rowIdx) {
   const hasCost = entry.newCost != null && entry.newCost !== entry.origCost;
   if (!hasPrice && !hasCost) changes.splice(idx, 1); else changes[idx] = entry;
   savePriceChanges(changes);
+}
+
+// "Other" stays a sale line until Trevor explicitly promotes it in Bridge Pull.
+// The @NEW marker travels only in the Bridge queue; it is never a Master make.
+function logOtherSuggestion(rowIdx) {
+  const inp = tbody.querySelector(`[data-row="${rowIdx}"].part-input`);
+  if (!inp || inp.dataset.isOther !== '1') return;
+  const typed = inp.value.trim();
+  const changes = getPriceChanges();
+  const key = 'new-item_' + rowIdx;
+  const idx = changes.findIndex(c => c.rowKey === key);
+  if (!typed || /^other$/i.test(typed)) {
+    if (idx >= 0) { changes.splice(idx, 1); savePriceChanges(changes); }
+    return;
+  }
+  const descRaw = (document.getElementById(`desc-${rowIdx}`)?.textContent || '').trim();
+  const description = (!descRaw || /^other$|^—$/i.test(descRaw)) ? typed : descRaw;
+  const price = parseFloat(document.getElementById(`price-${rowIdx}`)?.dataset.price);
+  const cost = parseFloat(document.getElementById(`cost-${rowIdx}`)?.dataset.cost);
+  const entry = { rowKey: key, kind: 'newItem', pn: typed, desc: description,
+    make: '@NEW', date: new Date().toLocaleDateString('en-US') };
+  if (Number.isFinite(price)) entry.newPrice = price;
+  if (Number.isFinite(cost) && cost > 0) entry.newCost = cost;
+  if (idx >= 0) changes[idx] = entry; else changes.push(entry);
+  savePriceChanges(changes);
+}
+
+function clearOtherSuggestion(rowIdx) {
+  const changes = getPriceChanges();
+  const next = changes.filter(c => c.rowKey !== 'new-item_' + rowIdx);
+  if (next.length !== changes.length) savePriceChanges(next);
 }
 function countUnpushedTxns() {
   try {
@@ -5023,7 +5057,7 @@ async function pushAllToSheet() {
   const changes = getPriceChanges();
   if (changes.length) {
     try {
-      const rows = changes.map(c => [c.pn, c.newPrice ?? c.listPrice ?? '', c.newDesc || '', c.make || '', c.date]);
+      const rows = changes.map(c => [c.pn, c.newPrice ?? c.listPrice ?? '', c.kind === 'newItem' ? c.desc : (c.newDesc || ''), c.make || '', c.date, c.kind === 'newItem' ? (c.newCost ?? '') : '']);
       const ok = await sheetsAppend('Prices!A1', rows);
       if (ok) pricesPushed = rows.length;
     } catch(e) { errors.push('Item changes: ' + e.message); }
@@ -5064,7 +5098,7 @@ async function pushPriceChangesToSheet() {
   const changes = getPriceChanges();
   if (!changes.length) return;
   if (!SHEETS_ID) { alert('Set SHEETS_ID in the app config first.'); return; }
-  const rows = changes.map(c => [c.pn, c.newPrice ?? c.listPrice ?? '', c.newDesc || '', c.make || '', c.date]);
+  const rows = changes.map(c => [c.pn, c.newPrice ?? c.listPrice ?? '', c.kind === 'newItem' ? c.desc : (c.newDesc || ''), c.make || '', c.date, c.kind === 'newItem' ? (c.newCost ?? '') : '']);
   try {
     const ok = await sheetsAppend('Prices!A1', rows);
     if (!ok) return;
@@ -5515,7 +5549,11 @@ function onInput(e) {
   if (row === undefined) return;
   const i = parseInt(row);
   if (e.target.classList.contains('part-input')) {
-    if (e.target.dataset.isOther === '1') { e.target.dataset.partPn = e.target.value; return; }
+    if (e.target.dataset.isOther === '1') {
+      e.target.dataset.partPn = e.target.value;
+      logOtherSuggestion(i);
+      return;
+    }
     handleSearch(i);
   }
   else if (e.target.classList.contains('qty-input')) {
@@ -5576,7 +5614,10 @@ function onKeydown(e) {
     if (dd._noteMode === 'note') { closeAllDropdowns(); applyNoteToRow(i); return; }
     if (dd._noteMode === 'discount') { closeAllDropdowns(); activateDiscountShortcut(i); return; }
     active = dd.querySelector('.dd-item.active');
-    if (active) { selectPart(i, parseInt(active.dataset.idx)); focusNextProductRow(i, false); }
+    if (active) {
+      const selected = selectPart(i, parseInt(active.dataset.idx));
+      if (!isOtherPart(selected)) focusNextProductRow(i, false);
+    }
   }
   else if (e.key === 'Escape') closeAllDropdowns();
 }
@@ -5822,9 +5863,10 @@ function renderDropdown(i, results) {
 function selectPart(i, idx) {
   const dd = document.getElementById(`dd-${i}`);
   const part = dd._results && dd._results[idx];
-  if (!part) return;
+  if (!part) return null;
   tbody.querySelector(`[data-row="${i}"].part-input`).value = part.pn;
   closeAllDropdowns(); applyPart(i, part);
+  return part;
 }
 
 
@@ -6042,6 +6084,7 @@ function clearRowData(i) {
 function clearRow(i) {
   const removedScanIssue = scanIssues.delete(i);
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+  clearOtherSuggestion(i);
   if (input) { input.value = ''; input.className = 'part-input'; input.readOnly = false; input.style.color = ''; input.style.fontStyle = ''; }
   const qEl = document.getElementById(`qty-${i}`);
   if (qEl) { qEl.value = 1; qEl.style.visibility = ''; }
@@ -8199,6 +8242,7 @@ function onMobileInput(e) {
   else if (e.target.classList.contains('part-input')) {
     if (e.target.dataset.isOther === '1') {
       const desktop = tbody.querySelector(`[data-row="${i}"].part-input`); if (desktop) { desktop.value = e.target.value; desktop.dataset.partPn = e.target.value; }
+      logOtherSuggestion(i);
       return;
     }
     if (e.target.classList.contains('matched')) {
@@ -8214,6 +8258,7 @@ function onMobileInput(e) {
   }
   else if (e.target.classList.contains('mobile-desc') && e.target.dataset.isOther === '1') {
     const desktopDesc = document.getElementById(`desc-${i}`); if (desktopDesc) desktopDesc.textContent = e.target.textContent;
+    logOtherSuggestion(i);
   }
 }
 
@@ -8292,7 +8337,10 @@ function onMobileKeydown(e) {
     e.preventDefault();
     if (dd._noteMode === 'discount') { closeMobileDropdowns(); openMobileDiscountShortcut(i); return; }
     active = dd.querySelector('.dd-item.active');
-    if (active) { selectMobilePart(i,parseInt(active.dataset.idx)); focusNextProductRow(i, true); }
+    if (active) {
+      const selected = selectMobilePart(i, parseInt(active.dataset.idx));
+      if (!isOtherPart(selected)) focusNextProductRow(i, true);
+    }
   }
   else if (e.key === 'Escape') closeMobileDropdowns();
 }
@@ -8332,10 +8380,11 @@ function handleMobileSearch(i) {
 function selectMobilePart(i, idx) {
   const dd = document.getElementById(`mdd-${i}`);
   const part = dd._results && dd._results[idx];
-  if (!part) return;
+  if (!part) return null;
   document.querySelector(`#mobileRows [data-row="${i}"].part-input`).value = part.pn;
   closeMobileDropdowns();
   applyMobilePart(i, part);
+  return part;
 }
 
 function applyMobilePart(i, part, options) {
