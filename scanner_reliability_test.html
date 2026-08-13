@@ -461,7 +461,7 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 1, 'Scanner Mode exit cleared sale');
     });
 
-    await test('Scanner Mode exit bar is large, red, and below the item rows', async () => {
+    await test('Scanner Mode exit cue is large red text pinned below the item rows', async () => {
       reset(pos); win.setScannerModeActive(true);
       const lines = pos.contentDocument.getElementById('scannerModeLines');
       const bar = pos.contentDocument.querySelector('.scanner-mode-exit-bar');
@@ -472,8 +472,9 @@ pos.addEventListener('load', async () => {
       const style = win.getComputedStyle(bar);
       assert(barRect.height >= 64, `exit bar is only ${Math.round(barRect.height)}px tall`);
       assert(Math.abs(barRect.width - linesRect.width) <= 1, 'exit bar does not span the item rows');
-      assert(listRect.bottom - barRect.bottom <= 22, 'exit bar is not pinned to the bottom of the item section');
-      assert(style.backgroundColor === 'rgb(198, 40, 40)', `exit bar is not danger red (${style.backgroundColor})`);
+      assert(listRect.bottom - barRect.bottom <= 30, 'exit bar is not pinned to the bottom of the item section');
+      assert(style.color === 'rgb(198, 40, 40)', `exit cue text is not red (${style.color})`);
+      assert(style.backgroundColor === 'rgba(0, 0, 0, 0)', `exit cue still has a solid block (${style.backgroundColor})`);
       assert(/regular pos/i.test(bar.textContent), 'exit bar does not name the destination');
     });
 
