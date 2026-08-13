@@ -148,6 +148,13 @@ pos.addEventListener('load', async () => {
     const [codeA, codeB, codeC] = chooseCodes(win);
     assert(codeA && codeB && codeC, 'three unique test parts not found');
 
+    await test('Scanner Mode idle status does not claim the camera is starting', async () => {
+      win.setScannerModeActive(true);
+      const status = pos.contentDocument.getElementById('scannerModeStatus').textContent.trim();
+      assert(status === 'Ready for the next scan', `idle status was ${status}`);
+      win.setScannerModeActive(false);
+    });
+
     await test('regular mode accepts a hardware burst', async () => {
       reset(pos); await burst(pos, codeA);
       assert(filledRows(pos).length === 1, 'scan did not add one row');
@@ -198,12 +205,6 @@ pos.addEventListener('load', async () => {
       assert(pos.contentDocument.body.classList.contains('scanner-mode-active'), 'Scanner Mode exited');
       assert(filledRows(pos).length === 1, 'Scanner Mode scan did not add');
       assert(!/Scan an item/.test(pos.contentDocument.getElementById('scannerModeLines').textContent), 'Scanner Mode view did not update');
-    });
-
-    await test('Scanner Mode idle status does not claim the camera is starting', async () => {
-      reset(pos); win.setScannerModeActive(true);
-      const status = pos.contentDocument.getElementById('scannerModeStatus').textContent.trim();
-      assert(status === 'Ready for the next scan', `idle status was ${status}`);
     });
 
     for (const type of ['invoice', 'quote', 'internal']) {
