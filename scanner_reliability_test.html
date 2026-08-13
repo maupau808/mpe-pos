@@ -468,9 +468,11 @@ pos.addEventListener('load', async () => {
       assert(bar && lines.nextElementSibling === bar, 'exit bar is not directly below the item rows');
       const barRect = bar.getBoundingClientRect();
       const linesRect = lines.getBoundingClientRect();
+      const listRect = pos.contentDocument.querySelector('.scanner-mode-list').getBoundingClientRect();
       const style = win.getComputedStyle(bar);
       assert(barRect.height >= 64, `exit bar is only ${Math.round(barRect.height)}px tall`);
       assert(Math.abs(barRect.width - linesRect.width) <= 1, 'exit bar does not span the item rows');
+      assert(listRect.bottom - barRect.bottom <= 22, 'exit bar is not pinned to the bottom of the item section');
       assert(style.backgroundColor === 'rgb(198, 40, 40)', `exit bar is not danger red (${style.backgroundColor})`);
       assert(/regular pos/i.test(bar.textContent), 'exit bar does not name the destination');
     });
