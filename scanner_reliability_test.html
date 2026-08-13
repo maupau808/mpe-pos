@@ -200,6 +200,12 @@ pos.addEventListener('load', async () => {
       assert(!/Scan an item/.test(pos.contentDocument.getElementById('scannerModeLines').textContent), 'Scanner Mode view did not update');
     });
 
+    await test('Scanner Mode idle status does not claim the camera is starting', async () => {
+      reset(pos); win.setScannerModeActive(true);
+      const status = pos.contentDocument.getElementById('scannerModeStatus').textContent.trim();
+      assert(status === 'Ready for the next scan', `idle status was ${status}`);
+    });
+
     for (const type of ['invoice', 'quote', 'internal']) {
       await test(`${type} accepts scans but cannot enter Scanner Mode`, async () => {
         reset(pos, type); win.setScannerModeActive(true); await burst(pos, codeB);
