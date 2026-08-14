@@ -464,6 +464,49 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 0, 'second Clear pull did not clear sale');
     });
 
+    await test('Scanner Mode Auto Print keeps sale and presents Clear twice barcode', async () => {
+      reset(pos); await burst(pos, codeA); win.setScannerModeActive(true);
+      const originalFetch = win.fetch;
+      win.fetch = async url => String(url).includes('/pos-print')
+        ? new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        : originalFetch(url);
+      try {
+        await win.autoPrint();
+      } finally {
+        win.fetch = originalFetch;
+      }
+      assert(filledRows(pos).length === 1, 'Auto Print cleared the current sale');
+      assert(/Clear Sale\s*—\s*Scan Twice/i.test(pos.contentDocument.getElementById('scannerModeCommandLabel')?.textContent || ''), 'Clear twice reminder did not replace Print');
+      assert(pos.contentDocument.getElementById('scannerModeCommandCard')?.classList.contains('clear-needed'), 'Clear barcode was not emphasized');
+      assert(/sale kept/i.test(pos.contentDocument.getElementById('scannerModeStatus')?.textContent || ''), 'kept-sale status was not shown');
+      const clear = '~MPE2:Q7X4:CLEAR:2D9M';
+      await burst(pos, clear, { burstGap: 3000 });
+      assert(filledRows(pos).length === 1, 'first post-print Clear pull cleared the sale');
+      await burst(pos, clear, { burstGap: 120 });
+      assert(filledRows(pos).length === 0, 'second post-print Clear pull did not clear the sale');
+      assert(/Scan to Print/i.test(pos.contentDocument.getElementById('scannerModeCommandLabel')?.textContent || ''), 'Print barcode did not return after Clear');
+    });
+
+    await test('Scanner Mode shows scan-command feedback', async () => {
+      const status = () => pos.contentDocument.getElementById('scannerModeStatus').textContent;
+      const flashVisible = () => pos.contentDocument.getElementById('scanCommandFlash').offsetParent !== null;
+      reset(pos); await burst(pos, codeA); win.setScannerModeActive(true);
+      assert(!flashVisible(), 'command flash bar is reachable in Scanner Mode after all');
+      await burst(pos, '~MPE2:Q7X4:UNDO:5R8P');
+      assert(/removed/i.test(status()), `Undo was silent: ${status()}`);
+      await burst(pos, '~MPE2:Q7X4:PRINT:8K3N');
+      assert(/nothing to print/i.test(status()), `empty-sale Print was silent: ${status()}`);
+      // Clear last on purpose: PRINT and UNDO ignore a repeat within
+      // SCAN_COMMAND_REPEAT_MS, and the next test opens with its own UNDO.
+      await burst(pos, codeA);
+      await burst(pos, '~MPE2:Q7X4:CLEAR:2D9M');
+      assert(/scan clear again/i.test(status()), `pending Clear was silent: ${status()}`);
+      await burst(pos, '~MPE2:Q7X4:CLEAR:2D9M', { burstGap: 120 });
+      assert(filledRows(pos).length === 0, 'confirmed Clear did not clear the sale');
+      assert(/cleared 1 line/i.test(status()), `Clear result was silent: ${status()}`);
+      win.setScannerModeActive(false);
+    });
+
     await test('Undo command removes the last scanned line', async () => {
       reset(pos); await burst(pos, codeA); await burst(pos, '~MPE2:Q7X4:UNDO:5R8P');
       assert(filledRows(pos).length === 0, 'Undo did not remove line');

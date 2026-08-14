@@ -540,6 +540,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-auto-print { display: grid; justify-items: center; gap: 5px; width: min(220px, 100%); margin: 0 auto; padding: 7px 9px 9px; border: 1px solid #2f5a3f; background: #fff; color: #1a1a1a; box-sizing: border-box; }
   .scanner-mode-auto-print-label { color: #2f5a3f; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-align: center; text-transform: uppercase; }
   .scanner-mode-auto-print-code { display: block; width: 100%; height: 44px; shape-rendering: crispEdges; }
+  .scanner-mode-auto-print.clear-needed { border: 2px solid #b3261e; padding: 6px 8px 8px; }
+  .scanner-mode-auto-print.clear-needed .scanner-mode-auto-print-label { color: #b3261e; font-size: 13px; }
   .scanner-mode-exit-bar { display: block; flex: none; width: 100%; min-height: 64px; margin-top: auto; padding: 14px 18px; border: 0; background: transparent; color: #c62828; font: inherit; font-size: clamp(20px, 2.2vw, 28px); font-weight: 800; line-height: 1.15; letter-spacing: .025em; text-align: center; text-transform: uppercase; text-wrap: balance; cursor: pointer; box-sizing: border-box; -webkit-tap-highlight-color: rgba(198,40,40,.12); }
   .scanner-mode-exit-bar:hover { color: #a82020; }
   .scanner-mode-exit-bar:active { color: #8a1c19; }
@@ -790,8 +792,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <div id="scannerModeTotal" class="scanner-mode-total">—</div>
           </div>
         </div>
-        <div class="scanner-mode-auto-print" aria-label="Auto Print command barcode">
-          <div class="scanner-mode-auto-print-label">Scan to Print</div>
+        <div id="scannerModeCommandCard" class="scanner-mode-auto-print" aria-label="Auto Print command barcode">
+          <div id="scannerModeCommandLabel" class="scanner-mode-auto-print-label">Scan to Print</div>
           <svg id="scannerModeAutoPrintCode" class="scanner-mode-auto-print-code" role="img" aria-label="Auto Print barcode"></svg>
         </div>
       </div>
@@ -3054,20 +3056,33 @@ const SCAN_COMMANDS = new Map([
 ]);
 const SCANNER_DEFAULT_KEY = 'mpePosScannerDefault';
 const SCANNER_IDLE_MS = 3 * 60 * 1000;
-const AUTO_PRINT_CODE128_WIDTHS = '2112141311411131233131211321132232113212212113313121313311212212313212213131212311312313111133212133113212213112221123312211321133212311312331112';
+const SCANNER_COMMAND_CODE128_WIDTHS = {
+  print: '2112141311411131233131211321132232113212212113313121313311212212313212213131212311312313111133212133113212213112221123312211321133212311312331112',
+  clear: '2112141311411131233131211321132232113212212113313121313311212212313212211313211321311321131113232311313212212232111123133211221131232212132331112',
+};
 let _scannerModeDefault = false;
 let _scannerModeActive = false;
+let _scannerModeAwaitingClear = false;
 let _scannerIdleTimer = null;
 
-function renderScannerModeAutoPrintCode() {
+function renderScannerModeCommandCode() {
   const code = document.getElementById('scannerModeAutoPrintCode');
-  if (!code || code.childElementCount) return;
+  const card = document.getElementById('scannerModeCommandCard');
+  const label = document.getElementById('scannerModeCommandLabel');
+  if (!code || !card || !label) return;
+  const command = _scannerModeAwaitingClear ? 'clear' : 'print';
+  const commandName = _scannerModeAwaitingClear ? 'Clear Sale' : 'Auto Print';
+  card.classList.toggle('clear-needed', _scannerModeAwaitingClear);
+  card.setAttribute('aria-label', `${commandName} command barcode`);
+  label.textContent = _scannerModeAwaitingClear ? 'Clear Sale — Scan Twice' : 'Scan to Print';
+  code.setAttribute('aria-label', `${commandName} barcode`);
+  code.replaceChildren();
   const svgNS = 'http://www.w3.org/2000/svg';
   const quiet = 16;
   let x = quiet;
   let dark = true;
   const bars = [];
-  for (const digit of AUTO_PRINT_CODE128_WIDTHS) {
+  for (const digit of SCANNER_COMMAND_CODE128_WIDTHS[command]) {
     const width = Number(digit);
     if (dark) bars.push(`M${x} 0h${width}v44h-${width}z`);
     x += width;
@@ -3168,7 +3183,7 @@ function setScannerModeActive(active, options = {}) {
   if (_scannerModeActive) {
     clearTimeout(_scannerIdleTimer);
     _scannerIdleTimer = null;
-    renderScannerModeAutoPrintCode();
+    renderScannerModeCommandCode();
     syncScannerModeView(options.message, options.state);
     revealScannedResult(lastFilledSaleRow());
   } else {
@@ -3214,7 +3229,15 @@ function isScanCommand(value) {
 
 // Feedback sits above the Clear/Print buttons, where the eye already is for
 // these commands, and floats so a message never moves the line items.
+//
+// That bar is inside .wrap, which Scanner Mode hides outright, so a command
+// answered only here says nothing at all on a scanner till: "Scan Clear again
+// to confirm" is the half of the two-pull Clear the operator most needs to see.
+// The Scanner Mode status line speaks the same ok/warn/err vocabulary, so the
+// message is mirrored there and stays until the next scan, exactly like the
+// item and packaging feedback that already lands in that pane.
 function flashScanCommand(message, kind) {
+  if (_scannerModeActive) syncScannerModeView(message, kind);
   const el = document.getElementById('scanCommandFlash');
   if (!el) return;
   el.textContent = message;
@@ -6268,6 +6291,8 @@ function updateSummary() {
 }
 
 function clearAll() {
+  _scannerModeAwaitingClear = false;
+  renderScannerModeCommandCode();
   discountControlsEnabled = false;
   NOTE_COUNT = 0;
   scanIssues.clear();
@@ -6671,11 +6696,13 @@ function printQuote() {
 async function autoPrint() {
   if (_directPrintInFlight) return;
   _directPrintInFlight = true;
+  const printStartedAt = performance.now();
   const btn = document.getElementById('autoPrintBtn');
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
   clearToolFailure();
   setBtn('⏳', true);
   prepareAndSaveForPrint();
+  const preparedAt = performance.now();
   let printedByService = false;
   try {
     // A machine with no print service refuses the connection instantly, so this
@@ -6684,10 +6711,18 @@ async function autoPrint() {
     const timer = setTimeout(() => ctl.abort(), 30000);
     let response;
     try {
+      const html = serializedPrintDocument();
+      const snapshotAt = performance.now();
       response = await fetch(POS_PRINT_URL, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({html: serializedPrintDocument()}),
+        body: JSON.stringify({
+          html,
+          timing: {
+            prepare_ms: Math.round(preparedAt - printStartedAt),
+            snapshot_ms: Math.round(snapshotAt - preparedAt),
+          },
+        }),
         signal: ctl.signal,
       });
     } finally {
@@ -6695,6 +6730,10 @@ async function autoPrint() {
     }
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    console.info('MPE Auto Print timing', {
+      browserTotalMs: Math.round(performance.now() - printStartedAt),
+      agent: result.timings || null,
+    });
     printedByService = true;
     showPrintBanner();
     setBtn('✓', false);
@@ -6722,9 +6761,9 @@ async function autoPrint() {
   cleanupPrint();
   _printPrepared = false;
   _directPrintInFlight = false;
-  if (_scannerModeDefault) {
-    clearAll();
-    setScannerModeActive(true, { message: 'Printed — ready for the next sale', state: 'ok' });
+  if (_scannerModeActive || _scannerModeDefault) {
+    _scannerModeAwaitingClear = true;
+    setScannerModeActive(true, { message: 'Printed — sale kept. Scan Clear twice for the next sale.', state: 'warn' });
   }
 }
 
@@ -6733,7 +6772,8 @@ window.addEventListener('afterprint', () => {
   cleanupPrint();
   showPrintBanner();
   _printPrepared = false;
-  if (_scannerModeDefault) {
+  if (_scannerModeActive || _scannerModeDefault) {
+    _scannerModeAwaitingClear = true;
     setScannerModeActive(true, { message: 'Print window closed — sale kept. Scan Clear twice for the next sale.', state: 'warn' });
   }
 });
@@ -8266,7 +8306,7 @@ function clearCustFields() {
 
 buildRows();
 buildMobileRows();
-renderScannerModeAutoPrintCode();
+renderScannerModeCommandCode();
 _scannerModeDefault = localStorage.getItem(SCANNER_DEFAULT_KEY) === '1';
 document.getElementById('scannerModeDefault').checked = _scannerModeDefault;
 setScannerModeActive(_scannerModeDefault);
