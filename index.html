@@ -346,6 +346,10 @@ body.doc-internal .sum-internal { display: block; }
 .menu-wrap { position: relative; display: inline-block; }
 .menu-btn { font-size: 13px; padding: 6px 12px; border: 1px solid #c7cfc4; border-radius: 7px; background: #fff; color: #333; cursor: pointer; font-family: inherit; white-space: nowrap; }
 .menu-btn:hover { background: #f3f6f2; }
+.customer-sync-btn { border-color: #d9a329; background: #fff8df; color: #6f5000; font-weight: 600; }
+.customer-sync-btn:hover { background: #ffefb8; }
+.customer-sync-btn:disabled { cursor: wait; opacity: .75; }
+.customer-sync-btn.sync-error { border-color: #c62828; background: #fff0ee; color: #9b1c16; }
 /* Icon-only siblings of .menu-btn — same box, square, so the toolbar row keeps
    one control height. Their meaning lives in the title tooltip. */
 .icon-btn { position: relative; font-size: 14px; line-height: 1; width: 32px; height: 30px; padding: 0; border: 1px solid #c7cfc4; border-radius: 7px; background: #fff; color: #333; cursor: pointer; font-family: inherit; }
@@ -741,6 +745,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="icon-btn" id="emailDocBtn" onclick="emailDoc()" title="Email — attach the colour PDF to a Gmail draft">✉</button>
         <button class="icon-btn" id="exportPdfBtn" onclick="exportPdf()" title="Export PDF — download the colour copy">⬇</button>
         <button class="menu-btn" id="scannerModeBtn" type="button" onclick="setScannerModeActive(true)">Scanner Mode</button>
+        <button class="menu-btn customer-sync-btn" id="customerSyncBtn" type="button" onclick="refreshCustomersFromQBO()" style="display:none">Update Customers</button>
         <div class="menu-wrap">
           <button class="menu-btn" id="adminMenuBtn" onclick="openAdminMenu(event)" title="Reconnect, refresh and uploads">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
           <div class="menu-panel right" id="adminMenu" onclick="event.stopPropagation()">
@@ -1008,6 +1013,7 @@ const DRIVE_FILE_ID = '1xpDOnCq71CZ-Oc4Fh9enVugOL8w75bEz'; // from your Drive UR
 // POS receipts use this local service rather than the system print dialog.
 // The service owns the fixed Brother queue + one-sided settings.
 const POS_PRINT_URL = 'http://localhost:8765/pos-print';
+const QBO_CUSTOMERS_URL = 'http://localhost:8766/customers';
 // Stage 4 (SQLite crossover): lean gzipped JSON price feed lives in its OWN Drive file.
 // The POS tries this FIRST and silently falls back to the xlsx above on ANY problem
 // (unset id, fetch error, gunzip/parse error, empty feed). Paste the id once created.
@@ -1366,8 +1372,8 @@ function maybeAutoRefresh() {
   if (sameDay && (now - _lastFetchAt) < 30 * 60 * 1000) return;   // already fresh today
   fetchFromDrive();
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); maybeAutoRefresh(); schedulePhoneListNotice(1000); } });
-setInterval(() => { refreshStatusUI(); maybeAutoRefresh(); }, 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); refreshCustomerSyncReminder(); maybeAutoRefresh(); schedulePhoneListNotice(1000); } });
+setInterval(() => { refreshStatusUI(); refreshCustomerSyncReminder(); maybeAutoRefresh(); }, 60 * 1000);
 
 async function fetchFromDrive() {
   // Get token from memory or sessionStorage
@@ -8029,7 +8035,11 @@ let _custIndex = null, _custKeys = null, _custDDItems = [], _custDDActive = -1;
 // Hybrid store: embedded seed (MPE_CUSTOMERS) + sheet-loaded extras + locally-queued pending.
 const CUSTOMERS_SHEET = 'Customers';
 const CUST_SHEET_HEADER = ['Company','Contact','Phone','Email','Street','City','State','Zip','Added'];
-let _custSheet = [], _custPending = [], _custSheetEnsured = false, _custAddedSession = new Set();
+const QBO_CUSTOMERS_CACHE_KEY = 'mpeQboCustomers';
+const QBO_CUSTOMERS_UPDATED_KEY = 'mpeQboCustomersUpdatedAt';
+const QBO_CUSTOMERS_SEED_AT = '2026-08-14T00:00:00';
+let _custQbo = [], _custSheet = [], _custPending = [], _custSheetEnsured = false, _custAddedSession = new Set();
+try { _custQbo = JSON.parse(localStorage.getItem(QBO_CUSTOMERS_CACHE_KEY) || '[]') || []; } catch { _custQbo = []; }
 try { _custSheet = JSON.parse(localStorage.getItem('mpeCustSheetCache') || '[]') || []; } catch { _custSheet = []; }
 try { _custPending = JSON.parse(localStorage.getItem('mpeCustPending') || '[]') || []; } catch { _custPending = []; }
 function _persistCustSheet(){ try { localStorage.setItem('mpeCustSheetCache', JSON.stringify(_custSheet)); } catch {} }
@@ -8043,7 +8053,7 @@ function custIndex() {
   const seen = new Set();
   _custIndex = [];
   // Sheet/pending first so an updated record wins over a stale seed entry.
-  for (const c of _custPending.concat(_custSheet, seed)) {
+  for (const c of _custPending.concat(_custSheet, _custQbo, seed)) {
     const key = (c.pd ? 'p:' + c.pd : '') + '|' + (c.co || c.nm || '').toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -8150,6 +8160,64 @@ function closeCustDD() {
 }
 document.addEventListener('click', e => { if (!e.target.closest('#custPanel')) closeCustDD(); });
 
+// QBO customer refresh is a weekly, user-run maintenance action. The newest
+// successful list is stored only on this till; a failed pull never clears the
+// Sunday reminder or replaces the last known-good list.
+function customerSyncSunday(now = new Date()) {
+  const sunday = new Date(now);
+  sunday.setHours(0, 0, 0, 0);
+  sunday.setDate(sunday.getDate() - sunday.getDay());
+  return sunday;
+}
+function customerSyncLastAt() {
+  const stored = localStorage.getItem(QBO_CUSTOMERS_UPDATED_KEY) || QBO_CUSTOMERS_SEED_AT;
+  const parsed = new Date(stored);
+  return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+}
+function customerSyncDue(now = new Date()) {
+  return customerSyncLastAt() < customerSyncSunday(now);
+}
+function refreshCustomerSyncReminder() {
+  const btn = document.getElementById('customerSyncBtn');
+  if (!btn || btn.disabled) return;
+  btn.style.display = customerSyncDue() ? '' : 'none';
+  btn.classList.remove('sync-error');
+  btn.textContent = 'Update Customers';
+  btn.title = 'Pull the newest active customer list from QuickBooks';
+}
+async function refreshCustomersFromQBO() {
+  const btn = document.getElementById('customerSyncBtn');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.remove('sync-error');
+  btn.textContent = 'Updating Customers…';
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 60000);
+  try {
+    const response = await fetch(QBO_CUSTOMERS_URL, { cache: 'no-store', signal: ctl.signal });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(payload.error || `QBO returned ${response.status}`);
+    if (!payload.verified || !Array.isArray(payload.customers) || payload.customers.length !== payload.count || payload.count < 1) {
+      throw new Error('QBO customer list could not be verified');
+    }
+    localStorage.setItem(QBO_CUSTOMERS_CACHE_KEY, JSON.stringify(payload.customers));
+    const readBack = JSON.parse(localStorage.getItem(QBO_CUSTOMERS_CACHE_KEY) || '[]');
+    if (!Array.isArray(readBack) || readBack.length !== payload.count) throw new Error('Customer list did not save on this till');
+    _custQbo = readBack;
+    _custBust();
+    localStorage.setItem(QBO_CUSTOMERS_UPDATED_KEY, new Date().toISOString());
+    btn.textContent = `✓ ${payload.count.toLocaleString()} Customers Updated`;
+    setTimeout(() => { btn.disabled = false; refreshCustomerSyncReminder(); }, 1800);
+  } catch (err) {
+    btn.disabled = false;
+    btn.classList.add('sync-error');
+    btn.textContent = 'Retry Customer Update';
+    btn.title = 'Customer update failed: ' + (err?.message || 'QBO is unavailable');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── CUSTOMER WRITEBACK (Bridge sheet "Customers" tab) ───────────────────────
 function _digits10(s){ return (String(s||'').replace(/\D/g,'')).replace(/^1(?=\d{10}$)/,''); }
 function _custRowToRec(r){
@@ -8242,6 +8310,7 @@ function clearCustFields() {
 
 buildRows();
 buildMobileRows();
+refreshCustomerSyncReminder();
 renderScannerModeAutoPrintCode();
 _scannerModeDefault = localStorage.getItem(SCANNER_DEFAULT_KEY) === '1';
 document.getElementById('scannerModeDefault').checked = _scannerModeDefault;
