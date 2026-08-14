@@ -8175,6 +8175,7 @@ function customerSyncLastAt() {
   return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
 }
 function customerSyncDue(now = new Date()) {
+  if (!_custQbo.length || _custQbo.some(customer => !customer.id)) return true;
   return customerSyncLastAt() < customerSyncSunday(now);
 }
 function refreshCustomerSyncReminder() {
@@ -8200,14 +8201,20 @@ async function refreshCustomersFromQBO() {
     if (!payload.verified || !Array.isArray(payload.customers) || payload.customers.length !== payload.count || payload.count < 1) {
       throw new Error('QBO customer list could not be verified');
     }
+    const previousCustomers = _custQbo.length && _custQbo.every(customer => customer.id)
+      ? _custQbo
+      : (typeof MPE_CUSTOMERS !== 'undefined' ? MPE_CUSTOMERS : []);
+    const changes = customerRefreshChanges(previousCustomers, payload.customers);
     localStorage.setItem(QBO_CUSTOMERS_CACHE_KEY, JSON.stringify(payload.customers));
     const readBack = JSON.parse(localStorage.getItem(QBO_CUSTOMERS_CACHE_KEY) || '[]');
     if (!Array.isArray(readBack) || readBack.length !== payload.count) throw new Error('Customer list did not save on this till');
     _custQbo = readBack;
     _custBust();
     localStorage.setItem(QBO_CUSTOMERS_UPDATED_KEY, new Date().toISOString());
-    btn.textContent = `✓ ${payload.count.toLocaleString()} Customers Updated`;
-    setTimeout(() => { btn.disabled = false; refreshCustomerSyncReminder(); }, 1800);
+    btn.textContent = changes.newCount || changes.changedCount
+      ? `✓ ${changes.newCount.toLocaleString()} New · ${changes.changedCount.toLocaleString()} Changed`
+      : '✓ No New or Changed Customers';
+    setTimeout(() => { btn.disabled = false; refreshCustomerSyncReminder(); }, 5000);
   } catch (err) {
     btn.disabled = false;
     btn.classList.add('sync-error');
@@ -8216,6 +8223,54 @@ async function refreshCustomersFromQBO() {
   } finally {
     clearTimeout(timer);
   }
+}
+
+const CUSTOMER_COMPARE_FIELDS = ['co','nm','ph','em','st','ci','sta','z'];
+function normalizedCustomerValue(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+function customerRefreshIdentityKeys(customer) {
+  const keys = [];
+  const add = (prefix, value) => { const clean = normalizedCustomerValue(value); if (clean) keys.push(prefix + clean); };
+  if (customer.id) add('i:', customer.id);
+  if (customer.pd) add('p:', String(customer.pd).replace(/\D/g, ''));
+  if (customer.em) add('e:', customer.em);
+  if (customer.co) add('c:', customer.co.replace(/[^a-z0-9]/gi, ''));
+  return keys;
+}
+function customerRefreshChanges(previous, current) {
+  const stableComparison = !!previous?.length && previous.every(customer => customer.id);
+  if (stableComparison) {
+    const priorById = new Map(previous.map(customer => [String(customer.id), customer]));
+    let newCount = 0, changedCount = 0;
+    for (const customer of current || []) {
+      const match = priorById.get(String(customer.id || ''));
+      if (!match) { newCount++; continue; }
+      if (CUSTOMER_COMPARE_FIELDS.some(field => normalizedCustomerValue(match[field]) !== normalizedCustomerValue(customer[field]))) changedCount++;
+    }
+    return { newCount, changedCount };
+  }
+
+  // The retired embedded export has no QBO IDs and formats many unchanged names
+  // and addresses differently. It can reliably identify additions through shared
+  // phone/email/name keys, but must not pretend those formatting differences are edits.
+  const priorByKey = new Map();
+  for (const customer of previous || []) {
+    for (const key of customerRefreshIdentityKeys(customer)) {
+      if (!priorByKey.has(key)) priorByKey.set(key, []);
+      priorByKey.get(key).push(customer);
+    }
+  }
+  let newCount = 0;
+  for (const customer of current || []) {
+    const scores = new Map();
+    for (const key of customerRefreshIdentityKeys(customer)) {
+      for (const candidate of priorByKey.get(key) || []) scores.set(candidate, (scores.get(candidate) || 0) + 1);
+    }
+    const match = [...scores.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (!match) { newCount++; continue; }
+  }
+  return { newCount, changedCount: 0 };
 }
 
 // ─── CUSTOMER WRITEBACK (Bridge sheet "Customers" tab) ───────────────────────
