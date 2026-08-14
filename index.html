@@ -8037,7 +8037,6 @@ const CUSTOMERS_SHEET = 'Customers';
 const CUST_SHEET_HEADER = ['Company','Contact','Phone','Email','Street','City','State','Zip','Added'];
 const QBO_CUSTOMERS_CACHE_KEY = 'mpeQboCustomers';
 const QBO_CUSTOMERS_UPDATED_KEY = 'mpeQboCustomersUpdatedAt';
-const QBO_CUSTOMERS_SEED_AT = '2026-08-14T00:00:00';
 let _custQbo = [], _custSheet = [], _custPending = [], _custSheetEnsured = false, _custAddedSession = new Set();
 try { _custQbo = JSON.parse(localStorage.getItem(QBO_CUSTOMERS_CACHE_KEY) || '[]') || []; } catch { _custQbo = []; }
 try { _custSheet = JSON.parse(localStorage.getItem('mpeCustSheetCache') || '[]') || []; } catch { _custSheet = []; }
@@ -8170,7 +8169,8 @@ function customerSyncSunday(now = new Date()) {
   return sunday;
 }
 function customerSyncLastAt() {
-  const stored = localStorage.getItem(QBO_CUSTOMERS_UPDATED_KEY) || QBO_CUSTOMERS_SEED_AT;
+  const stored = localStorage.getItem(QBO_CUSTOMERS_UPDATED_KEY);
+  if (!stored) return new Date(0); // first rollout/device is due immediately
   const parsed = new Date(stored);
   return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
 }
