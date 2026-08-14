@@ -272,6 +272,33 @@ body.show-cost .hero-cost { display: block; }
   font-size: 12.5px; color: var(--muted);
 }
 .bind-banner b { color: var(--warn); word-break: break-all; }
+.new-item-start {
+  display: none; width: 100%; margin-top: 10px; padding: 11px 12px;
+  border: 1px solid var(--warn); border-radius: 10px;
+  background: transparent; color: var(--warn); font-size: 14px; font-weight: 700;
+}
+.new-item-start.show { display: block; }
+.new-item-code {
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+  background: var(--panel-2); color: var(--muted); font-size: 12px; word-break: break-all;
+}
+.new-item-code b { color: var(--warn); }
+.new-item-form { display: grid; gap: 12px; padding: 14px; }
+.new-item-field { display: grid; gap: 5px; }
+.new-item-field label { color: var(--muted); font-size: 11.5px; font-weight: 600; }
+.new-item-field label span { color: var(--dim); font-weight: 400; }
+.new-item-input {
+  width: 100%; min-height: 44px; padding: 10px 11px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--panel-2); color: var(--text);
+  font-size: 16px; -webkit-appearance: none;
+}
+textarea.new-item-input { min-height: 72px; resize: vertical; }
+.new-item-input:focus { outline: none; border-color: var(--muted); }
+.new-item-help { margin: -2px 0 0; color: var(--dim); font-size: 11.5px; }
+.new-item-actions { display: grid; grid-template-columns: 1fr 1.35fr; gap: 8px; padding-top: 2px; }
+.new-item-actions button { min-height: 44px; border-radius: 10px; font-size: 14px; font-weight: 700; }
+.new-item-back { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); }
+.new-item-save { background: var(--accent); color: var(--accent-ink); }
 .set-row {
   display: flex; align-items: center; gap: 12px;
   padding: 13px 14px; border-bottom: 1px solid var(--line);
@@ -434,8 +461,49 @@ body.bind .bind-wrap { display: flex; }
     <div class="sheet-pad">
       <input class="search-input" id="searchInput" type="search" placeholder="Part number or description"
              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <button class="new-item-start" id="newItemStart">Not in Master — add details</button>
     </div>
     <div class="sheet-body" id="searchResults"></div>
+  </div>
+</div>
+
+<!-- Unknown UPC details stay a Bridge note until a person creates the Master item. -->
+<div class="sheet" id="newItemSheet">
+  <div class="sheet-panel">
+    <div class="sheet-top">
+      <div class="sheet-title">New item details</div>
+      <button class="mini" id="newItemClose">Close</button>
+    </div>
+    <div class="new-item-code">UPC <b id="newItemCode"></b></div>
+    <div class="sheet-body">
+      <div class="new-item-form">
+        <div class="new-item-field">
+          <label for="newItemName">What is it? <span>optional</span></label>
+          <input class="new-item-input" id="newItemName" type="text" placeholder="e.g. 8 in. pruning shear"
+                 autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true">
+        </div>
+        <div class="new-item-field">
+          <label for="newItemMake">Make <span>optional</span></label>
+          <input class="new-item-input" id="newItemMake" type="text" placeholder="e.g. Corona"
+                 autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
+        </div>
+        <div class="new-item-field">
+          <label for="newItemPrice">Price note <span>optional</span></label>
+          <input class="new-item-input" id="newItemPrice" type="text" placeholder="e.g. $29.99 shelf or $18 cost"
+                 autocomplete="off" autocorrect="off" inputmode="decimal" spellcheck="false">
+          <div class="new-item-help">A note for setup only — it will not become a POS or Master price.</div>
+        </div>
+        <div class="new-item-field">
+          <label for="newItemNote">Other note <span>optional</span></label>
+          <textarea class="new-item-input" id="newItemNote" placeholder="size, color, source, package count…"
+                    autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true"></textarea>
+        </div>
+        <div class="new-item-actions">
+          <button class="new-item-back" id="newItemBack">Match instead</button>
+          <button class="new-item-save" id="newItemSave">Save for Bridge</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -594,6 +662,7 @@ let warrantyModelMap = new Map();
 let list = [];
 let feedStamp = '';
 let bindTarget = null;         // list entry awaiting a manual part match
+let newItemTarget = null;      // unresolved UPC being described for later Master setup
 let flushPromise = null;
 let deferredCodeFlushTimer = null;
 let listSendActive = false;
@@ -1638,16 +1707,19 @@ function addUnknown(raw, code, format) {
   const entry = {
     id: 'u' + Date.now().toString(36) + Math.floor(performance.now() % 1000),
     pn: '', og: '', make: '', desc: raw, price: 0, was: 0, onSale: false, cost: 0,
-    qty: 1, code, format, unresolved: true, serialish, at: Date.now()
+    qty: 1, code, format, unresolved: true, serialish, newItem: false,
+    priceNote: '', note: '', at: Date.now()
   };
   const twin = list.find(e => e.unresolved && e.code === code);
   if (twin) twin.qty += 1; else list.unshift(entry);
+  const target = twin || entry;
   persistList();
   showHero({
     flag: true,
     desc: serialish ? 'Not a known serial number' : 'Not in the catalog',
     meta: raw + (serialish ? ' — serial numbers are never saved as barcodes' : ' — tap it in the list to match it to a part'),
   });
+  openSearch({ bind: target });
 }
 
 function persistList() { save(K_LIST, list); renderList(); renderAuthBar(); }
@@ -1672,7 +1744,11 @@ function renderList() {
     div.className = 'row' + (e.unresolved ? ' unresolved' : '');
     div.dataset.id = e.id;
     const sub = e.unresolved
-      ? (e.serialish ? 'Serial-shaped code — tap to look up the unit' : 'Tap to match this code to a part')
+      ? (e.serialish
+        ? 'Serial-shaped code — tap to look up the unit'
+        : e.newItem
+          ? [e.make, `UPC ${e.code}`, e.priceNote ? `Price note ${e.priceNote}` : '', 'Tap to edit'].filter(Boolean).join(' · ')
+          : 'Tap to match or add new-item details')
       : [e.make, e.pn].filter(Boolean).join(' · ');
     const priceCell = e.unresolved ? ''
       : `<div class="row-price">${money(e.price * e.qty)}${e.was ? `<small>${money(e.was * e.qty)}</small>` : ''}</div>`;
@@ -1732,7 +1808,7 @@ $('rows').addEventListener('click', ev => {
     persistList();
     return;
   }
-  if (entry.unresolved) openSearch({ bind: entry });
+  if (entry.unresolved) entry.newItem ? openNewItemDetails(entry) : openSearch({ bind: entry });
   else showHero({
     make: entry.make, desc: entry.desc, price: entry.price, was: entry.was,
     onSale: entry.onSale, meta: entry.pn, cost: entry.cost
@@ -1797,6 +1873,7 @@ function openSearch({ bind = null, pick = null, code = '', format = '', serial =
   } else {
     banner.hidden = true;
   }
+  $('newItemStart').classList.toggle('show', !!bind && !bind.serialish);
   openSheet('searchSheet');
   const input = $('searchInput');
   input.value = '';
@@ -1805,6 +1882,41 @@ function openSearch({ bind = null, pick = null, code = '', format = '', serial =
     renderHits([]);
     setTimeout(() => input.focus(), 120);
   }
+}
+
+function openNewItemDetails(entry) {
+  if (!entry || !entry.unresolved || entry.serialish) return;
+  newItemTarget = entry;
+  $('newItemCode').textContent = entry.code || entry.desc || '';
+  $('newItemName').value = entry.newItem ? String(entry.desc || '') : '';
+  $('newItemMake').value = String(entry.make || '');
+  $('newItemPrice').value = String(entry.priceNote || '');
+  $('newItemNote').value = String(entry.note || '');
+  closeSheet('searchSheet');
+  openSheet('newItemSheet');
+  setTimeout(() => $('newItemName').focus(), 120);
+}
+
+function saveNewItemDetails() {
+  const entry = newItemTarget;
+  if (!entry || !list.some(e => e.id === entry.id)) { closeSheet('newItemSheet'); return; }
+  const itemName = $('newItemName').value.trim();
+  entry.newItem = true;
+  entry.desc = itemName || entry.code || entry.desc;
+  entry.make = $('newItemMake').value.trim();
+  entry.priceNote = $('newItemPrice').value.trim();
+  entry.note = $('newItemNote').value.trim();
+  persistList();
+  closeSheet('newItemSheet');
+  bindTarget = null;
+  newItemTarget = null;
+  showHero({
+    flag: true,
+    make: entry.make,
+    desc: itemName || 'New item saved for Bridge',
+    meta: [`UPC ${entry.code}`, entry.priceNote ? `Price note ${entry.priceNote}` : ''].filter(Boolean).join(' · ')
+  });
+  toast('New-item details saved');
 }
 
 function renderHits(parts) {
@@ -2106,6 +2218,29 @@ async function findSentListRange(listId, lineCount, options) {
   return '';
 }
 
+function bridgeNoteForEntry(entry) {
+  if (!entry.unresolved) return entry.warranty && !entry.serial ? 'warranty unit — serial missing' : '';
+  const pieces = [entry.newItem ? 'new item' : 'unmatched code', `UPC ${entry.code}`];
+  if (entry.priceNote) pieces.push(`price note: ${entry.priceNote}`);
+  if (entry.note) pieces.push(entry.note);
+  return pieces.join(' · ');
+}
+
+function bridgeRowForEntry(entry, stampIso, listId, line) {
+  return [
+    stampIso, listId, line,
+    entry.unresolved ? '' : entry.pn,
+    entry.desc,
+    entry.unresolved ? String(entry.make || '') : entry.make,
+    entry.qty,
+    entry.unresolved ? '' : entry.price,
+    // Leading apostrophe so Sheets cannot reinterpret a numeric serial as a
+    // number and drop its leading zeros on the way to the counter.
+    entry.serial ? "'" + entry.serial : '',
+    bridgeNoteForEntry(entry)
+  ];
+}
+
 async function sendList() {
   if (listSendActive) return;
   const btn = $('sendBtn');
@@ -2131,19 +2266,7 @@ async function sendList() {
     const nonce = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
     const listId = 'L' + stamp.toISOString().slice(0, 19).replace(/[-:T]/g, '') + '-' + nonce;
     const ordered = list.slice().reverse();     // scan order reads better at the counter
-    const rows = ordered.map((e, i) => [
-      stamp.toISOString(), listId, i + 1,
-      e.unresolved ? '' : e.pn,
-      e.desc,
-      e.unresolved ? '' : e.make,
-      e.qty,
-      e.unresolved ? '' : e.price,
-      // Leading apostrophe so Sheets cannot reinterpret a numeric serial as a
-      // number and drop its leading zeros on the way to the counter.
-      e.serial ? "'" + e.serial : '',
-      e.unresolved ? `unmatched code ${e.code}`
-        : (e.warranty && !e.serial ? 'warranty unit — serial missing' : '')
-    ]);
+    const rows = ordered.map((e, i) => bridgeRowForEntry(e, stamp.toISOString(), listId, i + 1));
     let range = '';
     try {
       // Exactly one append attempt. A throttled POST is uncertain, so never
@@ -2177,10 +2300,19 @@ async function sendList() {
 // ── SHEETS / SETTINGS UI ──────────────────────────────────────────────────
 function openSheet(id) { $(id).classList.add('open'); }
 function closeSheet(id) { $(id).classList.remove('open'); }
-for (const id of ['searchSheet', 'setSheet']) {
+for (const id of ['searchSheet', 'newItemSheet', 'setSheet']) {
   $(id).addEventListener('click', ev => { if (ev.target.id === id) closeSheet(id); });
 }
 $('searchClose').addEventListener('click', () => { bindTarget = null; closeSheet('searchSheet'); });
+$('newItemStart').addEventListener('click', () => openNewItemDetails(bindTarget?.entry));
+$('newItemClose').addEventListener('click', () => { newItemTarget = null; bindTarget = null; closeSheet('newItemSheet'); });
+$('newItemBack').addEventListener('click', () => {
+  const entry = newItemTarget;
+  newItemTarget = null;
+  closeSheet('newItemSheet');
+  if (entry) openSearch({ bind: entry });
+});
+$('newItemSave').addEventListener('click', saveNewItemDetails);
 $('setClose').addEventListener('click', () => closeSheet('setSheet'));
 $('searchBtn').addEventListener('click', () => openSearch({}));
 $('setBtn').addEventListener('click', () => { renderAuth(); renderPending(); openSheet('setSheet'); });

@@ -537,11 +537,11 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-total-label { color: #667066; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   body.dark .scanner-mode-total-label { color: #aeb7ae; }
   .scanner-mode-total { font-size: clamp(42px, 5vw, 64px); font-weight: 700; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
-  .scanner-mode-auto-print { display: grid; justify-items: center; gap: 5px; width: min(220px, 100%); margin: 0 auto; padding: 7px 9px 9px; border: 1px solid #2f5a3f; background: #fff; color: #1a1a1a; box-sizing: border-box; }
-  .scanner-mode-auto-print-label { color: #2f5a3f; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-align: center; text-transform: uppercase; }
+  .scanner-mode-command { display: grid; justify-items: center; gap: 7px; }
+  .scanner-mode-auto-print { display: grid; justify-items: center; width: 100%; max-width: 184px; min-width: 0; margin: 0 auto; padding: 4px 5px; border: 1px solid #2f5a3f; background: #fff; color: #1a1a1a; box-sizing: border-box; }
+  .scanner-mode-auto-print-label { color: #c62828; font-size: clamp(18px, 2vw, 22px); font-weight: 800; line-height: 1.1; letter-spacing: .025em; text-align: center; text-transform: uppercase; text-wrap: balance; }
   .scanner-mode-auto-print-code { display: block; width: 100%; height: 44px; shape-rendering: crispEdges; }
-  .scanner-mode-auto-print.clear-needed { border: 2px solid #b3261e; padding: 6px 8px 8px; }
-  .scanner-mode-auto-print.clear-needed .scanner-mode-auto-print-label { color: #b3261e; font-size: 13px; }
+  .scanner-mode-auto-print.clear-needed { border: 2px solid #b3261e; padding: 3px 4px; }
   .scanner-mode-exit-bar { display: block; flex: none; width: 100%; min-height: 64px; margin-top: auto; padding: 14px 18px; border: 0; background: transparent; color: #c62828; font: inherit; font-size: clamp(20px, 2.2vw, 28px); font-weight: 800; line-height: 1.15; letter-spacing: .025em; text-align: center; text-transform: uppercase; text-wrap: balance; cursor: pointer; box-sizing: border-box; -webkit-tap-highlight-color: rgba(198,40,40,.12); }
   .scanner-mode-exit-bar:hover { color: #a82020; }
   .scanner-mode-exit-bar:active { color: #8a1c19; }
@@ -792,9 +792,11 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <div id="scannerModeTotal" class="scanner-mode-total">—</div>
           </div>
         </div>
-        <div id="scannerModeCommandCard" class="scanner-mode-auto-print" aria-label="Auto Print command barcode">
+        <div class="scanner-mode-command">
           <div id="scannerModeCommandLabel" class="scanner-mode-auto-print-label">Scan to Print</div>
-          <svg id="scannerModeAutoPrintCode" class="scanner-mode-auto-print-code" role="img" aria-label="Auto Print barcode"></svg>
+          <div id="scannerModeCommandCard" class="scanner-mode-auto-print" aria-label="Auto Print command barcode">
+            <svg id="scannerModeAutoPrintCode" class="scanner-mode-auto-print-code" role="img" aria-label="Auto Print barcode"></svg>
+          </div>
         </div>
       </div>
     </aside>
@@ -7856,10 +7858,11 @@ function loadSaleLines(lines) {
       // The list could not match this one, or the part has left Master since.
       // It is put on screen as a priced-by-hand line rather than dropped, so
       // it cannot silently disappear between the list and the register.
-      unmatched.push(item.desc || item.note || '(blank)');
+      const newItemUPC = String(item.note || '').match(/(?:^|·\s*)new item\s*·\s*UPC\s+([^·]+)/i)?.[1]?.trim() || '';
+      unmatched.push([item.desc || '(blank)', newItemUPC ? `UPC ${newItemUPC}` : ''].filter(Boolean).join(' — '));
       const input = tbody.querySelector(`[data-row="${i}"].part-input`);
       if (input) {
-        input.value = item.pn || item.desc || '';
+        input.value = newItemUPC || item.pn || item.desc || '';
         input.className = 'part-input';
         input.dataset.isOther = '1';
         input.readOnly = false;

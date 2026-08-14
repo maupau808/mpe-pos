@@ -156,6 +156,38 @@ pos.addEventListener('load', async () => {
       win.setScannerModeActive(false);
     });
 
+    await test('Scanner Mode command instruction sits outside a compact barcode box', async () => {
+      win.setScannerModeActive(true);
+      const label = pos.contentDocument.getElementById('scannerModeCommandLabel');
+      const card = pos.contentDocument.getElementById('scannerModeCommandCard');
+      const labelStyle = win.getComputedStyle(label);
+      const cardStyle = win.getComputedStyle(card);
+      const cardRect = card.getBoundingClientRect();
+      assert(label.parentElement === card.parentElement && label.nextElementSibling === card, 'instruction is still inside the barcode box');
+      assert(parseFloat(labelStyle.fontSize) >= 18, `instruction is only ${labelStyle.fontSize}`);
+      assert(labelStyle.color === 'rgb(198, 40, 40)', `instruction is not red (${labelStyle.color})`);
+      assert(parseFloat(cardStyle.width) <= 185, `barcode box CSS width is still ${cardStyle.width} (${Math.round(cardRect.width)}px at POS zoom)`);
+      win.setScannerModeActive(false);
+    });
+
+    await test('unknown phone scan can carry new-item details without setting a price', async () => {
+      const phoneWin = frameWindow(phone);
+      phoneWin.eval('list = []; persistList()');
+      phoneWin.addUnknown('012345678905', '00012345678905', 'ean_13');
+      assert(phone.contentDocument.getElementById('searchSheet').classList.contains('open'), 'unknown scan did not open its decision sheet');
+      phone.contentDocument.getElementById('newItemStart').click();
+      phone.contentDocument.getElementById('newItemName').value = '8 in. pruning shear';
+      phone.contentDocument.getElementById('newItemMake').value = 'Corona';
+      phone.contentDocument.getElementById('newItemPrice').value = '$29.99 shelf';
+      phone.contentDocument.getElementById('newItemNote').value = 'red handle';
+      phone.contentDocument.getElementById('newItemSave').click();
+      const row = phoneWin.eval("bridgeRowForEntry(list[0], '2026-08-14T12:00:00.000Z', 'TEST', 1)");
+      assert(row[3] === '', 'unknown UPC became a Master part number');
+      assert(row[4] === '8 in. pruning shear' && row[5] === 'Corona', 'new-item shorthand was lost');
+      assert(row[7] === '', 'price note became a list price');
+      assert(/new item.*UPC 00012345678905.*price note: \$29\.99 shelf.*red handle/i.test(row[9]), 'Bridge note lost UPC or context');
+    });
+
     await test('regular mode accepts a hardware burst', async () => {
       reset(pos); await burst(pos, codeA);
       assert(filledRows(pos).length === 1, 'scan did not add one row');
