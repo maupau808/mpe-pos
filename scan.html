@@ -285,6 +285,57 @@ body.show-cost .hero-cost { display: block; }
 .sw.on i { transform: translateX(19px); background: var(--accent-ink); }
 .danger { color: var(--err); }
 
+/* ── bind mode ──────────────────────────────────────────────────────────── */
+/* Learning a barcode is a shelf job, not a lookup: the camera only has to
+   confirm aim, so it shrinks to a strip and every pixel it gives up goes to the
+   pool of parts being matched. The lookup list is hidden rather than reused —
+   the two workflows must never write into each other. */
+body.bind .cam-wrap { height: 12vh; min-height: 76px; max-height: 106px; }
+body.bind .reticle i { width: 62%; height: 54%; border-radius: 8px; }
+body.bind .cam-note { display: none; }
+body.bind .hero,
+body.bind .acts,
+body.bind .list-wrap { display: none; }
+body.bind .bind-wrap { display: flex; }
+.icon-btn.on { color: var(--accent); }
+
+.bind-wrap { flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; }
+.bind-bar {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.bind-bar-main { flex: 1; min-width: 0; }
+.bind-code { font-size: 16px; font-weight: 600; line-height: 1.25; word-break: break-all; color: var(--muted); }
+.bind-say { font-size: 11.5px; color: var(--dim); margin-top: 3px; }
+/* A code waiting to be matched is real signal — it is the one thing on screen
+   that will not resolve itself — so it is the one thing allowed to shout. */
+.bind-bar.armed .bind-code { color: var(--warn); font-size: 19px; font-weight: 700; }
+.bind-bar.armed .bind-say { color: var(--text); }
+.bind-bar.said .bind-code { color: var(--text); }
+.bind-filterbar {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+}
+.bind-filterbar .search-input { flex: 1; }
+.bind-head {
+  flex: none; padding: 8px 14px; font-size: 11.5px; color: var(--muted);
+  background: var(--bg); border-bottom: 1px solid var(--line); min-height: 30px;
+}
+.bind-list { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.pool {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-bottom: 1px solid var(--line);
+}
+.pool:active { background: var(--panel-2); }
+.pool-main { flex: 1; min-width: 0; }
+.pool-desc { font-size: 14px; line-height: 1.3; word-break: break-word; }
+.pool-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.pool-mark {
+  flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--dim);
+}
+.pool.bound .pool-mark { color: var(--accent); }
+
 .toast {
   position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom));
   transform: translateX(-50%); z-index: 60;
@@ -302,6 +353,7 @@ body.show-cost .hero-cost { display: block; }
   <div class="brand">MPE <span>Scan</span></div>
   <div class="top-spacer"></div>
   <div class="feed-dot" id="feedDot" title="catalog status"></div>
+  <button class="icon-btn" id="bindBtn" title="Bind barcodes to parts">&#9783;</button>
   <button class="icon-btn" id="searchBtn" title="Search by name or number">&#9906;</button>
   <button class="icon-btn" id="setBtn" title="Settings">&#9881;</button>
 </div>
@@ -351,6 +403,24 @@ body.show-cost .hero-cost { display: block; }
     <button class="mini" id="clearBtn">Clear</button>
   </div>
   <div id="rows"></div>
+</div>
+
+<!-- bind mode: scan a package, tap the part it belongs to -->
+<div class="bind-wrap" id="bindWrap">
+  <div class="bind-bar" id="bindBar">
+    <div class="bind-bar-main">
+      <div class="bind-code" id="bindCode">Scan a barcode</div>
+      <div class="bind-say" id="bindSay">Filter the pool below first, then scan the package.</div>
+    </div>
+    <button class="mini" id="bindUndoBtn" hidden>Undo</button>
+  </div>
+  <div class="bind-filterbar">
+    <input class="search-input" id="bindFilter" type="search" placeholder="Filter — blade, Corona, hedge shear"
+           autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+    <button class="mini go" id="bindOnlyBtn">Unbound</button>
+  </div>
+  <div class="bind-head" id="bindHead"></div>
+  <div class="bind-list" id="bindList"></div>
 </div>
 
 <!-- search / bind sheet -->
@@ -756,6 +826,9 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   feedStamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   setFeedState(sourceLabel === 'cache' ? 'warn' : 'ok',
     `${feed.parts.length.toLocaleString()} parts · ${sourceLabel === 'cache' ? 'cached copy' : 'updated ' + feedStamp}`);
+  // A fresh feed brings new bindings with it, so the shelf pool's "coded" marks
+  // are stale the moment it lands.
+  if (bindMode) renderBindPool();
   return feed;
 }
 
@@ -1457,6 +1530,10 @@ function acceptScan(rawValue, format) {
 
   if (!loaded) { showHero({ bad: true, desc: 'Prices are not loaded yet', meta: raw }); beep('unknown'); return; }
 
+  // Bind mode is a different job with the same scanner: the code arms itself
+  // and waits for a part instead of becoming a price or a list row.
+  if (bindMode) { bindScan(raw, format); return; }
+
   // Resolve FIRST. The packaging-noise filter below must only ever see codes
   // that already failed to resolve — that ordering is what keeps genuinely
   // short part numbers (Felco 23, ECHO 1106, SCAG 1000) working, since they
@@ -1788,6 +1865,223 @@ function chooseHit(part) {
     onSale: pricing(part).onSale, meta: part.pn, cost: Number(part.cost) || 0
   });
 }
+
+// ── BIND MODE ─────────────────────────────────────────────────────────────
+// Scan the package, then tap the part it belongs to. Deliberately scan-first:
+// the code is the thing in your hand that the shop does not know yet, and
+// arming it before the pool is touched keeps a stray tap from binding nothing.
+//
+// The pool is filtered BEFORE any of this — one shelf at a time ("blade",
+// "Corona") — because tapping the right row out of forty is fast and tapping it
+// out of twenty thousand is not.
+//
+// This writes through queueCodeBinding, the same verified `Codes` queue the
+// lookup path uses. It never touches the pick list, never writes a price, and
+// applies resolve-first, then never-bind-a-serial, then the packaging filter in
+// exactly the order acceptScan applies them.
+const K_BINDON = 'mpeScanBindMode';
+const K_BINDQ  = 'mpeScanBindFilter';
+const K_BINDONLY = 'mpeScanBindUnbound';
+let bindMode = localStorage.getItem(K_BINDON) === '1';
+let bindPending = null;        // { raw, code, format } armed, waiting for its part
+let bindLast = null;           // last binding made here, for a single undo
+let bindPool = [];
+let bindCount = 0;
+let bindUnboundOnly = localStorage.getItem(K_BINDONLY) !== '0';
+
+// Every part number that already has at least one product barcode. Unit-serial
+// rules never reach partCodeMap, so this is genuinely "has a UPC", which is the
+// only thing the shelf pass is trying to change.
+function boundPartNumbers() {
+  const seen = new Set();
+  for (const pn of Object.values(partCodeMap)) if (pn) seen.add(pn);
+  return seen;
+}
+
+function setBindMode(on) {
+  bindMode = !!on;
+  document.body.classList.toggle('bind', bindMode);
+  localStorage.setItem(K_BINDON, bindMode ? '1' : '0');
+  $('bindBtn').classList.toggle('on', bindMode);
+  bindPending = null;
+  renderBindBar();
+  if (!bindMode) return;
+  renderBindPool();
+  if (!$('bindFilter').value.trim()) setTimeout(() => $('bindFilter').focus(), 150);
+}
+
+function renderBindBar() {
+  const bar = $('bindBar');
+  $('bindUndoBtn').hidden = !bindLast;
+  if (bindPending) {
+    bar.className = 'bind-bar armed';
+    $('bindCode').textContent = bindPending.raw;
+    $('bindSay').textContent = 'Tap the part this belongs to';
+    return;
+  }
+  bar.className = 'bind-bar';
+  $('bindCode').textContent = 'Scan a barcode';
+  $('bindSay').textContent = bindLast
+    ? `Last saved: ${bindLast.desc}`
+    : 'Filter the pool below first, then scan the package.';
+}
+
+// Says something about the scan that is not an armed code — already known,
+// a serial, a refusal. Cleared by the next scan or the next binding.
+function bindNote(code, say) {
+  $('bindBar').className = 'bind-bar said';
+  $('bindCode').textContent = code;
+  $('bindSay').textContent = say;
+  $('bindUndoBtn').hidden = !bindLast;
+}
+
+function bindScan(raw, format) {
+  // Resolve FIRST, exactly as the lookup path does. A code that already
+  // resolves needs no binding, and the packaging-noise filter must only ever
+  // see codes that have already failed to resolve.
+  const { candidates } = resolveScannedValue(raw);
+  // Any scan that gets this far answers the previous one, so a stale "ignored a
+  // packaging barcode" warning must not sit on the preview looking current.
+  if (scanActive) setCamStatus('');
+  if (candidates.length) {
+    bindPending = null;
+    bindNote(candidates[0].desc || candidates[0].pn,
+      candidates.length > 1 ? 'Already known — matches more than one part' : 'Already known — nothing to save');
+    beep('ok'); buzz(20);
+    return;
+  }
+  // A serial belongs to one machine. Binding it as a product barcode would be
+  // wrong on every terminal, forever, so bind mode will not even offer it.
+  if (looksLikeSerial(raw)) {
+    bindPending = null;
+    bindNote(raw, 'Serial number — never saved as a barcode');
+    beep('unknown');
+    return;
+  }
+  if (ignorableScanCode(raw)) {
+    setCamStatus('Ignored a packaging barcode — aim at the UPC', 'warn');
+    beep('ignore');
+    return;
+  }
+  bindPending = { raw, code: canonicalScannedCode(raw), format };
+  renderBindBar();
+  beep('unknown'); buzz([25, 60, 25]);
+}
+
+function renderBindPool() {
+  const box = $('bindList');
+  const head = $('bindHead');
+  const tally = bindCount ? ` · ${bindCount} saved` : '';
+  if (!loaded) {
+    bindPool = [];
+    box.innerHTML = '<div class="empty-note">Prices are not loaded yet.</div>';
+    head.textContent = '';
+    return;
+  }
+  const q = $('bindFilter').value.trim();
+  if (q.length < 2) {
+    bindPool = [];
+    box.innerHTML = '<div class="empty-note">Name the shelf you are working —'
+      + ' <b>blade</b>, <b>Corona</b>, <b>hedge shear</b>.<br>The pool stays that narrow until you change it.</div>';
+    head.textContent = tally.replace(/^ · /, '');
+    return;
+  }
+  const bound = boundPartNumbers();
+  const all = searchParts(q, 400).map(p => ({ p, bound: bound.has(normalizePN(p.pn)) }));
+  const unbound = all.filter(r => !r.bound).length;
+  bindPool = bindUnboundOnly ? all.filter(r => !r.bound) : all;
+  head.textContent = all.length
+    ? `${all.length} match${all.length === 1 ? '' : 'es'} · ${unbound} without a barcode${tally}`
+    : `Nothing matches "${q}"${tally}`;
+  if (!bindPool.length) {
+    box.innerHTML = all.length
+      ? '<div class="empty-note">Every match already has a barcode.<br>Turn off <b>Unbound</b> to add a second one.</div>'
+      : '<div class="empty-note">Try fewer words, or the brand name.</div>';
+    return;
+  }
+  box.replaceChildren(...bindPool.map((row, i) => {
+    const div = document.createElement('div');
+    div.className = 'pool' + (row.bound ? ' bound' : '');
+    div.dataset.i = String(i);
+    div.innerHTML = `
+      <div class="pool-main">
+        <div class="pool-desc">${escapeHTML(row.p.desc || row.p.pn)}</div>
+        <div class="pool-sub">${escapeHTML([row.p.make, row.p.pn].filter(Boolean).join(' · '))}</div>
+      </div>
+      <div class="pool-mark">${row.bound ? 'coded' : ''}</div>`;
+    return div;
+  }));
+}
+
+function bindChoose(part) {
+  if (!bindPending) { toast('Scan the barcode first'); return; }
+  const { raw, code, format } = bindPending;
+  const hadLearned = Object.prototype.hasOwnProperty.call(learnedCodes, code);
+  const before = partCodeMap[code] || '';
+  queueCodeBinding(raw, format, part);
+  // queueCodeBinding is the gatekeeper and can refuse; say so rather than
+  // reporting a save that did not happen.
+  if (partCodeMap[code] !== normalizePN(part.pn)) {
+    bindNote(raw, 'That code cannot be saved as a barcode');
+    beep('unknown');
+    return;
+  }
+  bindLast = { code, before, hadLearned, desc: part.desc || part.pn };
+  bindCount += 1;
+  bindPending = null;
+  beep('ok'); buzz(35);
+  renderBindBar();
+  renderBindPool();
+  toast(`Saved — ${part.desc || part.pn}`);
+}
+
+// A mis-tap here would teach every terminal in the shop the wrong part, so the
+// last binding stays reversible for as long as it is still sitting in the local
+// queue. Once it has synced to `Codes` it belongs to the shop and this refuses.
+function bindUndo() {
+  if (!bindLast) return;
+  const { code, before, hadLearned, desc } = bindLast;
+  const at = pendingCodes.findIndex(i => canonicalScannedCode(i.code) === code);
+  if (at < 0) {
+    toast('Already sent to the shop — fix it in Tools');
+    bindLast = null; renderBindBar();
+    return;
+  }
+  pendingCodes.splice(at, 1);
+  save(K_PENDING, pendingCodes);
+  if (hadLearned) learnedCodes[code] = before; else delete learnedCodes[code];
+  save(K_LEARNED, learnedCodes);
+  if (before) partCodeMap[code] = before; else delete partCodeMap[code];
+  renderPending();
+  bindCount = Math.max(0, bindCount - 1);
+  bindLast = null;
+  renderBindBar();
+  renderBindPool();
+  toast(`Undone — ${desc}`);
+}
+
+$('bindBtn').addEventListener('click', () => setBindMode(!bindMode));
+$('bindUndoBtn').addEventListener('click', bindUndo);
+$('bindOnlyBtn').addEventListener('click', () => {
+  bindUnboundOnly = !bindUnboundOnly;
+  localStorage.setItem(K_BINDONLY, bindUnboundOnly ? '1' : '0');
+  $('bindOnlyBtn').className = 'mini' + (bindUnboundOnly ? ' go' : '');
+  renderBindPool();
+});
+$('bindList').addEventListener('click', ev => {
+  const el = ev.target.closest('.pool'); if (!el) return;
+  const row = bindPool[Number(el.dataset.i)]; if (!row) return;
+  bindChoose(row.p);
+});
+let bindFilterTimer = null;
+$('bindFilter').addEventListener('input', ev => {
+  clearTimeout(bindFilterTimer);
+  localStorage.setItem(K_BINDQ, ev.target.value);
+  bindFilterTimer = setTimeout(renderBindPool, 130);
+});
+$('bindFilter').value = localStorage.getItem(K_BINDQ) || '';
+$('bindOnlyBtn').className = 'mini' + (bindUnboundOnly ? ' go' : '');
+setBindMode(bindMode);
 
 let searchTimer = null;
 $('searchInput').addEventListener('input', ev => {
