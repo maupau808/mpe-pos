@@ -384,6 +384,7 @@ body.doc-internal .sum-internal { display: block; }
 .pc-table { width:100%;border-collapse:collapse; }
 .pc-table th { text-align:left;color:#888;font-weight:500;padding:6px 10px;border-bottom:1px solid #e9ece7;font-size:11px; }
 .pc-table td { padding:6px 10px;border-bottom:1px solid #f3f6f2; }
+.pc-new-item-pill { display:inline-block;margin-top:4px;padding:2px 6px;border-radius:999px;background:#e7f1e9;color:#2f5a3f;font-size:9px;font-weight:800;letter-spacing:.05em;line-height:1.2;text-transform:uppercase; }
 .pc-body { overflow-y:auto;flex:1; }
 .pc-footer { padding:12px 18px;border-top:1px solid #dde3da;display:flex;gap:8px;justify-content:flex-end; }
 /* Sales view: hide cost and margin columns */
@@ -4749,27 +4750,36 @@ function logOtherSuggestion(rowIdx) {
   if (!inp || inp.dataset.isOther !== '1') return;
   const typed = inp.value.trim();
   const changes = getPriceChanges();
-  const key = 'new-item_' + rowIdx;
-  const idx = changes.findIndex(c => c.rowKey === key);
+  const key = inp.dataset.newItemKey || '';
+  const idx = key ? changes.findIndex(c => c.rowKey === key) : -1;
   if (!typed || /^other$/i.test(typed)) {
     if (idx >= 0) { changes.splice(idx, 1); savePriceChanges(changes); }
     return;
   }
+  // A row number is reused after every sale. Give each edited Other line its
+  // own identity so a later row 1 cannot overwrite an earlier unpushed item.
+  if (!inp.dataset.newItemKey) {
+    inp.dataset.newItemKey = 'new-item_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
+  }
+  const entryIdx = changes.findIndex(c => c.rowKey === inp.dataset.newItemKey);
   const descRaw = (document.getElementById(`desc-${rowIdx}`)?.textContent || '').trim();
   const description = (!descRaw || /^other$|^—$/i.test(descRaw)) ? typed : descRaw;
   const price = parseFloat(document.getElementById(`price-${rowIdx}`)?.dataset.price);
   const cost = parseFloat(document.getElementById(`cost-${rowIdx}`)?.dataset.cost);
-  const entry = { rowKey: key, kind: 'newItem', pn: typed, desc: description,
+  const entry = { rowKey: inp.dataset.newItemKey, kind: 'newItem', pn: typed, desc: description,
     make: '@NEW', date: new Date().toLocaleDateString('en-US') };
   if (Number.isFinite(price)) entry.newPrice = price;
   if (Number.isFinite(cost) && cost > 0) entry.newCost = cost;
-  if (idx >= 0) changes[idx] = entry; else changes.push(entry);
+  if (entryIdx >= 0) changes[entryIdx] = entry; else changes.push(entry);
   savePriceChanges(changes);
 }
 
 function clearOtherSuggestion(rowIdx) {
+  const inp = tbody.querySelector(`[data-row="${rowIdx}"].part-input`);
+  const key = inp?.dataset.newItemKey;
+  if (!key) return;
   const changes = getPriceChanges();
-  const next = changes.filter(c => c.rowKey !== 'new-item_' + rowIdx);
+  const next = changes.filter(c => c.rowKey !== key);
   if (next.length !== changes.length) savePriceChanges(next);
 }
 function countUnpushedTxns() {
@@ -4805,7 +4815,7 @@ function renderPriceChanges() {
     : changes.map((c, i) =>
         `<tr>` +
         `<td style="text-align:center;"><button class="hist-del-btn" title="Remove" onclick="deletePriceChangeEntry(${i})">✕</button></td>` +
-        `<td style="font-size:13px;font-weight:500;">${c.pn}</td>` +
+        `<td style="font-size:13px;font-weight:500;">${c.pn}${c.kind === 'newItem' ? '<br><span class="pc-new-item-pill">New Master item</span>' : ''}</td>` +
         `<td style="font-size:12px;color:#555;">${c.desc || '—'}</td>` +
         `<td style="font-size:12px;color:#2f4339;">${c.newDesc != null ? c.newDesc : '—'}</td>` +
         `<td style="font-size:13px;text-align:right;color:#c0392b;">${c.newPrice != null ? '<strong>$'+parseFloat(c.newPrice).toFixed(2)+'</strong>' : '—'}</td>` +
@@ -6144,7 +6154,7 @@ function clearRowData(i) {
   const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (partInput) {
     partInput.title = '';
-    ['isOther', 'partPn', 'partMake', 'partDesc', 'list'].forEach(key => delete partInput.dataset[key]);
+    ['isOther', 'partPn', 'partMake', 'partDesc', 'list', 'newItemKey'].forEach(key => delete partInput.dataset[key]);
   }
   const supMark = document.getElementById(`supmark-${i}`);
   if (supMark) { supMark.classList.remove('visible'); supMark.title = ''; }

@@ -188,6 +188,31 @@ pos.addEventListener('load', async () => {
       assert(/new item.*UPC 00012345678905.*price note: \$29\.99 shelf.*red handle/i.test(row[9]), 'Bridge note lost UPC or context');
     });
 
+    await test('edited Other rows remain separate new Master candidates', async () => {
+      win.savePriceChanges([]);
+      const editOther = (pn, desc, price, cost) => {
+        win.applyPart(0, { pn: 'Other', desc: 'Other', make: 'Other', list: 0, cost: 0 }, { skipAddRow: true, skipFocus: true });
+        const input = pos.contentDocument.querySelector('#searchRows [data-row="0"].part-input');
+        input.value = pn;
+        input.dataset.partPn = pn;
+        pos.contentDocument.getElementById('desc-0').textContent = desc;
+        pos.contentDocument.getElementById('price-0').dataset.price = String(price);
+        pos.contentDocument.getElementById('cost-0').dataset.cost = String(cost);
+        win.logOtherSuggestion(0);
+      };
+      editOther('NEW-ONE', 'First edited Other item', 24.99, 12.5);
+      win.clearAll();
+      editOther('NEW-TWO', 'Second edited Other item', 39.99, 20);
+      const changes = win.getPriceChanges();
+      assert(changes.length === 2, `expected 2 candidates, found ${changes.length}`);
+      assert(new Set(changes.map(c => c.rowKey)).size === 2, 'row reuse overwrote a pending candidate');
+      assert(changes.every(c => c.kind === 'newItem' && c.make === '@NEW'), 'candidate is not eligible for Bridge Pull new-item review');
+      win.renderPriceChanges();
+      assert(pos.contentDocument.querySelectorAll('.pc-new-item-pill').length === 2, 'new Master eligibility is not visible in Uploads');
+      win.savePriceChanges([]);
+      win.clearAll();
+    });
+
     await test('regular mode accepts a hardware burst', async () => {
       reset(pos); await burst(pos, codeA);
       assert(filledRows(pos).length === 1, 'scan did not add one row');
