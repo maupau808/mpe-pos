@@ -283,6 +283,8 @@ body.show-cost .hero-cost { display: block; }
   background: var(--panel-2); color: var(--muted); font-size: 12px; word-break: break-all;
 }
 .new-item-code b { color: var(--warn); }
+.new-item-code span { color: var(--dim); font-weight: 400; }
+.new-item-code span:not(:empty)::before { content: ' · '; }
 .new-item-form { display: grid; gap: 12px; padding: 14px; }
 .new-item-field { display: grid; gap: 5px; }
 .new-item-field label { color: var(--muted); font-size: 11.5px; font-weight: 600; }
@@ -507,6 +509,40 @@ body.bind .bind-wrap { display: flex; }
   </div>
 </div>
 
+<!-- A correction to a part Master already has. It queues for Bridge Pull and
+     changes nothing until Trevor applies it in Tools. -->
+<div class="sheet" id="editItemSheet">
+  <div class="sheet-panel">
+    <div class="sheet-top">
+      <div class="sheet-title">Edit item</div>
+      <button class="mini" id="editItemClose">Close</button>
+    </div>
+    <div class="new-item-code">PN <b id="editItemPn"></b><span id="editItemMake"></span></div>
+    <div class="sheet-body">
+      <div class="new-item-form">
+        <div class="new-item-field">
+          <label for="editItemName">Description</label>
+          <input class="new-item-input" id="editItemName" type="text"
+                 autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true">
+          <div class="new-item-help" id="editItemNameNow"></div>
+        </div>
+        <div class="new-item-field">
+          <label for="editItemPrice">List price</label>
+          <input class="new-item-input" id="editItemPrice" type="text" placeholder="29.99"
+                 autocomplete="off" autocorrect="off" inputmode="decimal" spellcheck="false">
+          <div class="new-item-help" id="editItemPriceNow"></div>
+        </div>
+        <div class="new-item-help" id="editItemState"></div>
+        <div class="new-item-actions">
+          <button class="new-item-back" id="editItemRevert">Revert to Master</button>
+          <button class="new-item-save" id="editItemSave">Save for Bridge</button>
+        </div>
+        <div class="new-item-help">Queued for your approval in Tools → Bridge Pull. Nothing here changes Master, the POS, or what the counter charges today.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- settings sheet -->
 <div class="sheet" id="setSheet">
   <div class="sheet-panel">
@@ -559,6 +595,13 @@ body.bind .bind-wrap { display: flex; }
       </div>
       <div class="set-row">
         <div class="set-main">
+          <div class="set-label">Unsent price and name changes</div>
+          <div class="set-help" id="changeHelp">—</div>
+        </div>
+        <button class="mini" id="flushChangesBtn">Send now</button>
+      </div>
+      <div class="set-row">
+        <div class="set-main">
           <div class="set-label danger">Forget this device's saved codes</div>
           <div class="set-help">Only clears the local copy. Codes already sent to the shop sheet stay.</div>
         </div>
@@ -606,6 +649,11 @@ const LISTS_SHEET  = 'Lists';
 // Serial rides with the line: the counter POS fills the warranty serial field
 // from it, which is the whole reason a unit can be scanned out on the floor.
 const LISTS_HEADER = ['Sent', 'List', 'Line', 'Part Number', 'Description', 'Make', 'Qty', 'Price', 'Serial', 'Note'];
+// The Bridge price-change queue the counter POS already writes and Tools' Bridge
+// Pull reads. It is deliberately HEADERLESS — Bridge Pull treats every non-empty
+// row as data — so this tab must never go through ensureTab.
+const PRICES_SHEET = 'Prices';
+const PRICES_COLS  = 'Part Number, New List, New Description, Make, Date, New Cost';
 
 const DISTRIBUTOR_PART_PREFIXES = [
   { prefix: 'SC', make: 'SCAG' },
@@ -634,6 +682,7 @@ const K_TOKEN_AT = 'gTokenAt';
 const K_SIGNED   = 'gSignedIn';
 const K_LEARNED  = 'mpePartCodeLearned';
 const K_PENDING  = 'mpeScanCodePending';   // own queue so the two pages cannot interleave a flush
+const K_CHANGES  = 'mpeScanItemChanges';   // proposed List/Description edits, same reason
 const K_LIST     = 'mpeScanList';
 const K_COST     = 'mpeScanShowCost';
 const K_THEME    = 'mpeScanTheme';
@@ -657,18 +706,22 @@ let unitSerialPrefixRules = [];
 let unitSerialCandidateRules = [];
 let learnedCodes = {};
 let pendingCodes = [];
+let pendingChanges = [];
 let scanExactIndex = null;
 let warrantyModelMap = new Map();
 let list = [];
 let feedStamp = '';
 let bindTarget = null;         // list entry awaiting a manual part match
 let newItemTarget = null;      // unresolved UPC being described for later Master setup
+let editTarget = null;         // matched row whose List/Description is being corrected
 let flushPromise = null;
+let changeFlushPromise = null;
 let deferredCodeFlushTimer = null;
 let listSendActive = false;
 
 try { learnedCodes = JSON.parse(localStorage.getItem(K_LEARNED) || '{}') || {}; } catch (e) { learnedCodes = {}; }
 try { pendingCodes = JSON.parse(localStorage.getItem(K_PENDING) || '[]') || []; } catch (e) { pendingCodes = []; }
+try { pendingChanges = JSON.parse(localStorage.getItem(K_CHANGES) || '[]') || []; } catch (e) { pendingChanges = []; }
 try { list = JSON.parse(localStorage.getItem(K_LIST) || '[]') || []; } catch (e) { list = []; }
 
 const $ = id => document.getElementById(id);
@@ -1229,6 +1282,51 @@ function queueCodeBinding(rawCode, format, part) {
   renderPending();
 }
 
+// ── ITEM CHANGE QUEUE (Prices tab) ────────────────────────────────────────
+// WRITES TO: Bridge `Prices` tab — Part Number, New List, New Description,
+//            Make, Date, New Cost. New Cost is always blank from this page.
+// TRIGGER:   Trevor saves an edit in the item sheet on a row that matched Master.
+// DOES NOT TOUCH: master.db, MASTERPRICE.xlsx, the POS JSON feed, `Codes`,
+//            `Lists`, or QBO.
+//
+// This is a PROPOSAL queue, not a price write. It is the same tab and the same
+// row shape the counter POS already appends when a price is hand-edited on a
+// sale, so an edit made in the yard and an edit made at the till arrive at Tools
+// Bridge Pull looking identical and still require Trevor's deliberate apply
+// before anything reaches Master. The number being proposed is Master's LIST
+// price — never Cost and never MSRP — which is why the sheet labels it that way.
+function changeKeyFor(pn) { return normalizePN(pn); }
+
+function queuedChangeFor(pn) {
+  const key = changeKeyFor(pn);
+  return key ? pendingChanges.find(c => changeKeyFor(c.pn) === key) || null : null;
+}
+
+function queueItemChange({ pn, make, newPrice, newDesc, listPrice, origDesc }) {
+  const key = changeKeyFor(pn);
+  if (!key) return;
+  const record = {
+    pn: String(pn || '').trim(), make: String(make || '').trim(),
+    newPrice: Number.isFinite(newPrice) ? newPrice : '',
+    newDesc: String(newDesc || ''),
+    listPrice: Number.isFinite(listPrice) ? listPrice : '',
+    origDesc: String(origDesc || ''),
+    date: new Date().toLocaleDateString('en-US')
+  };
+  const at = pendingChanges.findIndex(c => changeKeyFor(c.pn) === key);
+  if (at >= 0) pendingChanges[at] = record; else pendingChanges.push(record);
+  save(K_CHANGES, pendingChanges);
+  renderPending();
+}
+
+function clearItemChange(pn) {
+  const key = changeKeyFor(pn);
+  if (!key) return;
+  const before = pendingChanges.length;
+  pendingChanges = pendingChanges.filter(c => changeKeyFor(c.pn) !== key);
+  if (pendingChanges.length !== before) { save(K_CHANGES, pendingChanges); renderPending(); }
+}
+
 const SHEETS_RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 
 async function sheetsFetch(url, init, options) {
@@ -1346,18 +1444,54 @@ function flushPendingCodes() {
   flushPromise = _flushPendingCodes().finally(() => { flushPromise = null; });
   return flushPromise;
 }
+async function _flushPendingChanges() {
+  if (!pendingChanges.length || !token()) return;
+  try {
+    // No ensureTab: `Prices` is a permanent headerless Bridge tab, and writing a
+    // header row into it would reach Bridge Pull as a bogus price change.
+    while (pendingChanges.length) {
+      const batch = pendingChanges.slice();
+      const result = await sheetsAppend(`${PRICES_SHEET}!A1`, batch.map(c => [
+        c.pn, c.newPrice === '' ? '' : c.newPrice, c.newDesc || '', c.make || '', c.date, ''
+      ]));
+      const range = result?.updates?.updatedRange;
+      if (!range) throw new Error('append returned no range to verify');
+      const written = await sheetsGet(range);
+      const confirmed = new Set(written.map(r => normalizePN(r[0])));
+      const missing = batch.find(c => !confirmed.has(normalizePN(c.pn)));
+      if (missing) throw new Error(`change for ${missing.pn} was not found after append`);
+      pendingChanges = pendingChanges.slice(batch.length);
+      save(K_CHANGES, pendingChanges);
+      renderPending();
+    }
+  } catch (e) {
+    console.warn('Item change sync deferred:', e.message);   // stays queued; nothing is lost
+  }
+}
+function flushPendingChanges() {
+  if (changeFlushPromise) return changeFlushPromise;
+  changeFlushPromise = _flushPendingChanges().finally(() => { changeFlushPromise = null; });
+  return changeFlushPromise;
+}
 function schedulePendingCodesFlush() {
-  if (!pendingCodes.length || deferredCodeFlushTimer) return;
+  if ((!pendingCodes.length && !pendingChanges.length) || deferredCodeFlushTimer) return;
   deferredCodeFlushTimer = setTimeout(async () => {
     deferredCodeFlushTimer = null;
     if (listSendActive) { schedulePendingCodesFlush(); return; }
     await flushPendingCodes();
+    await flushPendingChanges();
   }, 15000);
 }
 function renderPending() {
   $('pendHelp').textContent = pendingCodes.length
     ? `${pendingCodes.length} saved locally — syncs after Send`
     : 'All synced.';
+  const help = $('changeHelp');
+  if (help) {
+    help.textContent = pendingChanges.length
+      ? `${pendingChanges.length} waiting — syncs after Send, then approve in Tools`
+      : 'All synced.';
+  }
 }
 
 // ── AUDIO ─────────────────────────────────────────────────────────────────
@@ -1666,6 +1800,9 @@ function entryFromPart(part, { code = '', format = '', serial = '' } = {}) {
     id: 'e' + Date.now().toString(36) + Math.floor(performance.now() % 1000),
     pn: String(part.pn || ''), og: String(part.og || ''), make: String(part.make || ''),
     desc: String(part.desc || ''), price: p.price, was: p.was, onSale: p.onSale,
+    // Master's List, kept alongside the sale-adjusted price. An edit corrects
+    // List, which on a sale item is NOT what the row is charging.
+    list: Number(part.list) || 0,
     cost: Number(part.cost) || 0, qty: 1, code, format,
     warranty: !!part.warranty, serial: String(serial || '').trim(),
     unresolved: false, at: Date.now()
@@ -1749,7 +1886,7 @@ function renderList() {
         : e.newItem
           ? [e.make, `UPC ${e.code}`, e.priceNote ? `Price note ${e.priceNote}` : '', 'Tap to edit'].filter(Boolean).join(' · ')
           : 'Tap to match or add new-item details')
-      : [e.make, e.pn].filter(Boolean).join(' · ');
+      : [e.make, e.pn, queuedChangeFor(e.pn) ? 'change queued' : ''].filter(Boolean).join(' · ');
     const priceCell = e.unresolved ? ''
       : `<div class="row-price">${money(e.price * e.qty)}${e.was ? `<small>${money(e.was * e.qty)}</small>` : ''}</div>`;
     div.innerHTML = `
@@ -1809,10 +1946,16 @@ $('rows').addEventListener('click', ev => {
     return;
   }
   if (entry.unresolved) entry.newItem ? openNewItemDetails(entry) : openSearch({ bind: entry });
-  else showHero({
-    make: entry.make, desc: entry.desc, price: entry.price, was: entry.was,
-    onSale: entry.onSale, meta: entry.pn, cost: entry.cost
-  });
+  else {
+    // Tapping used to only redraw the hero with what the row already says. The
+    // sheet shows the same identity AND is where a wrong price or name gets
+    // corrected, so the tap now opens it.
+    showHero({
+      make: entry.make, desc: entry.desc, price: entry.price, was: entry.was,
+      onSale: entry.onSale, meta: entry.pn, cost: entry.cost
+    });
+    openItemEdit(entry);
+  }
 });
 
 // ── HERO ──────────────────────────────────────────────────────────────────
@@ -1919,6 +2062,121 @@ function saveNewItemDetails() {
   toast('New-item details saved');
 }
 
+// ── EDIT A MATCHED ITEM ───────────────────────────────────────────────────
+// The shelf sticker is the reason this exists: the part resolved, but the price
+// on it disagrees with Master, and the correction has to be captured while the
+// item is still in hand.
+function masterListOf(entry) {
+  // `list` is carried on rows scanned since this feature; older rows in local
+  // storage fall back to the regular price, which is List whenever the item is
+  // not on sale and the struck-through figure when it is.
+  const n = Number(entry.list) || Number(entry.was) || Number(entry.price) || 0;
+  return n > 0 ? n : 0;
+}
+
+function openItemEdit(entry) {
+  if (!entry || entry.unresolved || !String(entry.pn || '').trim()) return;
+  editTarget = entry;
+  const queued = queuedChangeFor(entry.pn);
+  const masterList = Number(entry.masterList) || masterListOf(entry);
+  const masterDesc = String(entry.masterDesc || entry.desc || '');
+  $('editItemPn').textContent = entry.pn;
+  $('editItemMake').textContent = entry.make || '';
+  $('editItemName').value = String(entry.desc || '');
+  $('editItemPrice').value = masterList ? String(queued && queued.newPrice !== '' ? queued.newPrice : masterList) : '';
+  $('editItemNameNow').textContent = `Master has “${masterDesc}”.`;
+  $('editItemPriceNow').textContent = masterList
+    ? `Master List is ${money(masterList)}${entry.onSale ? ' — this item is on sale, so the counter is charging less today.' : '.'}`
+    : 'Master has no List price for this part.';
+  renderEditState();
+  openSheet('editItemSheet');
+}
+
+function renderEditState() {
+  const entry = editTarget;
+  const el = $('editItemState');
+  const revert = $('editItemRevert');
+  if (!entry) { el.textContent = ''; return; }
+  const queued = queuedChangeFor(entry.pn);
+  revert.disabled = !queued;
+  revert.style.visibility = queued ? '' : 'hidden';
+  if (!queued) { el.textContent = ''; return; }
+  const bits = [];
+  if (queued.newPrice !== '') bits.push(`List ${money(queued.listPrice || 0)} → ${money(queued.newPrice)}`);
+  if (queued.newDesc) bits.push(`renamed to “${queued.newDesc}”`);
+  el.textContent = bits.length ? `Queued: ${bits.join(' · ')}` : '';
+}
+
+function parseMoneyInput(value) {
+  const cleaned = String(value ?? '').replace(/[$,\s]/g, '').trim();
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : NaN;
+}
+
+function saveItemEdit() {
+  const entry = editTarget;
+  if (!entry || !list.some(e => e.id === entry.id)) { closeSheet('editItemSheet'); return; }
+  const masterList = Number(entry.masterList) || masterListOf(entry);
+  const masterDesc = String(entry.masterDesc || entry.desc || '');
+  const typedDesc = $('editItemName').value.trim();
+  const typedPrice = parseMoneyInput($('editItemPrice').value);
+  if (Number.isNaN(typedPrice)) { toast('That price is not a number'); return; }
+
+  const priceChanged = typedPrice !== null && masterList > 0 && Math.abs(typedPrice - masterList) > 0.004;
+  const descChanged = !!typedDesc && typedDesc !== masterDesc;
+  if (!priceChanged && !descChanged) {
+    clearItemChange(entry.pn);
+    entry.masterList = masterList; entry.masterDesc = masterDesc;
+    entry.desc = masterDesc;
+    entry.price = entry.onSale ? entry.price : (masterList || entry.price);
+    persistList();
+    closeSheet('editItemSheet');
+    editTarget = null;
+    toast('Back to what Master has');
+    return;
+  }
+
+  // Remember what Master said BEFORE the row starts showing the proposal, or a
+  // second edit would compare the new price against the new price.
+  entry.masterList = masterList;
+  entry.masterDesc = masterDesc;
+  queueItemChange({
+    pn: entry.pn, make: entry.make,
+    newPrice: priceChanged ? typedPrice : NaN,
+    newDesc: descChanged ? typedDesc : '',
+    listPrice: masterList,
+    origDesc: masterDesc
+  });
+  if (descChanged) entry.desc = typedDesc;
+  // Show the price he decided on. The counter deliberately rebuilds every line
+  // from Master when it loads a phone list, so this stays a quote either way.
+  if (priceChanged && !entry.onSale) entry.price = typedPrice;
+  persistList();
+  closeSheet('editItemSheet');
+  editTarget = null;
+  showHero({
+    make: entry.make, desc: entry.desc, price: entry.price, was: entry.was, onSale: entry.onSale,
+    meta: `${entry.pn} · change queued for Bridge`, cost: entry.cost
+  });
+  toast('Queued — approve it in Tools');
+  schedulePendingCodesFlush();
+}
+
+function revertItemEdit() {
+  const entry = editTarget;
+  if (!entry) { closeSheet('editItemSheet'); return; }
+  clearItemChange(entry.pn);
+  const masterList = Number(entry.masterList) || masterListOf(entry);
+  if (entry.masterDesc) entry.desc = entry.masterDesc;
+  if (!entry.onSale && masterList) entry.price = masterList;
+  entry.masterList = masterList;
+  persistList();
+  closeSheet('editItemSheet');
+  editTarget = null;
+  toast('Change removed');
+}
+
 function renderHits(parts) {
   const box = $('searchResults');
   if (!parts.length) {
@@ -1955,6 +2213,7 @@ function chooseHit(part) {
     Object.assign(entry, {
       pn: String(part.pn || ''), og: String(part.og || ''), make: String(part.make || ''),
       desc: String(part.desc || ''), price: p.price, was: p.was, onSale: p.onSale,
+      list: Number(part.list) || 0,
       cost: Number(part.cost) || 0, warranty: !!part.warranty,
       serial: capturedSerial || entry.serial || '', unresolved: false
     });
@@ -2219,7 +2478,18 @@ async function findSentListRange(listId, lineCount, options) {
 }
 
 function bridgeNoteForEntry(entry) {
-  if (!entry.unresolved) return entry.warranty && !entry.serial ? 'warranty unit — serial missing' : '';
+  if (!entry.unresolved) {
+    const pieces = [];
+    if (entry.warranty && !entry.serial) pieces.push('warranty unit — serial missing');
+    // A queued change is worth saying at the counter: it is the shelf sticker
+    // disagreeing with Master, and the line was priced from Master anyway.
+    const queued = queuedChangeFor(entry.pn);
+    if (queued) {
+      if (queued.newPrice !== '') pieces.push(`price change queued: List ${money(queued.listPrice || 0)} → ${money(queued.newPrice)}`);
+      if (queued.newDesc) pieces.push(`name change queued: “${queued.newDesc}”`);
+    }
+    return pieces.join(' · ');
+  }
   const pieces = [entry.newItem ? 'new item' : 'unmatched code', `UPC ${entry.code}`];
   if (entry.priceNote) pieces.push(`price note: ${entry.priceNote}`);
   if (entry.note) pieces.push(entry.note);
@@ -2300,8 +2570,12 @@ async function sendList() {
 // ── SHEETS / SETTINGS UI ──────────────────────────────────────────────────
 function openSheet(id) { $(id).classList.add('open'); }
 function closeSheet(id) { $(id).classList.remove('open'); }
-for (const id of ['searchSheet', 'newItemSheet', 'setSheet']) {
-  $(id).addEventListener('click', ev => { if (ev.target.id === id) closeSheet(id); });
+for (const id of ['searchSheet', 'newItemSheet', 'editItemSheet', 'setSheet']) {
+  $(id).addEventListener('click', ev => {
+    if (ev.target.id !== id) return;
+    if (id === 'editItemSheet') editTarget = null;
+    closeSheet(id);
+  });
 }
 $('searchClose').addEventListener('click', () => { bindTarget = null; closeSheet('searchSheet'); });
 $('newItemStart').addEventListener('click', () => openNewItemDetails(bindTarget?.entry));
@@ -2313,6 +2587,9 @@ $('newItemBack').addEventListener('click', () => {
   if (entry) openSearch({ bind: entry });
 });
 $('newItemSave').addEventListener('click', saveNewItemDetails);
+$('editItemClose').addEventListener('click', () => { editTarget = null; closeSheet('editItemSheet'); });
+$('editItemSave').addEventListener('click', saveItemEdit);
+$('editItemRevert').addEventListener('click', revertItemEdit);
 $('setClose').addEventListener('click', () => closeSheet('setSheet'));
 $('searchBtn').addEventListener('click', () => openSearch({}));
 $('setBtn').addEventListener('click', () => { renderAuth(); renderPending(); openSheet('setSheet'); });
@@ -2340,6 +2617,10 @@ $('refreshBtn').addEventListener('click', () => { if (needAuth(() => loadFeed())
 $('flushBtn').addEventListener('click', () => {
   if (!pendingCodes.length) { toast('Nothing waiting'); return; }
   if (needAuth(() => flushPendingCodes().then(() => toast(pendingCodes.length ? 'Still queued — will retry' : 'Sent')))) {}
+});
+$('flushChangesBtn').addEventListener('click', () => {
+  if (!pendingChanges.length) { toast('Nothing waiting'); return; }
+  if (needAuth(() => flushPendingChanges().then(() => toast(pendingChanges.length ? 'Still queued — will retry' : 'Sent')))) {}
 });
 $('forgetBtn').addEventListener('click', () => {
   if (!confirm('Forget this device’s saved barcodes?')) return;
