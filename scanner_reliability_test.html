@@ -201,6 +201,28 @@ pos.addEventListener('load', async () => {
       win.eval('_scannerModeAwaitingClear = false; renderScannerModeCommandCode()');
     });
 
+    await test('Scanner Mode item names and line prices are large without colliding', async () => {
+      reset(pos);
+      win.applyPart(0, {
+        pn: 'LONG-DISPLAY-ITEM',
+        desc: 'Commercial straight-shaft brushcutter with adjustable bicycle handle',
+        make: 'TEST', list: 1234.56, cost: 700
+      }, { skipAddRow: true, skipFocus: true });
+      win.setScannerModeActive(true);
+      const line = pos.contentDocument.querySelector('#scannerModeLines .scanner-mode-line');
+      const description = line.querySelector('.scanner-mode-description');
+      const price = line.querySelector('.scanner-mode-price');
+      const descStyle = win.getComputedStyle(description);
+      const priceStyle = win.getComputedStyle(price);
+      const descRect = description.getBoundingClientRect();
+      const priceRect = price.getBoundingClientRect();
+      assert(parseFloat(descStyle.fontSize) >= 26, `item name is only ${descStyle.fontSize}`);
+      assert(parseFloat(priceStyle.fontSize) >= 28, `line price is only ${priceStyle.fontSize}`);
+      assert(descRect.right + 10 <= priceRect.left, 'long item name collided with its price');
+      assert(line.getBoundingClientRect().height >= 88, 'larger type is cramped into the old row height');
+      reset(pos);
+    });
+
     await test('unknown phone scan can carry new-item details without setting a price', async () => {
       const phoneWin = frameWindow(phone);
       phoneWin.eval('list = []; persistList()');
