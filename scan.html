@@ -686,7 +686,9 @@ const PRICES_COLS  = 'Part Number, New List, New Description, Make, Date, New Co
 // a standing list of items to create. This tab is only ever written by a person
 // describing a real product with the thing in their hand.
 const NEWITEMS_SHEET = 'New Items';
-const NEWITEMS_HEADER = ['Captured', 'UPC', 'Item', 'Make', 'Price note', 'Other note', 'Source'];
+// `Filed` is stamped by Tools' Add Item tab once the Master row exists, and is
+// what keeps a cleared shelf find from being offered for filing twice.
+const NEWITEMS_HEADER = ['Captured', 'UPC', 'Item', 'Make', 'Price note', 'Other note', 'Source', 'Filed'];
 
 const DISTRIBUTOR_PART_PREFIXES = [
   { prefix: 'SC', make: 'SCAG' },
@@ -1423,7 +1425,7 @@ async function _flushBacklog() {
       const batch = backlog.filter(b => !b.sent);
       if (!batch.length) break;
       const result = await sheetsAppend(`${NEWITEMS_SHEET}!A1`, batch.map(b => [
-        b.at, sheetText(b.code), b.item, b.make, b.priceNote, b.note, 'scan-phone'
+        b.at, sheetText(b.code), b.item, b.make, b.priceNote, b.note, 'scan-phone', ''
       ]));
       const range = result?.updates?.updatedRange;
       if (!range) throw new Error('append returned no range to verify');
