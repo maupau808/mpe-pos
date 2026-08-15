@@ -156,7 +156,7 @@ pos.addEventListener('load', async () => {
       win.setScannerModeActive(false);
     });
 
-    await test('Scanner Mode command instruction sits outside a compact barcode box', async () => {
+    await test('Scanner Mode command instruction sits outside a crisp QR box', async () => {
       win.setScannerModeActive(true);
       const label = pos.contentDocument.getElementById('scannerModeCommandLabel');
       const card = pos.contentDocument.getElementById('scannerModeCommandCard');
@@ -166,8 +166,39 @@ pos.addEventListener('load', async () => {
       assert(label.parentElement === card.parentElement && label.nextElementSibling === card, 'instruction is still inside the barcode box');
       assert(parseFloat(labelStyle.fontSize) >= 18, `instruction is only ${labelStyle.fontSize}`);
       assert(labelStyle.color === 'rgb(198, 40, 40)', `instruction is not red (${labelStyle.color})`);
-      assert(parseFloat(cardStyle.width) <= 185, `barcode box CSS width is still ${cardStyle.width} (${Math.round(cardRect.width)}px at POS zoom)`);
+      assert(parseFloat(cardStyle.width) <= 149, `QR box CSS width is ${cardStyle.width} (${Math.round(cardRect.width)}px at POS zoom)`);
+      const code = pos.contentDocument.getElementById('scannerModeAutoPrintCode');
+      assert(code.getAttribute('viewBox') === '0 0 37 37', `QR quiet zone or grid changed (${code.getAttribute('viewBox')})`);
+      assert(Math.abs(cardRect.width - cardRect.height) <= 2, `QR box is not square (${Math.round(cardRect.width)} × ${Math.round(cardRect.height)})`);
       win.setScannerModeActive(false);
+    });
+
+    await test('Scanner Mode Print and Clear QR symbols decode to protected commands', async () => {
+      const decodeCurrentQr = async () => {
+        const svg = pos.contentDocument.getElementById('scannerModeAutoPrintCode');
+        const markup = new XMLSerializer().serializeToString(svg);
+        const image = new Image();
+        const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' }));
+        try {
+          image.src = url;
+          await image.decode();
+          const canvas = pos.contentDocument.createElement('canvas');
+          canvas.width = canvas.height = 592;
+          const context = canvas.getContext('2d');
+          context.imageSmoothingEnabled = false;
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          const api = await win.loadWindowsBarcodeDetector();
+          const detector = new api.BarcodeDetector({ formats: ['qr_code'] });
+          return (await detector.detect(canvas))[0]?.rawValue || '';
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      };
+      win.eval('_scannerModeAwaitingClear = false; renderScannerModeCommandCode()');
+      assert(await decodeCurrentQr() === '~MPE2:Q7X4:PRINT:8K3N', 'Print QR did not decode to its allowlisted command');
+      win.eval('_scannerModeAwaitingClear = true; renderScannerModeCommandCode()');
+      assert(await decodeCurrentQr() === '~MPE2:Q7X4:CLEAR:2D9M', 'Clear QR did not decode to its allowlisted command');
+      win.eval('_scannerModeAwaitingClear = false; renderScannerModeCommandCode()');
     });
 
     await test('unknown phone scan can carry new-item details without setting a price', async () => {
@@ -521,7 +552,7 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 0, 'second Clear pull did not clear sale');
     });
 
-    await test('Scanner Mode Auto Print keeps sale and presents Clear twice barcode', async () => {
+    await test('Scanner Mode Auto Print keeps sale and presents Clear twice QR', async () => {
       reset(pos); await burst(pos, codeA); win.setScannerModeActive(true);
       const originalFetch = win.fetch;
       win.fetch = async url => String(url).includes('/pos-print')

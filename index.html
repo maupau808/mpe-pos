@@ -539,10 +539,10 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   body.dark .scanner-mode-total-label { color: #aeb7ae; }
   .scanner-mode-total { font-size: clamp(42px, 5vw, 64px); font-weight: 700; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
   .scanner-mode-command { display: grid; justify-items: center; gap: 7px; }
-  .scanner-mode-auto-print { display: grid; justify-items: center; width: 100%; max-width: 184px; min-width: 0; margin: 0 auto; padding: 4px 5px; border: 1px solid #2f5a3f; background: #fff; color: #1a1a1a; box-sizing: border-box; }
+  .scanner-mode-auto-print { display: grid; justify-items: center; width: 100%; max-width: 148px; min-width: 0; margin: 0 auto; padding: 0; border: 1px solid #2f5a3f; background: #fff; color: #1a1a1a; box-sizing: border-box; }
   .scanner-mode-auto-print-label { color: #c62828; font-size: clamp(18px, 2vw, 22px); font-weight: 800; line-height: 1.1; letter-spacing: .025em; text-align: center; text-transform: uppercase; text-wrap: balance; }
-  .scanner-mode-auto-print-code { display: block; width: 100%; height: 44px; shape-rendering: crispEdges; }
-  .scanner-mode-auto-print.clear-needed { border: 2px solid #b3261e; padding: 3px 4px; }
+  .scanner-mode-auto-print-code { display: block; width: 100%; height: auto; aspect-ratio: 1; shape-rendering: crispEdges; }
+  .scanner-mode-auto-print.clear-needed { border: 2px solid #b3261e; }
   .scanner-mode-exit-bar { display: block; flex: none; width: 100%; min-height: 64px; margin-top: auto; padding: 14px 18px; border: 0; background: transparent; color: #c62828; font: inherit; font-size: clamp(20px, 2.2vw, 28px); font-weight: 800; line-height: 1.15; letter-spacing: .025em; text-align: center; text-transform: uppercase; text-wrap: balance; cursor: pointer; box-sizing: border-box; -webkit-tap-highlight-color: rgba(198,40,40,.12); }
   .scanner-mode-exit-bar:hover { color: #a82020; }
   .scanner-mode-exit-bar:active { color: #8a1c19; }
@@ -795,8 +795,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         </div>
         <div class="scanner-mode-command">
           <div id="scannerModeCommandLabel" class="scanner-mode-auto-print-label">Scan to Print</div>
-          <div id="scannerModeCommandCard" class="scanner-mode-auto-print" aria-label="Auto Print command barcode">
-            <svg id="scannerModeAutoPrintCode" class="scanner-mode-auto-print-code" role="img" aria-label="Auto Print barcode"></svg>
+          <div id="scannerModeCommandCard" class="scanner-mode-auto-print" aria-label="Auto Print command QR code">
+            <svg id="scannerModeAutoPrintCode" class="scanner-mode-auto-print-code" role="img" aria-label="Auto Print QR code"></svg>
           </div>
         </div>
       </div>
@@ -3059,9 +3059,13 @@ const SCAN_COMMANDS = new Map([
 ]);
 const SCANNER_DEFAULT_KEY = 'mpePosScannerDefault';
 const SCANNER_IDLE_MS = 3 * 60 * 1000;
-const SCANNER_COMMAND_CODE128_WIDTHS = {
-  print: '2112141311411131233131211321132232113212212113313121313311212212313212213131212311312313111133212133113212213112221123312211321133212311312331112',
-  clear: '2112141311411131233131211321132232113212212113313121313311212212313212211313211321311321131113232311313212212232111123133211221131232212132331112',
+// Same exact protected payloads as SCAN_COMMANDS, rendered as QR with high
+// error correction. The counter scanner already reads the printed command QR
+// stickers and PDF417 licences, and a 29 × 29 grid gives each onscreen mark
+// many more pixels than the old long Code 128 symbol could fit into this box.
+const SCANNER_COMMAND_QR_ROWS = {
+  print: '11111110000101011100001111111/10000010011101001000001000001/10111010011100011001001011101/10111010011010101000101011101/10111010101110110011101011101/10000010000101110111001000001/11111110101010101010101111111/00000000101111000000000000000/00110011110011001011011010000/10000101100101110110110110110/11011110001101010101101101110/10111100100100110010100010000/00000010100111010011100100001/11101000001001010011110101000/01111111011111111001000010011/10101001010000010010001011011/01010010011101010011100011100/00000000001010111111010000110/10110110001100000100010000100/00001001111101011001010111110/01101110110111000100111110011/00000000100100011101100010000/11111110111101010110101010110/10000010010011010100100010001/10111010011011111100111110010/10111010111000111101000011110/10111010110110001110010001001/10000010010000111000010110010/11111110010000000101111001010',
+  clear: '11111110001100111001101111111/10000010000010000111001000001/10111010110010111011001011101/10111010110001010000001011101/10111010000111001011101011101/10000010000101111000001000001/11111110101010101010101111111/00000000011000011111000000000/00011011010010100001000001100/01000100010110111110001111101/10010010110000000101111101100/00111001000100010011100111000/00110011011000011110001001100/11101100000110101010110010000/01110110100001000101001000001/01011101011001111110101011101/01101011100001010101110001101/10100001110001101110010110010/11111010111111000101011100101/11010000100100010101010000110/11010111101101100010111110001/00000000110111000011100010101/11111110110001001010101010100/10000010010100000111100011010/10111010111110100101111111111/10111010111111101110000101110/10111010001001011100000011111/10000010000011000000100110101/11111110011010001011100011000',
 };
 let _scannerModeDefault = false;
 let _scannerModeActive = false;
@@ -3076,26 +3080,25 @@ function renderScannerModeCommandCode() {
   const command = _scannerModeAwaitingClear ? 'clear' : 'print';
   const commandName = _scannerModeAwaitingClear ? 'Clear Sale' : 'Auto Print';
   card.classList.toggle('clear-needed', _scannerModeAwaitingClear);
-  card.setAttribute('aria-label', `${commandName} command barcode`);
+  card.setAttribute('aria-label', `${commandName} command QR code`);
   label.textContent = _scannerModeAwaitingClear ? 'Clear Sale — Scan Twice' : 'Scan to Print';
-  code.setAttribute('aria-label', `${commandName} barcode`);
+  code.setAttribute('aria-label', `${commandName} QR code`);
   code.replaceChildren();
   const svgNS = 'http://www.w3.org/2000/svg';
-  const quiet = 16;
-  let x = quiet;
-  let dark = true;
+  const quiet = 4;
+  const rows = SCANNER_COMMAND_QR_ROWS[command].split('/');
+  const size = rows.length + quiet * 2;
   const bars = [];
-  for (const digit of SCANNER_COMMAND_CODE128_WIDTHS[command]) {
-    const width = Number(digit);
-    if (dark) bars.push(`M${x} 0h${width}v44h-${width}z`);
-    x += width;
-    dark = !dark;
-  }
-  code.setAttribute('viewBox', `0 0 ${x + quiet} 44`);
-  code.setAttribute('preserveAspectRatio', 'none');
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      if (row[x] === '1') bars.push(`M${x + quiet} ${y + quiet}h1v1h-1z`);
+    }
+  });
+  code.setAttribute('viewBox', `0 0 ${size} ${size}`);
+  code.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   const white = document.createElementNS(svgNS, 'rect');
-  white.setAttribute('width', '100%');
-  white.setAttribute('height', '44');
+  white.setAttribute('width', size);
+  white.setAttribute('height', size);
   white.setAttribute('fill', '#fff');
   const modules = document.createElementNS(svgNS, 'path');
   modules.setAttribute('d', bars.join(''));
