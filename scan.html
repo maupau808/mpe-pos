@@ -297,6 +297,13 @@ body.show-cost .hero-cost { display: block; }
 textarea.new-item-input { min-height: 72px; resize: vertical; }
 .new-item-input:focus { outline: none; border-color: var(--muted); }
 .new-item-help { margin: -2px 0 0; color: var(--dim); font-size: 11.5px; }
+.back-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-bottom: 1px solid var(--line);
+}
+.back-main { flex: 1; min-width: 0; }
+.back-name { font-size: 14px; font-weight: 600; }
+.back-meta { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
 .new-item-actions { display: grid; grid-template-columns: 1fr 1.35fr; gap: 8px; padding-top: 2px; }
 .new-item-actions button { min-height: 44px; border-radius: 10px; font-size: 14px; font-weight: 700; }
 .new-item-back { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); }
@@ -543,6 +550,18 @@ body.bind .bind-wrap { display: flex; }
   </div>
 </div>
 
+<!-- Shelf finds still to be created in Master. Survives Clear and Send. -->
+<div class="sheet" id="backlogSheet">
+  <div class="sheet-panel">
+    <div class="sheet-top">
+      <div class="sheet-title">To add to Master</div>
+      <button class="mini" id="backlogClose">Close</button>
+    </div>
+    <div class="new-item-code" id="backlogSummary"></div>
+    <div class="sheet-body" id="backlogList"></div>
+  </div>
+</div>
+
 <!-- settings sheet -->
 <div class="sheet" id="setSheet">
   <div class="sheet-panel">
@@ -592,6 +611,13 @@ body.bind .bind-wrap { display: flex; }
           <div class="set-help" id="pendHelp">—</div>
         </div>
         <button class="mini" id="flushBtn">Send now</button>
+      </div>
+      <div class="set-row">
+        <div class="set-main">
+          <div class="set-label">Items to add to Master</div>
+          <div class="set-help" id="backlogHelp">—</div>
+        </div>
+        <button class="mini" id="backlogBtn">Open</button>
       </div>
       <div class="set-row">
         <div class="set-main">
@@ -654,6 +680,13 @@ const LISTS_HEADER = ['Sent', 'List', 'Line', 'Part Number', 'Description', 'Mak
 // row as data — so this tab must never go through ensureTab.
 const PRICES_SHEET = 'Prices';
 const PRICES_COLS  = 'Part Number, New List, New Description, Make, Date, New Cost';
+// Shelf finds that Master does not have yet. Deliberately its OWN tab and not
+// the counter POS's `@NEW` suggestion path: that path carries one-off custom
+// lines typed at the till (notes, specials, labour) which must never turn into
+// a standing list of items to create. This tab is only ever written by a person
+// describing a real product with the thing in their hand.
+const NEWITEMS_SHEET = 'New Items';
+const NEWITEMS_HEADER = ['Captured', 'UPC', 'Item', 'Make', 'Price note', 'Other note', 'Source'];
 
 const DISTRIBUTOR_PART_PREFIXES = [
   { prefix: 'SC', make: 'SCAG' },
@@ -683,6 +716,7 @@ const K_SIGNED   = 'gSignedIn';
 const K_LEARNED  = 'mpePartCodeLearned';
 const K_PENDING  = 'mpeScanCodePending';   // own queue so the two pages cannot interleave a flush
 const K_CHANGES  = 'mpeScanItemChanges';   // proposed List/Description edits, same reason
+const K_BACKLOG  = 'mpeScanNewItems';      // shelf finds to create in Master, outlives the list
 const K_LIST     = 'mpeScanList';
 const K_COST     = 'mpeScanShowCost';
 const K_THEME    = 'mpeScanTheme';
@@ -707,6 +741,7 @@ let unitSerialCandidateRules = [];
 let learnedCodes = {};
 let pendingCodes = [];
 let pendingChanges = [];
+let backlog = [];
 let scanExactIndex = null;
 let warrantyModelMap = new Map();
 let list = [];
@@ -714,14 +749,17 @@ let feedStamp = '';
 let bindTarget = null;         // list entry awaiting a manual part match
 let newItemTarget = null;      // unresolved UPC being described for later Master setup
 let editTarget = null;         // matched row whose List/Description is being corrected
+let backlogTarget = null;      // backlog record being re-opened from the backlog sheet
 let flushPromise = null;
 let changeFlushPromise = null;
+let backlogFlushPromise = null;
 let deferredCodeFlushTimer = null;
 let listSendActive = false;
 
 try { learnedCodes = JSON.parse(localStorage.getItem(K_LEARNED) || '{}') || {}; } catch (e) { learnedCodes = {}; }
 try { pendingCodes = JSON.parse(localStorage.getItem(K_PENDING) || '[]') || []; } catch (e) { pendingCodes = []; }
 try { pendingChanges = JSON.parse(localStorage.getItem(K_CHANGES) || '[]') || []; } catch (e) { pendingChanges = []; }
+try { backlog = JSON.parse(localStorage.getItem(K_BACKLOG) || '[]') || []; } catch (e) { backlog = []; }
 try { list = JSON.parse(localStorage.getItem(K_LIST) || '[]') || []; } catch (e) { list = []; }
 
 const $ = id => document.getElementById(id);
@@ -735,6 +773,16 @@ function canonicalScannedCode(value) {
   if (!s) return '';
   if (/^\d+$/.test(s) && s.length <= 14) return s.padStart(14, '0');
   return s.toUpperCase();
+}
+// Sheets writes go out as USER_ENTERED, so a purely numeric string is parsed as
+// a NUMBER and loses its leading zeros: STIHL's `00009302535` reached the Bridge
+// as `9302535`, which matches nothing at the counter and nothing in Master. The
+// serial column has carried a leading-apostrophe guard for exactly this reason;
+// every part number now carries the same one. Sheets stores the apostrophe as a
+// text-format flag, so the API reads the clean string back.
+function sheetText(value) {
+  const s = String(value ?? '');
+  return /^\d/.test(s) ? "'" + s : s;
 }
 function canonicalSerialNumber(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -1327,6 +1375,77 @@ function clearItemChange(pn) {
   if (pendingChanges.length !== before) { save(K_CHANGES, pendingChanges); renderPending(); }
 }
 
+// ── NEW-ITEM BACKLOG (New Items tab) ──────────────────────────────────────
+// WRITES TO: Bridge `New Items` tab — Captured, UPC, Item, Make, Price note,
+//            Other note, Source.
+// TRIGGER:   Describing an unresolved UPC in the new-item sheet.
+// DOES NOT TOUCH: Master, the POS feed, `Prices`, `Codes`, `Lists`, or QBO.
+//
+// The pick list is consumed at the counter and cleared; a shelf find that Master
+// does not have yet has to outlive it, because the moment of capture (thing in
+// hand, UPC scanned) and the moment of creating the Master row are different
+// days. So the record lives here — on the phone until it syncs, and permanently
+// on the Bridge tab — and is NOT cleared by Clear or by Send.
+function backlogKeyFor(code) { return canonicalScannedCode(code) || ''; }
+
+function upsertBacklog({ code, item, make, priceNote, note }) {
+  const key = backlogKeyFor(code);
+  if (!key) return null;
+  const at = backlog.findIndex(b => backlogKeyFor(b.code) === key);
+  const previous = at >= 0 ? backlog[at] : null;
+  const record = {
+    id: previous?.id || ('n' + Date.now().toString(36) + Math.floor(performance.now() % 1000)),
+    code: String(code || ''), item: String(item || ''), make: String(make || ''),
+    priceNote: String(priceNote || ''), note: String(note || ''),
+    at: previous?.at || new Date().toISOString(),
+    // Re-describing an item that already reached the sheet has to go again, or
+    // the correction would live only on this phone.
+    sent: false
+  };
+  if (at >= 0) backlog[at] = record; else backlog.push(record);
+  save(K_BACKLOG, backlog);
+  renderPending();
+  return record;
+}
+
+function removeBacklog(id) {
+  const before = backlog.length;
+  backlog = backlog.filter(b => b.id !== id);
+  if (backlog.length !== before) { save(K_BACKLOG, backlog); renderPending(); renderBacklog(); }
+}
+
+async function _flushBacklog() {
+  const unsent = backlog.filter(b => !b.sent);
+  if (!unsent.length || !token()) return;
+  try {
+    await ensureTab(NEWITEMS_SHEET, NEWITEMS_HEADER);
+    while (true) {
+      const batch = backlog.filter(b => !b.sent);
+      if (!batch.length) break;
+      const result = await sheetsAppend(`${NEWITEMS_SHEET}!A1`, batch.map(b => [
+        b.at, sheetText(b.code), b.item, b.make, b.priceNote, b.note, 'scan-phone'
+      ]));
+      const range = result?.updates?.updatedRange;
+      if (!range) throw new Error('append returned no range to verify');
+      const written = await sheetsGet(range);
+      const confirmed = new Set(written.map(r => canonicalScannedCode(r[1])));
+      const missing = batch.find(b => !confirmed.has(backlogKeyFor(b.code)));
+      if (missing) throw new Error(`new item ${missing.code} was not found after append`);
+      const done = new Set(batch.map(b => b.id));
+      backlog = backlog.map(b => done.has(b.id) ? { ...b, sent: true } : b);
+      save(K_BACKLOG, backlog);
+      renderPending(); renderBacklog();
+    }
+  } catch (e) {
+    console.warn('New item sync deferred:', e.message);   // stays queued; nothing is lost
+  }
+}
+function flushBacklog() {
+  if (backlogFlushPromise) return backlogFlushPromise;
+  backlogFlushPromise = _flushBacklog().finally(() => { backlogFlushPromise = null; });
+  return backlogFlushPromise;
+}
+
 const SHEETS_RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 
 async function sheetsFetch(url, init, options) {
@@ -1423,8 +1542,11 @@ async function _flushPendingCodes() {
     await ensureTab(CODES_SHEET, CODES_HEADER);
     while (pendingCodes.length) {
       const batch = pendingCodes.slice();
+      // The Code column survives Sheets' number-coercion because the server
+      // re-pads numeric codes to GTIN-14 on read; a part number has no such
+      // repair, so it needs the text guard.
       const result = await sheetsAppend(`${CODES_SHEET}!A1`,
-        batch.map(i => [i.code, i.pn, i.format, i.source, i.added]));
+        batch.map(i => [i.code, sheetText(i.pn), i.format, i.source, i.added]));
       const range = result?.updates?.updatedRange;
       if (!range) throw new Error('append returned no range to verify');
       const written = await sheetsGet(range);
@@ -1452,7 +1574,7 @@ async function _flushPendingChanges() {
     while (pendingChanges.length) {
       const batch = pendingChanges.slice();
       const result = await sheetsAppend(`${PRICES_SHEET}!A1`, batch.map(c => [
-        c.pn, c.newPrice === '' ? '' : c.newPrice, c.newDesc || '', c.make || '', c.date, ''
+        sheetText(c.pn), c.newPrice === '' ? '' : c.newPrice, c.newDesc || '', c.make || '', c.date, ''
       ]));
       const range = result?.updates?.updatedRange;
       if (!range) throw new Error('append returned no range to verify');
@@ -1474,12 +1596,14 @@ function flushPendingChanges() {
   return changeFlushPromise;
 }
 function schedulePendingCodesFlush() {
-  if ((!pendingCodes.length && !pendingChanges.length) || deferredCodeFlushTimer) return;
+  const waiting = pendingCodes.length || pendingChanges.length || backlog.some(b => !b.sent);
+  if (!waiting || deferredCodeFlushTimer) return;
   deferredCodeFlushTimer = setTimeout(async () => {
     deferredCodeFlushTimer = null;
     if (listSendActive) { schedulePendingCodesFlush(); return; }
     await flushPendingCodes();
     await flushPendingChanges();
+    await flushBacklog();
   }, 15000);
 }
 function renderPending() {
@@ -1492,6 +1616,15 @@ function renderPending() {
       ? `${pendingChanges.length} waiting — syncs after Send, then approve in Tools`
       : 'All synced.';
   }
+  const back = $('backlogHelp');
+  if (back) {
+    const unsent = backlog.filter(b => !b.sent).length;
+    back.textContent = !backlog.length
+      ? 'Nothing waiting to be created.'
+      : `${backlog.length} to create${unsent ? ` · ${unsent} not synced yet` : ''}`;
+  }
+  const badge = $('backlogBtn');
+  if (badge) badge.textContent = backlog.length ? `Open (${backlog.length})` : 'Open';
 }
 
 // ── AUDIO ─────────────────────────────────────────────────────────────────
@@ -1886,7 +2019,7 @@ function renderList() {
         : e.newItem
           ? [e.make, `UPC ${e.code}`, e.priceNote ? `Price note ${e.priceNote}` : '', 'Tap to edit'].filter(Boolean).join(' · ')
           : 'Tap to match or add new-item details')
-      : [e.make, e.pn, queuedChangeFor(e.pn) ? 'change queued' : ''].filter(Boolean).join(' · ');
+      : [e.make, e.pn, e.pendingChange ? 'change queued' : ''].filter(Boolean).join(' · ');
     const priceCell = e.unresolved ? ''
       : `<div class="row-price">${money(e.price * e.qty)}${e.was ? `<small>${money(e.was * e.qty)}</small>` : ''}</div>`;
     div.innerHTML = `
@@ -2041,6 +2174,7 @@ function openNewItemDetails(entry) {
 }
 
 function saveNewItemDetails() {
+  if (backlogTarget) { saveBacklogRecord(); return; }
   const entry = newItemTarget;
   if (!entry || !list.some(e => e.id === entry.id)) { closeSheet('newItemSheet'); return; }
   const itemName = $('newItemName').value.trim();
@@ -2049,6 +2183,10 @@ function saveNewItemDetails() {
   entry.make = $('newItemMake').value.trim();
   entry.priceNote = $('newItemPrice').value.trim();
   entry.note = $('newItemNote').value.trim();
+  // The list row is for this trip to the counter; the backlog is the durable
+  // record of a product the shop needs to create.
+  upsertBacklog({ code: entry.code, item: entry.desc, make: entry.make,
+                  priceNote: entry.priceNote, note: entry.note });
   persistList();
   closeSheet('newItemSheet');
   bindTarget = null;
@@ -2060,6 +2198,8 @@ function saveNewItemDetails() {
     meta: [`UPC ${entry.code}`, entry.priceNote ? `Price note ${entry.priceNote}` : ''].filter(Boolean).join(' · ')
   });
   toast('New-item details saved');
+  // A shelf find must reach the Bridge tab even if this list is never sent.
+  schedulePendingCodesFlush();
 }
 
 // ── EDIT A MATCHED ITEM ───────────────────────────────────────────────────
@@ -2077,7 +2217,7 @@ function masterListOf(entry) {
 function openItemEdit(entry) {
   if (!entry || entry.unresolved || !String(entry.pn || '').trim()) return;
   editTarget = entry;
-  const queued = queuedChangeFor(entry.pn);
+  const queued = entry.pendingChange;
   const masterList = Number(entry.masterList) || masterListOf(entry);
   const masterDesc = String(entry.masterDesc || entry.desc || '');
   $('editItemPn').textContent = entry.pn;
@@ -2097,7 +2237,7 @@ function renderEditState() {
   const el = $('editItemState');
   const revert = $('editItemRevert');
   if (!entry) { el.textContent = ''; return; }
-  const queued = queuedChangeFor(entry.pn);
+  const queued = entry.pendingChange;
   revert.disabled = !queued;
   revert.style.visibility = queued ? '' : 'hidden';
   if (!queued) { el.textContent = ''; return; }
@@ -2127,6 +2267,7 @@ function saveItemEdit() {
   const descChanged = !!typedDesc && typedDesc !== masterDesc;
   if (!priceChanged && !descChanged) {
     clearItemChange(entry.pn);
+    delete entry.pendingChange;
     entry.masterList = masterList; entry.masterDesc = masterDesc;
     entry.desc = masterDesc;
     entry.price = entry.onSale ? entry.price : (masterList || entry.price);
@@ -2141,6 +2282,14 @@ function saveItemEdit() {
   // second edit would compare the new price against the new price.
   entry.masterList = masterList;
   entry.masterDesc = masterDesc;
+  // Kept ON THE ROW, not read back out of the pending queue. The queue empties
+  // the moment it syncs to `Prices`, so a note sourced from it appeared only on
+  // whichever rows happened not to have flushed yet before Send.
+  entry.pendingChange = {
+    listPrice: masterList,
+    newPrice: priceChanged ? typedPrice : '',
+    newDesc: descChanged ? typedDesc : ''
+  };
   queueItemChange({
     pn: entry.pn, make: entry.make,
     newPrice: priceChanged ? typedPrice : NaN,
@@ -2163,10 +2312,86 @@ function saveItemEdit() {
   schedulePendingCodesFlush();
 }
 
+// ── BACKLOG SHEET ─────────────────────────────────────────────────────────
+function renderBacklog() {
+  const box = $('backlogList');
+  if (!box) return;
+  const summary = $('backlogSummary');
+  if (summary) {
+    const unsent = backlog.filter(b => !b.sent).length;
+    summary.textContent = backlog.length
+      ? `${backlog.length} item${backlog.length === 1 ? '' : 's'}${unsent ? ` · ${unsent} not synced yet` : ' · all on the Bridge sheet'}`
+      : '';
+  }
+  if (!backlog.length) {
+    box.innerHTML = '<div class="empty-note">Nothing here yet.<br>'
+      + 'Describing a UPC Master does not have puts it in this list.</div>';
+    return;
+  }
+  const ordered = backlog.slice().sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  box.replaceChildren(...ordered.map(rec => {
+    const div = document.createElement('div');
+    div.className = 'back-row';
+    div.dataset.id = rec.id;
+    const meta = [
+      `UPC ${rec.code}`,
+      rec.make,
+      rec.priceNote ? `Price ${rec.priceNote}` : '',
+      rec.note,
+      rec.sent ? '' : 'not synced yet'
+    ].filter(Boolean).join(' · ');
+    div.innerHTML = `
+      <div class="back-main" data-act="edit">
+        <div class="back-name">${escapeHTML(rec.item || rec.code)}</div>
+        <div class="back-meta">${escapeHTML(meta)}</div>
+      </div>
+      <button class="mini" data-act="done">Added</button>`;
+    return div;
+  }));
+}
+
+function openBacklogRecord(rec) {
+  if (!rec) return;
+  backlogTarget = rec;
+  newItemTarget = null;
+  $('newItemCode').textContent = rec.code || '';
+  $('newItemName').value = String(rec.item || '');
+  $('newItemMake').value = String(rec.make || '');
+  $('newItemPrice').value = String(rec.priceNote || '');
+  $('newItemNote').value = String(rec.note || '');
+  $('newItemBack').hidden = true;          // nothing to go back to; this is not a scan
+  closeSheet('backlogSheet');
+  openSheet('newItemSheet');
+  setTimeout(() => $('newItemName').focus(), 120);
+}
+
+function saveBacklogRecord() {
+  const rec = backlogTarget;
+  backlogTarget = null;
+  $('newItemBack').hidden = false;
+  if (!rec) return;
+  upsertBacklog({
+    code: rec.code,
+    item: $('newItemName').value.trim(),
+    make: $('newItemMake').value.trim(),
+    priceNote: $('newItemPrice').value.trim(),
+    note: $('newItemNote').value.trim()
+  });
+  closeSheet('newItemSheet');
+  renderBacklog();
+  openSheet('backlogSheet');
+  toast('Saved');
+  schedulePendingCodesFlush();
+}
+
 function revertItemEdit() {
   const entry = editTarget;
   if (!entry) { closeSheet('editItemSheet'); return; }
+  // Once it has synced it belongs to the shop sheet, exactly as a synced barcode
+  // binding does. Say so rather than implying the Bridge row went away.
+  const stillLocal = !!queuedChangeFor(entry.pn);
   clearItemChange(entry.pn);
+  delete entry.pendingChange;
   const masterList = Number(entry.masterList) || masterListOf(entry);
   if (entry.masterDesc) entry.desc = entry.masterDesc;
   if (!entry.onSale && masterList) entry.price = masterList;
@@ -2174,7 +2399,7 @@ function revertItemEdit() {
   persistList();
   closeSheet('editItemSheet');
   editTarget = null;
-  toast('Change removed');
+  toast(stillLocal ? 'Change removed' : 'Already sent — skip it in Bridge Pull');
 }
 
 function renderHits(parts) {
@@ -2483,7 +2708,7 @@ function bridgeNoteForEntry(entry) {
     if (entry.warranty && !entry.serial) pieces.push('warranty unit — serial missing');
     // A queued change is worth saying at the counter: it is the shelf sticker
     // disagreeing with Master, and the line was priced from Master anyway.
-    const queued = queuedChangeFor(entry.pn);
+    const queued = entry.pendingChange;
     if (queued) {
       if (queued.newPrice !== '') pieces.push(`price change queued: List ${money(queued.listPrice || 0)} → ${money(queued.newPrice)}`);
       if (queued.newDesc) pieces.push(`name change queued: “${queued.newDesc}”`);
@@ -2499,7 +2724,7 @@ function bridgeNoteForEntry(entry) {
 function bridgeRowForEntry(entry, stampIso, listId, line) {
   return [
     stampIso, listId, line,
-    entry.unresolved ? '' : entry.pn,
+    entry.unresolved ? '' : sheetText(entry.pn),
     entry.desc,
     entry.unresolved ? String(entry.make || '') : entry.make,
     entry.qty,
@@ -2570,16 +2795,37 @@ async function sendList() {
 // ── SHEETS / SETTINGS UI ──────────────────────────────────────────────────
 function openSheet(id) { $(id).classList.add('open'); }
 function closeSheet(id) { $(id).classList.remove('open'); }
-for (const id of ['searchSheet', 'newItemSheet', 'editItemSheet', 'setSheet']) {
+for (const id of ['searchSheet', 'newItemSheet', 'editItemSheet', 'backlogSheet', 'setSheet']) {
   $(id).addEventListener('click', ev => {
     if (ev.target.id !== id) return;
     if (id === 'editItemSheet') editTarget = null;
+    if (id === 'newItemSheet') { backlogTarget = null; $('newItemBack').hidden = false; }
     closeSheet(id);
   });
 }
+$('backlogBtn').addEventListener('click', () => { renderBacklog(); openSheet('backlogSheet'); });
+$('backlogClose').addEventListener('click', () => closeSheet('backlogSheet'));
+$('backlogList').addEventListener('click', ev => {
+  const row = ev.target.closest('.back-row'); if (!row) return;
+  const rec = backlog.find(b => b.id === row.dataset.id); if (!rec) return;
+  if (ev.target.closest('[data-act="done"]')) {
+    if (!confirm(`Remove “${rec.item || rec.code}” from this list?\n\n`
+        + 'The Bridge sheet keeps its record either way.')) return;
+    removeBacklog(rec.id);
+    toast('Removed');
+    return;
+  }
+  openBacklogRecord(rec);
+});
 $('searchClose').addEventListener('click', () => { bindTarget = null; closeSheet('searchSheet'); });
 $('newItemStart').addEventListener('click', () => openNewItemDetails(bindTarget?.entry));
-$('newItemClose').addEventListener('click', () => { newItemTarget = null; bindTarget = null; closeSheet('newItemSheet'); });
+$('newItemClose').addEventListener('click', () => {
+  const wasBacklog = !!backlogTarget;
+  newItemTarget = null; bindTarget = null; backlogTarget = null;
+  $('newItemBack').hidden = false;
+  closeSheet('newItemSheet');
+  if (wasBacklog) { renderBacklog(); openSheet('backlogSheet'); }
+});
 $('newItemBack').addEventListener('click', () => {
   const entry = newItemTarget;
   newItemTarget = null;
