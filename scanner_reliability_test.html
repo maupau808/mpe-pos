@@ -271,6 +271,30 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 1, 'scan did not add one row');
     });
 
+    await test('prevented page keys cannot silence a hardware burst', async () => {
+      reset(pos); win.eval('scanRecentValues.clear()');
+      const doc = pos.contentDocument;
+      const blocker = event => event.preventDefault();
+      doc.addEventListener('keydown', blocker, true);
+      try { await burst(pos, codeA); }
+      finally { doc.removeEventListener('keydown', blocker, true); }
+      assert(filledRows(pos).length === 1, 'a prevented page key silenced the scanner');
+    });
+
+    await test('browser resume re-arms scanner capture', async () => {
+      reset(pos); win.removeEventListener('keydown', win.onHardwareScanKeydown, true);
+      win.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+      await burst(pos, codeB);
+      assert(filledRows(pos).length === 1, 'scanner listener stayed detached after resume');
+    });
+
+    await test('idle never changes the register into Scanner Mode', async () => {
+      reset(pos);
+      assert(win.eval("typeof SCANNER_IDLE_MS === 'undefined' && typeof _scannerIdleTimer === 'undefined'"),
+        'an automatic Scanner Mode idle transition is still armed');
+      assert(!pos.contentDocument.body.classList.contains('scanner-mode-active'), 'regular POS did not remain active');
+    });
+
     await test('product-field focus is restored', async () => {
       reset(pos); const input = pos.contentDocument.querySelector('#searchRows .part-input');
       input.value = 'KEEP'; input.focus(); input.setSelectionRange(2, 2);
@@ -396,6 +420,16 @@ pos.addEventListener('load', async () => {
     await test('two deliberate same-item pulls both add', async () => {
       reset(pos); await burst(pos, codeB, { burstGap: 3000 }); await burst(pos, codeB, { burstGap: 120 });
       assert(filledRows(pos).length === 2, 'second trigger pull was dropped');
+    });
+
+    await test('first scan works after the browser event clock resets', async () => {
+      reset(pos); win.eval('scanRecentValues.clear()');
+      win.acceptDecodedScan(codeA, 'hardware', { acceptedAt: 900000 });
+      win.clearAll();
+      win.acceptDecodedScan(codeA, 'hardware', { acceptedAt: 1000 });
+      assert(filledRows(pos).length === 1, 'first post-resume scan stayed locked until refresh');
+      win.acceptDecodedScan(codeA, 'hardware', { acceptedAt: 1050 });
+      assert(filledRows(pos).length === 1, 'post-resume electrical duplicate was not collapsed');
     });
 
     await test('rush of repeated same-item pulls loses nothing', async () => {

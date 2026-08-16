@@ -1956,7 +1956,10 @@ function claimScannedValue(value, now = Date.now(), source = '') {
   const lockout = source === 'hardware' && hardwareFastRepeatEnabled()
     ? SCAN_HARDWARE_REPEAT_LOCKOUT_MS
     : SCAN_REPEAT_LOCKOUT_MS;
-  if (now - lastAcceptedAt < lockout) return false;
+  const elapsed = now - lastAcceptedAt;
+  // A browser waking from sleep can restart its keyboard-event clock behind
+  // the last accepted scan. That is a new clock era, not a duplicate.
+  if (elapsed >= 0 && elapsed < lockout) return false;
   scanRecentValues.set(key, now);
   return true;
 }
@@ -2944,7 +2947,10 @@ function hardwareKeyWallTime(eventTime) {
 }
 
 function onHardwareScanKeydown(event) {
-  if (event.defaultPrevented || event.isComposing || event.repeat || event.ctrlKey || event.metaKey || event.altKey) {
+  // Scanner capture owns a proven burst even if another page listener already
+  // prevented the key. Treating defaultPrevented as a reason to reset made one
+  // stale third-party listener capable of silencing every barcode.
+  if (event.isComposing || event.repeat || event.ctrlKey || event.metaKey || event.altKey) {
     resetHardwareScanCapture();
     resetCommandKeyCapture();
     return;
@@ -3031,7 +3037,53 @@ function onHardwareScanKeydown(event) {
   hardwareScanLastAt = now;
 }
 
-document.addEventListener('keydown', onHardwareScanKeydown, true);
+let scannerWakeLock = null;
+let scannerWakeLockRequest = null;
+
+// The gun is register-wide input, so capture at the window boundary before a
+// focused field or third-party script can consume it. Re-arm on every browser
+// resume path; remove-before-add keeps this idempotent and prevents duplicates.
+function armHardwareScanner() {
+  window.removeEventListener('keydown', onHardwareScanKeydown, true);
+  window.addEventListener('keydown', onHardwareScanKeydown, true);
+  resetHardwareScanCapture();
+  resetCommandKeyCapture();
+}
+
+async function keepCounterAwake() {
+  if (document.hidden || !navigator.wakeLock || scannerWakeLock || scannerWakeLockRequest) return;
+  const request = navigator.wakeLock.request('screen');
+  scannerWakeLockRequest = request;
+  try {
+    const lock = await request;
+    scannerWakeLock = lock;
+    lock.addEventListener('release', () => {
+      if (scannerWakeLock === lock) scannerWakeLock = null;
+    });
+  } catch (e) {
+    // Unsupported or denied wake locks must never affect ordinary scanning.
+  } finally {
+    if (scannerWakeLockRequest === request) scannerWakeLockRequest = null;
+  }
+}
+
+function resumeHardwareScanner() {
+  armHardwareScanner();
+  keepCounterAwake();
+}
+
+armHardwareScanner();
+keepCounterAwake();
+window.addEventListener('pageshow', resumeHardwareScanner);
+window.addEventListener('focus', resumeHardwareScanner);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    resetHardwareScanCapture();
+    resetCommandKeyCapture();
+  } else {
+    resumeHardwareScanner();
+  }
+});
 
 // ─── COMMAND BARCODES (the paper strip at the counter) ─────────────────────
 //
@@ -3058,7 +3110,6 @@ const SCAN_COMMANDS = new Map([
   ['~MPE2:Q7X4:ADD-FIXED-HEAD:7T2C', 'ADD=METALHEADSWAP'],
 ]);
 const SCANNER_DEFAULT_KEY = 'mpePosScannerDefault';
-const SCANNER_IDLE_MS = 3 * 60 * 1000;
 // Same exact protected payloads as SCAN_COMMANDS, rendered as QR with high
 // error correction. The counter scanner already reads the printed command QR
 // stickers and PDF417 licences, and a 29 × 29 grid gives each onscreen mark
@@ -3070,7 +3121,6 @@ const SCANNER_COMMAND_QR_ROWS = {
 let _scannerModeDefault = false;
 let _scannerModeActive = false;
 let _scannerModeAwaitingClear = false;
-let _scannerIdleTimer = null;
 
 function renderScannerModeCommandCode() {
   const code = document.getElementById('scannerModeAutoPrintCode');
@@ -3104,18 +3154,6 @@ function renderScannerModeCommandCode() {
   modules.setAttribute('d', bars.join(''));
   modules.setAttribute('fill', '#000');
   code.append(white, modules);
-}
-
-function resetScannerModeIdleTimer() {
-  clearTimeout(_scannerIdleTimer);
-  _scannerIdleTimer = null;
-  if (_scannerModeActive || _docType !== 'receipt' || document.hidden) return;
-  _scannerIdleTimer = window.setTimeout(() => {
-    _scannerIdleTimer = null;
-    if (!_scannerModeActive && _docType === 'receipt' && !document.hidden) {
-      setScannerModeActive(true, { message: 'Scanner ready', state: 'ok' });
-    }
-  }, SCANNER_IDLE_MS);
 }
 
 function syncScannerModeView(message, state) {
@@ -3187,13 +3225,9 @@ function setScannerModeActive(active, options = {}) {
   document.getElementById('scannerModeView')?.setAttribute('aria-hidden', String(!_scannerModeActive));
   document.getElementById('scannerModeBtn')?.setAttribute('aria-pressed', String(_scannerModeActive));
   if (_scannerModeActive) {
-    clearTimeout(_scannerIdleTimer);
-    _scannerIdleTimer = null;
     renderScannerModeCommandCode();
     syncScannerModeView(options.message, options.state);
     revealScannedResult(lastFilledSaleRow());
-  } else {
-    resetScannerModeIdleTimer();
   }
 }
 
@@ -3211,13 +3245,6 @@ document.getElementById('scannerModeView')?.addEventListener('pointerdown', even
   event.stopImmediatePropagation();
   setScannerModeActive(false);
 });
-['pointerdown', 'keydown', 'input', 'change', 'focusin'].forEach(type => {
-  document.addEventListener(type, event => {
-    if (type === 'keydown' && ['Alt', 'Control', 'Meta', 'Shift'].includes(event.key)) return;
-    resetScannerModeIdleTimer();
-  }, true);
-});
-document.addEventListener('visibilitychange', resetScannerModeIdleTimer);
 const SCAN_COMMAND_REPEAT_MS = 900;
 // No minimum gap: two pulls as fast as the trigger repeats must clear. The old
 // 250ms floor rejected a fast double pull and silently re-armed instead, so the
@@ -7227,7 +7254,6 @@ function setDocType(t) {
     document.getElementById('custPanel')?.classList.add('hidden');
   }
   updateScreenDocTitle();
-  resetScannerModeIdleTimer();
 }
 function pad2(n) { return String(n).padStart(2, '0'); }
 // Compact number: whole minutes since DOC_EPOCH, zero-padded to 7 digits.
