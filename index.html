@@ -254,6 +254,7 @@ body.doc-internal .sum-internal { display: block; }
 .drive-btn.hist-close-btn { background: #f3f6f2; color: #555; border: 1px solid #d9dfd6; }
 .hist-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; overflow: hidden; }
 .hist-modal.hidden { display: none; }
+.hist-modal { text-transform: uppercase; }
 .hist-panel { background: #fff; border-radius: 12px; width: 100%; max-width: 760px; height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.18); overflow: hidden; }
 .hist-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #dde3da; flex-shrink: 0; }
 .hist-title { font-size: 16px; font-weight: 600; color: #1a1a1a; }
@@ -367,6 +368,57 @@ body.doc-internal .sum-internal { display: block; }
 .tr-row { display: flex; align-items: center; gap: 8px; }
 .menu-panel .drive-btn { display: block; width: 100%; text-align: left; margin: 0; border-radius: 6px; }
 .menu-panel .scan-btn { display: block; width: 100%; text-align: left; margin: 0 0 6px; padding: 6px 9px; border-radius: 6px; }
+.admin-menu { min-width: 304px !important; }
+.pos-update-notice {
+  margin: 0 0 6px;
+  padding: 6px;
+  border: 1px solid #e2aa62;
+  border-radius: 6px;
+  background: #fff7e8;
+  color: #70420f;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.pos-update-notice button {
+  width: 100%;
+  height: 28px;
+  margin-top: 5px;
+  border: 1px solid #c9832f;
+  border-radius: 6px;
+  background: #fff;
+  color: #70420f;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pos-update-notice button:hover { background: #ffedcf; }
+.admin-control-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.admin-control-grid > .drive-btn,
+.admin-control-grid > .scan-btn,
+.admin-control-grid > .scan-camera-select,
+.admin-control-grid > .menu-check {
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid #d9dfd6;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: left;
+}
+.admin-control-grid > .menu-check { gap: 6px; background: #fff; }
+.admin-control-grid > .menu-check input { flex: 0 0 auto; width: 14px; height: 14px; margin: 0; }
+.admin-control-grid > .scan-camera-select { padding-right: 24px; color: #555; }
+.admin-control-grid > .drive-btn:hover,
+.admin-control-grid > .scan-btn:hover,
+.admin-control-grid > .menu-check:hover { background: #eef5ef; }
+.admin-menu #dataStatus { margin: 0 2px 6px; line-height: 1.35; }
 .menu-check { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 13px; color: #333; cursor: pointer; border-radius: 6px; white-space: nowrap; }
 .menu-check:hover { background: #eef1ec; }
 .menu-check input { width: 15px; height: 15px; cursor: pointer; }
@@ -558,7 +610,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 }
 @media print {
   #scannerModeView { display: none !important; }
-  body { background: #fff; padding: 0; zoom: 1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff; padding: 0; zoom: 1 !important; text-transform: uppercase; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .wrap { border: none; border-radius: 0; padding: 1.2rem; max-width: 100%; }
   .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, #printBanner, .doc-screen-title, .bottom-actions, .scan-command-flash { display: none !important; }
   .qty-input { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; border: none; background: transparent; font-size: 14px; padding: 0; pointer-events: none; width: auto; text-align: center; color: #000 !important; -webkit-text-fill-color: #000 !important; }
@@ -746,21 +798,27 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="menu-btn" id="scannerModeBtn" type="button" onclick="setScannerModeActive(true)">Scanner Mode</button>
         <div class="menu-wrap">
           <button class="menu-btn" id="adminMenuBtn" onclick="openAdminMenu(event)" title="Reconnect, refresh and uploads">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
-          <div class="menu-panel right" id="adminMenu" onclick="event.stopPropagation()">
+          <div class="menu-panel right admin-menu" id="adminMenu" onclick="event.stopPropagation()">
+            <div id="posUpdateNotice" class="pos-update-notice" style="display:none">
+              <div>POS update ready — reload after this sale.</div>
+              <button type="button" onclick="reloadForPosUpdate()">Reload POS</button>
+            </div>
             <div id="printBanner" class="print-banner" style="display:none"></div>
             <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span> <span id="dataBadge" class="pc-badge" style="display:none"></span></div>
             <div id="dataStatus" class="data-status"></div>
-            <label class="menu-check"><input type="checkbox" id="scannerModeDefault" onchange="setScannerModeDefault(this.checked)"> Start in Scanner Mode</label>
-            <button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button>
-            <select class="scan-camera-select" id="scanCameraSelect" aria-label="Scanner camera" title="Scanner camera" onchange="changeScanCamera()">
-              <option value="">Default camera</option>
-            </select>
-            <button class="drive-btn signin" id="driveSignInBtn" onclick="handleSignIn()">Sign in</button>
-            <button class="drive-btn refresh hidden" id="driveRefreshBtn" onclick="fetchFromDrive()">↻ Refresh</button>
-            <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
-            <button class="drive-btn hist-btn" id="uploadsBtn" onclick="openUploads('priceChanges')">📤 Uploads<span id="uploadsBadge" class="pc-badge" style="display:none"></span></button>
-            <button class="drive-btn hist-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
-            <button class="drive-btn hist-btn" id="desktopSettingsBtn" style="display:none" onclick="window.mpeDesktop?.openSettings()">⚙ Desktop Settings</button>
+            <div class="admin-control-grid">
+              <label class="menu-check"><input type="checkbox" id="scannerModeDefault" onchange="setScannerModeDefault(this.checked)"> Scanner on startup</label>
+              <button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button>
+              <select class="scan-camera-select" id="scanCameraSelect" aria-label="Scanner camera" title="Scanner camera" onchange="changeScanCamera()">
+                <option value="">Default camera</option>
+              </select>
+              <button class="drive-btn signin" id="driveSignInBtn" onclick="handleSignIn()">Sign in</button>
+              <button class="drive-btn refresh hidden" id="driveRefreshBtn" onclick="fetchFromDrive()">↻ Refresh</button>
+              <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
+              <button class="drive-btn hist-btn" id="uploadsBtn" onclick="openUploads('priceChanges')">📤 Uploads<span id="uploadsBadge" class="pc-badge" style="display:none"></span></button>
+              <button class="drive-btn hist-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
+              <button class="drive-btn hist-btn" id="desktopSettingsBtn" style="display:none" onclick="window.mpeDesktop?.openSettings()">⚙ Desktop Settings</button>
+            </div>
           </div>
         </div>
         <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark mode">☾</button>
@@ -1006,6 +1064,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
+const POS_RELEASE = '2026.08.16.2';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -1057,6 +1116,7 @@ let tokenClient = null;
 let _pendingAction = null; // action to fire after sign-in completes
 let accessToken = null;
 let desktopGoogleConnected = false;
+let _posUpdateRelease = '';
 
 const tbody = document.getElementById('searchRows');
 
@@ -1087,6 +1147,7 @@ window.addEventListener('load', () => {
   }
   updatePriceChangesBadge();
   refreshStatusUI();
+  setTimeout(checkForPosUpdate, 10000);
   syncQboCustomerCache();
   if (window.mpeDesktop && typeof window.mpeDesktop.openSettings === 'function') {
     const desktopSettingsBtn = document.getElementById('desktopSettingsBtn');
@@ -1406,7 +1467,7 @@ function clearToolFailure() {}
 function adminAlertLevel() {
   if (!(typeof loaded !== 'undefined' && loaded && partsArray && partsArray.length)) return 'err';
   const waiting = (function(){ try { return getPriceChanges().length + countUnpushedTxns(); } catch(e) { return 0; } })();
-  if (authState() !== 'in' || waiting > 0) return 'warn';
+  if (_posUpdateRelease || authState() !== 'in' || waiting > 0) return 'warn';
   return '';
 }
 function updateAdminDot() {
@@ -1418,8 +1479,34 @@ function updateAdminDot() {
   const waiting = (function(){ try { return getPriceChanges().length + countUnpushedTxns(); } catch(e) { return 0; } })();
   dot.title = level === 'err'
     ? 'No parts loaded — open Admin'
+    : _posUpdateRelease ? 'POS update ready — open Admin after the current sale'
     : waiting > 0 ? waiting + ' waiting to sync to Drive — open Admin'
     : 'Not signed in to Google — open Admin';
+}
+
+function renderPosUpdateNotice() {
+  const notice = document.getElementById('posUpdateNotice');
+  if (!notice) return;
+  notice.style.display = _posUpdateRelease ? '' : 'none';
+}
+
+async function checkForPosUpdate() {
+  try {
+    const response = await fetch(new URL('version.json', location.href), { cache: 'no-store' });
+    if (!response.ok) return;
+    const manifest = await response.json();
+    const release = String(manifest.posRelease || '').trim();
+    _posUpdateRelease = release && release !== POS_RELEASE ? release : '';
+    renderPosUpdateNotice();
+    updateAdminDot();
+  } catch (error) {
+    // An update check must never interrupt a sale. Try again on the next poll.
+  }
+}
+
+function reloadForPosUpdate() {
+  if (!confirm('Reload MPE POS now? An unfinished sale on screen will be lost.')) return;
+  location.reload();
 }
 
 function setSignedInUI()  { refreshStatusUI(); }
@@ -1451,6 +1538,7 @@ function maybeAutoRefresh() {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); } });
 setInterval(() => { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); }, 60 * 1000);
+setInterval(checkForPosUpdate, 5 * 60 * 1000);
 
 async function fetchFromDrive() {
   if (desktopGoogleAvailable()) {
@@ -7118,7 +7206,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       <div style="${sumRow}"><span style="color:${PDF_MUTED}">Margin</span><span>${figure('sumMarginPct')}</span></div>
       ${warnEl?.classList.contains('show') ? `<div style="font-size:11px;color:#c0392b;padding-top:4px">${esc(warnEl.textContent)}</div>` : ''}
     </div>`;
-  return `<div style="width:760px;box-sizing:border-box;padding:24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${PDF_INK};background:#fff">
+  return `<div style="width:760px;box-sizing:border-box;padding:24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${PDF_INK};background:#fff;text-transform:uppercase">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
         <div style="font-size:20px;font-weight:700;color:${PDF_GREEN}">Maui Power Equipment</div>
@@ -7324,6 +7412,10 @@ function addPushedTxnIds(newIds) {
 }
 function addPushedTxnId(id) { addPushedTxnIds([id]); }
 
+function upperText(value) {
+  return String(value == null ? '' : value).trim().toUpperCase();
+}
+
 function captureOrder() {
   const items = [];
   for (let i = 0; i < NUM_ROWS; i++) {
@@ -7331,13 +7423,13 @@ function captureOrder() {
     if (!priceEl) continue;
     const pInput = priceEl.querySelector('.price-edit');
     const ea = parseFloat(pInput ? pInput.value.replace(/[$,]/g, '') : priceEl.dataset.price) || 0;
-    const pn = document.querySelector(`[data-row="${i}"].part-input`)?.value || '';
+    const pn = upperText(document.querySelector(`[data-row="${i}"].part-input`)?.value || '');
     if (!pn) continue;
     // For note rows inline, desc is an input inside the cell
     const descEl = document.getElementById(`desc-${i}`);
     const noteInput = descEl?.querySelector('.note-desc-input');
     const discInput = descEl?.querySelector('.discount-desc-input');
-    const desc = noteInput ? (noteInput.value.trim() || '(note)') : discInput ? (discInput.value.trim() || 'Discount') : (descEl?.textContent || '');
+    const desc = upperText(noteInput ? (noteInput.value.trim() || '(note)') : discInput ? (discInput.value.trim() || 'Discount') : (descEl?.textContent || ''));
     const originalEa = parseFloat(priceEl.dataset.originalEa) || 0;
     const discountPerUnit = parseFloat(priceEl.dataset.discountPerUnit) || 0;
     // Keep a fully discounted item ($0 charged) so receipt/history still show it.
@@ -7345,7 +7437,7 @@ function captureOrder() {
     const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
     const sub = parseFloat(document.getElementById(`sub-${i}`)?.dataset.val) || (ea * qty);
     const snTr = tbody.querySelector(`tr[data-sn-for="${i}"]`);
-    const sn = snTr ? Array.from(snTr.querySelectorAll('.sn-input')).map(inp => inp.value.trim()).filter(Boolean) : [];
+    const sn = snTr ? Array.from(snTr.querySelectorAll('.sn-input')).map(inp => upperText(inp.value)).filter(Boolean) : [];
     items.push({ pn, desc, qty, ea, sub, sn: sn.length ? sn : undefined,
       isOther: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.isOther === '1' || undefined,
       originalEa: discountPerUnit > 0 ? originalEa : undefined,
@@ -7354,7 +7446,7 @@ function captureOrder() {
   // Capture legacy separate note rows (from + Note button)
   tbody.querySelectorAll('[data-note-row]').forEach(tr => {
     const id = tr.dataset.noteRow;
-    const desc = document.getElementById(`${id}-desc`)?.value.trim() || '(note)';
+    const desc = upperText(document.getElementById(`${id}-desc`)?.value.trim() || '(note)');
     const priceRaw = (document.getElementById(`${id}-price`)?.value || '').replace(/[$,]/g, '').trim();
     const ea = parseFloat(priceRaw) || 0;
     const qty = parseFloat(document.getElementById(`${id}-qty`)?.value) || 1;
@@ -7365,14 +7457,14 @@ function captureOrder() {
   const totalEl = document.getElementById('sumTotal');
   const total = totalEl ? totalEl.textContent : '—';
   const customer = {
-    name: document.getElementById('custName')?.value.trim() || '',
-    company: document.getElementById('custCompany')?.value.trim() || '',
-    addr: document.getElementById('custAddr')?.value.trim() || '',
-    city: document.getElementById('custCity')?.value.trim() || '',
-    state: document.getElementById('custState')?.value.trim() || '',
-    zip: document.getElementById('custZip')?.value.trim() || '',
-    phone: document.getElementById('custPhone')?.value.trim() || '',
-    email: document.getElementById('custEmail')?.value.trim() || '',
+    name: upperText(document.getElementById('custName')?.value || ''),
+    company: upperText(document.getElementById('custCompany')?.value || ''),
+    addr: upperText(document.getElementById('custAddr')?.value || ''),
+    city: upperText(document.getElementById('custCity')?.value || ''),
+    state: upperText(document.getElementById('custState')?.value || ''),
+    zip: upperText(document.getElementById('custZip')?.value || ''),
+    phone: upperText(document.getElementById('custPhone')?.value || ''),
+    email: upperText(document.getElementById('custEmail')?.value || ''),
   };
   const toggles = {
     warranty:  document.getElementById('warrantyBtn')?.classList.contains('active') || false,

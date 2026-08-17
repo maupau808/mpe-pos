@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+if ! git diff --cached --name-only -- index.html | grep -qx 'index.html'; then
+  exit 0
+fi
+
+if ! git diff --cached --name-only -- version.json | grep -qx 'version.json'; then
+  echo 'POS release blocked: index.html changed without version.json.' >&2
+  echo 'Bump POS_RELEASE and version.json.posRelease to the same new value.' >&2
+  exit 1
+fi
+
+page_release=$(git show :index.html | sed -n "s/.*const POS_RELEASE = '\([^']*\)'.*/\1/p" | head -n 1)
+manifest_release=$(git show :version.json | sed -n 's/.*"posRelease"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+previous_release=$(git show HEAD:version.json 2>/dev/null | sed -n 's/.*"posRelease"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1 || true)
+
+if [ -z "$page_release" ] || [ "$page_release" != "$manifest_release" ]; then
+  echo "POS release blocked: index.html is '$page_release' but version.json is '$manifest_release'." >&2
+  exit 1
+fi
+
+if [ -n "$previous_release" ] && [ "$manifest_release" = "$previous_release" ]; then
+  echo "POS release blocked: version.json is still '$manifest_release'." >&2
+  echo 'Use a new release value before publishing index.html.' >&2
+  exit 1
+fi

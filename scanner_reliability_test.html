@@ -311,6 +311,56 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 1, 'customer-focus scan did not add');
     });
 
+    await test('history capture stores customer and line text in all caps', async () => {
+      reset(pos); const doc = pos.contentDocument;
+      const input = doc.querySelector('#searchRows .part-input');
+      input.value = 'mix-Case'; input.dataset.partPn = 'mix-Case';
+      doc.getElementById('desc-0').textContent = 'Mixed Description';
+      doc.getElementById('price-0').dataset.price = '12.5';
+      doc.getElementById('sub-0').dataset.val = '12.5';
+      doc.getElementById('custName').value = 'Jane Doe';
+      doc.getElementById('custEmail').value = 'Jane@Example.com';
+      const order = win.captureOrder();
+      assert(order.items[0].pn === 'MIX-CASE', `part saved as ${order.items[0].pn}`);
+      assert(order.items[0].desc === 'MIXED DESCRIPTION', `description saved as ${order.items[0].desc}`);
+      assert(order.customer.name === 'JANE DOE', `customer saved as ${order.customer.name}`);
+      assert(order.customer.email === 'JANE@EXAMPLE.COM', `email saved as ${order.customer.email}`);
+    });
+
+    await test('Admin controls form a tight equal-height grid', async () => {
+      const doc = pos.contentDocument;
+      const menu = doc.getElementById('adminMenu');
+      menu.classList.add('open');
+      const controls = Array.from(menu.querySelector('.admin-control-grid').children)
+        .filter(el => pos.contentWindow.getComputedStyle(el).display !== 'none');
+      const heights = controls.map(el => Math.round(el.getBoundingClientRect().height));
+      assert(heights.length >= 7, `only ${heights.length} Admin controls rendered`);
+      assert(Math.max(...heights) - Math.min(...heights) <= 1, `Admin control heights were ${heights.join(',')}`);
+      assert(controls.every(el => pos.contentWindow.getComputedStyle(el).height === '32px'), 'Admin controls are not set to 32px');
+      const widths = controls.map(el => Math.round(el.getBoundingClientRect().width));
+      assert(Math.max(...widths) - Math.min(...widths) <= 1, `Admin control widths were ${widths.join(',')}`);
+      menu.classList.remove('open');
+    });
+
+    await test('published update manifest matches the running POS release', async () => {
+      const response = await fetch('version.json', { cache: 'no-store' });
+      assert(response.ok, `version manifest returned ${response.status}`);
+      const manifest = await response.json();
+      assert(manifest.posRelease === win.eval('POS_RELEASE'),
+        `manifest ${manifest.posRelease} does not match page ${win.eval('POS_RELEASE')}`);
+    });
+
+    await test('new POS release raises a safe Admin update notice', async () => {
+      const doc = pos.contentDocument;
+      win.eval("_posUpdateRelease = '2099.01.01.1'; renderPosUpdateNotice(); updateAdminDot()");
+      const notice = doc.getElementById('posUpdateNotice');
+      const dot = doc.getElementById('adminDot');
+      assert(win.getComputedStyle(notice).display !== 'none', 'update notice stayed hidden');
+      assert(/reload after this sale/i.test(notice.textContent), 'update notice does not protect the current sale');
+      assert(/update ready/i.test(dot.title), `Admin dot did not name the update (${dot.title})`);
+      win.eval("_posUpdateRelease = ''; renderPosUpdateNotice(); updateAdminDot()");
+    });
+
     await test('textarea focus is restored', async () => {
       reset(pos); const area = pos.contentDocument.createElement('textarea');
       area.value = 'KEEP'; pos.contentDocument.body.appendChild(area); area.focus(); area.setSelectionRange(1, 3);
@@ -629,6 +679,38 @@ pos.addEventListener('load', async () => {
       await burst(pos, clear, { burstGap: 120 });
       assert(filledRows(pos).length === 0, 'second post-print Clear pull did not clear the sale');
       assert(/Scan to Print/i.test(pos.contentDocument.getElementById('scannerModeCommandLabel')?.textContent || ''), 'Print barcode did not return after Clear');
+    });
+
+    await test('Desktop Auto Print uses one native bridge call and saves once', async () => {
+      reset(pos); await burst(pos, codeA); win.setScannerModeActive(true);
+      const historyBefore = win.getHistory().length;
+      const originalFetch = win.fetch;
+      let bridgeCalls = 0;
+      let helperCalls = 0;
+      Object.defineProperty(win, 'mpeDesktop', {
+        configurable: true,
+        value: {
+          printReceipt: async request => {
+            bridgeCalls += 1;
+            assert(Number.isFinite(request?.timing?.prepare_ms), 'desktop timing was not bounded data');
+            return { ok: true };
+          },
+        },
+      });
+      win.fetch = async url => {
+        if (String(url).includes('/pos-print')) helperCalls += 1;
+        return originalFetch(url);
+      };
+      try {
+        await win.autoPrint();
+      } finally {
+        win.fetch = originalFetch;
+        delete win.mpeDesktop;
+      }
+      assert(bridgeCalls === 1, `native bridge was called ${bridgeCalls} times`);
+      assert(helperCalls === 0, `localhost helper was called ${helperCalls} times`);
+      assert(win.getHistory().length === historyBefore + 1, 'desktop print did not save history exactly once');
+      assert(filledRows(pos).length === 1, 'desktop Auto Print cleared the current sale');
     });
 
     await test('Scanner Mode shows scan-command feedback', async () => {
