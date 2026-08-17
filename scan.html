@@ -646,12 +646,12 @@ body.bind .bind-wrap { display: flex; }
 
    READ-ONLY on pricing. It reads the same gzipped Drive POS JSON feed the
    counter POS reads and applies the same sale rules, so a price quoted here
-   is the price the register charges. It writes exactly two things, both to
-   the Bridge sheet and both verified by read-back: barcode->part bindings on
+   is the price the register charges. It writes exactly four queue types to
+   the Bridge sheet, each verified by read-back: barcode->part bindings on
    the `Codes`, `Lists`, `Prices`, and `New Items` Bridge tabs, with every
    write verified by an exact read-back before its local queue clears.
 
-   WRITES TO:     Bridge sheet `Codes` and `Lists` tabs; browser storage
+   WRITES TO:     Bridge `Codes`, `Lists`, `Prices`, and `New Items`; browser storage
    DOES NOT TOUCH: master.db, MASTERPRICE.xlsx, List/Cost/MSRP, the POS feed,
                    QBO, transactions, or anything the counter POS owns.
 
