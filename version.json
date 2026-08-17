@@ -1,5 +1,26 @@
 {
-  "posRelease": "2026.08.16.3",
-  "desktopRelease": "0.1.1",
-  "publishedAt": "2026-08-16"
+  "posRelease": "2026.08.16.4",
+  "desktopRelease": "0.2.2",
+  "publishedAt": "2026-08-16",
+  "desktop": {
+    "windows": {
+      "version": "0.2.2",
+      "archiveSize": 144665495,
+      "archiveSha256": "41b4c40e3716acd69932cd406c2a47a46223b91e38ad4ffb087d00b83b1fa0ff",
+      "parts": [
+        {
+          "fileId": "1wFBNO6obWoWu60G851ZPXefb7gu7qPVO",
+          "name": "MPE-POS-Windows-0.2.2.zip.part-000",
+          "size": 78643200,
+          "sha256": "4e2171481b71efe73ce3bbc16503a5a90ff062783804717a7a576523ecdaf862"
+        },
+        {
+          "fileId": "1lvLtHjgN1KBAY2Lgt2F1eOWxmt8HKycH",
+          "name": "MPE-POS-Windows-0.2.2.zip.part-001",
+          "size": 66022295,
+          "sha256": "a7879e4b3a4c05726b1760a2313a5137c1d5370c8cd4519344a11bdad0301e30"
+        }
+      ]
+    }
+  }
 }

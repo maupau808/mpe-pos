@@ -817,6 +817,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
               <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
               <button class="drive-btn hist-btn" id="uploadsBtn" onclick="openUploads('priceChanges')">📤 Uploads<span id="uploadsBadge" class="pc-badge" style="display:none"></span></button>
               <button class="drive-btn hist-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
+              <button class="drive-btn hist-btn" id="desktopScanBtn" style="display:none" onclick="window.mpeDesktop?.openScan()">▣ MPE Scan</button>
               <button class="drive-btn hist-btn" id="desktopSettingsBtn" style="display:none" onclick="window.mpeDesktop?.openSettings()">⚙ Desktop Settings</button>
             </div>
           </div>
@@ -1064,7 +1065,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.16.3';
+const POS_RELEASE = '2026.08.16.4';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -1152,6 +1153,10 @@ window.addEventListener('load', () => {
   if (window.mpeDesktop && typeof window.mpeDesktop.openSettings === 'function') {
     const desktopSettingsBtn = document.getElementById('desktopSettingsBtn');
     if (desktopSettingsBtn) desktopSettingsBtn.style.display = '';
+  }
+  if (window.mpeDesktop && typeof window.mpeDesktop.openScan === 'function') {
+    const desktopScanBtn = document.getElementById('desktopScanBtn');
+    if (desktopScanBtn) desktopScanBtn.style.display = '';
   }
 });
 

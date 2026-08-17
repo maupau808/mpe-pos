@@ -648,8 +648,8 @@ body.bind .bind-wrap { display: flex; }
    counter POS reads and applies the same sale rules, so a price quoted here
    is the price the register charges. It writes exactly two things, both to
    the Bridge sheet and both verified by read-back: barcode->part bindings on
-   the `Codes` tab (the queue the server already ingests into part_codes.db)
-   and a sent list on the `Lists` tab.
+   the `Codes`, `Lists`, `Prices`, and `New Items` Bridge tabs, with every
+   write verified by an exact read-back before its local queue clears.
 
    WRITES TO:     Bridge sheet `Codes` and `Lists` tabs; browser storage
    DOES NOT TOUCH: master.db, MASTERPRICE.xlsx, List/Cost/MSRP, the POS feed,
@@ -732,6 +732,8 @@ const K_ACCOUNT  = 'gAccount';
 // ── STATE ─────────────────────────────────────────────────────────────────
 let accessToken = null;
 let tokenClient = null;
+let desktopGoogleConnected = false;
+let desktopGoogleAccount = '';
 let pendingAfterAuth = null;
 let partsArray = [];
 let loaded = false;
@@ -819,7 +821,10 @@ function cachedToken() {
   const at = parseInt(localStorage.getItem(K_TOKEN_AT) || '0', 10);
   return t && (Date.now() - at) < 55 * 60 * 1000 ? t : null;
 }
-function token() { return accessToken || cachedToken(); }
+function desktopGoogleAvailable() {
+  return !!(window.mpeDesktop?.google && typeof window.mpeDesktop.google.getStatus === 'function');
+}
+function token() { return desktopGoogleConnected ? '__desktop__' : (accessToken || cachedToken()); }
 
 function lastAccount() { return localStorage.getItem(K_ACCOUNT) || SHOP_GOOGLE_ACCOUNT; }
 
@@ -862,8 +867,48 @@ function initTokenClient() {
   });
   renderAuth();
 }
-function signIn(then) {
+async function initDesktopGoogle() {
+  accessToken = null;
+  localStorage.removeItem(K_TOKEN);
+  localStorage.removeItem(K_TOKEN_AT);
+  try {
+    const status = await window.mpeDesktop.google.getStatus();
+    desktopGoogleConnected = !!status?.connected;
+    desktopGoogleAccount = status?.accountEmail || SHOP_GOOGLE_ACCOUNT;
+    if (desktopGoogleConnected) localStorage.setItem(K_SIGNED, '1');
+    else localStorage.removeItem(K_SIGNED);
+    renderAuth();
+    if (desktopGoogleConnected) {
+      await loadFeed({ quiet: true });
+      schedulePendingCodesFlush();
+    } else if (!loaded) setFeedState('err', 'Sign in to load prices');
+  } catch (error) {
+    desktopGoogleConnected = false;
+    renderAuth();
+    if (!loaded) setFeedState('err', 'Desktop Google sign-in unavailable');
+  }
+}
+async function signIn(then) {
   pendingAfterAuth = then || null;
+  if (desktopGoogleAvailable()) {
+    try {
+      const status = desktopGoogleConnected
+        ? await window.mpeDesktop.google.getStatus()
+        : await window.mpeDesktop.google.signIn();
+      desktopGoogleConnected = !!status?.connected;
+      desktopGoogleAccount = status?.accountEmail || SHOP_GOOGLE_ACCOUNT;
+      if (!desktopGoogleConnected) throw new Error('Google sign-in did not complete');
+      localStorage.setItem(K_SIGNED, '1');
+      renderAuth();
+      await loadFeed();
+      const fn = pendingAfterAuth; pendingAfterAuth = null; if (fn) await fn();
+    } catch (error) {
+      desktopGoogleConnected = false;
+      renderAuth();
+      toast(error?.message || 'Google sign-in failed', 6000);
+    }
+    return;
+  }
   if (!tokenClient) { toast('Sign-in not ready yet — try again in a moment'); return; }
   // `prompt: ''` is what the counter POS passes, and it is the whole reason the
   // till never sees the account chooser: with an existing grant Google reuses it
@@ -884,6 +929,7 @@ const TOKEN_LIFE_MS = 55 * 60 * 1000;
 const TOKEN_WARN_MS = 8 * 60 * 1000;
 
 function tokenMsLeft() {
+  if (desktopGoogleConnected) return Number.POSITIVE_INFINITY;
   if (!localStorage.getItem(K_TOKEN)) return 0;
   const at = parseInt(localStorage.getItem(K_TOKEN_AT) || '0', 10);
   return Math.max(0, at + TOKEN_LIFE_MS - Date.now());
@@ -898,7 +944,9 @@ function renderAuth() {
   $('signBtn').textContent = signed ? 'Refresh' : 'Sign in';
   $('signLabel').textContent = signed ? 'Signed in' : 'Google account';
   $('signHelp').textContent = signed
-    ? `${lastAccount()} · ${Math.ceil(tokenMsLeft() / 60000)} min left`
+    ? (desktopGoogleConnected
+      ? `${desktopGoogleAccount || SHOP_GOOGLE_ACCOUNT} · stays signed in`
+      : `${lastAccount()} · ${Math.ceil(tokenMsLeft() / 60000)} min left`)
     : 'Needed to load prices and save codes.';
   renderAuthBar();
 }
@@ -1008,6 +1056,15 @@ async function loadFeed({ quiet = false } = {}) {
   const t = token();
   if (t) {
     try {
+      if (desktopGoogleConnected) {
+        const bytes = await window.mpeDesktop.google.downloadCatalog('json');
+        const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        const ab = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+        await loadPosJsonBytes(ab, 'Drive');
+        await cachePut('feed', ab);
+        if (!quiet) toast('Prices updated');
+        return true;
+      }
       const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${POS_JSON_FILE_ID}?alt=media`, {
         cache: 'no-store', headers: { Authorization: `Bearer ${t}` }
       });
@@ -1478,12 +1535,18 @@ async function sheetsFetch(url, init, options) {
   }
 }
 async function sheetsGet(range, options) {
+  if (desktopGoogleConnected) {
+    return desktopSheetsCall(() => window.mpeDesktop.google.sheetsGet(range), options, true);
+  }
   const t = token(); if (!t) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`;
   const resp = await sheetsFetch(url, { headers: { Authorization: 'Bearer ' + t } }, options);
   return (await resp.json()).values || [];
 }
 async function sheetsUpdate(range, rows, options) {
+  if (desktopGoogleConnected) {
+    return desktopSheetsCall(() => window.mpeDesktop.google.sheetsUpdate(range, rows), options, true);
+  }
   const t = token(); if (!t) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
   await sheetsFetch(url, {
@@ -1494,6 +1557,9 @@ async function sheetsUpdate(range, rows, options) {
   return true;
 }
 async function sheetsAppend(range, rows, options) {
+  if (desktopGoogleConnected) {
+    return desktopSheetsCall(() => window.mpeDesktop.google.sheetsAppend(range, rows), options, false);
+  }
   const t = token(); if (!t) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`
     + ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
@@ -1505,6 +1571,9 @@ async function sheetsAppend(range, rows, options) {
   return await resp.json();
 }
 async function sheetsBatchUpdate(requests, options) {
+  if (desktopGoogleConnected) {
+    return desktopSheetsCall(() => window.mpeDesktop.google.sheetsBatchUpdate(requests), options, false);
+  }
   const t = token(); if (!t) throw new Error('Not signed in');
   await sheetsFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}:batchUpdate`, {
     method: 'POST',
@@ -1514,10 +1583,37 @@ async function sheetsBatchUpdate(requests, options) {
   return true;
 }
 async function tabExists(title, options) {
+  if (desktopGoogleConnected) {
+    try {
+      await desktopSheetsCall(() => window.mpeDesktop.google.sheetId(title), options, true);
+      return true;
+    } catch (error) {
+      if (/not found/i.test(error?.message || '')) return false;
+      throw error;
+    }
+  }
   const t = token(); if (!t) throw new Error('Not signed in');
   const resp = await sheetsFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}?fields=sheets.properties`,
     { headers: { Authorization: 'Bearer ' + t } }, options);
   return ((await resp.json()).sheets || []).some(s => s.properties.title === title);
+}
+
+async function desktopSheetsCall(action, options, retryThrottle) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await action();
+    } catch (error) {
+      const throttled = /429|quota exceeded|requests per minute|rate limit/i.test(error?.message || '');
+      if (throttled && retryThrottle && attempt < SHEETS_RETRY_MS.length) {
+        const waitMs = SHEETS_RETRY_MS[attempt];
+        options?.onRetry?.(waitMs, attempt + 1);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        continue;
+      }
+      if (throttled) error.sheetsThrottled = true;
+      throw error;
+    }
+  }
 }
 // Lists and Codes are permanent Bridge tabs with fixed schemas. Treat them as
 // provisioned so every new phone session does not spend two reads proving the
@@ -2898,12 +2994,16 @@ showHero({});
   // Cache first so the page is useful before the network answers.
   const cached = await cacheGet('feed');
   if (cached) { try { await loadPosJsonBytes(cached, 'cache'); } catch (e) {} }
-  const waitForGis = setInterval(() => {
-    if (window.google?.accounts?.oauth2) { clearInterval(waitForGis); initTokenClient(); }
-  }, 200);
-  setTimeout(() => clearInterval(waitForGis), 15000);
-  if (token()) loadFeed({ quiet: true });
-  else if (!loaded) setFeedState('err', 'Sign in to load prices');
+  if (desktopGoogleAvailable()) {
+    await initDesktopGoogle();
+  } else {
+    const waitForGis = setInterval(() => {
+      if (window.google?.accounts?.oauth2) { clearInterval(waitForGis); initTokenClient(); }
+    }, 200);
+    setTimeout(() => clearInterval(waitForGis), 15000);
+    if (token()) loadFeed({ quiet: true });
+    else if (!loaded) setFeedState('err', 'Sign in to load prices');
+  }
 })();
 </script>
 </body>
