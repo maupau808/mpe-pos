@@ -760,6 +760,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
             <button class="drive-btn hist-btn" id="uploadsBtn" onclick="openUploads('priceChanges')">📤 Uploads<span id="uploadsBadge" class="pc-badge" style="display:none"></span></button>
             <button class="drive-btn hist-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
+            <button class="drive-btn hist-btn" id="desktopSettingsBtn" style="display:none" onclick="window.mpeDesktop?.openSettings()">⚙ Desktop Settings</button>
           </div>
         </div>
         <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark mode">☾</button>
@@ -1055,6 +1056,7 @@ let loaded = false;
 let tokenClient = null;
 let _pendingAction = null; // action to fire after sign-in completes
 let accessToken = null;
+let desktopGoogleConnected = false;
 
 const tbody = document.getElementById('searchRows');
 
@@ -1067,8 +1069,10 @@ window.addEventListener('load', () => {
   }
   else if (isLocalPos()) loadLocalPosFeed();
   else tryLoadFromDB();
-  // Init token client then silently re-auth if previously signed in
-  if (window.google) initTokenClient();
+  // Electron uses supported system-browser desktop OAuth. Ordinary browsers
+  // retain the existing Google Identity Services path unchanged.
+  if (desktopGoogleAvailable()) initDesktopGoogle();
+  else if (window.google) initTokenClient();
   else document.querySelector('script[src*="accounts.google.com"]')
     .addEventListener('load', initTokenClient);
   // Show Load file button on localhost/file:// for local testing
@@ -1084,10 +1088,55 @@ window.addEventListener('load', () => {
   updatePriceChangesBadge();
   refreshStatusUI();
   syncQboCustomerCache();
+  if (window.mpeDesktop && typeof window.mpeDesktop.openSettings === 'function') {
+    const desktopSettingsBtn = document.getElementById('desktopSettingsBtn');
+    if (desktopSettingsBtn) desktopSettingsBtn.style.display = '';
+  }
 });
 
 function isLocalPos() {
   return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+}
+
+function desktopGoogleAvailable() {
+  return !!(window.mpeDesktop?.google && typeof window.mpeDesktop.google.getStatus === 'function');
+}
+
+function googleSessionAvailable() {
+  return desktopGoogleAvailable()
+    ? desktopGoogleConnected
+    : !!(accessToken || localStorage.getItem('gToken'));
+}
+
+function googleConnectedActions() {
+  setSignedInUI();
+  scheduleTokenRefresh();
+  fetchFromDrive();
+  syncCustomersFromSheet();
+  flushPendingPartCodes();
+  flushUnpushedTxns();
+  schedulePhoneListNotice();
+  if (_pendingAction) { const fn = _pendingAction; _pendingAction = null; fn(); }
+}
+
+async function initDesktopGoogle() {
+  accessToken = null;
+  localStorage.removeItem('gToken');
+  localStorage.removeItem('gTokenAt');
+  try {
+    const status = await window.mpeDesktop.google.getStatus();
+    desktopGoogleConnected = !!status?.connected;
+    if (desktopGoogleConnected) {
+      localStorage.setItem('gSignedIn', '1');
+      googleConnectedActions();
+    } else {
+      localStorage.removeItem('gSignedIn');
+      setSignedOutUI();
+    }
+  } catch (error) {
+    desktopGoogleConnected = false;
+    setDriveStatus('Desktop Google authorization unavailable', true);
+  }
 }
 
 function initTokenClient() {
@@ -1110,14 +1159,7 @@ function initTokenClient() {
       localStorage.setItem('gSignedIn', '1');
       localStorage.setItem('gToken', resp.access_token);
       localStorage.setItem('gTokenAt', Date.now().toString());
-      setSignedInUI();
-      scheduleTokenRefresh();
-      fetchFromDrive();
-      syncCustomersFromSheet();
-      flushPendingPartCodes();
-      flushUnpushedTxns();   // auto-sync any transactions saved locally while signed out
-      schedulePhoneListNotice();
-      if (_pendingAction) { const fn = _pendingAction; _pendingAction = null; fn(); }
+      googleConnectedActions();
     }
   });
   // Restore UI if previously signed in — but do NOT auto-request a token.
@@ -1140,7 +1182,26 @@ function initTokenClient() {
   }
 }
 
-function handleSignIn() {
+async function handleSignIn() {
+  if (desktopGoogleAvailable()) {
+    if (_reconnecting) return;
+    _reconnecting = true;
+    setDriveStatus('Opening Google sign-in…');
+    try {
+      const status = await window.mpeDesktop.google.signIn();
+      desktopGoogleConnected = !!status?.connected;
+      if (!desktopGoogleConnected) throw new Error('Google sign-in did not complete');
+      localStorage.setItem('gSignedIn', '1');
+      googleConnectedActions();
+    } catch (error) {
+      desktopGoogleConnected = false;
+      setDriveStatus(error.message || 'Google sign-in failed', true);
+      setSignedOutUI();
+    } finally {
+      _reconnecting = false;
+    }
+    return;
+  }
   if (!tokenClient) {
     setDriveStatus('Google sign-in not ready yet, try again in a moment.', true);
     return;
@@ -1183,12 +1244,13 @@ function tokenAge() {
   return Date.now() - parseInt(localStorage.getItem('gTokenAt') || '0');
 }
 function tokenIsFresh() {
-  return !!accessToken && tokenAge() < TOKEN_STALE_MS;
+  return desktopGoogleAvailable() ? desktopGoogleConnected : !!accessToken && tokenAge() < TOKEN_STALE_MS;
 }
 
 // Called once per print job, from the single place every print path funnels
 // through.
 function renewOnPrint() {
+  if (desktopGoogleAvailable()) return; // main process refreshes silently on demand
   if (!tokenClient || !localStorage.getItem('gSignedIn')) return;
   if (_reconnecting) return;
   _reconnecting = true;
@@ -1200,6 +1262,7 @@ function renewOnPrint() {
 // Google's window takes focus while it is open and hands it back to the page,
 // not to the field. Restore the field and the caret position ourselves.
 function requestToken() {
+  if (desktopGoogleAvailable()) { if (!desktopGoogleConnected) void handleSignIn(); return; }
   if (!tokenClient) return;
   const el = document.activeElement;
   const keep = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') ? el : null;
@@ -1218,6 +1281,10 @@ function requestToken() {
 
 function ensureConnected(opts) {
   const wantRefresh = !!(opts && opts.refresh);
+  if (desktopGoogleAvailable()) {
+    if (desktopGoogleConnected && wantRefresh) fetchFromDrive();
+    return;
+  }
   if (!localStorage.getItem('gSignedIn') || !tokenClient) return;
   if (tokenIsFresh()) { if (wantRefresh) fetchFromDrive(); return; }
   if (_reconnecting) return;
@@ -1243,7 +1310,15 @@ function scheduleTokenRefresh() {
   _reconnecting = false;
 }
 
-function handleSignOut() {
+async function handleSignOut() {
+  if (desktopGoogleAvailable()) {
+    try { await window.mpeDesktop.google.signOut(); } catch (error) { noteToolFailure('Google sign-out', error); }
+    desktopGoogleConnected = false;
+    localStorage.removeItem('gSignedIn');
+    if (_phoneListPollTimer) { clearTimeout(_phoneListPollTimer); _phoneListPollTimer = null; }
+    setSignedOutUI();
+    return;
+  }
   if (accessToken) google.accounts.oauth2.revoke(accessToken);
   accessToken = null;
   localStorage.removeItem('gSignedIn');
@@ -1258,6 +1333,7 @@ function handleSignOut() {
 // the data button, plus the detail lines in the dropdown. Reads live state on every
 // call so an aged/expired token is shown honestly instead of a stale "Connected".
 function authState() {
+  if (desktopGoogleAvailable()) return desktopGoogleConnected ? 'in' : 'out';
   const tok = accessToken || localStorage.getItem('gToken');
   if (tok) {
     const at = parseInt(localStorage.getItem('gTokenAt') || '0');
@@ -1377,6 +1453,34 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) { re
 setInterval(() => { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); }, 60 * 1000);
 
 async function fetchFromDrive() {
+  if (desktopGoogleAvailable()) {
+    if (!desktopGoogleConnected) {
+      setDriveStatus('Sign in to refresh from Drive');
+      return;
+    }
+    if (_fetching) return;
+    _fetching = true;
+    setDriveStatus('Fetching…');
+    try {
+      if (await tryFetchPosJson()) return;
+      const bytes = await window.mpeDesktop.google.downloadCatalog('xlsx');
+      const ab = desktopBytesToArrayBuffer(bytes);
+      const binary = arrayBufferToBinary(ab);
+      parseAndLoad('Drive price list', binary);
+      await saveFileToDB('Drive price list', binary);
+      _lastFetchAt = Date.now();
+      const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      setDriveStatus(`Updated ${now}`);
+    } catch (error) {
+      if (/not signed in|authorization/i.test(error.message || '')) desktopGoogleConnected = false;
+      setDriveStatus('Using cached data', true);
+      tryLoadFromDB();
+    } finally {
+      _fetching = false;
+      refreshStatusUI();
+    }
+    return;
+  }
   // Get token from memory or sessionStorage
   if (!accessToken) accessToken = localStorage.getItem('gToken');
   // If still no token, request one then re-call
@@ -1451,6 +1555,12 @@ function arrayBufferToBinary(ab) {
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
   }
   return binary;
+}
+
+function desktopBytesToArrayBuffer(bytes) {
+  if (bytes instanceof ArrayBuffer) return bytes;
+  if (ArrayBuffer.isView(bytes)) return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  throw new Error('Desktop Google returned invalid file data');
 }
 
 // ─── INDEXEDDB ─────────────────────────────────────────────────────────────
@@ -1554,13 +1664,19 @@ async function loadLocalPosFeed() {
 async function tryFetchPosJson() {
   if (!posJsonReady() || typeof DecompressionStream === 'undefined') return false;
   try {
-    const url = `https://www.googleapis.com/drive/v3/files/${POS_JSON_FILE_ID}?alt=media`;
-    const resp = await fetch(url, {
-      cache: 'no-store',
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!resp.ok) return false;   // 401/404/etc -> let the xlsx path handle token/refresh
-    const ab = await resp.arrayBuffer();
+    let ab;
+    if (desktopGoogleAvailable()) {
+      const bytes = await window.mpeDesktop.google.downloadCatalog('json');
+      ab = desktopBytesToArrayBuffer(bytes);
+    } else {
+      const url = `https://www.googleapis.com/drive/v3/files/${POS_JSON_FILE_ID}?alt=media`;
+      const resp = await fetch(url, {
+        cache: 'no-store',
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!resp.ok) return false;   // 401/404/etc -> let the xlsx path handle token/refresh
+      ab = await resp.arrayBuffer();
+    }
     const feed = await loadPosJsonBytes(ab, 'JSON');
     await saveKeyToDB(DB_KEY_JSON, ab);
     await saveKeyToDB(DB_KEY_SALES, normalizeSaleRules(feed.sales));
@@ -4874,6 +4990,23 @@ function switchUploadTab(tab) {
 const SHEETS_READ_RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 
 async function sheetsGet(range, options) {
+  if (desktopGoogleAvailable()) {
+    if (!desktopGoogleConnected) throw new Error('Not signed in');
+    for (let attempt = 0; ; attempt++) {
+      try { return await window.mpeDesktop.google.sheetsGet(range); }
+      catch (error) {
+        const throttled = /quota exceeded|read requests per minute|rate limit|429/i.test(error.message || '');
+        if (throttled && options?.retryThrottle !== false && attempt < SHEETS_READ_RETRY_MS.length) {
+          const waitMs = SHEETS_READ_RETRY_MS[attempt];
+          if (options?.onRetry) options.onRetry(waitMs, attempt + 1);
+          await new Promise(resolve => setTimeout(resolve, waitMs));
+          continue;
+        }
+        if (throttled) throw new Error('Google rate limit reached. Wait a minute and try again.');
+        throw error;
+      }
+    }
+  }
   const token = accessToken || localStorage.getItem('gToken');
   if (!token) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`;
@@ -4899,6 +5032,10 @@ async function sheetsGet(range, options) {
 }
 
 async function sheetsUpdate(range, rows) {
+  if (desktopGoogleAvailable()) {
+    if (!desktopGoogleConnected) throw new Error('Not signed in');
+    return window.mpeDesktop.google.sheetsUpdate(range, rows);
+  }
   const token = accessToken || localStorage.getItem('gToken');
   if (!token) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
@@ -4916,6 +5053,10 @@ async function sheetsUpdate(range, rows) {
 }
 
 async function sheetsBatchUpdate(requests) {
+  if (desktopGoogleAvailable()) {
+    if (!desktopGoogleConnected) throw new Error('Not signed in');
+    return window.mpeDesktop.google.sheetsBatchUpdate(requests);
+  }
   const token = accessToken || localStorage.getItem('gToken');
   if (!token) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}:batchUpdate`;
@@ -4933,6 +5074,10 @@ async function sheetsBatchUpdate(requests) {
 }
 
 async function getSheetNumericId(tabName) {
+  if (desktopGoogleAvailable()) {
+    if (!desktopGoogleConnected) throw new Error('Not signed in');
+    return window.mpeDesktop.google.sheetId(tabName);
+  }
   const token = accessToken || localStorage.getItem('gToken');
   if (!token) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}?fields=sheets.properties`;
@@ -4950,8 +5095,7 @@ async function cleanTransactionDuplicates() {
   btn.disabled = true; btn.textContent = '⏳ Reading…';
 
   try {
-    const token = accessToken || localStorage.getItem('gToken');
-    if (!token) { alert('Sign in to Drive first.'); return; }
+    if (!googleSessionAvailable()) { alert('Sign in to Drive first.'); return; }
 
     const [rows, sheetId] = await Promise.all([
       sheetsGet(TXN_SHEET),
@@ -5045,6 +5189,15 @@ async function cleanTransactionDuplicates() {
 }
 
 async function sheetsAppend(range, rows) {
+  if (desktopGoogleAvailable()) {
+    if (!desktopGoogleConnected) {
+      setSignedOutUI();
+      setDriveStatus('Signing in to push…');
+      void handleSignIn();
+      return false;
+    }
+    return window.mpeDesktop.google.sheetsAppend(range, rows);
+  }
   const token = accessToken || localStorage.getItem('gToken');
   if (!token) {
     setSignedOutUI();
@@ -5097,7 +5250,7 @@ async function ensurePartCodesSheet() {
 
 async function _flushPendingPartCodes() {
   if (!partCodePending.length) return;
-  if (!(accessToken || localStorage.getItem('gToken'))) return;
+  if (!googleSessionAvailable()) return;
   try {
     await ensurePartCodesSheet();
     while (partCodePending.length) {
@@ -5132,7 +5285,7 @@ function flushPendingPartCodes() {
 // already present; only a bounded number of genuinely missing transactions are pushed.
 const AUTO_TXN_PUSH_LIMIT = 10;
 async function flushUnpushedTxns() {
-  if (!(accessToken || localStorage.getItem('gToken'))) return;
+  if (!googleSessionAvailable()) return;
   const pushed = getPushedTxnIds();
   const queue = getHistory().filter(o => o.txnId && !pushed.has(o.txnId));
   if (!queue.length) return;
@@ -5168,7 +5321,7 @@ async function flushUnpushedTxns() {
 
 async function pushAllToSheet() {
   // Auth gate — trigger sign-in and resume automatically on success
-  if (!(accessToken || localStorage.getItem('gToken'))) {
+  if (!googleSessionAvailable()) {
     _pendingAction = () => pushAllToSheet();
     handleSignIn();
     return;
@@ -5450,7 +5603,7 @@ async function initTxns() {
     // Background refresh: re-pull the Transactions tab from Drive without blocking the
     // view. Read-only — never touches the Prices/pricing path. Silent on failure so an
     // expired token just leaves the cached list showing instead of flashing an error.
-    if (accessToken || localStorage.getItem('gToken')) refreshTxns({ silent: true });
+    if (googleSessionAvailable()) refreshTxns({ silent: true });
   } catch (e) { _setTxnStatus('Error: ' + e.message); }
 }
 
@@ -6747,31 +6900,39 @@ async function autoPrint() {
   const preparedAt = performance.now();
   let printedByService = false;
   try {
-    // A machine with no print service refuses the connection instantly, so this
-    // timeout only bites when a service is present but wedged.
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 30000);
-    let response;
-    try {
-      const html = serializedPrintDocument();
-      const snapshotAt = performance.now();
-      response = await fetch(POS_PRINT_URL, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          html,
-          timing: {
-            prepare_ms: Math.round(preparedAt - printStartedAt),
-            snapshot_ms: Math.round(snapshotAt - preparedAt),
-          },
-        }),
-        signal: ctl.signal,
+    let result;
+    if (window.mpeDesktop && typeof window.mpeDesktop.printReceipt === 'function') {
+      result = await window.mpeDesktop.printReceipt({
+        timing: { prepare_ms: Math.round(preparedAt - printStartedAt) },
       });
-    } finally {
-      clearTimeout(timer);
+    } else {
+      // A machine with no print service refuses the connection instantly, so this
+      // timeout only bites when a service is present but wedged.
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 30000);
+      let response;
+      try {
+        const html = serializedPrintDocument();
+        const snapshotAt = performance.now();
+        response = await fetch(POS_PRINT_URL, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            html,
+            timing: {
+              prepare_ms: Math.round(preparedAt - printStartedAt),
+              snapshot_ms: Math.round(snapshotAt - preparedAt),
+            },
+          }),
+          signal: ctl.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
     }
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    if (!result || !result.ok) throw new Error(result?.error || 'Direct print failed');
     console.info('MPE Auto Print timing', {
       browserTotalMs: Math.round(performance.now() - printStartedAt),
       agent: result.timings || null,
@@ -7080,7 +7241,7 @@ async function emailDoc() {
   }
 
   let token = accessToken || localStorage.getItem('gToken');
-  if (!token) { _pendingAction = () => emailDoc(); handleSignIn(); return; }
+  if (!googleSessionAvailable()) { _pendingAction = () => emailDoc(); handleSignIn(); return; }
 
   maybeSaveNewCustomer();
   clearToolFailure();
@@ -7111,26 +7272,31 @@ Maui Power Equipment
     const raw = _b64UrlUtf8(_buildEmailMime(to, subject, bodyText, number + '.pdf', pdfB64));
 
     setBtn('⏳', true);
-    let resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: { raw } }),
-    });
-    // 401 = token expired; 403 = token lacks the Gmail permission (first use after the
-    // new scope was added). Both: re-request consent once, then auto-retry via _pendingAction.
-    if ((resp.status === 401 || resp.status === 403) && !_emailScopeRetried) {
-      _emailScopeRetried = true;
-      accessToken = null; localStorage.removeItem('gToken');
-      _pendingAction = () => emailDoc();
-      setBtn('✉', false);
-      handleSignIn();
-      return;
+    let data;
+    if (desktopGoogleAvailable()) {
+      data = await window.mpeDesktop.google.createGmailDraft(raw);
+    } else {
+      const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: { raw } }),
+      });
+      // 401 = token expired; 403 = token lacks the Gmail permission (first use after the
+      // new scope was added). Both: re-request consent once, then auto-retry via _pendingAction.
+      if ((resp.status === 401 || resp.status === 403) && !_emailScopeRetried) {
+        _emailScopeRetried = true;
+        accessToken = null; localStorage.removeItem('gToken');
+        _pendingAction = () => emailDoc();
+        setBtn('✉', false);
+        handleSignIn();
+        return;
+      }
+      data = await resp.json();
+      if (!resp.ok) throw new Error(data.error?.message || ('HTTP ' + resp.status));
     }
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error?.message || ('HTTP ' + resp.status));
     _emailScopeRetried = false;
 
-    const msgId = data.message?.id;
+    const msgId = data.messageId || data.message?.id;
     if (msgId) window.open('https://mail.google.com/mail/u/0/#drafts?compose=' + msgId, '_blank');
     setBtn('✓', false);
     saveToHistory();            // record the transaction (local + Drive), same as printing
@@ -7302,7 +7468,7 @@ function saveToHistory() {
     _lastPrintedOrder = order;
     _lastPushStatus = null;
     // Attempt push — dedup in pushTransactionToSheet will silently skip if already sent
-    if (localStorage.getItem('gToken')) {
+    if (googleSessionAvailable()) {
       _lastPushStatus = 'pending';
       pushTransactionToSheet(order)
         .then(() => { _lastPushStatus = 'ok';   updatePrintBanner(); })
@@ -7319,7 +7485,7 @@ function saveToHistory() {
     order.date  = _currentTxnDate;
     _lastPrintedOrder = order;
     _lastPushStatus = null;
-    if (localStorage.getItem('gToken')) {
+    if (googleSessionAvailable()) {
       _lastPushStatus = 'pending';
       pushTransactionToSheet(order)
         .then(() => { _lastPushStatus = 'ok';   updatePrintBanner(); })
@@ -7334,7 +7500,12 @@ function saveToHistory() {
   // Reuse the date reserved in preparePrint so the printed number matches.
   const now = _pendingTxnDate || new Date();
   const pad = n => String(n).padStart(2,'0');
-  order.txnId = 'TX-' + pad(now.getMonth()+1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + '-' + pad(now.getSeconds());
+  const txnBase = 'TX-' + pad(now.getMonth()+1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + '-' + pad(now.getSeconds());
+  const existingTxnIds = new Set(getHistory().map(entry => entry.txnId).filter(Boolean));
+  order.txnId = txnBase;
+  for (let sequence = 2; existingTxnIds.has(order.txnId); sequence++) {
+    order.txnId = txnBase + '-' + sequence;
+  }
   order.date = order.date || now.toISOString();
   order.docType   = _docType;
   order.docNumber = formatDocNumber(now, _docType);
@@ -7354,7 +7525,7 @@ function saveToHistory() {
     }
   } catch(e) {}
   // Export to Drive Transactions sheet if signed in
-  if (localStorage.getItem('gToken')) {
+  if (googleSessionAvailable()) {
     _lastPushStatus = 'pending';
     pushTransactionToSheet(order)
       .then(() => { _lastPushStatus = 'ok';   updatePrintBanner(); })
@@ -7395,7 +7566,7 @@ function dismissPrintBanner() {
 
 async function retryPrintPush() {
   if (!_lastPrintedOrder) return;
-  if (!localStorage.getItem('gToken')) {
+  if (!googleSessionAvailable()) {
     _pendingAction = () => retryPrintPush();
     handleSignIn();
     return;
@@ -7481,7 +7652,7 @@ function renderHistory() {
 async function pushHistoryEntry(idx) {
   const order = getHistory()[idx];
   if (!order) return;
-  if (!localStorage.getItem('gToken')) {
+  if (!googleSessionAvailable()) {
     _pendingAction = () => pushHistoryEntry(idx);
     handleSignIn();
     return;
@@ -7670,7 +7841,7 @@ function markPhoneListSeen(listId) {
 
 async function pollPhoneListNotice() {
   _phoneListPollTimer = null;
-  if ((accessToken || localStorage.getItem('gToken')) && !document.hidden && !_phoneListsLoading) {
+  if (googleSessionAvailable() && !document.hidden && !_phoneListsLoading) {
     try {
       // One lightweight request only. Background notification checks never retry
       // a Google throttle and never compete with a cashier's deliberate action.
@@ -7843,7 +8014,7 @@ function renderPhoneLists() {
 
 async function openPhoneLists(refresh) {
   const btn = document.getElementById('phoneListBtn');
-  if (!(accessToken || localStorage.getItem('gToken'))) { _pendingAction = openPhoneLists; handleSignIn(); return; }
+  if (!googleSessionAvailable()) { _pendingAction = openPhoneLists; handleSignIn(); return; }
   if (!loaded) { alert('Prices are still loading — try again in a moment.'); return; }
   if (_phoneListsLoading) return;
   _phoneListsLoading = true;
@@ -8308,7 +8479,7 @@ async function ensureCustomersSheet(){
 }
 async function flushPendingCustomers(){
   if (!_custPending.length) return;
-  if (!(accessToken || localStorage.getItem('gToken'))) return;   // try again after sign-in
+  if (!googleSessionAvailable()) return;   // try again after sign-in
   try {
     await ensureCustomersSheet();
     const batch = _custPending.slice();
@@ -8322,7 +8493,7 @@ async function flushPendingCustomers(){
 }
 // Pull the Customers tab on load and merge; then flush any offline-queued additions.
 async function syncCustomersFromSheet(){
-  if (!(accessToken || localStorage.getItem('gToken'))) return;
+  if (!googleSessionAvailable()) return;
   try {
     const rows = await sheetsGet(CUSTOMERS_SHEET);
     const recs = [];
