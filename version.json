@@ -1,24 +1,36 @@
 {
   "posRelease": "2026.08.16.4",
-  "desktopRelease": "0.2.3",
-  "publishedAt": "2026-08-16",
+  "desktopRelease": "0.2.5",
+  "publishedAt": "2026-08-17",
   "desktop": {
     "windows": {
-      "version": "0.2.3",
-      "archiveSize": 144532793,
-      "archiveSha256": "558a28d099e0a9003035f320ce887917e75ec42310c523f6cb67d338a5914e24",
+      "version": "0.2.5",
+      "archiveSize": 144677617,
+      "archiveSha256": "104770acd0594e20e17b702871fe46cb1004c8886ecd607250272919bc6bcdb8",
       "parts": [
         {
-          "fileId": "1O9HUU_xLeM5lzVRU08VRkrYX7nkHerD0",
-          "name": "MPE-POS-Windows-0.2.3.zip.part-000",
-          "size": 78643200,
-          "sha256": "21fb0f9d721f452ac61e34d2f0b9a54baae53ee9d696e6d2cdf1e6e1d1d6f1b7"
+          "fileId": "1JYak5FdiEVPjL7pyHmkJicJpMcO3qE3C",
+          "name": "MPE-POS-Windows-0.2.5.zip.part-000",
+          "size": 41943040,
+          "sha256": "9216188a6737477856cf13701072cab7502fc1afce4c4e15885518b390d21147"
         },
         {
-          "fileId": "1dBC2KHUcy3QRo0ZRjxdN_g-E2M06AePt",
-          "name": "MPE-POS-Windows-0.2.3.zip.part-001",
-          "size": 65889593,
-          "sha256": "9851aeb872d0e38b7126d2c12c47f9851b811f01a1f807d125246f7cef33eeae"
+          "fileId": "10wGHXTEM3nau4dt3K7-mJgJdVJtguh73",
+          "name": "MPE-POS-Windows-0.2.5.zip.part-001",
+          "size": 41943040,
+          "sha256": "fe129e33b31f2d4afee244d2f7f547af179f96bade5340138d676d9127fdc21d"
+        },
+        {
+          "fileId": "1xqXU04KFUhT_Z6ClCWQ-xCv2B7fJauW3",
+          "name": "MPE-POS-Windows-0.2.5.zip.part-002",
+          "size": 41943040,
+          "sha256": "0471fc2c92b871f30abf385eab5f8ebedc29d56aa46a9a223bc983c976a1ac08"
+        },
+        {
+          "fileId": "1eEvQB-Itgt96Zf-WXZiI91r4wyn8-Bqu",
+          "name": "MPE-POS-Windows-0.2.5.zip.part-003",
+          "size": 18848497,
+          "sha256": "55f1a78136359faceceb4f042683e5c238b288162a625710942266f6f0526db9"
         }
       ]
     }
