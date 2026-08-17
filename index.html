@@ -894,7 +894,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <input class="cust-input cust-street" id="custAddr" placeholder="Street address" autocomplete="off">
     <input class="cust-input cust-city" id="custCity" placeholder="City" autocomplete="off">
     <input class="cust-input cust-state" id="custState" placeholder="State" autocomplete="off">
-    <input class="cust-input cust-zip" id="custZip" placeholder="Zip" autocomplete="off">
+    <input class="cust-input cust-zip" id="custZip" placeholder="Zip" autocomplete="off" inputmode="numeric" oninput="autofillCityStateFromZip()">
     <input class="cust-input" id="custPhone" placeholder="Phone" autocomplete="off" type="tel" oninput="custSuggest('phone')" onkeydown="custDDKey(event)">
     <input class="cust-input" id="custEmail" placeholder="Email" autocomplete="off" type="email">
     <div class="dropdown cust-dd" id="custDD"></div>
@@ -1064,7 +1064,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.16.2';
+const POS_RELEASE = '2026.08.16.3';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -3031,10 +3031,21 @@ function acceptDecodedScan(rawValue, format, options = {}) {
     if (compatible) {
       playScanBeep(false);
       const row = pendingUnitSerialRow;
-      fillRowSerial(row, raw);
-      const deal = applyPackageDeals(raw);
+      const waitingPart = findPartByPn(waitingPN);
+      const merged = appendSerialToMatchingUnitRow(waitingPart, raw);
+      if (merged && merged.row !== row) {
+        pendingUnitSerialRow = null;
+        if (document.querySelector(`#mobileRows [data-row="${row}"]`)) clearMobileRow(row);
+        else clearRow(row);
+      }
+      if (!merged) fillRowSerial(row, raw);
+      const landedRow = merged ? merged.row : row;
+      const deal = applyPackageDeals(raw, landedRow);
       ++scanStatusVersion;
-      setScanStatus(deal ? packageDealStatus(deal) : `Serial ${raw} added to row ${row + 1}`, 'ok');
+      setScanStatus(deal ? packageDealStatus(deal)
+        : merged && merged.duplicate ? `SN ${raw} is already on row ${landedRow + 1}`
+        : merged && merged.qty > 1 ? `Row ${landedRow + 1} → qty ${merged.qty} · SN ${raw}`
+        : `Serial ${raw} added to row ${landedRow + 1}`, merged?.duplicate ? 'warn' : 'ok');
       updateScanNext();
       updateScanButton();
       return;
@@ -8372,7 +8383,7 @@ function formatPhone(raw) {
 const CUST_MIN_CHARS = 3;   // min letters for name/company before suggesting
 const CUST_MIN_PHONE = 4;   // min digits for phone before suggesting (skips "808")
 const CUST_MAX = 8;         // max suggestions shown
-let _custIndex = null, _custKeys = null, _custDDItems = [], _custDDActive = -1;
+let _custIndex = null, _custKeys = null, _zipCityStateIndex = null, _custDDItems = [], _custDDActive = -1;
 // Hybrid store: embedded seed (MPE_CUSTOMERS) + sheet-loaded extras + locally-queued pending.
 const CUSTOMERS_SHEET = 'Customers';
 const CUST_SHEET_HEADER = ['Company','Contact','Phone','Email','Street','City','State','Zip','Added'];
@@ -8383,7 +8394,7 @@ try { _custSheet = JSON.parse(localStorage.getItem('mpeCustSheetCache') || '[]')
 try { _custPending = JSON.parse(localStorage.getItem('mpeCustPending') || '[]') || []; } catch { _custPending = []; }
 function _persistCustSheet(){ try { localStorage.setItem('mpeCustSheetCache', JSON.stringify(_custSheet)); } catch {} }
 function _persistCustPending(){ try { localStorage.setItem('mpeCustPending', JSON.stringify(_custPending)); } catch {} }
-function _custBust(){ _custIndex = null; _custKeys = null; }
+function _custBust(){ _custIndex = null; _custKeys = null; _zipCityStateIndex = null; }
 
 function _esch(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function custIndex() {
@@ -8407,6 +8418,53 @@ function custKeySet() {
   for (const e of custIndex()) { if (e.pd) _custKeys.add('p:' + e.pd); if (e.co) _custKeys.add('c:' + e.co); }
   return _custKeys;
 }
+
+// Offline ZIP lookup built from the same verified customer records already
+// available to the register. The most common city/state pair wins when old
+// records use different acceptable place names for one ZIP.
+function zipCityStateIndex() {
+  if (_zipCityStateIndex) return _zipCityStateIndex;
+  const counts = new Map();
+  for (const entry of custIndex()) {
+    const c = entry.c || {};
+    const zip = String(c.z || '').replace(/\D/g, '').slice(0, 5);
+    const city = String(c.ci || '').trim().toUpperCase();
+    const state = String(c.sta || '').trim().toUpperCase();
+    if (zip.length !== 5 || !city || !state) continue;
+    if (!counts.has(zip)) counts.set(zip, new Map());
+    const key = city + '|' + state;
+    counts.get(zip).set(key, (counts.get(zip).get(key) || 0) + 1);
+  }
+  _zipCityStateIndex = new Map();
+  for (const [zip, choices] of counts) {
+    const best = Array.from(choices.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (best) {
+      const [city, state] = best.split('|');
+      _zipCityStateIndex.set(zip, { city, state });
+    }
+  }
+  return _zipCityStateIndex;
+}
+
+function setZipAutofillField(id, value) {
+  const field = document.getElementById(id);
+  if (!field) return;
+  const priorAuto = field.dataset.zipAutofill || '';
+  if (!field.value.trim() || field.value.trim().toUpperCase() === priorAuto) {
+    field.value = value;
+    field.dataset.zipAutofill = value;
+  }
+}
+
+function autofillCityStateFromZip() {
+  const zip = String(document.getElementById('custZip')?.value || '').replace(/\D/g, '').slice(0, 5);
+  if (zip.length !== 5) return;
+  const place = zipCityStateIndex().get(zip);
+  if (!place) return;
+  setZipAutofillField('custCity', place.city);
+  setZipAutofillField('custState', place.state);
+}
+
 function custSuggest(kind) {
   let matches = [];
   if (kind === 'phone') {

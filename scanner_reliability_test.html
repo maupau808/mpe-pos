@@ -327,6 +327,21 @@ pos.addEventListener('load', async () => {
       assert(order.customer.email === 'JANE@EXAMPLE.COM', `email saved as ${order.customer.email}`);
     });
 
+    await test('ZIP autofills town and state without overwriting a manual town', async () => {
+      reset(pos); const doc = pos.contentDocument;
+      const zip = doc.getElementById('custZip');
+      const city = doc.getElementById('custCity');
+      const state = doc.getElementById('custState');
+      city.value = ''; state.value = ''; zip.value = '96793';
+      win.autofillCityStateFromZip();
+      assert(city.value === 'WAILUKU', `96793 town filled as ${city.value}`);
+      assert(state.value === 'HI', `96793 state filled as ${state.value}`);
+      city.value = 'CUSTOM TOWN'; zip.value = '96732';
+      win.autofillCityStateFromZip();
+      assert(city.value === 'CUSTOM TOWN', 'a manually corrected town was overwritten');
+      assert(state.value === 'HI', `96732 state filled as ${state.value}`);
+    });
+
     await test('Admin controls form a tight equal-height grid', async () => {
       const doc = pos.contentDocument;
       const menu = doc.getElementById('adminMenu');
@@ -591,6 +606,16 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 1 && filledRows(pos)[0] === 'UNIT1', 'model/serial created the wrong lines');
       const serial = pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value;
       assert(serial === 'ABC12345', 'second scan did not fill serial');
+    });
+
+    await test('repeated model then serial units merge quantity and keep both serials', async () => {
+      reset(pos);
+      await burst(pos, 'MX100'); await burst(pos, 'ABC12345');
+      await burst(pos, 'MX100'); await burst(pos, 'DEF67890');
+      assert(filledRows(pos).length === 1, `same model used ${filledRows(pos).length} sale lines`);
+      assert(pos.contentDocument.getElementById('qty-0').value === '2', 'same model quantity did not increase');
+      const serials = [...pos.contentDocument.querySelectorAll('tr[data-sn-for="0"] .sn-input')].map(input => input.value);
+      assert(serials.join(',') === 'ABC12345,DEF67890', `serial fields were ${serials.join(',')}`);
     });
 
     await test('known unit serial resolves unit and displays serial', async () => {
