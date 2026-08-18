@@ -156,26 +156,30 @@ pos.addEventListener('load', async () => {
       win.setScannerModeActive(false);
     });
 
-    await test('Scanner Mode command instruction sits outside a crisp QR box', async () => {
+    await test('Scanner Mode commands preserve hierarchy and crisp QR quiet zones', async () => {
       win.setScannerModeActive(true);
-      const label = pos.contentDocument.getElementById('scannerModeCommandLabel');
-      const card = pos.contentDocument.getElementById('scannerModeCommandCard');
-      const labelStyle = win.getComputedStyle(label);
-      const cardStyle = win.getComputedStyle(card);
-      const cardRect = card.getBoundingClientRect();
-      assert(label.parentElement === card.parentElement && label.nextElementSibling === card, 'instruction is still inside the barcode box');
-      assert(parseFloat(labelStyle.fontSize) >= 18, `instruction is only ${labelStyle.fontSize}`);
-      assert(labelStyle.color === 'rgb(198, 40, 40)', `instruction is not red (${labelStyle.color})`);
-      assert(parseFloat(cardStyle.width) <= 149, `QR box CSS width is ${cardStyle.width} (${Math.round(cardRect.width)}px at POS zoom)`);
-      const code = pos.contentDocument.getElementById('scannerModeAutoPrintCode');
-      assert(code.getAttribute('viewBox') === '0 0 37 37', `QR quiet zone or grid changed (${code.getAttribute('viewBox')})`);
-      assert(Math.abs(cardRect.width - cardRect.height) <= 2, `QR box is not square (${Math.round(cardRect.width)} × ${Math.round(cardRect.height)})`);
+      const print = pos.contentDocument.getElementById('scannerModePrintCode');
+      const clear = pos.contentDocument.getElementById('scannerModeClearCode');
+      const undo = pos.contentDocument.getElementById('scannerModeUndoCode');
+      const printRect = print.getBoundingClientRect();
+      const clearRect = clear.getBoundingClientRect();
+      const undoRect = undo.getBoundingClientRect();
+      assert(printRect.width > clearRect.width, 'Print is not the strongest scanner target');
+      assert(Math.abs(clearRect.width - undoRect.width) <= 2, 'Next transaction and Undo targets are mismatched');
+      assert(print.compareDocumentPosition(clear) & Node.DOCUMENT_POSITION_FOLLOWING, 'Print is not first in workflow order');
+      assert(clear.compareDocumentPosition(undo) & Node.DOCUMENT_POSITION_FOLLOWING, 'Undo is not last in workflow order');
+      [print, clear, undo].forEach(code => {
+        const rect = code.getBoundingClientRect();
+        assert(code.getAttribute('viewBox') === '0 0 37 37', `QR quiet zone or grid changed (${code.getAttribute('viewBox')})`);
+        assert(Math.abs(rect.width - rect.height) <= 2, `QR is not square (${Math.round(rect.width)} × ${Math.round(rect.height)})`);
+      });
+      assert(/Scan twice to clear/i.test(pos.contentDocument.getElementById('scannerModeNextCommand').textContent), 'Next transaction safety reminder is missing');
       win.setScannerModeActive(false);
     });
 
-    await test('Scanner Mode Print and Clear QR symbols decode to protected commands', async () => {
-      const decodeCurrentQr = async () => {
-        const svg = pos.contentDocument.getElementById('scannerModeAutoPrintCode');
+    await test('Scanner Mode Print, Next transaction, and Undo QRs decode to protected commands', async () => {
+      const decodeQr = async id => {
+        const svg = pos.contentDocument.getElementById(id);
         const markup = new XMLSerializer().serializeToString(svg);
         const image = new Image();
         const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' }));
@@ -194,11 +198,10 @@ pos.addEventListener('load', async () => {
           URL.revokeObjectURL(url);
         }
       };
-      win.eval('_scannerModeAwaitingClear = false; renderScannerModeCommandCode()');
-      assert(await decodeCurrentQr() === '~MPE2:Q7X4:PRINT:8K3N', 'Print QR did not decode to its allowlisted command');
-      win.eval('_scannerModeAwaitingClear = true; renderScannerModeCommandCode()');
-      assert(await decodeCurrentQr() === '~MPE2:Q7X4:CLEAR:2D9M', 'Clear QR did not decode to its allowlisted command');
-      win.eval('_scannerModeAwaitingClear = false; renderScannerModeCommandCode()');
+      win.renderScannerModeCommandCodes();
+      assert(await decodeQr('scannerModePrintCode') === '~MPE2:Q7X4:PRINT:8K3N', 'Print QR did not decode to its allowlisted command');
+      assert(await decodeQr('scannerModeClearCode') === '~MPE2:Q7X4:CLEAR:2D9M', 'Next transaction QR did not decode to its allowlisted command');
+      assert(await decodeQr('scannerModeUndoCode') === '~MPE2:Q7X4:UNDO:5R8P', 'Undo QR did not decode to its allowlisted command');
     });
 
     await test('Scanner Mode item names and line prices are large without colliding', async () => {
@@ -482,9 +485,10 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 1, 'instant duplicate was added');
     });
 
-    await test('two deliberate same-item pulls both add', async () => {
+    await test('two deliberate same-item pulls increase one line quantity', async () => {
       reset(pos); await burst(pos, codeB, { burstGap: 3000 }); await burst(pos, codeB, { burstGap: 120 });
-      assert(filledRows(pos).length === 2, 'second trigger pull was dropped');
+      assert(filledRows(pos).length === 1, 'same item used a second sale line');
+      assert(pos.contentDocument.getElementById('qty-0').value === '2', 'second trigger pull did not increase quantity');
     });
 
     await test('first scan works after the browser event clock resets', async () => {
@@ -500,17 +504,19 @@ pos.addEventListener('load', async () => {
     await test('rush of repeated same-item pulls loses nothing', async () => {
       reset(pos);
       for (let i = 0; i < 20; i++) await burst(pos, codeA, { burstGap: i ? 120 : 3000 });
-      assert(filledRows(pos).length === 20, `expected 20 lines, got ${filledRows(pos).length}`);
+      assert(filledRows(pos).length === 1, `expected 1 line, got ${filledRows(pos).length}`);
+      assert(pos.contentDocument.getElementById('qty-0').value === '20', `expected qty 20, got ${pos.contentDocument.getElementById('qty-0').value}`);
     });
 
     await test('rush of mixed rapid scans loses nothing', async () => {
-      reset(pos); const expected = [];
+      reset(pos);
       for (let i = 0; i < 60; i++) {
-        const code = i % 2 ? codeB : codeA; expected.push(code);
+        const code = i % 2 ? codeB : codeA;
         await burst(pos, code, { burstGap: i ? 20 : 3000 });
       }
-      assert(filledRows(pos).length === expected.length, `expected ${expected.length} lines, got ${filledRows(pos).length}`);
-      assert(filledRows(pos).every((pn, i) => pn === expected[i]), 'rapid scan order changed');
+      assert(filledRows(pos).length === 2, `expected 2 lines, got ${filledRows(pos).length}`);
+      assert(pos.contentDocument.getElementById('qty-0').value === '30', `first item qty is ${pos.contentDocument.getElementById('qty-0').value}`);
+      assert(pos.contentDocument.getElementById('qty-1').value === '30', `second item qty is ${pos.contentDocument.getElementById('qty-1').value}`);
     });
 
     await test('regular POS keeps the newest rush row visible', async () => {
@@ -548,7 +554,8 @@ pos.addEventListener('load', async () => {
       win.acceptDecodedScan(codeA, 'code_128', { acceptedAt: base + 500 });
       assert(filledRows(pos).length === 1, 'camera repeat guard failed');
       win.acceptDecodedScan(codeA, 'code_128', { acceptedAt: base + 2300 });
-      assert(filledRows(pos).length === 2, 'camera did not rearm after guard');
+      assert(filledRows(pos).length === 1, 'camera rearm used a second sale line');
+      assert(pos.contentDocument.getElementById('qty-0').value === '2', 'camera did not increase quantity after guard');
       acquisitionClock += 2300;
     });
 
@@ -683,7 +690,7 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 0, 'second Clear pull did not clear sale');
     });
 
-    await test('Scanner Mode Auto Print keeps sale and presents Clear twice QR', async () => {
+    await test('Scanner Mode Auto Print keeps sale and emphasizes Next transaction', async () => {
       reset(pos); await burst(pos, codeA); win.setScannerModeActive(true);
       const originalFetch = win.fetch;
       win.fetch = async url => String(url).includes('/pos-print')
@@ -695,15 +702,16 @@ pos.addEventListener('load', async () => {
         win.fetch = originalFetch;
       }
       assert(filledRows(pos).length === 1, 'Auto Print cleared the current sale');
-      assert(/Clear Sale\s*—\s*Scan Twice/i.test(pos.contentDocument.getElementById('scannerModeCommandLabel')?.textContent || ''), 'Clear twice reminder did not replace Print');
-      assert(pos.contentDocument.getElementById('scannerModeCommandCard')?.classList.contains('clear-needed'), 'Clear barcode was not emphasized');
+      assert(pos.contentDocument.getElementById('scannerModeNextCommand')?.classList.contains('is-next'), 'Next transaction was not emphasized');
+      assert(/Print/i.test(pos.contentDocument.querySelector('.scanner-mode-command-primary')?.textContent || ''), 'Print command disappeared after printing');
+      assert(/Undo/i.test(pos.contentDocument.querySelector('[aria-label="Undo command QR code"]')?.textContent || ''), 'Undo command disappeared after printing');
       assert(/sale kept/i.test(pos.contentDocument.getElementById('scannerModeStatus')?.textContent || ''), 'kept-sale status was not shown');
       const clear = '~MPE2:Q7X4:CLEAR:2D9M';
       await burst(pos, clear, { burstGap: 3000 });
       assert(filledRows(pos).length === 1, 'first post-print Clear pull cleared the sale');
       await burst(pos, clear, { burstGap: 120 });
       assert(filledRows(pos).length === 0, 'second post-print Clear pull did not clear the sale');
-      assert(/Scan to Print/i.test(pos.contentDocument.getElementById('scannerModeCommandLabel')?.textContent || ''), 'Print barcode did not return after Clear');
+      assert(!pos.contentDocument.getElementById('scannerModeNextCommand')?.classList.contains('is-next'), 'Next transaction emphasis did not reset after Clear');
     });
 
     await test('Desktop Auto Print uses one native bridge call and saves once', async () => {
@@ -800,7 +808,8 @@ pos.addEventListener('load', async () => {
       await burst(rollback, codeA, { burstGap: 3000 }); await burst(rollback, codeA, { burstGap: 120 });
       assert(filledRows(rollback).length === 1, 'rollback did not restore long guard');
       await burst(rollback, codeA, { burstGap: 2300 });
-      assert(filledRows(rollback).length === 2, 'rollback guard did not rearm'); rollback.remove();
+      assert(filledRows(rollback).length === 1, 'rollback rearm used a second sale line');
+      assert(rollback.contentDocument.getElementById('qty-0').value === '2', 'rollback guard did not rearm'); rollback.remove();
     });
 
     await test('scan received during catalog load is replayed in order', async () => {
@@ -812,23 +821,26 @@ pos.addEventListener('load', async () => {
       await burst(fresh, codeA, { burstGap: 3000 });
       await burst(fresh, codeA, { burstGap: 120 });
       await loadFixture(fresh, 500);
-      await waitFor(() => loaded(fresh)); await waitFor(() => filledRows(fresh).length === 2);
+      await waitFor(() => loaded(fresh)); await waitFor(() => fresh.contentDocument.getElementById('qty-0')?.value === '2');
       assert(beforeReady, 'test feed loaded before early-scan check');
-      assert(filledRows(fresh).length === 2, 'held scans were not replayed');
+      assert(filledRows(fresh).length === 1, 'held same-item scans used separate sale lines');
+      assert(fresh.contentDocument.getElementById('qty-0').value === '2', 'held scans were not replayed');
       fresh.remove();
     });
 
     await test('startup rush queues every scan without reordering', async () => {
       const fresh = document.createElement('iframe'); fresh.src = 'index.html?fastRepeat=1&scannerFixture=1000&fresh=' + Date.now();
       document.body.appendChild(fresh); await new Promise(resolve => fresh.addEventListener('load', resolve, { once: true }));
-      const expected = [];
       for (let i = 0; i < 25; i++) {
-        const code = i % 2 ? codeB : codeA; expected.push(code);
+        const code = i % 2 ? codeB : codeA;
         await burst(fresh, code, { burstGap: i ? 20 : 3000 });
       }
       assert(filledRows(fresh).length === 0, 'startup scans ran before catalog readiness');
-      await loadFixture(fresh, 500); await waitFor(() => filledRows(fresh).length === expected.length);
-      assert(filledRows(fresh).every((pn, i) => pn === expected[i]), 'startup queue lost or reordered scans'); fresh.remove();
+      await loadFixture(fresh, 500); await waitFor(() => fresh.contentDocument.getElementById('qty-0')?.value === '13'
+        && fresh.contentDocument.getElementById('qty-1')?.value === '12');
+      assert(filledRows(fresh).join(',') === `${codeA},${codeB}`, 'startup queue changed first-seen item order');
+      assert(fresh.contentDocument.getElementById('qty-0').value === '13'
+        && fresh.contentDocument.getElementById('qty-1').value === '12', 'startup queue lost scans'); fresh.remove();
     });
 
     await test('Scanner Mode holds and then renders a startup scan', async () => {
@@ -848,7 +860,7 @@ pos.addEventListener('load', async () => {
     });
 
     await test('rows expand when every visible row is full', async () => {
-      reset(pos); await burst(pos, codeA); await burst(pos, codeB); await burst(pos, codeC); await burst(pos, codeA);
+      reset(pos); await burst(pos, codeA); await burst(pos, codeB); await burst(pos, codeC); await burst(pos, '5555');
       assert(filledRows(pos).length === 4, 'fourth scan did not add');
       assert(pos.contentDocument.querySelectorAll('#searchRows tr[data-row]').length >= 4, 'row table did not expand');
     });

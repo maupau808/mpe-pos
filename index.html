@@ -571,7 +571,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-price { font-size: 28px; font-weight: 700; line-height: 1.1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .scanner-mode-empty { padding: 26px 0; color: #667066; font-size: 18px; }
   body.dark .scanner-mode-empty { color: #aeb7ae; }
-  .scanner-mode-side { position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; gap: 22px; min-height: min(620px, calc(100vh - 24px)); padding: 24px 20px 20px; background: #f2f5f0; box-sizing: border-box; }
+  .scanner-mode-side { position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; gap: 14px; min-height: min(560px, calc(100vh - 24px)); padding: 20px 18px 16px; background: #f2f5f0; box-sizing: border-box; }
   body.dark .scanner-mode-side { background: #252b26; }
   .scanner-mode-ready { color: #2f5a3f; font-size: 23px; font-weight: 700; line-height: 1.15; }
   body.dark .scanner-mode-ready { color: #b7c8bb; }
@@ -581,7 +581,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-status.warn { color: #805600; }
   .scanner-mode-status.err { color: #8e2f32; }
   .scanner-mode-total-block { margin-top: auto; }
-  .scanner-mode-totals { margin-bottom: 16px; }
+  .scanner-mode-totals { margin-bottom: 10px; }
   .scanner-mode-total-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 4px 0; color: #667066; font-size: 15px; }
   body.dark .scanner-mode-total-row { color: #c1c9c1; }
   .scanner-mode-total-row span:last-child { color: inherit; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -589,12 +589,31 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   body.dark .scanner-mode-total-row.total { border-color: #4a554b; }
   .scanner-mode-total-label { color: #667066; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   body.dark .scanner-mode-total-label { color: #aeb7ae; }
-  .scanner-mode-total { font-size: clamp(42px, 5vw, 64px); font-weight: 700; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
-  .scanner-mode-command { display: grid; justify-items: center; gap: 7px; }
-  .scanner-mode-auto-print { display: grid; justify-items: center; width: 100%; max-width: 148px; min-width: 0; margin: 0 auto; padding: 0; border: 1px solid #2f5a3f; background: #fff; color: #1a1a1a; box-sizing: border-box; }
-  .scanner-mode-auto-print-label { color: #c62828; font-size: clamp(18px, 2vw, 22px); font-weight: 800; line-height: 1.1; letter-spacing: .025em; text-align: center; text-transform: uppercase; text-wrap: balance; }
-  .scanner-mode-auto-print-code { display: block; width: 100%; height: auto; aspect-ratio: 1; shape-rendering: crispEdges; }
-  .scanner-mode-auto-print.clear-needed { border: 2px solid #b3261e; }
+  .scanner-mode-total { font-size: clamp(40px, 4.5vw, 56px); font-weight: 700; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+  .scanner-mode-command-deck { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid #cbd4ca; }
+  body.dark .scanner-mode-command-deck { border-color: #4a554b; }
+  .scanner-mode-command-kicker { color: #667066; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  body.dark .scanner-mode-command-kicker { color: #aeb7ae; }
+  .scanner-mode-command { min-width: 0; border: 1px solid #cbd4ca; background: rgba(255,255,255,.56); box-sizing: border-box; }
+  body.dark .scanner-mode-command { border-color: #4a554b; background: rgba(0,0,0,.12); }
+  .scanner-mode-command-primary { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 12px; padding: 6px 12px 6px 6px; border-color: #2f5a3f; }
+  body.dark .scanner-mode-command-primary { border-color: #78927f; }
+  .scanner-mode-command-secondary-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .scanner-mode-command-secondary { display: grid; justify-items: center; align-content: start; gap: 2px; padding: 7px 6px 6px; text-align: center; }
+  .scanner-mode-command-next.is-next { border: 2px solid #b3261e; padding: 6px 5px 5px; }
+  .scanner-mode-command-label { color: #26362c; font-size: 15px; font-weight: 800; line-height: 1.12; letter-spacing: .02em; text-transform: uppercase; text-wrap: balance; }
+  body.dark .scanner-mode-command-label { color: #eef2ef; }
+  .scanner-mode-command-primary .scanner-mode-command-label { color: #2f5a3f; font-size: clamp(18px, 1.8vw, 22px); }
+  body.dark .scanner-mode-command-primary .scanner-mode-command-label { color: #b7c8bb; }
+  .scanner-mode-command-next .scanner-mode-command-label { color: #a32323; }
+  body.dark .scanner-mode-command-next .scanner-mode-command-label { color: #eea1a1; }
+  .scanner-mode-command-secondary .scanner-mode-command-label { display: grid; min-height: 32px; place-items: center; }
+  .scanner-mode-command-help { margin-top: 2px; color: #667066; font-size: 11px; font-weight: 600; line-height: 1.2; text-wrap: pretty; }
+  body.dark .scanner-mode-command-help { color: #aeb7ae; }
+  .scanner-mode-command-secondary .scanner-mode-command-help { display: grid; min-height: 18px; place-items: start center; }
+  .scanner-mode-command-code { display: block; width: 100%; max-width: 72px; height: auto; aspect-ratio: 1; background: #fff; shape-rendering: crispEdges; }
+  body.dark .scanner-mode-command-code { filter: invert(1) contrast(1.2821); }
+  .scanner-mode-command-primary .scanner-mode-command-code { max-width: 90px; }
   .scanner-mode-exit-bar { display: block; flex: none; width: 100%; min-height: 64px; margin-top: auto; padding: 14px 18px; border: 0; background: transparent; color: #c62828; font: inherit; font-size: clamp(20px, 2.2vw, 28px); font-weight: 800; line-height: 1.15; letter-spacing: .025em; text-align: center; text-transform: uppercase; text-wrap: balance; cursor: pointer; box-sizing: border-box; -webkit-tap-highlight-color: rgba(198,40,40,.12); }
   .scanner-mode-exit-bar:hover { color: #a82020; }
   .scanner-mode-exit-bar:active { color: #8a1c19; }
@@ -606,6 +625,11 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     .scanner-mode-side { position: static; min-height: 0; gap: 16px; padding: 18px 16px; }
     .scanner-mode-total-block { margin-top: 0; }
     .scanner-mode-description { font-size: 17px; }
+    .scanner-mode-command-primary { grid-template-columns: 104px minmax(0, 1fr); }
+    .scanner-mode-command-primary .scanner-mode-command-code { max-width: 104px; }
+    .scanner-mode-command-secondary .scanner-mode-command-label { min-height: 34px; }
+    .scanner-mode-command-secondary .scanner-mode-command-help { min-height: 30px; }
+    .scanner-mode-command-secondary .scanner-mode-command-code { max-width: 104px; }
   }
 }
 @media print {
@@ -643,7 +667,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .mobile-rows { display: none !important; }
   /* Print header: company + date on left, logo on right */
   .print-header { display: flex !important; align-items: flex-start; justify-content: space-between; margin-bottom: 4px; }
-  .print-header img { opacity: 0.8; }
+  .print-header img { opacity: 1; }
   .print-co { font-size: 20px; font-weight: 700; color: #000; }
   .print-contact { font-size: 13px; color: #000; margin-top: 3px; line-height: 1.5; }
   .print-doctitle { font-size: 22px; font-weight: 800; color: #000; letter-spacing: .02em; margin-top: 14px; }
@@ -728,8 +752,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
   }
-  /* Logo art is dark green — desaturate so nothing prints in colour. */
-  .print-header img { filter: grayscale(1) !important; }
+  /* Darken the grayscale logo while preserving its white bitmap background. */
+  .print-header img { filter: grayscale(1) contrast(2) !important; }
 }
 </style>
 </head>
@@ -853,10 +877,26 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <div id="scannerModeTotal" class="scanner-mode-total">—</div>
           </div>
         </div>
-        <div class="scanner-mode-command">
-          <div id="scannerModeCommandLabel" class="scanner-mode-auto-print-label">Scan to Print</div>
-          <div id="scannerModeCommandCard" class="scanner-mode-auto-print" aria-label="Auto Print command QR code">
-            <svg id="scannerModeAutoPrintCode" class="scanner-mode-auto-print-code" role="img" aria-label="Auto Print QR code"></svg>
+        <div class="scanner-mode-command-deck" aria-label="Scanner commands">
+          <div class="scanner-mode-command-kicker">Scanner commands</div>
+          <div class="scanner-mode-command scanner-mode-command-primary" aria-label="Print command QR code">
+            <svg id="scannerModePrintCode" class="scanner-mode-command-code" role="img" aria-label="Print QR code"></svg>
+            <div>
+              <div class="scanner-mode-command-label">Print</div>
+              <div class="scanner-mode-command-help">Finish and print this sale</div>
+            </div>
+          </div>
+          <div class="scanner-mode-command-secondary-row">
+            <div id="scannerModeNextCommand" class="scanner-mode-command scanner-mode-command-secondary scanner-mode-command-next" aria-label="Next transaction command QR code">
+              <div class="scanner-mode-command-label">Next transaction</div>
+              <div class="scanner-mode-command-help">Scan twice to clear</div>
+              <svg id="scannerModeClearCode" class="scanner-mode-command-code" role="img" aria-label="Next transaction QR code"></svg>
+            </div>
+            <div class="scanner-mode-command scanner-mode-command-secondary" aria-label="Undo command QR code">
+              <div class="scanner-mode-command-label">Undo</div>
+              <div class="scanner-mode-command-help">Last item or clear</div>
+              <svg id="scannerModeUndoCode" class="scanner-mode-command-code" role="img" aria-label="Undo QR code"></svg>
+            </div>
           </div>
         </div>
       </div>
@@ -1065,7 +1105,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.16.4';
+const POS_RELEASE = '2026.08.17.1';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -2696,6 +2736,26 @@ function appendSerialToMatchingUnitRow(part, serial) {
   return { row: targetRow, qty, duplicate: false };
 }
 
+// Repeated scans of an ordinary item belong on the same sale line. Package
+// components are the exception: each physical battery/charger needs its own
+// tracked row so the cheapest-deal regrouping can still identify every unit.
+function appendScanToMatchingPartRow(part) {
+  const pn = normalizePN(part?.pn);
+  if (!pn || packageComponentPNs().has(pn)) return null;
+  for (let row = 0; row < NUM_ROWS; row++) {
+    const input = tbody.querySelector(`[data-row="${row}"].part-input`);
+    const tr = tbody.querySelector(`tr[data-row="${row}"]`);
+    if (normalizePN(input?.dataset.partPn) !== pn || tr?.dataset.pkgUnits) continue;
+    const current = parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1;
+    const qty = setRowQuantity(row, current + 1);
+    pendingUnitSerialRow = part.warranty && rowNeedsUnitSerial(row) ? row : null;
+    updateSummary();
+    revealScannedResult(row);
+    return { row, qty };
+  }
+  return null;
+}
+
 function firstOpenScanRow() {
   for (let i = 0; i < NUM_ROWS; i++) {
     const input = tbody.querySelector(`[data-row="${i}"].part-input`);
@@ -3096,7 +3156,16 @@ function acceptDecodedScan(rawValue, format, options = {}) {
   const needsReview = result.candidates.length !== 1;
   playScanBeep(needsReview);
   if (needsReview) { saveScanForReview(raw, format, result.candidates); return; }
-  const row = fillScannedPart(result.candidates[0]);
+  const part = result.candidates[0];
+  const merged = appendScanToMatchingPartRow(part);
+  if (merged) {
+    ++scanStatusVersion;
+    setScanStatus(`Row ${merged.row + 1} → qty ${merged.qty}`, 'ok');
+    updateScanNext();
+    updateScanButton();
+    return;
+  }
+  const row = fillScannedPart(part);
   // The ordinary product-barcode path is how a battery and a charger actually
   // arrive, so the deals have to be re-grouped here too, not only after a serial.
   const deal = applyPackageDeals('', row);
@@ -3337,43 +3406,44 @@ const SCANNER_DEFAULT_KEY = 'mpePosScannerDefault';
 const SCANNER_COMMAND_QR_ROWS = {
   print: '11111110000101011100001111111/10000010011101001000001000001/10111010011100011001001011101/10111010011010101000101011101/10111010101110110011101011101/10000010000101110111001000001/11111110101010101010101111111/00000000101111000000000000000/00110011110011001011011010000/10000101100101110110110110110/11011110001101010101101101110/10111100100100110010100010000/00000010100111010011100100001/11101000001001010011110101000/01111111011111111001000010011/10101001010000010010001011011/01010010011101010011100011100/00000000001010111111010000110/10110110001100000100010000100/00001001111101011001010111110/01101110110111000100111110011/00000000100100011101100010000/11111110111101010110101010110/10000010010011010100100010001/10111010011011111100111110010/10111010111000111101000011110/10111010110110001110010001001/10000010010000111000010110010/11111110010000000101111001010',
   clear: '11111110001100111001101111111/10000010000010000111001000001/10111010110010111011001011101/10111010110001010000001011101/10111010000111001011101011101/10000010000101111000001000001/11111110101010101010101111111/00000000011000011111000000000/00011011010010100001000001100/01000100010110111110001111101/10010010110000000101111101100/00111001000100010011100111000/00110011011000011110001001100/11101100000110101010110010000/01110110100001000101001000001/01011101011001111110101011101/01101011100001010101110001101/10100001110001101110010110010/11111010111111000101011100101/11010000100100010101010000110/11010111101101100010111110001/00000000110111000011100010101/11111110110001001010101010100/10000010010100000111100011010/10111010111110100101111111111/10111010111111101110000101110/10111010001001011100000011111/10000010000011000000100110101/11111110011010001011100011000',
+  undo: '11111110011001001110101111111/10000010011001010001101000001/10111010011001100000101011101/10111010011110011001101011101/10111010101101011111101011101/10000010010110000001001000001/11111110101010101010101111111/00000000111000010110000000000/00110011100100011001111010000/00110101110001000000001011010/01010111111110101010001110110/10100100100111100001000000000/00000010000110001000100100001/00100000001010110111110101000/11110010111010110001000010011/01101100010011011010010011011/11101011000010110101110001111/01010001101010011001111100110/10110110110111010011010111100/00111101000010111111010000100/01100110011010101000111110111/00000000111111101101100010010/11111110101011010010101010110/10000010000110001100100010011/10111010010010100000111110000/10111010101100111101000010010/10111010111011100110010001101/10000010010001111110010110010/11111110000101101010100001010',
 };
 let _scannerModeDefault = false;
 let _scannerModeActive = false;
 let _scannerModeAwaitingClear = false;
 
-function renderScannerModeCommandCode() {
-  const code = document.getElementById('scannerModeAutoPrintCode');
-  const card = document.getElementById('scannerModeCommandCard');
-  const label = document.getElementById('scannerModeCommandLabel');
-  if (!code || !card || !label) return;
-  const command = _scannerModeAwaitingClear ? 'clear' : 'print';
-  const commandName = _scannerModeAwaitingClear ? 'Clear Sale' : 'Auto Print';
-  card.classList.toggle('clear-needed', _scannerModeAwaitingClear);
-  card.setAttribute('aria-label', `${commandName} command QR code`);
-  label.textContent = _scannerModeAwaitingClear ? 'Clear Sale — Scan Twice' : 'Scan to Print';
-  code.setAttribute('aria-label', `${commandName} QR code`);
-  code.replaceChildren();
+function renderScannerModeCommandCodes() {
+  const commands = [
+    ['scannerModePrintCode', 'print'],
+    ['scannerModeClearCode', 'clear'],
+    ['scannerModeUndoCode', 'undo'],
+  ];
+  document.getElementById('scannerModeNextCommand')?.classList.toggle('is-next', _scannerModeAwaitingClear);
   const svgNS = 'http://www.w3.org/2000/svg';
   const quiet = 4;
-  const rows = SCANNER_COMMAND_QR_ROWS[command].split('/');
-  const size = rows.length + quiet * 2;
-  const bars = [];
-  rows.forEach((row, y) => {
-    for (let x = 0; x < row.length; x++) {
-      if (row[x] === '1') bars.push(`M${x + quiet} ${y + quiet}h1v1h-1z`);
-    }
+  commands.forEach(([id, command]) => {
+    const code = document.getElementById(id);
+    if (!code) return;
+    code.replaceChildren();
+    const rows = SCANNER_COMMAND_QR_ROWS[command].split('/');
+    const size = rows.length + quiet * 2;
+    const bars = [];
+    rows.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++) {
+        if (row[x] === '1') bars.push(`M${x + quiet} ${y + quiet}h1v1h-1z`);
+      }
+    });
+    code.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    code.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    const white = document.createElementNS(svgNS, 'rect');
+    white.setAttribute('width', size);
+    white.setAttribute('height', size);
+    white.setAttribute('fill', '#fff');
+    const modules = document.createElementNS(svgNS, 'path');
+    modules.setAttribute('d', bars.join(''));
+    modules.setAttribute('fill', '#000');
+    code.append(white, modules);
   });
-  code.setAttribute('viewBox', `0 0 ${size} ${size}`);
-  code.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-  const white = document.createElementNS(svgNS, 'rect');
-  white.setAttribute('width', size);
-  white.setAttribute('height', size);
-  white.setAttribute('fill', '#fff');
-  const modules = document.createElementNS(svgNS, 'path');
-  modules.setAttribute('d', bars.join(''));
-  modules.setAttribute('fill', '#000');
-  code.append(white, modules);
 }
 
 function syncScannerModeView(message, state) {
@@ -3445,7 +3515,7 @@ function setScannerModeActive(active, options = {}) {
   document.getElementById('scannerModeView')?.setAttribute('aria-hidden', String(!_scannerModeActive));
   document.getElementById('scannerModeBtn')?.setAttribute('aria-pressed', String(_scannerModeActive));
   if (_scannerModeActive) {
-    renderScannerModeCommandCode();
+    renderScannerModeCommandCodes();
     syncScannerModeView(options.message, options.state);
     revealScannedResult(lastFilledSaleRow());
   }
@@ -6591,7 +6661,7 @@ function updateSummary() {
 
 function clearAll() {
   _scannerModeAwaitingClear = false;
-  renderScannerModeCommandCode();
+  renderScannerModeCommandCodes();
   discountControlsEnabled = false;
   NOTE_COUNT = 0;
   scanIssues.clear();
@@ -6729,7 +6799,7 @@ function buildCopy2HTML() {
         <div class="print-contact">970 Lower Main St &nbsp;·&nbsp; Wailuku HI 96793<br>(808) 249-2730 &nbsp;·&nbsp; info&#64;mauipowerequipment.com</div>
       </div>
       <div>
-        ${logoSrc ? `<img src="${logoSrc}" style="max-height:47px;opacity:0.8" alt="">` : ''}
+        ${logoSrc ? `<img src="${logoSrc}" style="max-height:47px;opacity:1" alt="">` : ''}
       </div>
     </div>
     <div class="print-titlerow">
@@ -8674,7 +8744,7 @@ function clearCustFields() {
 
 buildRows();
 buildMobileRows();
-renderScannerModeCommandCode();
+renderScannerModeCommandCodes();
 _scannerModeDefault = localStorage.getItem(SCANNER_DEFAULT_KEY) === '1';
 document.getElementById('scannerModeDefault').checked = _scannerModeDefault;
 setScannerModeActive(_scannerModeDefault);
