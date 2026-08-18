@@ -254,7 +254,6 @@ body.doc-internal .sum-internal { display: block; }
 .drive-btn.hist-close-btn { background: #f3f6f2; color: #555; border: 1px solid #d9dfd6; }
 .hist-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; overflow: hidden; }
 .hist-modal.hidden { display: none; }
-.hist-modal { text-transform: uppercase; }
 .hist-panel { background: #fff; border-radius: 12px; width: 100%; max-width: 760px; height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.18); overflow: hidden; }
 .hist-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #dde3da; flex-shrink: 0; }
 .hist-title { font-size: 16px; font-weight: 600; color: #1a1a1a; }
@@ -634,7 +633,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 }
 @media print {
   #scannerModeView { display: none !important; }
-  body { background: #fff; padding: 0; zoom: 1 !important; text-transform: uppercase; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff; padding: 0; zoom: 1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .wrap { border: none; border-radius: 0; padding: 1.2rem; max-width: 100%; }
   .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, #printBanner, .doc-screen-title, .bottom-actions, .scan-command-flash { display: none !important; }
   .qty-input { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; border: none; background: transparent; font-size: 14px; padding: 0; pointer-events: none; width: auto; text-align: center; color: #000 !important; -webkit-text-fill-color: #000 !important; }
@@ -726,6 +725,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .wf-label { flex: 0 0 auto; }
   .wf-fill { flex:1; border-bottom: 1px solid #000; height: 22px; min-width: 0; }
   .wf-val { font-weight: 600; flex: 1; }
+  .print-customer, .wf-val, .inv-org { text-transform: uppercase; }
   .wf-gap { flex: 0 0 auto; white-space: nowrap; }
   .wf-note { font-size: 11px; font-weight: 400; color: #444; white-space: nowrap; }
   #sig-warranty-form { width: 100%; max-width: none; break-inside: avoid; page-break-inside: avoid; }
@@ -1105,7 +1105,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.17.1';
+const POS_RELEASE = '2026.08.17.2';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -6784,7 +6784,7 @@ function buildCopy2HTML() {
   const cityLine = [cCity, cState, cZip].filter(Boolean).join(', ');
   const nameCoLine = [cName, cCo].filter(Boolean).join(' / ');
   const hasCust = cName || cAddr || cPhone || cEmail;
-  const custHtml = hasCust ? `<div style="margin-top:16px;font-size:13px;line-height:1.8">
+  const custHtml = hasCust ? `<div class="print-customer" style="margin-top:16px;font-size:13px;line-height:1.8">
     ${nameCoLine ? `<div style="font-weight:600">${esc(nameCoLine)}</div>` : ''}
     ${cAddr ? `<div>${esc(cAddr)}</div>` : ''}
     ${cityLine ? `<div>${esc(cityLine)}</div>` : ''}
@@ -6827,6 +6827,7 @@ function buildCopy2HTML() {
         <div class="sum-row total"><span class="sum-label">Total</span><span class="sum-val">${esc(total)}</span></div>
       </div>
     </div>
+    ${custHtml}
     ${reviewOn ? `<div class="review-below">${buildReviewBlock()}</div>` : ''}
     ${invoiceOn ? `<div style="margin-top:24px">${buildInvoiceSig()}</div>` : ''}
   </div>`;
@@ -7269,7 +7270,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   const cityLine = [c.city, c.state, c.zip].filter(Boolean).join(', ');
   const nameCo = [c.name, c.company].filter(Boolean).join(' / ');
   const hasCust = c.name || c.addr || c.phone || c.email;
-  const custHtml = hasCust ? `<div style="margin-top:18px;font-size:13px;line-height:1.7;color:${PDF_INK};border-left:3px solid ${PDF_LINE};padding-left:10px">
+  const custHtml = hasCust ? `<div style="margin-top:18px;font-size:13px;line-height:1.7;color:${PDF_INK};border-left:3px solid ${PDF_LINE};padding-left:10px;text-transform:uppercase">
     ${nameCo ? `<div style="font-weight:600;color:${PDF_GREEN}">${esc(nameCo)}</div>` : ''}
     ${c.addr ? `<div>${esc(c.addr)}</div>` : ''}
     ${cityLine ? `<div>${esc(cityLine)}</div>` : ''}
@@ -7292,7 +7293,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       <div style="${sumRow}"><span style="color:${PDF_MUTED}">Margin</span><span>${figure('sumMarginPct')}</span></div>
       ${warnEl?.classList.contains('show') ? `<div style="font-size:11px;color:#c0392b;padding-top:4px">${esc(warnEl.textContent)}</div>` : ''}
     </div>`;
-  return `<div style="width:760px;box-sizing:border-box;padding:24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${PDF_INK};background:#fff;text-transform:uppercase">
+  return `<div style="width:760px;box-sizing:border-box;padding:24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${PDF_INK};background:#fff">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
         <div style="font-size:20px;font-weight:700;color:${PDF_GREEN}">Maui Power Equipment</div>
@@ -7509,13 +7510,13 @@ function captureOrder() {
     if (!priceEl) continue;
     const pInput = priceEl.querySelector('.price-edit');
     const ea = parseFloat(pInput ? pInput.value.replace(/[$,]/g, '') : priceEl.dataset.price) || 0;
-    const pn = upperText(document.querySelector(`[data-row="${i}"].part-input`)?.value || '');
+    const pn = document.querySelector(`[data-row="${i}"].part-input`)?.value.trim() || '';
     if (!pn) continue;
     // For note rows inline, desc is an input inside the cell
     const descEl = document.getElementById(`desc-${i}`);
     const noteInput = descEl?.querySelector('.note-desc-input');
     const discInput = descEl?.querySelector('.discount-desc-input');
-    const desc = upperText(noteInput ? (noteInput.value.trim() || '(note)') : discInput ? (discInput.value.trim() || 'Discount') : (descEl?.textContent || ''));
+    const desc = noteInput ? (noteInput.value.trim() || '(note)') : discInput ? (discInput.value.trim() || 'Discount') : (descEl?.textContent || '');
     const originalEa = parseFloat(priceEl.dataset.originalEa) || 0;
     const discountPerUnit = parseFloat(priceEl.dataset.discountPerUnit) || 0;
     // Keep a fully discounted item ($0 charged) so receipt/history still show it.
@@ -7523,7 +7524,7 @@ function captureOrder() {
     const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
     const sub = parseFloat(document.getElementById(`sub-${i}`)?.dataset.val) || (ea * qty);
     const snTr = tbody.querySelector(`tr[data-sn-for="${i}"]`);
-    const sn = snTr ? Array.from(snTr.querySelectorAll('.sn-input')).map(inp => upperText(inp.value)).filter(Boolean) : [];
+    const sn = snTr ? Array.from(snTr.querySelectorAll('.sn-input')).map(inp => inp.value.trim()).filter(Boolean) : [];
     items.push({ pn, desc, qty, ea, sub, sn: sn.length ? sn : undefined,
       isOther: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.isOther === '1' || undefined,
       originalEa: discountPerUnit > 0 ? originalEa : undefined,
@@ -7532,7 +7533,7 @@ function captureOrder() {
   // Capture legacy separate note rows (from + Note button)
   tbody.querySelectorAll('[data-note-row]').forEach(tr => {
     const id = tr.dataset.noteRow;
-    const desc = upperText(document.getElementById(`${id}-desc`)?.value.trim() || '(note)');
+    const desc = document.getElementById(`${id}-desc`)?.value.trim() || '(note)';
     const priceRaw = (document.getElementById(`${id}-price`)?.value || '').replace(/[$,]/g, '').trim();
     const ea = parseFloat(priceRaw) || 0;
     const qty = parseFloat(document.getElementById(`${id}-qty`)?.value) || 1;

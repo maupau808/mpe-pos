@@ -314,7 +314,7 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 1, 'customer-focus scan did not add');
     });
 
-    await test('history capture stores customer and line text in all caps', async () => {
+    await test('history preserves line casing while customer values stay in caps', async () => {
       reset(pos); const doc = pos.contentDocument;
       const input = doc.querySelector('#searchRows .part-input');
       input.value = 'mix-Case'; input.dataset.partPn = 'mix-Case';
@@ -324,10 +324,17 @@ pos.addEventListener('load', async () => {
       doc.getElementById('custName').value = 'Jane Doe';
       doc.getElementById('custEmail').value = 'Jane@Example.com';
       const order = win.captureOrder();
-      assert(order.items[0].pn === 'MIX-CASE', `part saved as ${order.items[0].pn}`);
-      assert(order.items[0].desc === 'MIXED DESCRIPTION', `description saved as ${order.items[0].desc}`);
+      assert(order.items[0].pn === 'mix-Case', `part saved as ${order.items[0].pn}`);
+      assert(order.items[0].desc === 'Mixed Description', `description saved as ${order.items[0].desc}`);
       assert(order.customer.name === 'JANE DOE', `customer saved as ${order.customer.name}`);
       assert(order.customer.email === 'JANE@EXAMPLE.COM', `email saved as ${order.customer.email}`);
+      const emailDoc = win.buildEmailDocHTML(order, 'Sales Receipt', 'TEST-1', 'August 17, 2026');
+      assert(emailDoc.includes('Mixed Description'), 'email/PDF uppercased the line description');
+      assert(emailDoc.includes('Mahalo for your business!'), 'email/PDF uppercased the Mahalo message');
+      assert(emailDoc.includes('JANE DOE') && emailDoc.includes('text-transform:uppercase'), 'email/PDF customer values are not uppercase');
+      const css = doc.querySelector('style').textContent;
+      assert(!/body\s*\{[^}]*text-transform:\s*uppercase/i.test(css), 'print stylesheet still uppercases the whole receipt');
+      assert(/\.print-customer,\s*\.wf-val,\s*\.inv-org\s*\{\s*text-transform:\s*uppercase/i.test(css), 'print customer values lost targeted uppercase styling');
     });
 
     await test('ZIP autofills town and state without overwriting a manual town', async () => {
