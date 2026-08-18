@@ -1766,8 +1766,10 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   loadUnitSerialRules(feed.codes && typeof feed.codes === 'object' ? feed.codes : {});
   for (const [code, pn] of Object.entries(partCodeLearned)) {
     const key = canonicalScannedCode(code);
-    if (key && pn) partCodeMap[key] = normalizePN(pn);
+    const learnedPN = learnedPartNumber(pn);
+    if (key && learnedPN) partCodeMap[key] = learnedPN;
   }
+  rebuildCustomCodeMap();
   partsArray = parts;
   buildWarrantyModelMap();
   loaded = true;
@@ -2023,7 +2025,7 @@ let hardwareScanOrigin = null;
 const pendingCatalogScans = [];
 let pendingUnitSerialRow = null;
 const PART_CODES_SHEET = 'Codes';
-const PART_CODES_SHEET_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Added'];
+const PART_CODES_SHEET_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Added', 'Description', 'Price', 'Cost'];
 const PART_CODES_PENDING_KEY = 'mpePartCodePending';
 const PART_CODES_LEARNED_KEY = 'mpePartCodeLearned';
 // Tilts are a fallback, not a rotation the scanner sits in. A straight-on pass
@@ -2062,6 +2064,8 @@ const SCAN_HARDWARE_AVERAGE_MAX_MS = 70;
 const SCAN_CAMERA_KEY = 'mpeScanCameraId';
 let partCodePending = [];
 let partCodeLearned = {};
+let partCodeCustomMap = {};
+const customBindingTimers = new Map();
 let partCodesSheetEnsured = false;
 let partCodeFlushPromise = null;
 try { partCodePending = JSON.parse(localStorage.getItem(PART_CODES_PENDING_KEY) || '[]') || []; }
@@ -2070,9 +2074,33 @@ try { partCodeLearned = JSON.parse(localStorage.getItem(PART_CODES_LEARNED_KEY) 
 catch (e) { partCodeLearned = {}; }
 for (const item of partCodePending) {
   const key = canonicalScannedCode(item?.code);
-  if (key && item?.pn) partCodeLearned[key] = normalizePN(item.pn);
+  if (key && item?.pn) partCodeLearned[key] = item.desc
+    ? { pn: normalizePN(item.pn), desc: item.desc, price: item.price, cost: item.cost }
+    : normalizePN(item.pn);
 }
 persistLearnedPartCodes();
+
+function learnedPartNumber(value) {
+  return normalizePN(value && typeof value === 'object' ? value.pn : value);
+}
+
+function rebuildCustomCodeMap() {
+  partCodeCustomMap = {};
+  for (const [rawCode, value] of Object.entries(partCodeLearned)) {
+    if (!value || typeof value !== 'object' || !value.desc) continue;
+    const code = canonicalScannedCode(rawCode);
+    if (!code) continue;
+    partCodeCustomMap[code] = {
+      pn: String(value.pn || 'Other').trim() || 'Other',
+      og: String(value.pn || 'Other').trim() || 'Other',
+      make: 'Other', desc: String(value.desc).trim(),
+      list: Number.isFinite(Number(value.price)) ? Number(value.price) : 0,
+      cost: Number.isFinite(Number(value.cost)) ? Number(value.cost) : 0,
+      _customBarcode: code
+    };
+  }
+}
+rebuildCustomCodeMap();
 
 function persistPendingPartCodes() {
   try { localStorage.setItem(PART_CODES_PENDING_KEY, JSON.stringify(partCodePending)); } catch (e) {}
@@ -2082,7 +2110,7 @@ function persistLearnedPartCodes() {
   try { localStorage.setItem(PART_CODES_LEARNED_KEY, JSON.stringify(partCodeLearned)); } catch (e) {}
 }
 
-function queuePartCodeBinding(issue, part) {
+function queuePartCodeBinding(issue, part, custom) {
   const sourceCode = issue?.bindCode || issue?.rawValue;
   const code = canonicalScannedCode(sourceCode);
   const pn = String(part?.pn || part?.og || '').trim();
@@ -2095,16 +2123,47 @@ function queuePartCodeBinding(issue, part) {
     pn,
     format: String(issue?.format || ''),
     source: 'pos',
-    added: new Date().toISOString()
+    added: new Date().toISOString(),
+    desc: String(custom?.desc || '').trim(),
+    price: Number.isFinite(Number(custom?.price)) ? Number(custom.price) : '',
+    cost: Number.isFinite(Number(custom?.cost)) ? Number(custom.cost) : ''
   };
   const existing = partCodePending.findIndex(item => canonicalScannedCode(item.code) === code);
   if (existing >= 0) partCodePending[existing] = record;
   else partCodePending.push(record);
   persistPendingPartCodes();
-  partCodeLearned[code] = normalizePN(pn);
+  partCodeLearned[code] = record.desc
+    ? { pn: normalizePN(pn), desc: record.desc, price: record.price, cost: record.cost }
+    : normalizePN(pn);
   persistLearnedPartCodes();
   partCodeMap[code] = normalizePN(pn);
+  rebuildCustomCodeMap();
   flushPendingPartCodes();
+}
+
+function saveCustomPartCodeBinding(rowIdx) {
+  const input = tbody.querySelector(`[data-row="${rowIdx}"].part-input`);
+  const code = canonicalScannedCode(input?.dataset.bindingCode);
+  if (!code || input?.dataset.isOther !== '1') return;
+  const pn = input.value.trim();
+  const rawDesc = (document.getElementById(`desc-${rowIdx}`)?.textContent || '').trim();
+  const desc = (!rawDesc || /^other$|^—$/i.test(rawDesc)) ? pn : rawDesc;
+  if (!pn || /^other$/i.test(pn) || !desc || /^other$|^—$/i.test(desc)) return;
+  const price = parseFloat(document.getElementById(`price-${rowIdx}`)?.dataset.price);
+  const cost = parseFloat(document.getElementById(`cost-${rowIdx}`)?.dataset.cost);
+  const issue = { rawValue: code, format: input.dataset.bindingFormat || '', bindCode: code };
+  const custom = { desc, price: Number.isFinite(price) ? price : 0, cost: Number.isFinite(cost) ? cost : 0 };
+  // Save locally on every edit so a refresh cannot lose the completed custom
+  // line, but collapse rapid typing into one verified Codes-sheet write.
+  partCodeLearned[code] = { pn: normalizePN(pn), ...custom };
+  persistLearnedPartCodes();
+  partCodeMap[code] = normalizePN(pn);
+  rebuildCustomCodeMap();
+  clearTimeout(customBindingTimers.get(code));
+  customBindingTimers.set(code, setTimeout(() => {
+    customBindingTimers.delete(code);
+    queuePartCodeBinding(issue, { pn }, custom);
+  }, 750));
 }
 
 function updateScanButton() {
@@ -2660,9 +2719,14 @@ function resolveScannedValue(rawValue) {
   };
   const code = canonicalScannedCode(rawValue);
   const mappedPN = code ? partCodeMap[code] : '';
+  const customPart = code ? partCodeCustomMap[code] : null;
   // An imported or counter-bound barcode is authoritative. Direct matching is
   // for Code 128 / similar labels whose decoded text is the part number itself.
-  let candidates = mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
+  let candidates = customPart ? [customPart] : mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
+  // Legacy bindings saved only UPC→"Other". They are incomplete by design:
+  // send them through review once more so the operator can enter the custom
+  // product, after which the complete details replace the old binding.
+  if (!customPart && mappedPN && candidates.length === 1 && isOtherPart(candidates[0])) candidates = [];
   // A structured label payload carries the part number inside it. Pull it out
   // before any prefix or model guess gets a look at the whole string.
   if (!mappedPN && candidates.length === 0) candidates = structuredScanParts(rawValue);
@@ -5092,6 +5156,7 @@ function logOtherSuggestion(rowIdx) {
   if (Number.isFinite(cost) && cost > 0) entry.newCost = cost;
   if (entryIdx >= 0) changes[entryIdx] = entry; else changes.push(entry);
   savePriceChanges(changes);
+  saveCustomPartCodeBinding(rowIdx);
 }
 
 function clearOtherSuggestion(rowIdx) {
@@ -5411,10 +5476,16 @@ async function ensurePartCodesSheet() {
   if (!exists) {
     await sheetsBatchUpdate([{ addSheet: { properties: { title: PART_CODES_SHEET } } }]);
   }
-  let header = await sheetsGet(`${PART_CODES_SHEET}!A1:E1`);
+  let header = await sheetsGet(`${PART_CODES_SHEET}!A1:H1`);
   if (!header.length || !header[0]?.some(value => String(value || '').trim())) {
     await sheetsUpdate(`${PART_CODES_SHEET}!A1`, [PART_CODES_SHEET_HEADER]);
-    header = await sheetsGet(`${PART_CODES_SHEET}!A1:E1`);
+    header = await sheetsGet(`${PART_CODES_SHEET}!A1:H1`);
+  }
+  const legacyHeader = ['Code', 'Part Number', 'Format', 'Source', 'Added'];
+  if (header.length && legacyHeader.every((value, i) => header[0]?.[i] === value)
+      && !PART_CODES_SHEET_HEADER.every((value, i) => header[0]?.[i] === value)) {
+    await sheetsUpdate(`${PART_CODES_SHEET}!A1`, [PART_CODES_SHEET_HEADER]);
+    header = await sheetsGet(`${PART_CODES_SHEET}!A1:H1`);
   }
   if (!header.length || PART_CODES_SHEET_HEADER.some((value, i) => header[0]?.[i] !== value)) {
     throw new Error('Codes sheet header could not be verified');
@@ -5423,13 +5494,29 @@ async function ensurePartCodesSheet() {
 }
 
 async function _flushPendingPartCodes() {
-  if (!partCodePending.length) return;
   if (!googleSessionAvailable()) return;
   try {
     await ensurePartCodesSheet();
+    // Pull custom "Other" details as well as the ordinary code→PN mapping so
+    // a binding made at one register behaves identically at another register.
+    const savedRows = await sheetsGet(`${PART_CODES_SHEET}!A2:H`);
+    for (const row of savedRows) {
+      const code = canonicalScannedCode(row?.[0]);
+      const pn = normalizePN(row?.[1]);
+      const desc = String(row?.[5] || '').trim();
+      if (!code || !pn) continue;
+      partCodeMap[code] = pn;
+      partCodeLearned[code] = desc
+        ? { pn, desc, price: row?.[6] ?? '', cost: row?.[7] ?? '' }
+        : (partCodeLearned[code] || pn);
+    }
+    persistLearnedPartCodes();
+    rebuildCustomCodeMap();
+    if (!partCodePending.length) return;
     while (partCodePending.length) {
       const batch = partCodePending.slice();
-      const rows = batch.map(item => [item.code, item.pn, item.format, item.source, item.added]);
+      const rows = batch.map(item => [item.code, item.pn, item.format, item.source, item.added,
+        item.desc || '', item.price ?? '', item.cost ?? '']);
       const result = await sheetsAppend(`${PART_CODES_SHEET}!A1`, rows);
       if (!result) return;
       const writtenRange = result?.updates?.updatedRange;
@@ -6492,7 +6579,19 @@ function applyPart(i, part, options) {
       if (deal) setScanStatus(packageDealStatus(deal), 'ok');
     }
     else {
-      queuePartCodeBinding(correctedScanIssue, part);
+      if (other) {
+        input.dataset.bindingCode = correctedScanIssue.bindCode || correctedScanIssue.rawValue || '';
+        input.dataset.bindingFormat = correctedScanIssue.format || '';
+        if (mobileIssueInput) {
+          mobileIssueInput.dataset.bindingCode = input.dataset.bindingCode;
+          mobileIssueInput.dataset.bindingFormat = input.dataset.bindingFormat;
+        }
+        // Do not bind UPC→"Other" now. The operator is about to type the real
+        // part number, description, and price; logOtherSuggestion saves that
+        // completed custom line as the binding.
+      } else {
+        queuePartCodeBinding(correctedScanIssue, part);
+      }
       // A reviewed row is a real line now, so it joins the packaging just like
       // a clean scan would have. Remembered here because this runs inside the
       // row fill, before the scanner's own trackPackageUnit gets its turn.
@@ -6511,7 +6610,7 @@ function clearRowData(i) {
   const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (partInput) {
     partInput.title = '';
-    ['isOther', 'partPn', 'partMake', 'partDesc', 'list', 'newItemKey'].forEach(key => delete partInput.dataset[key]);
+    ['isOther', 'partPn', 'partMake', 'partDesc', 'list', 'newItemKey', 'bindingCode', 'bindingFormat'].forEach(key => delete partInput.dataset[key]);
   }
   const supMark = document.getElementById(`supmark-${i}`);
   if (supMark) { supMark.classList.remove('visible'); supMark.title = ''; }
