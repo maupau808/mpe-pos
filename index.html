@@ -967,7 +967,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="scan-command-flash" id="scanCommandFlash" aria-live="polite"></div>
     <div class="bottom-actions">
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
-      <button class="btn-big btn-filled" onclick="printQuote()">🖨 Print</button>
+      <button class="btn-big btn-filled" id="printBtn" onclick="printQuote()" title="Print one single-sided copy to the counter printer">🖨 Print</button>
       <button class="btn-big btn-auto" id="autoPrintBtn" onclick="autoPrint()" title="Auto Print — straight to the counter printer, single-sided">Auto</button>
       <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
     </div>
@@ -1105,7 +1105,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.17.2';
+const POS_RELEASE = '2026.08.17.3';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -7058,16 +7058,37 @@ function serializedPrintDocument() {
   return '<!doctype html>\n' + copy.outerHTML;
 }
 
-function printQuote() {
+async function printQuote() {
+  // The desktop shell can enforce one copy + simplex. Route the ordinary Print
+  // button and Ctrl/Cmd-P through that same fixed path instead of opening an OS
+  // dialog whose remembered duplex/copy settings the web page cannot control.
+  if (window.mpeDesktop && typeof window.mpeDesktop.printReceipt === 'function') {
+    await autoPrint('print');
+    return;
+  }
   prepareAndSaveForPrint();
   window.print();
 }
 
-async function autoPrint() {
+const AUTO_PRINT_REPEAT_GUARD_MS = 5000;
+let _lastDirectPrintTxnId = '';
+let _lastDirectPrintAt = 0;
+async function autoPrint(trigger = 'auto') {
   if (_directPrintInFlight) return;
+  if (_currentTxnId && _currentTxnId === _lastDirectPrintTxnId && Date.now() - _lastDirectPrintAt < AUTO_PRINT_REPEAT_GUARD_MS) {
+    const repeatBtn = document.getElementById(trigger === 'print' ? 'printBtn' : 'autoPrintBtn');
+    if (repeatBtn) {
+      const idle = trigger === 'print' ? '🖨 Print' : 'Auto';
+      repeatBtn.textContent = '✓ Sent';
+      setTimeout(() => { repeatBtn.textContent = idle; repeatBtn.disabled = false; }, 1800);
+    }
+    flashScanCommand('Already sent once — duplicate blocked', 'warn');
+    return;
+  }
   _directPrintInFlight = true;
   const printStartedAt = performance.now();
-  const btn = document.getElementById('autoPrintBtn');
+  const btn = document.getElementById(trigger === 'print' ? 'printBtn' : 'autoPrintBtn');
+  const idleLabel = trigger === 'print' ? '🖨 Print' : 'Auto';
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
   clearToolFailure();
   setBtn('⏳', true);
@@ -7113,9 +7134,11 @@ async function autoPrint() {
       agent: result.timings || null,
     });
     printedByService = true;
+    _lastDirectPrintTxnId = _currentTxnId || '';
+    _lastDirectPrintAt = Date.now();
     showPrintBanner();
     setBtn('✓', false);
-    setTimeout(() => setBtn('Auto', false), 4000);
+    setTimeout(() => setBtn(idleLabel, false), 4000);
   } catch (error) {
     noteToolFailure('Auto Print', error);
   }
@@ -7125,7 +7148,7 @@ async function autoPrint() {
     // just costs one keypress. The sale itself is already saved either way, and
     // _printPrepared stops the beforeprint handler saving it a second time.
     // cleanup is left to afterprint, which fires whether or not they hit Cancel.
-    setBtn('Auto', false);
+    setBtn(idleLabel, false);
     _directPrintInFlight = false;
     try {
       window.print();

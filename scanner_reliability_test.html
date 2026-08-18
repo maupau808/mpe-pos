@@ -721,7 +721,7 @@ pos.addEventListener('load', async () => {
       assert(!pos.contentDocument.getElementById('scannerModeNextCommand')?.classList.contains('is-next'), 'Next transaction emphasis did not reset after Clear');
     });
 
-    await test('Desktop Auto Print uses one native bridge call and saves once', async () => {
+    await test('Desktop printing queues one guarded native job and saves once', async () => {
       reset(pos); await burst(pos, codeA); win.setScannerModeActive(true);
       const historyBefore = win.getHistory().length;
       const originalFetch = win.fetch;
@@ -743,6 +743,7 @@ pos.addEventListener('load', async () => {
       };
       try {
         await win.autoPrint();
+        await win.autoPrint();
       } finally {
         win.fetch = originalFetch;
         delete win.mpeDesktop;
@@ -751,6 +752,27 @@ pos.addEventListener('load', async () => {
       assert(helperCalls === 0, `localhost helper was called ${helperCalls} times`);
       assert(win.getHistory().length === historyBefore + 1, 'desktop print did not save history exactly once');
       assert(filledRows(pos).length === 1, 'desktop Auto Print cleared the current sale');
+    });
+
+    await test('Desktop Print bypasses the uncontrolled system dialog', async () => {
+      reset(pos); await burst(pos, codeA);
+      const originalPrint = win.print;
+      let bridgeCalls = 0;
+      let dialogCalls = 0;
+      Object.defineProperty(win, 'mpeDesktop', {
+        configurable: true,
+        value: { printReceipt: async () => { bridgeCalls += 1; return { ok: true }; } },
+      });
+      win.print = () => { dialogCalls += 1; };
+      try {
+        await win.printQuote();
+        await win.printQuote();
+      } finally {
+        win.print = originalPrint;
+        delete win.mpeDesktop;
+      }
+      assert(bridgeCalls === 1, `desktop Print queued ${bridgeCalls} jobs`);
+      assert(dialogCalls === 0, `desktop Print opened ${dialogCalls} uncontrolled dialogs`);
     });
 
     await test('Scanner Mode shows scan-command feedback', async () => {
