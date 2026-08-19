@@ -1106,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.18.3';
+const POS_RELEASE = '2026.08.18.4';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -7394,17 +7394,17 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       <div style="${sumRow};color:${PDF_INK}"><span>Margin</span><span>${figure('sumMarginPct')}</span></div>
       ${warnEl?.classList.contains('show') ? `<div style="font-size:11px;color:${PDF_INK};padding-top:4px">${esc(warnEl.textContent)}</div>` : ''}
     </div>`;
-  return `<div style="width:760px;box-sizing:border-box;padding:24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${PDF_INK};background:#fff">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start">
-      <div>
-        <div style="font-size:20px;font-weight:700;color:${PDF_INK}">Maui Power Equipment</div>
-        <div style="font-size:12px;margin-top:3px;line-height:1.5;color:${PDF_INK}">970 Lower Main St &nbsp;·&nbsp; Wailuku HI 96793<br>(808) 249-2730 &nbsp;·&nbsp; info&#64;mauipowerequipment.com</div>
+  return `<div style="width:760px;box-sizing:border-box;padding:28px 24px 24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${PDF_INK};background:#fff">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;min-height:58px;padding-top:2px;box-sizing:border-box">
+      <div style="padding-top:1px">
+        <div style="font-size:20px;line-height:1.15;font-weight:700;color:${PDF_INK}">Maui Power Equipment</div>
+        <div style="font-size:12px;margin-top:4px;line-height:1.55;color:${PDF_INK}">970 Lower Main St &nbsp;·&nbsp; Wailuku HI 96793<br>(808) 249-2730 &nbsp;·&nbsp; info&#64;mauipowerequipment.com</div>
       </div>
-      <div>
-        ${logoSrc ? `<img src="${logoSrc}" style="display:block;height:47px;width:auto" alt="MPE">` : ''}
+      <div style="width:150px;height:56px;display:flex;align-items:flex-start;justify-content:flex-end;overflow:visible">
+        ${logoSrc ? `<img src="${logoSrc}" style="display:block;max-width:150px;height:52px;width:auto;object-fit:contain;object-position:right top" alt="MPE">` : ''}
       </div>
     </div>
-    <div style="display:flex;align-items:baseline;gap:10px;margin:10px 0 0;border-bottom:2px solid ${PDF_INK};padding-bottom:6px">
+    <div style="display:flex;align-items:baseline;gap:10px;margin:12px 0 0;border-bottom:2px solid ${PDF_INK};padding-bottom:6px">
       <span style="font-size:22px;font-weight:800;color:${PDF_GREEN}">${esc(title)}</span>
       <span style="font-size:13px;font-weight:600;color:${PDF_INK}">No. ${esc(number)}</span>
       <span style="font-size:13px;font-weight:600;margin-left:auto;color:${PDF_INK}">${esc(dateStr)}</span>
@@ -7446,14 +7446,10 @@ function _pdfOptions(filename) {
   };
 }
 
-// html2pdf first parks its cloned source 100000px offscreen. That is harmless
-// for html2canvas's normal painter, but foreignObjectRendering preserves the
-// offscreen coordinate and captures only the receipt's far-right sliver. Render
-// the live receipt to a canvas first, normalizing only html2canvas's private
-// document clone, then hand that finished canvas to html2pdf for pagination.
-// The real POS never moves or flashes. If the direct renderer is unavailable,
-// fall back to the plain painter: its text metrics are less exact, but the whole
-// receipt remains usable.
+// Render the live receipt to a canvas before handing it to html2pdf. This avoids
+// html2pdf's offscreen clone, which can collapse the page to a narrow sliver.
+// Keep html2canvas's standard painter: the experimental foreign-object painter
+// can crop the top of fixed-position content in desktop Chromium.
 async function _renderPdf(el, filename, mode) {
   const finish = canvas => {
     const opt = _pdfOptions(filename);
@@ -7472,11 +7468,18 @@ async function _renderPdf(el, filename, mode) {
     }));
     const canvasOpt = {
       ..._pdfOptions(filename).html2canvas,
-      foreignObjectRendering: true,
+      foreignObjectRendering: false,
+      scrollX: 0,
+      scrollY: 0,
       onclone: doc => {
         doc.body.style.zoom = '1';
+        doc.documentElement.scrollTop = 0;
+        doc.body.scrollTop = 0;
         const holder = doc.getElementById('emailPdfHolder');
-        if (holder) holder.style.left = '0';
+        if (holder) {
+          holder.style.left = '0';
+          holder.style.top = '0';
+        }
       },
     };
     return await finish(await html2canvas(el, canvasOpt));
