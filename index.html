@@ -1106,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.18.1';
+const POS_RELEASE = '2026.08.18.2';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -7332,11 +7332,8 @@ function _buildEmailMime(to, subject, bodyText, filename, pdfB64) {
 // copy — the black-and-white treatment in @media print is deliberate and stays,
 // because that path feeds the shop's mono printers.
 const PDF_GREEN = '#2f4339';
-const PDF_GOLD  = '#FFAD00';
-const PDF_GOLD_DEEP = '#D99300';
-const PDF_INK   = '#1d2722';
-const PDF_MUTED = '#6a736d';
-const PDF_LINE  = '#e6e1d6';
+const PDF_INK   = '#111111';
+const PDF_LINE  = '#d7d7d7';
 
 // The mark ships as its own dark green, a shade off the header green. It's
 // single-colour artwork with an alpha channel, so filling through `source-in`
@@ -7376,16 +7373,16 @@ function buildEmailDocHTML(order, title, number, dateStr) {
     const originalEa = parseFloat(it.originalEa) || 0, offEach = parseFloat(it.discountPerUnit) || 0;
     const lineOff = offEach * qty;
     const eaHtml = offEach > 0
-      ? `<span style="color:${PDF_MUTED};text-decoration:line-through">$${originalEa.toFixed(2)}</span> $${ea.toFixed(2)}`
+      ? `<span style="color:${PDF_INK};text-decoration:line-through">$${originalEa.toFixed(2)}</span> $${ea.toFixed(2)}`
       : `$${ea.toFixed(2)}`;
     let snHtml = '';
-    if (it.sn && it.sn.length) snHtml = `<tr><td></td><td colspan="3" style="padding:2px 8px 8px;font-size:12px;color:${PDF_MUTED}">${it.sn.map(esc).join(' &nbsp; ')}</td></tr>`;
+    if (it.sn && it.sn.length) snHtml = `<tr><td></td><td colspan="3" style="padding:2px 8px 8px;font-size:12px;color:${PDF_INK}">${it.sn.map(esc).join(' &nbsp; ')}</td></tr>`;
     const cell = `padding:6px 8px;border-bottom:1px solid ${PDF_LINE};font-size:13px;color:${PDF_INK}`;
     return `<tr>
       <td style="${cell}">${esc(it.pn)}</td>
       <td style="${cell}">${esc(it.desc)}</td>
-      <td style="${cell};text-align:center">${esc(qty)}${offEach > 0 || (anyMulti && qty !== 1) ? ` <span style="color:${PDF_MUTED}">@ ${eaHtml}</span>` : ''}</td>
-      <td style="${cell};text-align:right;white-space:nowrap">${lineOff > 0 ? `<div style="font-size:11px;font-weight:600;color:${PDF_GOLD_DEEP}">($${lineOff.toFixed(2)} off)</div>` : ''}$${sub.toFixed(2)}</td>
+      <td style="${cell};text-align:center">${esc(qty)}${offEach > 0 || (anyMulti && qty !== 1) ? ` <span style="color:${PDF_INK}">@ ${eaHtml}</span>` : ''}</td>
+      <td style="${cell};text-align:right;white-space:nowrap">${lineOff > 0 ? `<div style="font-size:11px;font-weight:600;color:${PDF_INK}">($${lineOff.toFixed(2)} off)</div>` : ''}$${sub.toFixed(2)}</td>
     </tr>${snHtml}`;
   }).join('');
 
@@ -7394,14 +7391,14 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   const nameCo = [c.name, c.company].filter(Boolean).join(' / ');
   const hasCust = c.name || c.addr || c.phone || c.email;
   const custHtml = hasCust ? `<div style="margin-top:18px;font-size:13px;line-height:1.7;color:${PDF_INK};border-left:3px solid ${PDF_LINE};padding-left:10px;text-transform:uppercase">
-    ${nameCo ? `<div style="font-weight:600;color:${PDF_GREEN}">${esc(nameCo)}</div>` : ''}
+    ${nameCo ? `<div style="font-weight:600;color:${PDF_INK}">${esc(nameCo)}</div>` : ''}
     ${c.addr ? `<div>${esc(c.addr)}</div>` : ''}
     ${cityLine ? `<div>${esc(cityLine)}</div>` : ''}
     ${c.phone ? `<div>${esc(c.phone)}</div>` : ''}
     ${c.email ? `<div>${esc(c.email)}</div>` : ''}
   </div>` : '';
 
-  const th = `text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#fff;padding:7px 8px;background:${PDF_GREEN}`;
+  const th = `text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:${PDF_INK};padding:7px 8px;border-bottom:2px solid ${PDF_INK};background:#fff`;
   const sumRow = 'display:flex;justify-content:space-between;padding:3px 0';
 
   // An Internal document carries its Cost / Gross Profit / Margin into the PDF too,
@@ -7411,27 +7408,26 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   const warnEl = document.getElementById('sumNoCost');
   const figure = id => esc(document.getElementById(id)?.textContent || '—');
   const internalHtml = _docType !== 'internal' ? '' : `<div style="margin-top:9px;margin-left:auto;width:240px;font-size:13px;border-top:1px solid ${PDF_LINE};padding-top:8px">
-      <div style="${sumRow}"><span style="color:${PDF_MUTED}">Cost</span><span>${figure('sumCost')}</span></div>
-      <div style="${sumRow};font-weight:700;color:${PDF_GREEN}"><span>Gross Profit</span><span>${figure('sumProfit')}</span></div>
-      <div style="${sumRow}"><span style="color:${PDF_MUTED}">Margin</span><span>${figure('sumMarginPct')}</span></div>
-      ${warnEl?.classList.contains('show') ? `<div style="font-size:11px;color:#c0392b;padding-top:4px">${esc(warnEl.textContent)}</div>` : ''}
+      <div style="${sumRow};color:${PDF_INK}"><span>Cost</span><span>${figure('sumCost')}</span></div>
+      <div style="${sumRow};font-weight:700;color:${PDF_INK}"><span>Gross Profit</span><span>${figure('sumProfit')}</span></div>
+      <div style="${sumRow};color:${PDF_INK}"><span>Margin</span><span>${figure('sumMarginPct')}</span></div>
+      ${warnEl?.classList.contains('show') ? `<div style="font-size:11px;color:${PDF_INK};padding-top:4px">${esc(warnEl.textContent)}</div>` : ''}
     </div>`;
   return `<div style="width:760px;box-sizing:border-box;padding:24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${PDF_INK};background:#fff">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
-        <div style="font-size:20px;font-weight:700;color:${PDF_GREEN}">Maui Power Equipment</div>
-        <div style="font-size:12px;margin-top:3px;line-height:1.5;color:${PDF_MUTED}">970 Lower Main St &nbsp;·&nbsp; Wailuku HI 96793<br>(808) 249-2730 &nbsp;·&nbsp; info&#64;mauipowerequipment.com</div>
+        <div style="font-size:20px;font-weight:700;color:${PDF_INK}">Maui Power Equipment</div>
+        <div style="font-size:12px;margin-top:3px;line-height:1.5;color:${PDF_INK}">970 Lower Main St &nbsp;·&nbsp; Wailuku HI 96793<br>(808) 249-2730 &nbsp;·&nbsp; info&#64;mauipowerequipment.com</div>
       </div>
       <div>
-        ${logoSrc ? `<img src="${logoSrc}" style="max-height:47px" alt="">` : ''}
+        ${logoSrc ? `<img src="${logoSrc}" style="display:block;height:47px;width:auto" alt="MPE">` : ''}
       </div>
     </div>
-    <div style="display:flex;align-items:baseline;gap:10px;margin:10px 0 0;border-bottom:2px solid ${PDF_GREEN};padding-bottom:6px">
+    <div style="display:flex;align-items:baseline;gap:10px;margin:10px 0 0;border-bottom:2px solid ${PDF_INK};padding-bottom:6px">
       <span style="font-size:22px;font-weight:800;color:${PDF_GREEN}">${esc(title)}</span>
-      <span style="font-size:13px;font-weight:600;color:${PDF_MUTED}">No. ${esc(number)}</span>
-      <span style="font-size:13px;font-weight:600;margin-left:auto;color:${PDF_MUTED}">${esc(dateStr)}</span>
+      <span style="font-size:13px;font-weight:600;color:${PDF_INK}">No. ${esc(number)}</span>
+      <span style="font-size:13px;font-weight:600;margin-left:auto;color:${PDF_INK}">${esc(dateStr)}</span>
     </div>
-    <div style="height:3px;width:96px;background:${PDF_GOLD}"></div>
     <table style="width:100%;border-collapse:collapse;margin-top:16px">
       <thead><tr>
         <th style="${th}">Product</th>
@@ -7442,14 +7438,14 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       <tbody>${rows}</tbody>
     </table>
     <div style="margin-top:14px;margin-left:auto;width:240px;font-size:13px">
-      <div style="${sumRow}"><span style="color:${PDF_MUTED}">Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>
-      <div style="${sumRow}"><span style="color:${PDF_MUTED}">Tax</span><span>$${tax.toFixed(2)}</span></div>
-      ${cardFeeActive ? `<div style="${sumRow}"><span style="color:${PDF_MUTED}">Card fee (3%)</span><span>$${cardFee.toFixed(2)}</span></div>` : ''}
-      <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:2px solid ${PDF_GREEN};font-weight:700;font-size:16px;color:${PDF_GREEN}"><span>Total</span><span>$${total.toFixed(2)}</span></div>
+      <div style="${sumRow};color:${PDF_INK}"><span>Subtotal</span><span>$${subtotal.toFixed(2)}</span></div>
+      <div style="${sumRow};color:${PDF_INK}"><span>Tax</span><span>$${tax.toFixed(2)}</span></div>
+      ${cardFeeActive ? `<div style="${sumRow};color:${PDF_INK}"><span>Card fee (3%)</span><span>$${cardFee.toFixed(2)}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:2px solid ${PDF_INK};font-weight:700;font-size:16px;color:${PDF_INK}"><span>Total</span><span>$${total.toFixed(2)}</span></div>
     </div>
     ${internalHtml}
     ${custHtml}
-    <div style="text-align:center;font-style:italic;color:${PDF_GREEN};margin-top:22px;font-size:13px">Mahalo for your business!</div>
+    <div style="text-align:center;font-style:italic;color:${PDF_INK};margin-top:22px;font-size:13px">Mahalo for your business!</div>
   </div>`;
 }
 
@@ -7484,6 +7480,14 @@ async function _renderPdf(el, filename, mode) {
   };
   try {
     if (typeof html2canvas !== 'function') throw new Error('html2canvas library did not load');
+    await Promise.all([...el.querySelectorAll('img')].map(img => {
+      if (typeof img.decode === 'function') return img.decode().catch(() => {});
+      if (img.complete) return Promise.resolve();
+      return new Promise(resolve => {
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+      });
+    }));
     const canvasOpt = {
       ..._pdfOptions(filename).html2canvas,
       foreignObjectRendering: true,
