@@ -1106,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.18.5';
+const POS_RELEASE = '2026.08.18.6';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -7119,16 +7119,18 @@ function cleanupPrint() {
 // saved/pushed twice when both paths run for the same print job.
 let _printPrepared = false;
 let _directPrintInFlight = false;
+function recordOutgoingDocument() {
+  // Renew first so the callback can flush this transaction along with any
+  // older local entries waiting for Drive.
+  renewOnPrint();
+  saveToHistory();
+  updatePriceChangesBadge();
+}
 function prepareAndSaveForPrint() {
   if (_printPrepared) return;
   _printPrepared = true;
-  // Printing is also when an aging Google token is renewed — see STAYING
-  // CONNECTED. It goes first so the renewal callback lands after this sale is
-  // queued and flushes it along with anything else waiting.
-  renewOnPrint();
   preparePrint();
-  saveToHistory();
-  updatePriceChangesBadge();
+  recordOutgoingDocument();
 }
 
 function serializedPrintDocument() {
@@ -7513,12 +7515,15 @@ async function exportPdf() {
     const number = formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
+    // Record before handing control to the browser download. Desktop Chromium
+    // does not reliably settle the save promise, while Print records before its
+    // native output step. The shared transaction ID prevents retry duplicates.
+    recordOutgoingDocument();
     holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
     await _renderPdf(holder.firstElementChild, `MPE_${title}_${number}.pdf`, 'save');
     holder.innerHTML = '';
     setBtn('✓', false);
-    saveToHistory();            // same record any other outgoing copy makes
-    updatePriceChangesBadge();
+    showPrintBanner();
     setTimeout(() => setBtn('⬇', false), 4000);
   } catch (e) {
     holder.innerHTML = '';
