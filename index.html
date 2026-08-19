@@ -1106,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.18.2';
+const POS_RELEASE = '2026.08.18.3';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -7335,28 +7335,9 @@ const PDF_GREEN = '#2f4339';
 const PDF_INK   = '#111111';
 const PDF_LINE  = '#d7d7d7';
 
-// The mark ships as its own dark green, a shade off the header green. It's
-// single-colour artwork with an alpha channel, so filling through `source-in`
-// keeps the shape and swaps the ink — no second logo file to keep in sync.
-let _pdfLogoCache = null;
 function _pdfLogoSrc() {
-  if (_pdfLogoCache) return _pdfLogoCache;
-  const img = document.querySelector('.wrap .print-header img');
-  if (!img) return '';
-  if (!img.complete || !img.naturalWidth) return img.src;   // not decoded yet; retry next time
-  try {
-    const c = document.createElement('canvas');
-    c.width = img.naturalWidth; c.height = img.naturalHeight;
-    const x = c.getContext('2d');
-    x.drawImage(img, 0, 0);
-    x.globalCompositeOperation = 'source-in';
-    x.fillStyle = PDF_GREEN;
-    x.fillRect(0, 0, c.width, c.height);
-    _pdfLogoCache = c.toDataURL('image/png');
-  } catch (e) {
-    _pdfLogoCache = img.src;
-  }
-  return _pdfLogoCache;
+  const img = document.querySelector('img[alt="MPE Logo"]');
+  return img?.getAttribute('src') || img?.src || '';
 }
 
 function buildEmailDocHTML(order, title, number, dateStr) {
@@ -7379,9 +7360,9 @@ function buildEmailDocHTML(order, title, number, dateStr) {
     if (it.sn && it.sn.length) snHtml = `<tr><td></td><td colspan="3" style="padding:2px 8px 8px;font-size:12px;color:${PDF_INK}">${it.sn.map(esc).join(' &nbsp; ')}</td></tr>`;
     const cell = `padding:6px 8px;border-bottom:1px solid ${PDF_LINE};font-size:13px;color:${PDF_INK}`;
     return `<tr>
-      <td style="${cell}">${esc(it.pn)}</td>
+      <td style="${cell};white-space:nowrap">${esc(it.pn)}</td>
       <td style="${cell}">${esc(it.desc)}</td>
-      <td style="${cell};text-align:center">${esc(qty)}${offEach > 0 || (anyMulti && qty !== 1) ? ` <span style="color:${PDF_INK}">@ ${eaHtml}</span>` : ''}</td>
+      <td style="${cell};text-align:center;white-space:nowrap">${esc(qty)}${offEach > 0 || (anyMulti && qty !== 1) ? ` <span style="color:${PDF_INK}">@ ${eaHtml}</span>` : ''}</td>
       <td style="${cell};text-align:right;white-space:nowrap">${lineOff > 0 ? `<div style="font-size:11px;font-weight:600;color:${PDF_INK}">($${lineOff.toFixed(2)} off)</div>` : ''}$${sub.toFixed(2)}</td>
     </tr>${snHtml}`;
   }).join('');
@@ -7429,6 +7410,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       <span style="font-size:13px;font-weight:600;margin-left:auto;color:${PDF_INK}">${esc(dateStr)}</span>
     </div>
     <table style="width:100%;border-collapse:collapse;margin-top:16px">
+      <colgroup><col style="width:24%"><col style="width:42%"><col style="width:19%"><col style="width:15%"></colgroup>
       <thead><tr>
         <th style="${th}">Product</th>
         <th style="${th}">Description</th>
