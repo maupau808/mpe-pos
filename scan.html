@@ -61,24 +61,11 @@ button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; border: none; background: none; }
 
 /* ── header ─────────────────────────────────────────────────────────────── */
-.top {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px; border-bottom: 1px solid var(--line);
-  background: var(--panel); flex: none;
-}
-.brand { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
-.brand span { color: var(--accent); }
 .top-spacer { flex: 1; }
 .feed-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); flex: none; }
 .feed-dot.ok { background: var(--accent); }
 .feed-dot.warn { background: var(--warn); }
 .feed-dot.err { background: var(--err); }
-.icon-btn {
-  width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line);
-  background: var(--panel-2); color: var(--muted);
-  display: flex; align-items: center; justify-content: center; font-size: 15px;
-}
-.icon-btn:active { background: var(--line); }
 
 /* ── auth bar ───────────────────────────────────────────────────────────────
    Google access tokens last an hour and cannot be refreshed without a server,
@@ -108,7 +95,7 @@ button { cursor: pointer; border: none; background: none; }
 /* ── camera ─────────────────────────────────────────────────────────────── */
 .cam-wrap {
   position: relative; flex: none;
-  height: 34vh; min-height: 190px; max-height: 300px;
+  height: 96px;
   background: #000; overflow: hidden;
 }
 .cam-wrap video {
@@ -127,16 +114,15 @@ button { cursor: pointer; border: none; background: none; }
   box-shadow: 0 0 0 100vmax rgba(0,0,0,.28);
 }
 .cam-idle {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 12px;
-  background: var(--panel); color: var(--muted); text-align: center; padding: 16px;
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center;
+  background: var(--panel); color: var(--muted); text-align: center; padding: 8px;
 }
 .cam-idle.hidden { display: none; }
 .big-start {
   background: var(--accent); color: var(--accent-ink);
   font-size: 16px; font-weight: 700; padding: 13px 26px; border-radius: 11px;
 }
-.cam-note { font-size: 12.5px; max-width: 34ch; color: var(--dim); }
 .cam-status {
   position: absolute; left: 0; right: 0; bottom: 0;
   padding: 6px 12px; font-size: 12px; background: rgba(0,0,0,.55); color: #fff;
@@ -172,17 +158,18 @@ body.show-cost .hero-cost { display: block; }
 .hero.bad .hero-desc { color: var(--err); }
 
 /* ── actions ────────────────────────────────────────────────────────────── */
-.acts { flex: none; display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.acts { flex: none; display: flex; gap: 5px; padding: 7px 8px; border-bottom: 1px solid var(--line); }
 .act {
   flex: 1; border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
-  border-radius: 10px; padding: 11px 8px; font-size: 14px; font-weight: 600;
+  min-width: 0; border-radius: 8px; padding: 8px 3px; font-size: 11.5px; font-weight: 600;
   display: flex; align-items: center; justify-content: center; gap: 7px;
 }
 .act:active { background: var(--line); }
-.act.count { flex: 0 0 auto; min-width: 62px; }
+.act.on { color: var(--accent); border-color: var(--accent); }
+.act .feed-dot { width: 7px; height: 7px; }
 .pill {
   background: var(--accent); color: var(--accent-ink);
-  border-radius: 10px; padding: 1px 7px; font-size: 12px; font-weight: 700;
+  border-radius: 10px; padding: 1px 5px; font-size: 11px; font-weight: 700;
 }
 .pill.zero { background: var(--line); color: var(--muted); }
 
@@ -326,14 +313,13 @@ textarea.new-item-input { min-height: 72px; resize: vertical; }
    confirm aim, so it shrinks to a strip and every pixel it gives up goes to the
    pool of parts being matched. The lookup list is hidden rather than reused —
    the two workflows must never write into each other. */
-body.bind .cam-wrap { height: 12vh; min-height: 76px; max-height: 106px; }
+body.bind .cam-wrap { height: 96px; }
 body.bind .reticle i { width: 62%; height: 54%; border-radius: 8px; }
-body.bind .cam-note { display: none; }
 body.bind .hero,
-body.bind .acts,
 body.bind .list-wrap { display: none; }
+body.bind #searchBtn,
+body.bind #reloadBtn { display: none; }
 body.bind .bind-wrap { display: flex; }
-.icon-btn.on { color: var(--accent); }
 
 .bind-wrap { flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; }
 .bind-bar {
@@ -385,15 +371,6 @@ body.bind .bind-wrap { display: flex; }
 </head>
 <body>
 
-<div class="top">
-  <div class="brand">MPE <span>Scan</span></div>
-  <div class="top-spacer"></div>
-  <div class="feed-dot" id="feedDot" title="catalog status"></div>
-  <button class="icon-btn" id="bindBtn" title="Bind barcodes to parts">&#9783;</button>
-  <button class="icon-btn" id="searchBtn" title="Search by name or number">&#9906;</button>
-  <button class="icon-btn" id="setBtn" title="Settings">&#9881;</button>
-</div>
-
 <div class="authbar" id="authBar">
   <div class="authbar-main">
     <b id="authBarTitle"></b>
@@ -408,7 +385,6 @@ body.bind .bind-wrap { display: flex; }
   <button class="cam-stop" id="camStop" hidden>Stop</button>
   <div class="cam-idle" id="camIdle">
     <button class="big-start" id="startBtn">Start camera</button>
-    <div class="cam-note" id="camNote">Point at a barcode. Every scan shows its price and drops into the list below.</div>
   </div>
   <div class="cam-status" id="camStatus" hidden></div>
 </div>
@@ -427,12 +403,15 @@ body.bind .bind-wrap { display: flex; }
 
 <div class="acts">
   <button class="act" id="againBtn">Scan</button>
-  <button class="act count" id="listBtn">List <span class="pill zero" id="listCount">0</span></button>
+  <button class="act" id="searchBtn">Search</button>
+  <button class="act" id="reloadBtn">Reload</button>
+  <button class="act" id="setBtn"><span class="feed-dot" id="feedDot"></span>Settings</button>
 </div>
 
 <div class="list-wrap">
   <div class="list-head">
     <b>List</b>
+    <span class="pill zero" id="listCount">0</span>
     <span id="listSum"></span>
     <div class="top-spacer"></div>
     <button class="mini go" id="sendBtn">Send to counter</button>
@@ -583,6 +562,13 @@ body.bind .bind-wrap { display: flex; }
           <div class="set-help" id="feedHelp">—</div>
         </div>
         <button class="mini" id="refreshBtn">Refresh</button>
+      </div>
+      <div class="set-row">
+        <div class="set-main">
+          <div class="set-label">Bind barcodes to parts</div>
+          <div class="set-help">Use for a shelf pass when a package barcode is not known yet.</div>
+        </div>
+        <button class="mini" id="bindBtn">Start</button>
       </div>
       <div class="set-row" id="costRow">
         <div class="set-main">
@@ -1761,6 +1747,7 @@ function buzz(pattern) { try { navigator.vibrate?.(pattern); } catch (e) {} }
 
 // ── CAMERA ────────────────────────────────────────────────────────────────
 let scanActive = false, scanStream = null, scanTimer = null, scanBusy = false;
+let scanPausedForVisibility = false, scanLoopVersion = 0;
 let scanDetector = null, fallbackDetector = null, fallbackLoad = null;
 let cropCanvas = null, fullCanvas = null, angleIndex = 0, frameCount = 0;
 let absentFrames = 0, startVersion = 0, wakeLock = null;
@@ -1797,28 +1784,35 @@ function loadPonyfill() {
   return fallbackLoad;
 }
 
-async function nativeFrame() {
-  if (!scanActive) return;
+async function nativeFrame(loopVersion = scanLoopVersion) {
+  if (loopVersion !== scanLoopVersion) return;
+  scanTimer = null;
+  if (!scanActive || scanPausedForVisibility || document.hidden) return;
   const video = $('cam');
   if (!scanBusy && video?.readyState >= 2) {
     scanBusy = true;
     try {
       const item = preferredScanSymbol(await scanDetector.detect(video));
+      if (loopVersion !== scanLoopVersion || !scanActive || scanPausedForVisibility || document.hidden) return;
       if (!item) { absentFrames++; }
       else { absentFrames = 0; acceptScan(item.rawValue, item.format); }
     } catch (e) {
-      if (scanActive) setCamStatus('Camera error: ' + e.message, 'err');
+      if (loopVersion === scanLoopVersion && scanActive) setCamStatus('Camera error: ' + e.message, 'err');
     } finally { scanBusy = false; }
   }
-  if (scanActive) scanTimer = setTimeout(nativeFrame, 90);
+  if (loopVersion === scanLoopVersion && scanActive && !scanPausedForVisibility && !document.hidden) {
+    scanTimer = setTimeout(() => nativeFrame(loopVersion), 90);
+  }
 }
 
 // The ponyfill path, tuned exactly as the POS tuned it: straight-on passes by
 // default, a 2x centre magnification every third pass for dense parts-box
 // codes, tilts only after straight-on has been failing, and never a horizontal
 // crop (that would shave a wide Code 128's quiet zone or end characters).
-async function fallbackFrame() {
-  if (!scanActive) return;
+async function fallbackFrame(loopVersion = scanLoopVersion) {
+  if (loopVersion !== scanLoopVersion) return;
+  scanTimer = null;
+  if (!scanActive || scanPausedForVisibility || document.hidden) return;
   const video = $('cam');
   if (!scanBusy && video?.readyState >= 2) {
     scanBusy = true;
@@ -1829,7 +1823,13 @@ async function fallbackFrame() {
       const sourceY = fullFrame ? 0 : Math.round(video.videoHeight * 0.10);
       const width = video.videoWidth;
       const height = fullFrame ? video.videoHeight : Math.round(video.videoHeight * 0.80);
-      if (!width || !height) { scanBusy = false; scanTimer = setTimeout(fallbackFrame, FALLBACK_RETRY_MS); return; }
+      if (!width || !height) {
+        scanBusy = false;
+        if (loopVersion === scanLoopVersion && !scanPausedForVisibility && !document.hidden) {
+          scanTimer = setTimeout(() => fallbackFrame(loopVersion), FALLBACK_RETRY_MS);
+        }
+        return;
+      }
       if (fullFrame && !fullCanvas) fullCanvas = document.createElement('canvas');
       if (!fullFrame && !cropCanvas) cropCanvas = document.createElement('canvas');
       const canvas = fullFrame ? fullCanvas : cropCanvas;
@@ -1847,18 +1847,31 @@ async function fallbackFrame() {
       const sampleY = sourceY + Math.round((height - sampleH) / 2);
       ctx.drawImage(video, sampleX, sampleY, sampleW, sampleH, -width / 2, -height / 2, width, height);
       const pick = preferredScanSymbol(await fallbackDetector.detect(canvas));
-      if (!scanActive) return;
+      if (loopVersion !== scanLoopVersion || !scanActive || scanPausedForVisibility || document.hidden) return;
       if (pick) { absentFrames = 0; acceptScan(pick.rawValue, pick.format || 'zxing-wasm'); }
       else { absentFrames++; }
     } catch (e) {
       absentFrames++;
     } finally {
       scanBusy = false;
-      if (tilted) angleIndex = (angleIndex + 1) % FALLBACK_SCAN_ANGLES.length;
-      frameCount++;
+      if (loopVersion === scanLoopVersion) {
+        if (tilted) angleIndex = (angleIndex + 1) % FALLBACK_SCAN_ANGLES.length;
+        frameCount++;
+      }
     }
   }
-  if (scanActive) scanTimer = setTimeout(fallbackFrame, FALLBACK_RETRY_MS);
+  if (loopVersion === scanLoopVersion && scanActive && !scanPausedForVisibility && !document.hidden) {
+    scanTimer = setTimeout(() => fallbackFrame(loopVersion), FALLBACK_RETRY_MS);
+  }
+}
+
+function startActiveDecodeLoop(hidden = document.hidden) {
+  if (!scanActive) return;
+  if (hidden) { pauseCameraForVisibility(); return; }
+  scanPausedForVisibility = false;
+  const loopVersion = ++scanLoopVersion;
+  if (scanDetector) nativeFrame(loopVersion);
+  else if (fallbackDetector) fallbackFrame(loopVersion);
 }
 
 function claimScannedValue(value, now = Date.now()) {
@@ -1870,6 +1883,8 @@ function claimScannedValue(value, now = Date.now()) {
 
 async function startCamera() {
   const version = ++startVersion;
+  scanLoopVersion++;
+  scanPausedForVisibility = false;
   primeAudio();
   if (!navigator.mediaDevices?.getUserMedia) {
     setCamStatus('This browser cannot open a camera', 'err');
@@ -1895,8 +1910,8 @@ async function startCamera() {
       video.srcObject = scanStream;
       await video.play();
       scanActive = true; absentFrames = 0;
-      afterCameraUp();
-      nativeFrame();
+      await afterCameraUp();
+      startActiveDecodeLoop();
     } else {
       // iOS Safari and desktop Safari/Firefox land here: no native detector,
       // so the pinned ZXing-C++ WASM build does the decoding.
@@ -1915,8 +1930,8 @@ async function startCamera() {
       video.srcObject = scanStream;
       await video.play();
       scanActive = true; absentFrames = 0; angleIndex = 0; frameCount = 0;
-      afterCameraUp();
-      fallbackFrame();
+      await afterCameraUp();
+      startActiveDecodeLoop();
     }
   } catch (e) {
     if (version !== startVersion) return;
@@ -1936,7 +1951,8 @@ async function afterCameraUp() {
 
 function stopCamera() {
   startVersion++;
-  scanActive = false; scanBusy = false;
+  scanLoopVersion++;
+  scanActive = false; scanBusy = false; scanPausedForVisibility = false;
   if (scanTimer) clearTimeout(scanTimer);
   scanTimer = null;
   if (scanStream) scanStream.getTracks().forEach(t => t.stop());
@@ -1953,9 +1969,53 @@ function stopCamera() {
   setCamStatus('');
 }
 
-// Releasing the camera when the page is backgrounded is not politeness — iOS
-// suspends the stream anyway and comes back to a frozen black preview.
-document.addEventListener('visibilitychange', () => { if (document.hidden && scanActive) stopCamera(); });
+function cameraStreamIsUsable(stream = scanStream) {
+  const tracks = stream?.getVideoTracks?.() || [];
+  return tracks.some(track => track.readyState === 'live');
+}
+
+// A short trip to Google sign-in or another app should not trigger another
+// camera permission flow. Keep the granted stream, but stop all decode work
+// while the page is hidden so iOS has as little suspended work as possible.
+function pauseCameraForVisibility() {
+  if (!scanActive) return;
+  scanLoopVersion++;
+  scanPausedForVisibility = true;
+  if (scanTimer) clearTimeout(scanTimer);
+  scanTimer = null;
+  try { $('cam').pause(); } catch (e) {}
+  try { wakeLock?.release(); } catch (e) {}
+  wakeLock = null;
+}
+
+async function resumeCameraAfterVisibility() {
+  if (!scanActive || document.hidden || !scanPausedForVisibility) return;
+  scanPausedForVisibility = false;
+  const video = $('cam');
+  if (!cameraStreamIsUsable(scanStream)) {
+    scanActive = false;
+    scanStream = null;
+    if (video) video.srcObject = null;
+    await startCamera();
+    return;
+  }
+  if (video.srcObject !== scanStream) video.srcObject = scanStream;
+  try {
+    await video.play();
+  } catch (e) {
+    scanPausedForVisibility = true;
+    setCamStatus('Camera paused — tap Stop, then Scan', 'warn');
+    return;
+  }
+  if (!scanActive || document.hidden) return;
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) {}
+  startActiveDecodeLoop();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) pauseCameraForVisibility();
+  else resumeCameraAfterVisibility();
+});
 
 // ── ACCEPTING A SCAN ──────────────────────────────────────────────────────
 function acceptScan(rawValue, format) {
@@ -2596,7 +2656,8 @@ function setBindMode(on) {
   bindMode = !!on;
   document.body.classList.toggle('bind', bindMode);
   localStorage.setItem(K_BINDON, bindMode ? '1' : '0');
-  $('bindBtn').classList.toggle('on', bindMode);
+  $('bindBtn').className = 'mini' + (bindMode ? ' go' : '');
+  $('bindBtn').textContent = bindMode ? 'Exit Bind' : 'Start';
   bindPending = null;
   renderBindBar();
   if (!bindMode) return;
@@ -2754,7 +2815,10 @@ function bindUndo() {
   toast(`Undone — ${desc}`);
 }
 
-$('bindBtn').addEventListener('click', () => setBindMode(!bindMode));
+$('bindBtn').addEventListener('click', () => {
+  setBindMode(!bindMode);
+  closeSheet('setSheet');
+});
 $('bindUndoBtn').addEventListener('click', bindUndo);
 $('bindOnlyBtn').addEventListener('click', () => {
   bindUnboundOnly = !bindUnboundOnly;
@@ -2893,6 +2957,7 @@ async function sendList() {
 // ── SHEETS / SETTINGS UI ──────────────────────────────────────────────────
 function openSheet(id) { $(id).classList.add('open'); }
 function closeSheet(id) { $(id).classList.remove('open'); }
+function reloadApp() { location.reload(); }
 for (const id of ['searchSheet', 'newItemSheet', 'editItemSheet', 'backlogSheet', 'setSheet']) {
   $(id).addEventListener('click', ev => {
     if (ev.target.id !== id) return;
@@ -2937,15 +3002,13 @@ $('editItemRevert').addEventListener('click', revertItemEdit);
 $('setClose').addEventListener('click', () => closeSheet('setSheet'));
 $('searchBtn').addEventListener('click', () => openSearch({}));
 $('setBtn').addEventListener('click', () => { renderAuth(); renderPending(); openSheet('setSheet'); });
+$('reloadBtn').addEventListener('click', () => reloadApp());
 
 $('startBtn').addEventListener('click', startCamera);
 $('camStop').addEventListener('click', stopCamera);
 // The big button is the thumb target; the small Stop on the preview is for
 // when the camera is the only thing on screen.
 $('againBtn').addEventListener('click', () => { scanActive ? stopCamera() : startCamera(); });
-$('listBtn').addEventListener('click', () => {
-  document.querySelector('.list-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
-});
 $('sendBtn').addEventListener('click', sendList);
 $('clearBtn').addEventListener('click', () => {
   if (!list.length) return;

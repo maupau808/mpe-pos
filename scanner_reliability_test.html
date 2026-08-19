@@ -149,6 +149,80 @@ pos.addEventListener('load', async () => {
     const [codeA, codeB, codeC] = chooseCodes(win);
     assert(codeA && codeB && codeC, 'three unique test parts not found');
 
+    await test('phone scanner uses the compact labeled controls and camera strip', async () => {
+      const doc = phone.contentDocument;
+      const phoneWin = frameWindow(phone);
+      assert(!doc.querySelector('.top'), 'retired MPE Scan header still exists');
+      const labels = ['againBtn', 'searchBtn', 'reloadBtn', 'setBtn']
+        .map(id => doc.getElementById(id)?.textContent.trim() || '');
+      for (const label of ['Scan', 'Search', 'Reload', 'Settings']) {
+        assert(labels.some(text => text.startsWith(label)), `${label} control is not visibly labeled`);
+      }
+      assert(doc.getElementById('bindBtn')?.closest('#setSheet'), 'Bind action did not move into Settings');
+      assert(/bind barcodes to parts/i.test(doc.getElementById('bindBtn').closest('.set-row').textContent),
+        'Bind action is not plainly labeled in Settings');
+      doc.body.classList.add('bind');
+      assert(phoneWin.getComputedStyle(doc.getElementById('searchBtn')).display === 'none',
+        'Search remains available during the separate Bind workflow');
+      doc.body.classList.remove('bind');
+      const cameraHeight = doc.querySelector('.cam-wrap').getBoundingClientRect().height;
+      assert(cameraHeight >= 95 && cameraHeight <= 97, `camera strip is ${cameraHeight}px tall`);
+      assert(doc.getElementById('listCount')?.closest('.list-head'), 'list count is not in the sticky List header');
+    });
+
+    await test('phone Reload control calls a real reload without clearing the saved list', async () => {
+      const phoneWin = frameWindow(phone);
+      const beforeSaved = phoneWin.localStorage.getItem('mpeScanList');
+      phoneWin.eval("list = [{ id: 'reload-test', pn: 'TEST1001', desc: 'Reload test', make: 'TEST', qty: 1, price: 10 }]; persistList()");
+      const saved = phoneWin.localStorage.getItem('mpeScanList');
+      assert(/location\.reload\(\)/.test(phoneWin.reloadApp.toString()), 'Reload action is not backed by location.reload()');
+      let loadedAgain = false;
+      phone.addEventListener('load', () => { loadedAgain = true; }, { once: true });
+      phone.contentDocument.getElementById('reloadBtn').click();
+      await waitFor(() => loadedAgain);
+      const reloadedWin = frameWindow(phone);
+      assert(reloadedWin.localStorage.getItem('mpeScanList') === saved, 'Reload control cleared the saved list');
+      assert(reloadedWin.eval("list.length === 1 && list[0].id === 'reload-test'"), 'Reload did not restore the saved list');
+      if (beforeSaved === null) reloadedWin.localStorage.removeItem('mpeScanList');
+      else reloadedWin.localStorage.setItem('mpeScanList', beforeSaved);
+      reloadedWin.eval("list = JSON.parse(localStorage.getItem('mpeScanList') || '[]'); renderList()");
+      await loadFixture(phone, 1);
+      await waitFor(() => reloadedWin.eval('loaded'));
+    });
+
+    await test('phone camera visibility pause keeps a live stream and cancels decode work', async () => {
+      const phoneWin = frameWindow(phone);
+      phoneWin.eval(`
+        window.__visibilityStops = 0;
+        window.__liveVisibilityTrack = { readyState: 'live', stop: () => { window.__visibilityStops += 1; } };
+        scanActive = true;
+        scanPausedForVisibility = false;
+        scanLoopVersion = 7;
+        scanStream = {
+          getVideoTracks: () => [window.__liveVisibilityTrack],
+          getTracks: () => [window.__liveVisibilityTrack]
+        };
+        scanTimer = setTimeout(() => {}, 10000);
+      `);
+      phoneWin.pauseCameraForVisibility();
+      assert(phoneWin.eval('scanPausedForVisibility && scanTimer === null'), 'hidden camera did not pause decode scheduling');
+      assert(phoneWin.eval('scanLoopVersion === 8'), 'hidden camera did not invalidate its in-flight decode loop');
+      assert(phoneWin.__visibilityStops === 0, 'hidden camera stopped its live track');
+      assert(phoneWin.eval('cameraStreamIsUsable(scanStream)'), 'live stream was marked unusable');
+      phoneWin.eval('scanPausedForVisibility = false; startActiveDecodeLoop(true)');
+      assert(phoneWin.eval('scanPausedForVisibility && scanLoopVersion === 9'),
+        'camera startup completed while hidden without entering resumable pause');
+      phoneWin.eval('window.__staleTimer = setTimeout(() => {}, 10000); scanTimer = window.__staleTimer');
+      await phoneWin.nativeFrame(8);
+      assert(phoneWin.eval('scanTimer === window.__staleTimer'), 'stale foreground decode loop changed the active timer');
+      phoneWin.eval('clearTimeout(window.__staleTimer); scanTimer = null');
+      phoneWin.eval("window.__liveVisibilityTrack.readyState = 'ended'");
+      assert(!phoneWin.eval('cameraStreamIsUsable(scanStream)'), 'ended stream was marked reusable');
+      assert(/if \(!cameraStreamIsUsable\(scanStream\)\)/.test(phoneWin.resumeCameraAfterVisibility.toString()),
+        'foreground resume does not gate reacquisition on an unusable stream');
+      phoneWin.eval('scanActive = false; scanPausedForVisibility = false; scanStream = null; scanTimer = null; scanLoopVersion = 0');
+    });
+
     await test('Scanner Mode idle status does not claim the camera is starting', async () => {
       win.setScannerModeActive(true);
       const status = pos.contentDocument.getElementById('scannerModeStatus').textContent.trim();
