@@ -1106,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.18.4';
+const POS_RELEASE = '2026.08.18.5';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -7397,7 +7397,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   return `<div style="width:760px;box-sizing:border-box;padding:28px 24px 24px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${PDF_INK};background:#fff">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;min-height:58px;padding-top:2px;box-sizing:border-box">
       <div style="padding-top:1px">
-        <div style="font-size:20px;line-height:1.15;font-weight:700;color:${PDF_INK}">Maui Power Equipment</div>
+        <div style="font-size:20px;line-height:1.15;font-weight:700;color:${PDF_GREEN}">Maui Power Equipment</div>
         <div style="font-size:12px;margin-top:4px;line-height:1.55;color:${PDF_INK}">970 Lower Main St &nbsp;·&nbsp; Wailuku HI 96793<br>(808) 249-2730 &nbsp;·&nbsp; info&#64;mauipowerequipment.com</div>
       </div>
       <div style="width:150px;height:56px;display:flex;align-items:flex-start;justify-content:flex-end;overflow:visible">
