@@ -1096,6 +1096,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- Google Identity Services -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async="" defer=""></script>
 <script>
 // ─── CUSTOMER LIST (generated from QBO export by Playground/Archive/scripts_archive/build_customers.py) ─
@@ -1105,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.17.3';
+const POS_RELEASE = '2026.08.18.1';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -7467,25 +7468,37 @@ function _pdfOptions(filename) {
   };
 }
 
-// html2canvas normally re-draws every glyph itself, and it gets the metrics
-// wrong: words drift apart ("Maui  Power  Equipment"), the totals column slides
-// out of line with its labels, and the right-hand columns can fall off the page.
-// foreignObjectRendering hands the layout back to the browser — it paints the
-// real DOM into an SVG foreignObject — so the PDF matches the page exactly.
-// Some engines taint the canvas that way and throw on export, so fall back to
-// the plain renderer rather than failing the export outright.
+// html2pdf first parks its cloned source 100000px offscreen. That is harmless
+// for html2canvas's normal painter, but foreignObjectRendering preserves the
+// offscreen coordinate and captures only the receipt's far-right sliver. Render
+// the live receipt to a canvas first, normalizing only html2canvas's private
+// document clone, then hand that finished canvas to html2pdf for pagination.
+// The real POS never moves or flashes. If the direct renderer is unavailable,
+// fall back to the plain painter: its text metrics are less exact, but the whole
+// receipt remains usable.
 async function _renderPdf(el, filename, mode) {
-  const run = foreignObject => {
+  const finish = canvas => {
     const opt = _pdfOptions(filename);
-    if (foreignObject) opt.html2canvas = { ...opt.html2canvas, foreignObjectRendering: true };
-    const worker = html2pdf().set(opt).from(el);
+    const worker = html2pdf().set(opt).from(canvas, 'canvas');
     return mode === 'save' ? worker.save() : worker.outputPdf('blob');
   };
   try {
-    return await run(true);
+    if (typeof html2canvas !== 'function') throw new Error('html2canvas library did not load');
+    const canvasOpt = {
+      ..._pdfOptions(filename).html2canvas,
+      foreignObjectRendering: true,
+      onclone: doc => {
+        doc.body.style.zoom = '1';
+        const holder = doc.getElementById('emailPdfHolder');
+        if (holder) holder.style.left = '0';
+      },
+    };
+    return await finish(await html2canvas(el, canvasOpt));
   } catch (e) {
-    console.warn('PDF: foreignObject render failed, falling back', e);
-    return await run(false);
+    console.warn('PDF: direct render failed, falling back', e);
+    const opt = _pdfOptions(filename);
+    const worker = html2pdf().set(opt).from(el);
+    return mode === 'save' ? worker.save() : worker.outputPdf('blob');
   }
 }
 
