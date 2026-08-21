@@ -46,6 +46,7 @@ const TEST_FEED = {
     { pn: '23', og: '23', desc: 'Short scanner test item', make: 'TEST', list: 4, cost: 2 },
     { pn: '5555', og: '5555', desc: 'Distributor prefix test item', make: 'SCAG', list: 40, cost: 20 },
     { pn: 'UNIT1', og: 'UNIT1', desc: 'MX100 test unit', make: 'STIHL', list: 100, cost: 50, warranty: true },
+    { pn: '22295', og: '22295', desc: 'Toro QR test mower', make: 'TORO', list: 1200, cost: 800, warranty: true },
     { pn: '664240', og: '664240', desc: 'EU2200i — Generator', make: 'Honda', list: 1199, cost: 959, warranty: true },
     { pn: '668790', og: '668790', desc: 'EU2200i (Companion) — Generator', make: 'Honda', list: 1299, cost: 1039, warranty: true },
     { pn: 'OLD1', og: 'OLD1', sup: 'NEW1', desc: 'Superseded scanner item', make: 'TEST', list: 5, cost: 2 },
@@ -760,6 +761,18 @@ pos.addEventListener('load', async () => {
       reset(pos); await burst(pos, '886661123456|448789975|MA01-011-5831|MX 100.0 TC|TEST');
       assert(filledRows(pos)[0] === 'UNIT1', 'Data Matrix did not resolve unit');
       assert(pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value === '448789975', 'Data Matrix serial was lost');
+    });
+
+    await test('Toro QR resolves model and serial without learning the unit URL', async () => {
+      const qr = 'HTTPS://QR.TORO.COM/?BRAND=TORO&MODEL=22295&SERIAL=421173038';
+      const resolved = win.resolveScannedValue(qr);
+      assert(resolved.candidates[0]?.pn === '22295', 'Toro QR model did not resolve');
+      assert(resolved.serial === '421173038' && resolved.bindCode === '', 'Toro QR serial or binding policy was wrong');
+      reset(pos); await burst(pos, qr);
+      assert(filledRows(pos)[0] === '22295', 'Toro QR did not add the mower');
+      assert(pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value === '421173038', 'Toro QR serial was lost');
+      const phoneResolved = frameWindow(phone).resolveScannedValue(qr);
+      assert(phoneResolved.candidates[0]?.pn === '22295' && phoneResolved.serial === '421173038', 'phone Toro QR resolution failed');
     });
 
     await test('Clear command still requires and accepts two pulls', async () => {

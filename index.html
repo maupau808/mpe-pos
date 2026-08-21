@@ -1106,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.18.6';
+const POS_RELEASE = '2026.08.21.1';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -2392,6 +2392,24 @@ function stihlUnitDataMatrix(rawValue) {
   return { productCode, serial, typeCode, model, mappedPN, candidates };
 }
 
+// Toro's unit QR is a URL whose MODEL identifies the Master row and whose
+// SERIAL identifies this physical mower. The full URL must never become a UPC:
+// every unit has a different serial, while the model rule works for all of them.
+function toroUnitQr(rawValue) {
+  let url;
+  try { url = new URL(String(rawValue || '').trim()); } catch (_) { return null; }
+  if (url.hostname.toLowerCase() !== 'qr.toro.com') return null;
+  const fields = {};
+  for (const [key, value] of url.searchParams) fields[key.toUpperCase()] = value.trim();
+  if (fields.BRAND && fields.BRAND.toUpperCase() !== 'TORO') return null;
+  const model = fields.MODEL || '', serial = canonicalSerialNumber(fields.SERIAL);
+  if (!model || !serial || !/^[A-Z0-9 ._-]{2,40}$/i.test(model) || serial.length < 6) return null;
+  let candidates = exactScanParts(model);
+  const toroCandidates = candidates.filter(part => String(part.make || '').trim().toUpperCase() === 'TORO');
+  if (toroCandidates.length) candidates = toroCandidates;
+  return { model, serial, candidates };
+}
+
 function distributorPartCandidates(value) {
   const code = String(value || '').toUpperCase().replace(/[\s\-.]/g, '');
   if (!code || !loaded) return [];
@@ -2446,6 +2464,7 @@ function structuredScanParts(rawValue) {
 function ignorableScanCode(rawValue) {
   const raw = String(rawValue || '').trim();
   if (!raw) return true;
+  if (toroUnitQr(raw)) return true;
   // A delimited payload whose part number we could not find is a label dump, not
   // a code: it carries a lot number, so it would never scan the same way twice.
   if (STRUCTURED_SCAN_DELIMITERS.test(raw)) return true;
@@ -2464,6 +2483,8 @@ function preferredScanSymbol(items) {
   if (!values.length) return null;
   const stihlUnit = values.find(item => stihlUnitDataMatrix(item.rawValue));
   if (stihlUnit) return stihlUnit;
+  const toroUnit = values.find(item => toroUnitQr(item.rawValue));
+  if (toroUnit) return toroUnit;
   const resolved = values.filter(item => resolveScannedValue(item.rawValue).candidates.length === 1);
   if (resolved.length === 1) return resolved[0];
   const usable = values.filter(item => !ignorableScanCode(item.rawValue));
@@ -2717,6 +2738,12 @@ function resolveScannedValue(rawValue) {
     code: canonicalScannedCode(unit.productCode), mappedPN: unit.mappedPN,
     candidates: unit.candidates, via: 'stihl-unit', serial: unit.serial,
     model: unit.model, bindCode: unit.productCode
+  };
+  const toroUnit = toroUnitQr(rawValue);
+  if (toroUnit) return {
+    code: canonicalScannedCode(toroUnit.model), mappedPN: '',
+    candidates: toroUnit.candidates, via: 'toro-unit', serial: toroUnit.serial,
+    model: toroUnit.model, bindCode: ''
   };
   const code = canonicalScannedCode(rawValue);
   const mappedPN = code ? partCodeMap[code] : '';
@@ -3126,7 +3153,7 @@ function acceptDecodedScan(rawValue, format, options = {}) {
     return;
   }
   const result = resolveScannedValue(raw);
-  if (result.via === 'stihl-unit') {
+  if (result.via === 'stihl-unit' || result.via === 'toro-unit') {
     if (result.candidates.length === 1) {
       playScanBeep(false);
       const merged = appendSerialToMatchingUnitRow(result.candidates[0], result.serial);

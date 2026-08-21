@@ -1262,6 +1262,24 @@ function stihlUnitDataMatrix(rawValue) {
   return { productCode, serial, typeCode, model, mappedPN, candidates };
 }
 
+// Toro puts the reusable product identity and the one-off machine identity in
+// one URL. Resolve MODEL directly and carry SERIAL with the line; never learn
+// the full URL as a barcode because the next mower's URL will be different.
+function toroUnitQr(rawValue) {
+  let url;
+  try { url = new URL(String(rawValue || '').trim()); } catch (_) { return null; }
+  if (url.hostname.toLowerCase() !== 'qr.toro.com') return null;
+  const fields = {};
+  for (const [key, value] of url.searchParams) fields[key.toUpperCase()] = value.trim();
+  if (fields.BRAND && fields.BRAND.toUpperCase() !== 'TORO') return null;
+  const model = fields.MODEL || '', serial = canonicalSerialNumber(fields.SERIAL);
+  if (!model || !serial || !/^[A-Z0-9 ._-]{2,40}$/i.test(model) || serial.length < 6) return null;
+  let candidates = exactScanParts(model);
+  const toroCandidates = candidates.filter(part => String(part.make || '').trim().toUpperCase() === 'TORO');
+  if (toroCandidates.length) candidates = toroCandidates;
+  return { model, serial, candidates };
+}
+
 function structuredScanParts(rawValue) {
   const raw = String(rawValue || '');
   if (!STRUCTURED_SCAN_DELIMITERS.test(raw)) return [];
@@ -1308,6 +1326,7 @@ function unitSerialCandidates(rawValue) {
 function ignorableScanCode(rawValue) {
   const raw = String(rawValue || '').trim();
   if (!raw) return true;
+  if (toroUnitQr(raw)) return true;
   if (STRUCTURED_SCAN_DELIMITERS.test(raw)) return true;   // label dump with a lot number: never scans the same twice
   if (/^\d{1,4}$/.test(raw)) return true;
   return normalizePN(raw).length < 3;
@@ -1331,6 +1350,12 @@ function resolveScannedValue(rawValue) {
     candidates: unit.candidates, via: 'stihl-unit', serial: unit.serial,
     model: unit.model, bindCode: unit.productCode
   };
+  const toroUnit = toroUnitQr(rawValue);
+  if (toroUnit) return {
+    code: canonicalScannedCode(toroUnit.model), mappedPN: '',
+    candidates: toroUnit.candidates, via: 'toro-unit', serial: toroUnit.serial,
+    model: toroUnit.model, bindCode: ''
+  };
   const code = canonicalScannedCode(rawValue);
   const mappedPN = code ? partCodeMap[code] : '';
   // A bound code is authoritative and never falls through: if its part is gone
@@ -1352,6 +1377,8 @@ function preferredScanSymbol(items) {
   if (!values.length) return null;
   const stihlUnit = values.find(item => stihlUnitDataMatrix(item.rawValue));
   if (stihlUnit) return stihlUnit;
+  const toroUnit = values.find(item => toroUnitQr(item.rawValue));
+  if (toroUnit) return toroUnit;
   const resolved = values.filter(i => resolveScannedValue(i.rawValue).candidates.length === 1);
   if (resolved.length === 1) return resolved[0];
   const usable = values.filter(i => !ignorableScanCode(i.rawValue));
@@ -2047,9 +2074,10 @@ function acceptScan(rawValue, format) {
     beep('unknown'); buzz([25, 60, 25]);
     return;
   }
-  if (via === 'stihl-unit') {
+  if (via === 'stihl-unit' || via === 'toro-unit') {
+    const expectedMake = via === 'toro-unit' ? 'TORO' : 'STIHL';
     const modelChoices = searchParts(model).filter(part => part.warranty
-      && String(part.make || '').trim().toUpperCase() === 'STIHL');
+      && String(part.make || '').trim().toUpperCase() === expectedMake);
     openSearch({ pick: modelChoices, code: bindCode || code, format, serial,
       title: `Match ${model}` });
     beep('unknown'); buzz([25, 60, 25]);
