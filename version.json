@@ -1,61 +1,61 @@
 {
   "posRelease": "2026.08.22.1",
-  "desktopRelease": "0.3.3",
+  "desktopRelease": "0.3.6",
   "publishedAt": "2026-08-22",
   "desktop": {
     "windows": {
-      "version": "0.3.3",
-      "archiveSize": 144546045,
-      "archiveSha256": "690165e1fc7421a5013054d9d95fb88e1136878c9b19dfce1d7a4511b85b0035",
+      "version": "0.3.6",
+      "archiveSize": 144554422,
+      "archiveSha256": "7392d193f154f8d4d28c0599811ad33468cfd2af5a37472422b8fba9edd52be9",
       "parts": [
         {
-          "fileId": "1TZv1tctwMcw4rvBUKgWSdkkTJZQb9A6Y",
-          "name": "MPE-POS-Windows-0.3.3.zip.part-000",
+          "fileId": "1Fsq0vtlMcvsnCNLiZO7N7ptOntB8pp27",
+          "name": "MPE-POS-Windows-0.3.6.zip.part-000",
           "size": 41943040,
-          "sha256": "09f2c6ae65fa36d6c0ae928ba04bee46d0a085fb449004c81c6e1f33c72c5ae8"
+          "sha256": "ad4afeb70d134c85ef8aa121367fa194f50636223c350de2d33ebe95b322cc53"
         },
         {
-          "fileId": "12SHjPkczTt9CGxpzfFkk9zkgZODyS_Dd",
-          "name": "MPE-POS-Windows-0.3.3.zip.part-001",
+          "fileId": "1a38earu6JDiVuI7k3kbU5VZuNR1UHfOk",
+          "name": "MPE-POS-Windows-0.3.6.zip.part-001",
           "size": 41943040,
-          "sha256": "b81d088eb2d9236f4134316cdc09c38601c965c7e7846d8c4ff73da824dad704"
+          "sha256": "f58fed84001ac8d1ce76f57c9ffdfd5b092879462a8d42afdf8965ac031e7fbd"
         },
         {
-          "fileId": "1yWBa3uTp-ac2vo_gM8_zUHvMQEKW_ha3",
-          "name": "MPE-POS-Windows-0.3.3.zip.part-002",
+          "fileId": "1KNSVet3rX-HlHCZMHiryeDBAIwEpoayq",
+          "name": "MPE-POS-Windows-0.3.6.zip.part-002",
           "size": 41943040,
-          "sha256": "0a0dd5ddd0d1ce254238429b1ad29564fe83c53be9c16370c108e590808bb10f"
+          "sha256": "7963363f25f0abb764c36179e1b80670fc1ea98d08bb25eafdb81085457d56ac"
         },
         {
-          "fileId": "1BTyIVFnBPpkCRnCCnEQlkfHYrEpBPP3s",
-          "name": "MPE-POS-Windows-0.3.3.zip.part-003",
-          "size": 18716925,
-          "sha256": "2e1fe831333f5afeeca53e7dd1ef3c712fc9f39c5be9b20679c76f3212ccf918"
+          "fileId": "1fEeXZ2iwKECiC-BXwzHV0GRxv1efh0qc",
+          "name": "MPE-POS-Windows-0.3.6.zip.part-003",
+          "size": 18725302,
+          "sha256": "c9d405aeb82b622ea1bf1f91d1658a3edade7cfbba239384c5c20282c1638811"
         }
       ]
     },
     "mac": {
-      "version": "0.3.3",
-      "archiveSize": 118916839,
-      "archiveSha256": "461379a2dff777a6d0c42f8a97ad815ad4a533dcaaf1bd4ed1f59cd90386f65d",
+      "version": "0.3.6",
+      "archiveSize": 118925261,
+      "archiveSha256": "3092259ccd6da082313ece7ba09883512c9d9305258a807f27a190fd1cb9f7a3",
       "parts": [
         {
-          "fileId": "1IZlWH0zjIIfhwLcQ9PLAMhd9WJ7EgDZI",
-          "name": "MPE-POS-mac-arm64-0.3.3.zip.part-000",
+          "fileId": "1KPXdI3OkObCGe7MpiyD6MrIal7giVC0T",
+          "name": "MPE-POS-mac-arm64-0.3.6.zip.part-000",
           "size": 41943040,
-          "sha256": "5e0e944d50e74a5388a46a38388b1e577b417b3bb934fbc05d65059b32c638cc"
+          "sha256": "a090c171016c159304b030d0e2e97a207b12b11fab7c94b7ef1e2a87d1096e3b"
         },
         {
-          "fileId": "1R7apPCbqcwF2Ufser6E0keuam1e9-3YY",
-          "name": "MPE-POS-mac-arm64-0.3.3.zip.part-001",
+          "fileId": "169hpZAnBfkEl9Q2XihKQ2cOf-5mZVsbv",
+          "name": "MPE-POS-mac-arm64-0.3.6.zip.part-001",
           "size": 41943040,
-          "sha256": "e66913dd75cb51f63f9786fd07c3453a2d3471001b3e0b0fda7144640c55c5a8"
+          "sha256": "16ef2f18fe77d5d03d4f5a6101adafad4f7c055c45d3c54dc5f8102bac30e500"
         },
         {
-          "fileId": "1WrS_RqdLtHvd7x-eVXf8ZirBPaEwrdzD",
-          "name": "MPE-POS-mac-arm64-0.3.3.zip.part-002",
-          "size": 35030759,
-          "sha256": "f5f6bef9d24c2b740181a13bd3a3cc43b9dfb09dcad8a6388f80547c8b2e9827"
+          "fileId": "1XuN5xZ4fjTnwdcTuzn7iDYwcA7giowxp",
+          "name": "MPE-POS-mac-arm64-0.3.6.zip.part-002",
+          "size": 35039181,
+          "sha256": "e007df8473c71f0bd6370f22d91bb91bfaf34b2bd4acb4818c74f75e2d7cd3a3"
         }
       ]
     }
