@@ -841,6 +841,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
               <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
               <button class="drive-btn hist-btn" id="uploadsBtn" onclick="openUploads('priceChanges')">📤 Uploads<span id="uploadsBadge" class="pc-badge" style="display:none"></span></button>
               <button class="drive-btn hist-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
+              <!-- Read-only parts catalog lookup. Separate page on purpose: it has no sale,
+                   customer, price, or transaction path and never touches a line item. -->
+              <a class="drive-btn hist-btn" id="partsLookupBtn" href="parts.html" target="_blank" rel="noopener" title="STIHL parts catalog lookup — read only">🔎 Parts Lookup</a>
               <button class="drive-btn hist-btn" id="desktopScanBtn" style="display:none" onclick="window.mpeDesktop?.openScan()">▣ MPE Scan</button>
               <button class="drive-btn hist-btn" id="desktopSettingsBtn" style="display:none" onclick="window.mpeDesktop?.openSettings()">⚙ Desktop Settings</button>
             </div>
@@ -1106,7 +1109,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.21.1';
+const POS_RELEASE = '2026.08.22.1';
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
@@ -3305,6 +3308,25 @@ function resetCommandKeyCapture() {
   commandKeyOrigin = null;
 }
 
+// MPE POS Desktop delivers completed serial or Bluetooth scanner frames here.
+// Browser POS and ordinary keyboard scanners keep their existing path when the
+// desktop bridge is absent.
+let removeDesktopScannerListener = null;
+function armDesktopScannerBridge() {
+  if (removeDesktopScannerListener || !window.mpeDesktop?.scanner?.onScan) return;
+  removeDesktopScannerListener = window.mpeDesktop.scanner.onScan((payload) => {
+    const value = String(payload?.value || '').trim();
+    if (!value) return;
+    if (licenseCapturing() || licenseCaptureOpens(value) || (licenseExpectingMore() && licenseSegmentLikely(value))) {
+      pushLicenseSegment(value, null);
+      return;
+    }
+    if (licenseSwallowingTail() && licenseSegmentLikely(value)) return;
+    closeAllDropdowns();
+    acceptDecodedScan(value, 'hardware', { acceptedAt: payload.receivedAt });
+  });
+}
+
 function resetHardwareScanCapture() {
   hardwareScanBuffer = '';
   hardwareScanStartedAt = 0;
@@ -3450,10 +3472,12 @@ async function keepCounterAwake() {
 
 function resumeHardwareScanner() {
   armHardwareScanner();
+  armDesktopScannerBridge();
   keepCounterAwake();
 }
 
 armHardwareScanner();
+armDesktopScannerBridge();
 keepCounterAwake();
 window.addEventListener('pageshow', resumeHardwareScanner);
 window.addEventListener('focus', resumeHardwareScanner);
