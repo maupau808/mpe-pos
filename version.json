@@ -1,61 +1,61 @@
 {
   "posRelease": "2026.08.22.1",
-  "desktopRelease": "0.3.10",
+  "desktopRelease": "0.3.12",
   "publishedAt": "2026-08-22",
   "desktop": {
     "windows": {
-      "version": "0.3.10",
-      "archiveSize": 144558727,
-      "archiveSha256": "a9fccbf6d3e69d8f2349c07af75f4f49a3b253617642a6334b14e3266edf95a7",
+      "version": "0.3.12",
+      "archiveSize": 144561982,
+      "archiveSha256": "04bde43098fb35796a614ef053759b0520fd18728bf4d12c8b3f725bfb093a1c",
       "parts": [
         {
-          "fileId": "1Vlc9yX0PU-KAQAxYUhu-tZMoJ9AMWHeK",
-          "name": "MPE-POS-Windows-0.3.10.zip.part-000",
+          "fileId": "1Xv5NMwq_LLqApGOz17-TuTb4wG3Vsyt0",
+          "name": "MPE-POS-Windows-0.3.12.zip.part-000",
           "size": 41943040,
-          "sha256": "adf142cb73a502473de76eda5c0a8ca5a6c840918fbd00704e6beb3e245e0c1a"
+          "sha256": "93c64fe256a592ddcd1d409a47a6ced1a964a2614b7899d6e8d5e5127d57d1a2"
         },
         {
-          "fileId": "1_pQENg9BWwtHDzYPqjAWGMZ1IEmuNBkW",
-          "name": "MPE-POS-Windows-0.3.10.zip.part-001",
+          "fileId": "10N7j4ivavNe470qErwGLplrMYYgXN_Ri",
+          "name": "MPE-POS-Windows-0.3.12.zip.part-001",
           "size": 41943040,
-          "sha256": "3fb8d844ba4038bcc8ba9c5c6b5002d77dab1427c41474627b096eba8c162817"
+          "sha256": "39f627d01877ade55341b566ff19562310ce8f6290c32719056a4b4ea9e81084"
         },
         {
-          "fileId": "1j4cLrXCiy_WMgjmdchmBYc237KS4Lu8A",
-          "name": "MPE-POS-Windows-0.3.10.zip.part-002",
+          "fileId": "1faJXx6wg8UAI8li3VruUGHu9zGBhv4VN",
+          "name": "MPE-POS-Windows-0.3.12.zip.part-002",
           "size": 41943040,
-          "sha256": "05918243f3b8fb2c3ff0116461f90079b790f1d64a02628ba7ede27ad1089159"
+          "sha256": "129067de1f4d52ab33c361be56d40c5a97989513d393dadfefad73f7a2e71707"
         },
         {
-          "fileId": "1_MUvYD36uk2kRpC6SH2es9oGGnqAzZRq",
-          "name": "MPE-POS-Windows-0.3.10.zip.part-003",
-          "size": 18729607,
-          "sha256": "5af723fd9ae68338b1355573ea6c0034df12b1f7bfa2bf8a4d74b4928b8fcd7f"
+          "fileId": "1TjzbE7PZYQbnIXSAO4DbhqmiYhLm_rAL",
+          "name": "MPE-POS-Windows-0.3.12.zip.part-003",
+          "size": 18732862,
+          "sha256": "8a48821be846205aba550139331ae99e1d95b3568aa186b88602ef390dc69809"
         }
       ]
     },
     "mac": {
-      "version": "0.3.10",
-      "archiveSize": 118929560,
-      "archiveSha256": "462edc8692773c306e6b01d606e8d201c52a39dd83a21c34e47835e8b48e472c",
+      "version": "0.3.12",
+      "archiveSize": 118943476,
+      "archiveSha256": "0b07a17dbcfb708e2a5585e468a3571a6c60a2ddd03ee723858ad4179084ef6f",
       "parts": [
         {
-          "fileId": "1Ra7_Yp2rX8BuOk96QgZkMXtkvfRfrxaz",
-          "name": "MPE-POS-mac-arm64-0.3.10.zip.part-000",
+          "fileId": "1lGWGHJ81bGtjtY6NvDtgfU39370aFd41",
+          "name": "MPE-POS-mac-arm64-0.3.12.zip.part-000",
           "size": 41943040,
-          "sha256": "3838822e3d86f0fd3863bff99f23cd014d5516f83ce80e29ba1b4def6ab5c2ef"
+          "sha256": "c77309a64c9516147fb4666c5b76246c4d8f3ed9375d8ef9896cc36de8b82d7e"
         },
         {
-          "fileId": "1h4LsXsOGyloO1eOnPS_-y_KEwvk1Jx2E",
-          "name": "MPE-POS-mac-arm64-0.3.10.zip.part-001",
+          "fileId": "1IC4dPZZQ1-eOBvyth4XYiC64KHlyMWXe",
+          "name": "MPE-POS-mac-arm64-0.3.12.zip.part-001",
           "size": 41943040,
-          "sha256": "821eac0c9d39fa87df9dce0169f7fed0e2d711d2518a7ca46bae67d7e3d2f345"
+          "sha256": "4de9400d8df455b3e9fd21d323dd2f9f9b7946ca030f7577d37217307adf0cca"
         },
         {
-          "fileId": "1odM6VCHpM2TBUitEO6JiLShWYgF0wDkZ",
-          "name": "MPE-POS-mac-arm64-0.3.10.zip.part-002",
-          "size": 35043480,
-          "sha256": "7c77deb3fcbb922d8a778e7d2fdf2cf988b3850b60206845d7feb8e4be6df240"
+          "fileId": "1g4mc7Ognz5WEQSYZvFAwAw7Ij0JselAB",
+          "name": "MPE-POS-mac-arm64-0.3.12.zip.part-002",
+          "size": 35057396,
+          "sha256": "d1ae950b72062a769316b611fb2e82c8e00011241974562314949b2f83a8daca"
         }
       ]
     }
