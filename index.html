@@ -1109,7 +1109,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.25.1';
+const POS_RELEASE = '2026.08.25.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -2031,6 +2031,7 @@ let hardwareScanLastAt = 0;
 let hardwareScanOrigin = null;
 const pendingCatalogScans = [];
 let pendingUnitSerialRow = null;
+let latestScannedSaleRow = -1;
 const PART_CODES_SHEET = 'Codes';
 const PART_CODES_SHEET_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Added', 'Description', 'Price', 'Cost'];
 const PART_CODES_PENDING_KEY = 'mpePartCodePending';
@@ -2722,9 +2723,15 @@ function applyPackageDeals(latestSerial, latestRow) {
   // bestPackaging hands the very same unit objects back out, so the unit that
   // arrived on `latestRow` can be followed into whichever group took it.
   const fresh = Number.isInteger(latestRow) ? (tracked.find(t => t.row === latestRow)?.units || []) : [];
-  const landed = groups.find(g => g.deal && g.units.some(
+  const landedIndex = groups.findIndex(g => g.units.some(
     u => (u.sn && u.sn === latestSerial) || fresh.includes(u)));
-  if (shape(tracked) === shape(next)) return landed ? landed.deal : null;
+  const landed = landedIndex >= 0 && groups[landedIndex].deal
+    ? groups[landedIndex].deal
+    : null;
+  if (shape(tracked) === shape(next)) {
+    if (landedIndex >= 0) rememberLatestScannedSaleRow(tracked[landedIndex].row);
+    return landed;
+  }
 
   const rows = tracked.map(t => t.row);
   while (rows.length < groups.length) rows.push(firstOpenScanRow());
@@ -2734,8 +2741,9 @@ function applyPackageDeals(latestSerial, latestRow) {
     if (document.querySelector(`#mobileRows [data-row="${rows[n]}"]`)) clearMobileRow(rows[n]);
     else clearRow(rows[n]);
   }
+  if (landedIndex >= 0) rememberLatestScannedSaleRow(rows[landedIndex]);
   updateSummary();
-  return landed ? landed.deal : null;
+  return landed;
 }
 
 function resolveScannedValue(rawValue) {
@@ -2796,6 +2804,18 @@ function fillRowSerial(row, serial) {
   return true;
 }
 
+function rememberLatestScannedSaleRow(row) {
+  if (Number.isInteger(row) && row >= 0) latestScannedSaleRow = row;
+}
+
+function latestScannedItemRow() {
+  const row = latestScannedSaleRow;
+  const input = Number.isInteger(row)
+    ? tbody.querySelector(`[data-row="${row}"].part-input`)
+    : null;
+  return input && (input.dataset.partPn || input.value.trim()) ? row : -1;
+}
+
 // A second serialized unit of the same Master item belongs on the existing
 // sale line, even when other products were scanned in between. Package
 // components stay as separate physical units because their re-grouping logic
@@ -2812,8 +2832,10 @@ function appendSerialToMatchingUnitRow(part, serial) {
     const tr = tbody.querySelector(`tr[data-row="${row}"]`);
     if (normalizePN(input?.dataset.partPn) !== pn || tr?.dataset.pkgUnits) continue;
     const serialInputs = Array.from(tbody.querySelectorAll(`tr[data-sn-for="${row}"] .sn-input`));
-    if (serialInputs.some(field => canonicalSerialNumber(field.value) === serialKey))
+    if (serialInputs.some(field => canonicalSerialNumber(field.value) === serialKey)) {
+      rememberLatestScannedSaleRow(row);
       return { row, qty: parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1, duplicate: true };
+    }
     if (targetRow === null) targetRow = row;
   }
   if (targetRow === null) return null;
@@ -2828,6 +2850,7 @@ function appendSerialToMatchingUnitRow(part, serial) {
   }
   if (!field) return null;
   field.value = value;
+  rememberLatestScannedSaleRow(targetRow);
   if (pendingUnitSerialRow === targetRow && !rowNeedsUnitSerial(targetRow)) pendingUnitSerialRow = null;
   updateSummary();
   revealScannedResult(targetRow);
@@ -2846,6 +2869,7 @@ function appendScanToMatchingPartRow(part) {
     if (normalizePN(input?.dataset.partPn) !== pn || tr?.dataset.pkgUnits) continue;
     const current = parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1;
     const qty = setRowQuantity(row, current + 1);
+    rememberLatestScannedSaleRow(row);
     pendingUnitSerialRow = part.warranty && rowNeedsUnitSerial(row) ? row : null;
     updateSummary();
     revealScannedResult(row);
@@ -3009,6 +3033,7 @@ function fillScannedPart(part, requestedRow) {
   const row = Number.isInteger(requestedRow) ? requestedRow : firstOpenScanRow();
   ensureScannerMobileRow(row);
   applyMobilePart(row, part);
+  rememberLatestScannedSaleRow(row);
   pendingUnitSerialRow = part.warranty && rowNeedsUnitSerial(row) ? row : null;
   // Remember it for packaging now. Most package components reach the counter as
   // a plain product barcode, and their serial — if they even have one — is
@@ -3506,11 +3531,13 @@ document.addEventListener('visibilitychange', () => {
 // HARDWARE SCANS ONLY. A camera stares at whatever is in front of it and would
 // re-fire Clear every frame; the strip lives at the counter beside the trigger
 // scanner, so the restriction costs nothing.
-// Exact allowlist, not a prefix parser. These versioned high-entropy payloads
-// make a partial read, an old command label, or an ordinary packaging barcode
-// incapable of becoming a command. Keep this registry aligned with the command
-// label generators in Tools/.
+// Exact allowlist, not a prefix parser. Protected commands use versioned,
+// high-entropy payloads; the two deliberately short quantity labels below are
+// exact exceptions, so no other old command label or partial read can run.
+// Keep this registry aligned with the command label generators in Tools/.
 const SCAN_COMMANDS = new Map([
+  ['~MPE:QTY+1', 'QTY+1'],
+  ['~MPE:QTY-1', 'QTY-1'],
   ['~MPE2:Q7X4:PRINT:8K3N', 'PRINT'],
   ['~MPE2:Q7X4:CLEAR:2D9M', 'CLEAR'],
   ['~MPE2:Q7X4:UNDO:5R8P', 'UNDO'],
@@ -4015,8 +4042,8 @@ function runScanCommand(raw) {
 
   const qty = body.match(/^QTY([=+-])(\d{1,3})$/);
   if (qty) {
-    const row = lastFilledSaleRow();
-    if (row < 0) { flashScanCommand('Scan a part first — no line to set a quantity on', 'err'); return; }
+    const row = latestScannedItemRow();
+    if (row < 0) { flashScanCommand('Scan a part first — no scanned line to change', 'err'); return; }
     const current = parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1;
     const amount = parseInt(qty[2], 10);
     const next = qty[1] === '=' ? amount : qty[1] === '+' ? current + amount : current - amount;
@@ -6698,6 +6725,7 @@ function clearRowData(i) {
 function clearRow(i) {
   const removedScanIssue = scanIssues.delete(i);
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+  if (i === latestScannedSaleRow) latestScannedSaleRow = -1;
   clearOtherSuggestion(i);
   if (input) { input.value = ''; input.className = 'part-input'; input.readOnly = false; input.style.color = ''; input.style.fontStyle = ''; }
   const qEl = document.getElementById(`qty-${i}`);
