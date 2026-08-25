@@ -175,9 +175,8 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .sum-row.total .sum-label { font-size: 16px; font-weight: 500; color: #1a1a1a; }
 .sum-row.total .sum-val { font-size: 22px; font-weight: 500; }
 /* Internal-only figures, tucked under Total inside the same box. Hidden for
-   Receipt/Invoice/Quote on screen AND in print — the only things that reveal it
-   are the Internal doc type (screen + print) and the manual Internal Print
-   toggle (print), exactly like the Cost/Margin columns. */
+   Receipt/Invoice/Quote on screen AND in print; only the confirmed Internal
+   document type reveals them. */
 .sum-internal { display: none; margin-top: 9px; padding-top: 8px; border-top: 2px solid #2f4339; }
 body.doc-internal .sum-internal { display: block; }
 .sum-internal .sum-row { padding: 3px 0; }
@@ -426,6 +425,7 @@ body.doc-internal .sum-internal { display: block; }
 .doc-type-btn { font-size: 12px; padding: 5px 12px; border: none; background: #fff; color: #666; cursor: pointer; font-family: inherit; border-right: 1px solid #e9ece7; }
 .doc-type-btn:last-child { border-right: none; }
 .doc-type-btn.active { background: #2f4339; color: #fff; font-weight: 600; }
+.doc-type-btn[data-doc="internal"].active { background: #9b1c1c; color: #fff; }
 .doc-screen-title { font-size: 12px; font-weight: 400; color: #999; }
 .cell-r.sub-total { font-size: 16px !important; font-weight: 700 !important; }
 .mobile-rows { display: none; }
@@ -793,14 +793,14 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn active" data-doc="receipt" onclick="setDocType('receipt')">Receipt</button>
         <button class="doc-type-btn" data-doc="invoice" onclick="setDocType('invoice')">Invoice</button>
         <button class="doc-type-btn" data-doc="quote" onclick="setDocType('quote')">Quote</button>
-        <button class="doc-type-btn" data-doc="internal" onclick="setDocType('internal')">Internal</button>
+        <button class="doc-type-btn" data-doc="internal" onclick="requestInternalDoc(event)" title="Internal only — shows cost and profit">Internal</button>
       </div>
       <!-- The button itself lives in Admin; this empty slot is the toolbar
            anchor the live preview still takes over, so opening the camera
            never moves a button or a row. -->
       <span class="scan-slot" id="scanSlot"></span>
       <span style="display:none">
-        <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="internalPrintBtn"></button><button id="cardFeeBtn"></button>
+        <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="cardFeeBtn"></button>
       </span>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
     </div>
@@ -1109,7 +1109,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.25.2';
+const POS_RELEASE = '2026.08.25.3';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -6865,6 +6865,9 @@ function clearAll() {
   _currentTxnId   = null;
   _currentTxnDate = null;
   _pendingTxnDate = null;
+  // Every cleared or loaded sale starts customer-safe. Invoice, Quote, and
+  // especially Internal must never leak from the previous transaction.
+  if (_docType !== 'receipt') setDocType('receipt');
   updateScreenDocTitle();
 }
 
@@ -7107,8 +7110,7 @@ function preparePrint() {
   if (hdr) hdr.classList.toggle('print-hide-hdr', !anyMulti);
   // Internal printout: single copy, no SN rows, no customer info, shows cost/margin.
   const isInternal = _docType === 'internal';
-  const internalToggle = document.getElementById('internalPrintBtn')?.classList.contains('active');
-  document.body.classList.toggle('internal-print', isInternal || internalToggle);
+  document.body.classList.toggle('internal-print', isInternal);
   if (isInternal) {
     tbody.querySelectorAll('tr[data-sn-for]').forEach(tr => tr.classList.add('print-hide'));
   }
@@ -7186,8 +7188,7 @@ function cleanupPrint() {
   if (hdr) hdr.classList.remove('print-hide-hdr');
   document.getElementById('signatureBlock')?.classList.remove('active');
   document.getElementById('signatureBlock')?.classList.remove('pin-bottom');
-  // Restore the cost/margin print view to whatever the manual Internal Print toggle says.
-  document.body.classList.toggle('internal-print', !!document.getElementById('internalPrintBtn')?.classList.contains('active'));
+  document.body.classList.remove('internal-print');
   const copy2 = document.getElementById('printCopy2');
   if (copy2) { copy2.innerHTML = ''; copy2.classList.remove('active'); }
   const wf = document.getElementById('sig-warranty-form');
@@ -7800,25 +7801,50 @@ function historyDocTypeTag(type) {
   return title ? `<span class="doc-history-tag">${_esch(title)}</span>` : '';
 }
 
-function setDocType(t) {
-  if (!DOC_TITLES[t]) return;
-  if (t !== 'receipt') setScannerModeActive(false);
-  _docType = t;
-  document.querySelectorAll('#docTypeSel .doc-type-btn').forEach(b => b.classList.toggle('active', b.dataset.doc === t));
-  // Drives the on-screen Cost / Gross Profit / Margin block. Kept separate from
-  // the print-only `internal-print` class so switching back to Receipt/Invoice/
-  // Quote takes those figures off the screen too.
-  document.body.classList.toggle('doc-internal', t === 'internal');
-  // Invoices & quotes need customer info — surface the panel automatically.
-  // (Only reveal the panel; do NOT enable the Warranty toggle, or a quote would
-  //  print the warranty form.)
-  if (t === 'invoice' || t === 'quote') {
-    document.getElementById('custPanel')?.classList.remove('hidden');
-  } else if (t === 'internal') {
-    document.getElementById('custPanel')?.classList.add('hidden');
-  }
-  updateScreenDocTitle();
-}
+(() => {
+  // Kept inside this closure so no hotkey, scanner command, reprint, or other
+  // script can manufacture the authority needed to enter Internal mode.
+  const internalSelectionToken = Symbol('confirmed-internal-selection');
+
+  window.requestInternalDoc = function(event) {
+    const internalBtn = document.querySelector('#docTypeSel [data-doc="internal"]');
+    // Keyboard activation produces a trusted click with detail 0. Programmatic
+    // activation is untrusted. The clicked/current target check confines the
+    // trusted event to this exact tab.
+    if (!(event instanceof MouseEvent) || !event.isTrusted || event.type !== 'click'
+        || event.detail === 0 || event.target !== internalBtn || event.currentTarget !== internalBtn) return;
+    if (!confirm(
+        'Switch to Internal?\n\n'
+        + 'This copy shows MPE cost, gross profit, and margin. It must never be given to a customer.'
+    )) {
+      internalBtn.blur();
+      return;
+    }
+    window.setDocType('internal', internalSelectionToken);
+  };
+
+  window.setDocType = function(t, authorization) {
+    if (!DOC_TITLES[t]) return;
+    if (t === 'internal' && authorization !== internalSelectionToken) return false;
+    if (t !== 'receipt') setScannerModeActive(false);
+    _docType = t;
+    document.querySelectorAll('#docTypeSel .doc-type-btn').forEach(b => b.classList.toggle('active', b.dataset.doc === t));
+    // Drives the on-screen Cost / Gross Profit / Margin block. Kept separate from
+    // the print-only `internal-print` class so switching back to Receipt/Invoice/
+    // Quote takes those figures off the screen too.
+    document.body.classList.toggle('doc-internal', t === 'internal');
+    // Invoices & quotes need customer info — surface the panel automatically.
+    // (Only reveal the panel; do NOT enable the Warranty toggle, or a quote would
+    //  print the warranty form.)
+    if (t === 'invoice' || t === 'quote') {
+      document.getElementById('custPanel')?.classList.remove('hidden');
+    } else if (t === 'internal') {
+      document.getElementById('custPanel')?.classList.add('hidden');
+    }
+    updateScreenDocTitle();
+    return true;
+  };
+})();
 function pad2(n) { return String(n).padStart(2, '0'); }
 // Compact number: whole minutes since DOC_EPOCH, zero-padded to 7 digits.
 // Pure digits, derived from date/time, ~7 digits until ~2044. The document TYPE
@@ -8636,13 +8662,8 @@ function toggleSalesView() {
   btn.classList.toggle('active', document.body.classList.contains('sales-view'));
 }
 
-function toggleInternalPrint() {
-  const btn = document.getElementById('internalPrintBtn');
-  document.body.classList.toggle('internal-print');
-  btn.classList.toggle('active', document.body.classList.contains('internal-print'));
-}
 function syncToggles() {
-  const map = { tgWarranty:'warrantyBtn', tgSignature:'signatureBtn', tgReview:'reviewBtn', tgSalesView:'salesViewBtn', tgInternal:'internalPrintBtn', tgCardFee:'cardFeeBtn' };
+  const map = { tgWarranty:'warrantyBtn', tgSignature:'signatureBtn', tgReview:'reviewBtn', tgSalesView:'salesViewBtn', tgCardFee:'cardFeeBtn' };
   for (const cb in map) { const c = document.getElementById(cb), b = document.getElementById(map[cb]); if (c && b) c.checked = b.classList.contains('active'); }
 }
 function toggleMenu(ev, id) {
