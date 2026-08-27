@@ -99,7 +99,12 @@ button { cursor: pointer; border: none; background: none; }
   background: #000; overflow: hidden;
 }
 .cam-wrap video {
-  width: 100%; height: 100%; object-fit: cover; display: block;
+  /* Keep the preview at its natural camera ratio, then let the 96px wrapper
+     reveal only its centre slice. Giving the video the slit dimensions makes
+     iOS WebKit squash/zoom some rear-camera formats despite object-fit. */
+  position: absolute; left: 0; top: 50%;
+  width: 100%; height: auto; min-height: 100%;
+  transform: translateY(-50%); object-fit: cover; display: block;
   background: #000;
 }
 /* The ponyfill path draws from a canvas copy, so the preview is not mirrored;
@@ -196,6 +201,12 @@ body.show-cost .hero-cost { display: block; }
 .row-main { flex: 1; min-width: 0; }
 .row-desc { font-size: 14px; line-height: 1.3; word-break: break-word; }
 .row-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; word-break: break-all; }
+.row-unmatch {
+  margin-top: 6px; padding: 3px 7px; border-radius: 6px;
+  border: 1px solid var(--line); background: transparent; color: var(--muted);
+  font-size: 11px;
+}
+.row-unmatch:active { background: var(--line); }
 .row.unresolved .row-desc { color: var(--warn); font-weight: 600; }
 .row-price { font-size: 14px; font-weight: 600; white-space: nowrap; text-align: right; }
 .row-price small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); text-decoration: line-through; }
@@ -551,10 +562,10 @@ body.bind .bind-wrap { display: flex; }
     <div class="sheet-body">
       <div class="set-row" id="signRow">
         <div class="set-main">
-          <div class="set-label" id="signLabel">Google account</div>
-          <div class="set-help" id="signHelp">Needed to load prices and save codes.</div>
+          <div class="set-label" id="signLabel">Scanner connection</div>
+          <div class="set-help" id="signHelp">Connect this phone once to load prices and send lists.</div>
         </div>
-        <button class="mini go" id="signBtn">Sign in</button>
+        <button class="mini go" id="signBtn">Connect</button>
       </div>
       <div class="set-row">
         <div class="set-main">
@@ -654,6 +665,9 @@ const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
 const POS_JSON_FILE_ID = '1I4pT1MUWAm2cIkch2T7JW_hKt3wcLIyd';
 // Narrower than the POS's grant on purpose: this page never composes mail.
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets';
+// The Apps Script deployment address is public; the device key is not. It is
+// pasted once on the phone and stays only in this origin's local storage.
+const PHONE_BRIDGE_URL = 'https://script.google.com/macros/s/AKfycbzzCGFf6pMGW20bWnPbZnEihWav-uzygwmAg9a6kRD9mZDnSP9shbRyxsqkwJ5RSxZK/exec';
 
 const CODES_SHEET  = 'Codes';
 const CODES_HEADER = ['Code', 'Part Number', 'Format', 'Source', 'Added'];
@@ -709,6 +723,7 @@ const K_LIST     = 'mpeScanList';
 const K_COST     = 'mpeScanShowCost';
 const K_THEME    = 'mpeScanTheme';
 const K_BEEP     = 'mpeScanBeep';
+const K_BRIDGE   = 'mpeScanBridgeKey';
 // Whichever Google account actually signed in last on THIS phone. The shop
 // account is only the fallback for a phone that has never signed in, so a
 // device that legitimately uses another account is not sent to the picker
@@ -718,8 +733,9 @@ const K_ACCOUNT  = 'gAccount';
 // ── STATE ─────────────────────────────────────────────────────────────────
 let accessToken = null;
 let tokenClient = null;
-let desktopGoogleConnected = false;
-let desktopGoogleAccount = '';
+let bridgeGoogleConnected = false;
+let bridgeGoogleAccount = '';
+let phoneBridgeClient = null;
 let pendingAfterAuth = null;
 let partsArray = [];
 let loaded = false;
@@ -810,7 +826,167 @@ function cachedToken() {
 function desktopGoogleAvailable() {
   return !!(window.mpeDesktop?.google && typeof window.mpeDesktop.google.getStatus === 'function');
 }
-function token() { return desktopGoogleConnected ? '__desktop__' : (accessToken || cachedToken()); }
+function phoneBridgeAvailable() {
+  return location.origin === 'https://maupau808.github.io' &&
+    /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(PHONE_BRIDGE_URL);
+}
+function phoneBridgeKey() { return localStorage.getItem(K_BRIDGE) || ''; }
+
+class PhoneBridgeClient {
+  constructor(url) {
+    this.url = url;
+    this.session = null;
+    this.sessionPromise = null;
+  }
+
+  async request(method, args = [], keyOverride = '') {
+    const secret = keyOverride || phoneBridgeKey();
+    if (!secret) throw new Error('This phone is not connected');
+    if (keyOverride) this.session = null;
+    if (method === 'downloadCatalog') return this.downloadCatalog(args[0], secret);
+    const writes = ['sheetsUpdate', 'sheetsAppend', 'sheetsBatchUpdate'];
+    try {
+      return await this.signedCall(method, args, secret);
+    } catch (error) {
+      if (!/session expired/i.test(String(error?.message || ''))) throw error;
+      this.session = null;
+      // Never replay an uncertain append. Google may have accepted the first
+      // POST before its short-lived signing session disappeared; list sending
+      // checks the unique list ID, and all other queues stay local for review.
+      if (writes.includes(method)) throw new Error('Scanner write status is uncertain; checking before any retry');
+      return this.signedCall(method, args, secret);
+    }
+  }
+
+  requestId() {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  encode(value) {
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    let binary = '';
+    bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  async signature(verb, id, method, payload) {
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(this.session.secret),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const signed = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${verb}\n${id}\n${method}\n${payload}`));
+    let binary = '';
+    new Uint8Array(signed).forEach(byte => { binary += String.fromCharCode(byte); });
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  async ensureSession(deviceKey) {
+    if (this.session) return this.session;
+    if (this.sessionPromise) return this.sessionPromise;
+    this.sessionPromise = (async () => {
+      const id = this.requestId();
+      await fetch(this.url, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ action: 'bootstrap', id, key: deviceKey }),
+      });
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        const envelope = await this.jsonp({ action: 'bootstrapResult', id });
+        if (envelope.pending) { await new Promise(resolve => setTimeout(resolve, 400)); continue; }
+        if (!envelope.ok) throw new Error(envelope.error || 'This phone could not be connected');
+        this.session = envelope.result;
+        return this.session;
+      }
+      throw new Error('Scanner connection timed out');
+    })();
+    try { return await this.sessionPromise; }
+    finally { this.sessionPromise = null; }
+  }
+
+  jsonp(params) {
+    return new Promise((resolve, reject) => {
+      const callback = `__mpeScanBridge_${this.requestId()}`;
+      const script = document.createElement('script');
+      const timer = setTimeout(() => finish(new Error('Scanner connection timed out')), 30000);
+      const finish = (error, value) => {
+        clearTimeout(timer);
+        script.remove();
+        try { delete window[callback]; } catch (ignored) { window[callback] = undefined; }
+        if (error) reject(error); else resolve(value);
+      };
+      window[callback] = value => finish(null, value);
+      script.onerror = () => finish(new Error('Scanner connection could not be reached'));
+      const query = new URLSearchParams({ ...params, callback });
+      script.src = `${this.url}?${query}`;
+      document.head.appendChild(script);
+    });
+  }
+
+  async signedGet(method, args) {
+    const id = this.requestId();
+    const payload = this.encode(args);
+    const sig = await this.signature('GET', id, method, payload);
+    const envelope = await this.jsonp({ action: 'call', sid: this.session.sessionId, id, method, payload, sig });
+    if (!envelope.ok) throw new Error(envelope.error || 'Scanner connection failed');
+    return envelope.result;
+  }
+
+  async signedCall(method, args, deviceKey) {
+    await this.ensureSession(deviceKey);
+    if (!['sheetsUpdate', 'sheetsAppend', 'sheetsBatchUpdate'].includes(method)) return this.signedGet(method, args);
+    const id = this.requestId();
+    const payload = this.encode(args);
+    const sig = await this.signature('POST', id, method, payload);
+    await fetch(this.url, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ action: 'call', sid: this.session.sessionId, id, method, payload, sig }),
+    });
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      const result = await this.signedGet('result', [id]);
+      if (!result.ready) { await new Promise(resolve => setTimeout(resolve, 400)); continue; }
+      if (!result.envelope.ok) throw new Error(result.envelope.error || 'Scanner write failed');
+      return result.envelope.result;
+    }
+    throw new Error('Scanner write verification timed out');
+  }
+
+  async downloadCatalog(kind, deviceKey) {
+    await this.ensureSession(deviceKey);
+    const info = await this.signedGet('catalogInfo', [kind]);
+    const bytes = new Uint8Array(info.size);
+    let offset = 0;
+    while (offset < info.size) {
+      const length = Math.min(384 * 1024, info.size - offset);
+      const chunk = await this.signedGet('catalogChunk', [kind, offset, length]);
+      const binary = atob(chunk.bytes);
+      for (let index = 0; index < binary.length; index += 1) bytes[offset + index] = binary.charCodeAt(index);
+      offset += binary.length;
+      if (!binary.length) throw new Error('Scanner catalog download stopped early');
+    }
+    return bytes.buffer;
+  }
+}
+
+function phoneGoogle() {
+  if (!phoneBridgeClient) return null;
+  return {
+    getStatus: () => phoneBridgeClient.request('getStatus'),
+    downloadCatalog: kind => phoneBridgeClient.request('downloadCatalog', [kind]),
+    sheetsGet: range => phoneBridgeClient.request('sheetsGet', [range]),
+    sheetsUpdate: (range, rows) => phoneBridgeClient.request('sheetsUpdate', [range, rows]),
+    sheetsAppend: (range, rows) => phoneBridgeClient.request('sheetsAppend', [range, rows]),
+    sheetsBatchUpdate: requests => phoneBridgeClient.request('sheetsBatchUpdate', [requests]),
+    sheetId: tabName => phoneBridgeClient.request('sheetId', [tabName]),
+  };
+}
+
+function googleBridge() {
+  return desktopGoogleAvailable() ? window.mpeDesktop.google : phoneGoogle();
+}
+function googleBridgeAvailable() { return desktopGoogleAvailable() || phoneBridgeAvailable(); }
+function token() { return bridgeGoogleConnected ? '__bridge__' : (accessToken || cachedToken()); }
 
 function lastAccount() { return localStorage.getItem(K_ACCOUNT) || SHOP_GOOGLE_ACCOUNT; }
 
@@ -853,45 +1029,73 @@ function initTokenClient() {
   });
   renderAuth();
 }
-async function initDesktopGoogle() {
+async function initBridgeGoogle() {
   accessToken = null;
   localStorage.removeItem(K_TOKEN);
   localStorage.removeItem(K_TOKEN_AT);
+  if (!desktopGoogleAvailable() && phoneBridgeAvailable() && !phoneBridgeClient) {
+    phoneBridgeClient = new PhoneBridgeClient(PHONE_BRIDGE_URL);
+  }
+  if (!desktopGoogleAvailable() && !phoneBridgeKey()) {
+    bridgeGoogleConnected = false;
+    localStorage.removeItem(K_SIGNED);
+    renderAuth();
+    if (!loaded) setFeedState('err', 'Connect this phone to update prices');
+    return;
+  }
   try {
-    const status = await window.mpeDesktop.google.getStatus();
-    desktopGoogleConnected = !!status?.connected;
-    desktopGoogleAccount = status?.accountEmail || SHOP_GOOGLE_ACCOUNT;
-    if (desktopGoogleConnected) localStorage.setItem(K_SIGNED, '1');
+    const status = await googleBridge().getStatus();
+    bridgeGoogleConnected = !!status?.connected;
+    bridgeGoogleAccount = status?.accountEmail || SHOP_GOOGLE_ACCOUNT;
+    if (bridgeGoogleConnected) localStorage.setItem(K_SIGNED, '1');
     else localStorage.removeItem(K_SIGNED);
     renderAuth();
-    if (desktopGoogleConnected) {
+    if (bridgeGoogleConnected) {
       await loadFeed({ quiet: true });
       schedulePendingCodesFlush();
     } else if (!loaded) setFeedState('err', 'Sign in to load prices');
   } catch (error) {
-    desktopGoogleConnected = false;
+    bridgeGoogleConnected = false;
     renderAuth();
-    if (!loaded) setFeedState('err', 'Desktop Google sign-in unavailable');
+    if (!loaded) setFeedState('err', desktopGoogleAvailable() ? 'Desktop Google sign-in unavailable' : 'Scanner connection unavailable');
   }
 }
+
+async function connectPhoneBridge() {
+  if (!phoneBridgeAvailable()) throw new Error('Scanner connection is not configured');
+  if (!phoneBridgeClient) phoneBridgeClient = new PhoneBridgeClient(PHONE_BRIDGE_URL);
+  const entered = prompt('Paste the MPE scanner device key:', phoneBridgeKey());
+  if (entered === null) return null;
+  const key = entered.trim();
+  if (!key) throw new Error('No device key was entered');
+  const status = await phoneBridgeClient.request('getStatus', [], key);
+  if (!status?.connected) throw new Error('This phone could not be connected');
+  localStorage.setItem(K_BRIDGE, key);
+  bridgeGoogleConnected = true;
+  bridgeGoogleAccount = status.accountEmail || SHOP_GOOGLE_ACCOUNT;
+  localStorage.setItem(K_SIGNED, '1');
+  return status;
+}
+
 async function signIn(then) {
   pendingAfterAuth = then || null;
-  if (desktopGoogleAvailable()) {
+  if (googleBridgeAvailable()) {
     try {
-      const status = desktopGoogleConnected
-        ? await window.mpeDesktop.google.getStatus()
-        : await window.mpeDesktop.google.signIn();
-      desktopGoogleConnected = !!status?.connected;
-      desktopGoogleAccount = status?.accountEmail || SHOP_GOOGLE_ACCOUNT;
-      if (!desktopGoogleConnected) throw new Error('Google sign-in did not complete');
+      const status = desktopGoogleAvailable()
+        ? (bridgeGoogleConnected ? await googleBridge().getStatus() : await googleBridge().signIn())
+        : await connectPhoneBridge();
+      if (!status) return;
+      bridgeGoogleConnected = !!status?.connected;
+      bridgeGoogleAccount = status?.accountEmail || SHOP_GOOGLE_ACCOUNT;
+      if (!bridgeGoogleConnected) throw new Error(desktopGoogleAvailable() ? 'Google sign-in did not complete' : 'This phone could not be connected');
       localStorage.setItem(K_SIGNED, '1');
       renderAuth();
       await loadFeed();
       const fn = pendingAfterAuth; pendingAfterAuth = null; if (fn) await fn();
     } catch (error) {
-      desktopGoogleConnected = false;
+      bridgeGoogleConnected = false;
       renderAuth();
-      toast(error?.message || 'Google sign-in failed', 6000);
+      toast(error?.message || 'Scanner connection failed', 6000);
     }
     return;
   }
@@ -904,7 +1108,7 @@ async function signIn(then) {
 }
 function needAuth(then) {
   if (token()) { then(); return true; }
-  toast('Sign in to continue');
+  toast(phoneBridgeAvailable() ? 'Connect this phone to continue' : 'Sign in to continue');
   openSheet('setSheet');
   return false;
 }
@@ -915,7 +1119,7 @@ const TOKEN_LIFE_MS = 55 * 60 * 1000;
 const TOKEN_WARN_MS = 8 * 60 * 1000;
 
 function tokenMsLeft() {
-  if (desktopGoogleConnected) return Number.POSITIVE_INFINITY;
+  if (bridgeGoogleConnected) return Number.POSITIVE_INFINITY;
   if (!localStorage.getItem(K_TOKEN)) return 0;
   const at = parseInt(localStorage.getItem(K_TOKEN_AT) || '0', 10);
   return Math.max(0, at + TOKEN_LIFE_MS - Date.now());
@@ -927,13 +1131,21 @@ function authState() {
 
 function renderAuth() {
   const signed = !!token();
-  $('signBtn').textContent = signed ? 'Refresh' : 'Sign in';
-  $('signLabel').textContent = signed ? 'Signed in' : 'Google account';
-  $('signHelp').textContent = signed
-    ? (desktopGoogleConnected
-      ? `${desktopGoogleAccount || SHOP_GOOGLE_ACCOUNT} · stays signed in`
-      : `${lastAccount()} · ${Math.ceil(tokenMsLeft() / 60000)} min left`)
-    : 'Needed to load prices and save codes.';
+  if (phoneBridgeAvailable() && !desktopGoogleAvailable()) {
+    $('signBtn').textContent = signed ? 'Change key' : 'Connect';
+    $('signLabel').textContent = signed ? 'Phone connected' : 'Scanner connection';
+    $('signHelp').textContent = signed
+      ? 'MPE shop · stays connected on this phone'
+      : 'Paste the device key once to load prices and send lists.';
+  } else {
+    $('signBtn').textContent = signed ? 'Refresh' : 'Sign in';
+    $('signLabel').textContent = signed ? 'Signed in' : 'Google account';
+    $('signHelp').textContent = signed
+      ? (bridgeGoogleConnected
+        ? `${bridgeGoogleAccount || SHOP_GOOGLE_ACCOUNT} · stays signed in`
+        : `${lastAccount()} · ${Math.ceil(tokenMsLeft() / 60000)} min left`)
+      : 'Needed to load prices and save codes.';
+  }
   renderAuthBar();
 }
 
@@ -947,9 +1159,11 @@ function renderAuthBar() {
   if (state === 'ok') return;
   const held = list.length ? `${list.length} line${list.length === 1 ? '' : 's'} saved on this phone.` : '';
   if (state === 'out') {
-    $('authBarTitle').textContent = 'Signed out — sending needs a sign-in';
+    $('authBarTitle').textContent = phoneBridgeAvailable()
+      ? 'Phone not connected — sending is unavailable'
+      : 'Signed out — sending needs a sign-in';
     $('authBarNote').textContent = (held ? held + ' ' : '') + 'Keep scanning, prices still work.';
-    $('authBarGo').textContent = 'Sign in';
+    $('authBarGo').textContent = phoneBridgeAvailable() ? 'Connect' : 'Sign in';
   } else {
     const mins = Math.ceil(tokenMsLeft() / 60000);
     $('authBarTitle').textContent = `Sign-in expires in ${mins} min`;
@@ -1042,8 +1256,8 @@ async function loadFeed({ quiet = false } = {}) {
   const t = token();
   if (t) {
     try {
-      if (desktopGoogleConnected) {
-        const bytes = await window.mpeDesktop.google.downloadCatalog('json');
+      if (bridgeGoogleConnected) {
+        const bytes = await googleBridge().downloadCatalog('json');
         const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
         const ab = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
         await loadPosJsonBytes(ab, 'Drive');
@@ -1402,6 +1616,24 @@ function queueCodeBinding(rawCode, format, part) {
   renderPending();
 }
 
+function queueCodeUnbind(rawCode, format) {
+  const code = canonicalScannedCode(rawCode);
+  if (!code) return false;
+  const record = {
+    code, pn: '', format: String(format || ''), source: 'scan-phone-unbind',
+    added: new Date().toISOString(), remove: true
+  };
+  const at = pendingCodes.findIndex(i => canonicalScannedCode(i.code) === code);
+  if (at >= 0) pendingCodes[at] = record; else pendingCodes.push(record);
+  save(K_PENDING, pendingCodes);
+  delete learnedCodes[code];
+  save(K_LEARNED, learnedCodes);
+  delete partCodeMap[code];
+  renderPending();
+  schedulePendingCodesFlush();
+  return true;
+}
+
 // ── ITEM CHANGE QUEUE (Prices tab) ────────────────────────────────────────
 // WRITES TO: Bridge `Prices` tab — Part Number, New List, New Description,
 //            Make, Date, New Cost. New Cost is always blank from this page.
@@ -1548,8 +1780,8 @@ async function sheetsFetch(url, init, options) {
   }
 }
 async function sheetsGet(range, options) {
-  if (desktopGoogleConnected) {
-    return desktopSheetsCall(() => window.mpeDesktop.google.sheetsGet(range), options, true);
+  if (bridgeGoogleConnected) {
+    return bridgeSheetsCall(() => googleBridge().sheetsGet(range), options, true);
   }
   const t = token(); if (!t) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`;
@@ -1557,8 +1789,8 @@ async function sheetsGet(range, options) {
   return (await resp.json()).values || [];
 }
 async function sheetsUpdate(range, rows, options) {
-  if (desktopGoogleConnected) {
-    return desktopSheetsCall(() => window.mpeDesktop.google.sheetsUpdate(range, rows), options, true);
+  if (bridgeGoogleConnected) {
+    return bridgeSheetsCall(() => googleBridge().sheetsUpdate(range, rows), options, true);
   }
   const t = token(); if (!t) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
@@ -1570,8 +1802,8 @@ async function sheetsUpdate(range, rows, options) {
   return true;
 }
 async function sheetsAppend(range, rows, options) {
-  if (desktopGoogleConnected) {
-    return desktopSheetsCall(() => window.mpeDesktop.google.sheetsAppend(range, rows), options, false);
+  if (bridgeGoogleConnected) {
+    return bridgeSheetsCall(() => googleBridge().sheetsAppend(range, rows), options, false);
   }
   const t = token(); if (!t) throw new Error('Not signed in');
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}/values/${encodeURIComponent(range)}`
@@ -1584,8 +1816,8 @@ async function sheetsAppend(range, rows, options) {
   return await resp.json();
 }
 async function sheetsBatchUpdate(requests, options) {
-  if (desktopGoogleConnected) {
-    return desktopSheetsCall(() => window.mpeDesktop.google.sheetsBatchUpdate(requests), options, false);
+  if (bridgeGoogleConnected) {
+    return bridgeSheetsCall(() => googleBridge().sheetsBatchUpdate(requests), options, false);
   }
   const t = token(); if (!t) throw new Error('Not signed in');
   await sheetsFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS_ID}:batchUpdate`, {
@@ -1596,9 +1828,9 @@ async function sheetsBatchUpdate(requests, options) {
   return true;
 }
 async function tabExists(title, options) {
-  if (desktopGoogleConnected) {
+  if (bridgeGoogleConnected) {
     try {
-      await desktopSheetsCall(() => window.mpeDesktop.google.sheetId(title), options, true);
+      await bridgeSheetsCall(() => googleBridge().sheetId(title), options, true);
       return true;
     } catch (error) {
       if (/not found/i.test(error?.message || '')) return false;
@@ -1611,7 +1843,7 @@ async function tabExists(title, options) {
   return ((await resp.json()).sheets || []).some(s => s.properties.title === title);
 }
 
-async function desktopSheetsCall(action, options, retryThrottle) {
+async function bridgeSheetsCall(action, options, retryThrottle) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await action();
@@ -1657,12 +1889,14 @@ async function _flushPendingCodes() {
       // re-pads numeric codes to GTIN-14 on read; a part number has no such
       // repair, so it needs the text guard.
       const result = await sheetsAppend(`${CODES_SHEET}!A1`,
-        batch.map(i => [i.code, sheetText(i.pn), i.format, i.source, i.added]));
+        batch.map(i => [i.code, i.remove ? '' : sheetText(i.pn), i.format, i.source, i.added]));
       const range = result?.updates?.updatedRange;
       if (!range) throw new Error('append returned no range to verify');
       const written = await sheetsGet(range);
-      const confirmed = new Set(written.map(r => `${canonicalScannedCode(r[0])}|${normalizePN(r[1])}`));
-      const missing = batch.find(i => !confirmed.has(`${canonicalScannedCode(i.code)}|${normalizePN(i.pn)}`));
+      const confirmed = new Set(written.map(r =>
+        `${canonicalScannedCode(r[0])}|${normalizePN(r[1])}|${String(r[3] || '').trim()}`));
+      const missing = batch.find(i => !confirmed.has(
+        `${canonicalScannedCode(i.code)}|${i.remove ? '' : normalizePN(i.pn)}|${i.source}`));
       if (missing) throw new Error(`code ${missing.code} was not found after append`);
       pendingCodes = pendingCodes.slice(batch.length);
       save(K_PENDING, pendingCodes);
@@ -2062,7 +2296,10 @@ function acceptScan(rawValue, format) {
   const { code, candidates, via, serial = '', model = '', bindCode = '' } = resolveScannedValue(raw);
   if (candidates.length === 1) {
     // A serial-rule match means the scanned value is this machine's serial.
-    addToList(candidates[0], { code, format, serial: via === 'serial' ? raw : serial });
+    addToList(candidates[0], {
+      code, format, rawCode: raw, matchedCode: via === 'code' ? code : '',
+      serial: via === 'serial' ? raw : serial
+    });
     beep('ok'); buzz(35);
     if (scanActive) setCamStatus('Ready — point at a barcode');   // clears a previous "ignored" warning
     return;
@@ -2113,7 +2350,9 @@ function acceptScan(rawValue, format) {
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────────
-function entryFromPart(part, { code = '', format = '', serial = '' } = {}) {
+function entryFromPart(part, {
+  code = '', format = '', serial = '', rawCode = '', matchedCode = ''
+} = {}) {
   const p = pricing(part);
   return {
     id: 'e' + Date.now().toString(36) + Math.floor(performance.now() % 1000),
@@ -2123,6 +2362,7 @@ function entryFromPart(part, { code = '', format = '', serial = '' } = {}) {
     // List, which on a sale item is NOT what the row is charging.
     list: Number(part.list) || 0,
     cost: Number(part.cost) || 0, qty: 1, code, format,
+    scanRaw: String(rawCode || ''), matchedCode: canonicalScannedCode(matchedCode),
     warranty: !!part.warranty, serial: String(serial || '').trim(),
     unresolved: false, at: Date.now()
   };
@@ -2212,6 +2452,7 @@ function renderList() {
       <div class="row-main" data-act="open">
         <div class="row-desc">${escapeHTML(e.unresolved ? e.desc : e.desc || e.pn)}</div>
         <div class="row-sub">${escapeHTML(sub)}</div>
+        ${e.matchedCode ? '<button class="row-unmatch" data-act="unmatch" type="button">Unmatch UPC</button>' : ''}
       </div>
       ${priceCell}
       <div class="qty">
@@ -2264,6 +2505,7 @@ $('rows').addEventListener('click', ev => {
     persistList();
     return;
   }
+  if (act === 'unmatch') { unmatchEntry(entry); return; }
   if (entry.unresolved) entry.newItem ? openNewItemDetails(entry) : openSearch({ bind: entry });
   else {
     // Tapping used to only redraw the hero with what the row already says. The
@@ -2276,6 +2518,26 @@ $('rows').addEventListener('click', ev => {
     openItemEdit(entry);
   }
 });
+
+function unmatchEntry(entry) {
+  const code = canonicalScannedCode(entry?.matchedCode);
+  if (!code || partCodeMap[code] !== normalizePN(entry.pn)) {
+    toast('This UPC is no longer matched to that part');
+    return;
+  }
+  const shownCode = entry.scanRaw || entry.code || code;
+  if (!confirm(`Unmatch UPC ${shownCode} from ${entry.pn}?\n\nThe UPC will scan as unknown again on every terminal.`)) return;
+  if (!queueCodeUnbind(code, entry.format)) return;
+  Object.assign(entry, {
+    pn: '', og: '', make: '', desc: shownCode,
+    price: 0, was: 0, onSale: false, list: 0, cost: 0,
+    warranty: false, serial: '', unresolved: true, serialish: false,
+    newItem: false, priceNote: '', note: '', matchedCode: ''
+  });
+  persistList();
+  showHero({ flag: true, desc: 'UPC unmatched', meta: `${shownCode} — tap the list row to match it again` });
+  toast('Unmatched — syncing to every terminal');
+}
 
 // ── HERO ──────────────────────────────────────────────────────────────────
 const HERO_IDLE = { desc: 'Nothing scanned yet', meta: 'Same prices the counter charges, sale rules included.' };
@@ -2617,7 +2879,8 @@ function chooseHit(part) {
     const p = pricing(part);
     // A serial-shaped code identifies one machine, so it resolves the row but
     // is never written to the Codes sheet as a product barcode.
-    if (entry.code && !entry.serialish) queueCodeBinding(entry.code, entry.format, part);
+    const learnedMatch = !!(entry.code && !entry.serialish);
+    if (learnedMatch) queueCodeBinding(entry.code, entry.format, part);
     // For a serial-shaped row the raw scan (still in desc at this point) IS the
     // machine's serial, so matching the unit captures it rather than losing it.
     const capturedSerial = entry.serialish ? String(entry.desc || '').trim().toUpperCase() : '';
@@ -2626,7 +2889,9 @@ function chooseHit(part) {
       desc: String(part.desc || ''), price: p.price, was: p.was, onSale: p.onSale,
       list: Number(part.list) || 0,
       cost: Number(part.cost) || 0, warranty: !!part.warranty,
-      serial: capturedSerial || entry.serial || '', unresolved: false
+      serial: capturedSerial || entry.serial || '', unresolved: false,
+      scanRaw: learnedMatch ? String(entry.desc || entry.code) : String(entry.scanRaw || ''),
+      matchedCode: learnedMatch ? canonicalScannedCode(entry.code) : ''
     });
     persistList();
     toast(entry.serialish ? 'Matched — serial not saved as a barcode' : 'Saved locally — syncs after Send');
@@ -2634,7 +2899,11 @@ function chooseHit(part) {
     // Choosing between real candidates settles what that code means, so it is
     // worth saving — unless it is serial-shaped, which belongs to one machine.
     if (!looksLikeSerial(target.code)) queueCodeBinding(target.code, target.format, part);
-    addToList(part, { code: target.code, format: target.format, serial: target.serial || '' });
+    addToList(part, {
+      code: target.code, format: target.format, rawCode: target.code,
+      matchedCode: looksLikeSerial(target.code) ? '' : target.code,
+      serial: target.serial || ''
+    });
     bindTarget = null;
     return;
   } else {
@@ -3085,8 +3354,8 @@ showHero({});
   // Cache first so the page is useful before the network answers.
   const cached = await cacheGet('feed');
   if (cached) { try { await loadPosJsonBytes(cached, 'cache'); } catch (e) {} }
-  if (desktopGoogleAvailable()) {
-    await initDesktopGoogle();
+  if (googleBridgeAvailable()) {
+    await initBridgeGoogle();
   } else {
     const waitForGis = setInterval(() => {
       if (window.google?.accounts?.oauth2) { clearInterval(waitForGis); initTokenClient(); }

@@ -168,6 +168,11 @@ pos.addEventListener('load', async () => {
       doc.body.classList.remove('bind');
       const cameraHeight = doc.querySelector('.cam-wrap').getBoundingClientRect().height;
       assert(cameraHeight >= 95 && cameraHeight <= 97, `camera strip is ${cameraHeight}px tall`);
+      const phoneCss = [...doc.querySelectorAll('style')].map(style => style.textContent).join('\n');
+      assert(/\.cam-wrap video\s*\{[^}]*height:\s*auto/i.test(phoneCss),
+        'camera preview is still forced into the slit ratio');
+      assert(/\.cam-wrap video\s*\{[^}]*position:\s*absolute[^}]*translateY\(-50%\)/i.test(phoneCss),
+        'camera preview is not a centered crop of its normal view');
       assert(doc.getElementById('listCount')?.closest('.list-head'), 'list count is not in the sticky List header');
     });
 

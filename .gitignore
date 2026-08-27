@@ -2,6 +2,10 @@
 !index.html
 !scan.html
 !scanner_reliability_test.html
+!apps-script/
+!apps-script/Code.gs
+!apps-script/appsscript.json
+!apps-script/bridge_security_test.js
 !version.json
 !.gitignore
 !.githooks/
