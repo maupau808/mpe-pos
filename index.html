@@ -17,11 +17,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 html.dark, body.dark { background: #1f211f; }
 /* contrast(.78) lifts the inverted pure-black (#000) up to ~#1E1E1E while keeping text light */
 body.dark .wrap { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
-body.dark #uploadsModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
 body.dark #txnModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
 body.dark #phoneListModal .hist-panel { filter: invert(1) hue-rotate(180deg) contrast(0.78); }
 @media print {
-  body.dark .wrap, body.dark #uploadsModal .hist-panel { filter: none !important; }
+  body.dark .wrap { filter: none !important; }
   html.dark, body.dark { background: #fff; }
 }
 .theme-toggle { background: none; border: 1px solid #d9dfd6; border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1; padding: 5px 9px; color: #888; }
@@ -250,9 +249,6 @@ body.doc-internal .sum-internal { display: block; }
 .notes-input::placeholder { color: #bbb; }
 .drive-btn.hist-btn { background: #fff; color: #555; border: 1px solid #d9dfd6; }
 .drive-btn.hist-btn:hover { background: #f3f6f2; }
-.uploads-tab { font-size: 13px; padding: 5px 12px; border: 1px solid #d9dfd6; border-radius: 6px; background: #f3f6f2; color: #555; cursor: pointer; font-family: inherit; font-weight: 500; }
-.uploads-tab:hover { background: #e8ece6; }
-.uploads-tab.active { background: #2f4339; color: #fff; border-color: #2f4339; }
 .drive-btn.hist-clear-btn { background: #fff3f3; color: #c62828; border: 1px solid #ffcdd2; }
 .drive-btn.hist-clear-btn:hover { background: #ffebee; }
 .drive-btn.hist-close-btn { background: #f3f6f2; color: #555; border: 1px solid #d9dfd6; }
@@ -309,7 +305,6 @@ body.doc-internal .sum-internal { display: block; }
 .hist-del-btn:hover { background: #fee; color: #c00; }
 .hist-empty { text-align: center; color: #bbb; font-size: 13px; padding: 40px 0; }
 .phone-list-status { color: #666; }
-#uploadsPanelHistory { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
 .print-banner { border-radius: 7px; padding: 7px 12px; font-size: 12px; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .print-banner.ok  { background: #e8f5e9; color: #2d7a3a; border: 1px solid #a5d6a7; }
 .print-banner.warn { background: #fff8e1; color: #7a5800; border: 1px solid #ffe082; }
@@ -830,14 +825,14 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="icon-btn" id="exportPdfBtn" onclick="exportPdf()" title="Export PDF — download the colour copy">⬇</button>
         <button class="menu-btn" id="scannerModeBtn" type="button" onclick="setScannerModeActive(true)">Scanner Mode</button>
         <div class="menu-wrap">
-          <button class="menu-btn" id="adminMenuBtn" onclick="openAdminMenu(event)" title="Reconnect, refresh and uploads">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
+          <button class="menu-btn" id="adminMenuBtn" onclick="openAdminMenu(event)" title="Reconnect and refresh">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
           <div class="menu-panel right admin-menu" id="adminMenu" onclick="event.stopPropagation()">
             <div id="posUpdateNotice" class="pos-update-notice" style="display:none">
               <div>POS update ready — reload after this sale.</div>
               <button type="button" onclick="reloadForPosUpdate()">Reload POS</button>
             </div>
             <div id="printBanner" class="print-banner" style="display:none"></div>
-            <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span> <span id="dataBadge" class="pc-badge" style="display:none"></span></div>
+            <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span></div>
             <div id="dataStatus" class="data-status"></div>
             <div class="admin-control-grid">
               <label class="menu-check"><input type="checkbox" id="scannerModeDefault" onchange="setScannerModeDefault(this.checked)"> Scanner on startup</label>
@@ -848,7 +843,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
               <button class="drive-btn signin" id="driveSignInBtn" onclick="handleSignIn()">Sign in</button>
               <button class="drive-btn refresh hidden" id="driveRefreshBtn" onclick="fetchFromDrive()">↻ Refresh</button>
               <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
-              <button class="drive-btn hist-btn" id="uploadsBtn" onclick="openUploads('priceChanges')">📤 Uploads<span id="uploadsBadge" class="pc-badge" style="display:none"></span></button>
               <button class="drive-btn hist-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
               <!-- Read-only parts catalog lookup. Separate page on purpose: it has no sale,
                    customer, price, or transaction path and never touches a line item. -->
@@ -1037,43 +1031,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 <!-- Offscreen holder used to render the PDF for emailing (kept rendered, not display:none) -->
 <div id="emailPdfHolder" style="position:fixed;left:-10000px;top:0;width:760px;background:#fff;"></div>
 
-<div id="uploadsModal" class="hist-modal hidden">
-  <div class="hist-panel">
-    <div class="hist-header">
-      <div style="display:flex;gap:6px;">
-        <button class="uploads-tab active" id="tabHistory" onclick="switchUploadTab('history')">📋 History</button>
-        <button class="uploads-tab" id="tabPriceChanges" onclick="switchUploadTab('priceChanges')">💲 Item Changes<span id="pcTabBadge" style="margin-left:4px;"></span></button>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;">
-        <button class="drive-btn refresh" id="pushAllBtn" onclick="pushAllToSheet()">⬆ Push to Drive Sheet</button>
-        <button class="drive-btn hist-close-btn" onclick="closeUploads()">✕ Close</button>
-      </div>
-    </div>
-    <!-- History panel -->
-    <div id="uploadsPanelHistory">
-      <div class="hist-count" id="histCount"></div>
-      <div class="hist-list" id="histList"></div>
-      <div style="padding:10px 18px 14px;border-top:1px solid #e0e0e0;display:flex;gap:6px;justify-content:flex-end;flex-shrink:0;">
-        <button class="drive-btn manual-load" onclick="exportHistory()">⬇ Export JSON</button>
-        <button class="drive-btn" style="background:#fff3cd;color:#856404;border-color:#ffc107;" id="cleanDupesBtn" onclick="cleanTransactionDuplicates()">🧹 Clean Drive Dupes</button>
-        <button class="drive-btn hist-clear-btn" onclick="clearHistory()">🗑 Clear</button>
-      </div>
-    </div>
-    <!-- Price Changes panel -->
-    <div id="uploadsPanelPriceChanges" style="display:none;flex:1;overflow:hidden;flex-direction:column;min-height:0;">
-      <div class="pc-body">
-        <table class="pc-table">
-          <thead><tr><th style="width:28px;"></th><th>Part #</th><th>Description</th><th>New Desc</th><th>New Price</th><th>Old Price</th><th>New Cost</th><th>Orig Cost</th><th>Date</th></tr></thead>
-          <tbody id="priceChangesTbody"></tbody>
-        </table>
-      </div>
-      <div class="pc-footer">
-        <button class="drive-btn hist-clear-btn" onclick="savePriceChanges([]);updatePriceChangesBadge();openUploads('priceChanges');">🗑 Clear All</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Transaction History lookup -->
 <div id="txnModal" class="hist-modal hidden">
   <div class="hist-panel">
@@ -1120,12 +1077,14 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.30.1';
+const POS_RELEASE = '2026.08.30.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
 const TXN_SHEET = 'Transactions'; // Sheet tab name for transaction export
 const PRICE_CHANGES_KEY = 'mpePriceChanges';
+const PRICE_CHANGE_AUTO_DELAY_MS = 1500;
+const PRICE_CHANGE_RETRY_MS = 30 * 60 * 1000;
 const SHOP_GOOGLE_ACCOUNT = 'info@mauipowerequipment.com';
 const CLIENT_ID = '726499104385-oa324nvlc69sdbj915dikimmh1sqvv1r.apps.googleusercontent.com';
 const DRIVE_FILE_ID = '1xpDOnCq71CZ-Oc4Fh9enVugOL8w75bEz'; // from your Drive URL
@@ -1239,6 +1198,7 @@ function googleConnectedActions() {
   syncCustomersFromSheet();
   flushPendingPartCodes();
   flushPendingReorders();
+  flushPendingPriceChanges();
   flushUnpushedTxns();
   schedulePhoneListNotice();
   if (_pendingAction) { const fn = _pendingAction; _pendingAction = null; fn(); }
@@ -1302,6 +1262,8 @@ function initTokenClient() {
       syncCustomersFromSheet();
       flushPendingPartCodes();
       flushPendingReorders();
+      flushPendingPriceChanges();
+      flushUnpushedTxns();
       schedulePhoneListNotice();
     }
     // If no session token, user clicks Refresh to re-auth with one popup
@@ -1509,10 +1471,9 @@ function refreshStatusUI(transient) {
 }
 
 // ── ADMIN DOT ────────────────────────────────────────────────────────────────
-// Coworkers were reading the Drive/sync notices as errors mid-sale, so every one of
-// them now lives inside the Admin dropdown. Only this dot escapes: amber = something
-// is waiting to sync or nobody is signed in, red = a push actually failed or the
-// catalog is missing. No dot at all = nothing to do, which is the normal state.
+// Coworkers were reading Drive/sync notices as errors mid-sale, so background queues
+// stay quiet. The Admin dot is only for a missing catalog, an available POS release,
+// or Google sign-in—not for ordinary item changes waiting on an automatic retry.
 // A failed Auto Print / PDF / Email shows up as the control's OWN state — the
 // icon flips to ✕ and back — and nowhere else. Whoever is at the counter can see
 // that no paper came out or no file arrived, so a dialog adds nothing they can
@@ -1525,14 +1486,10 @@ function noteToolFailure(what, err) {
 function clearToolFailure() {}
 
 // Red is reserved for "this till cannot do its job" — i.e. no catalog loaded.
-// A failed Drive push is NOT that: the sale is saved locally and is only marked
-// pushed on success, so it goes out with the next sync. It falls through to the
-// amber "N waiting to sync" below, which is what is actually true. The detail
-// lives in the Admin panel for when Trevor wants it.
+// A failed Drive push is not red: the sale stays local and retries later.
 function adminAlertLevel() {
   if (!(typeof loaded !== 'undefined' && loaded && partsArray && partsArray.length)) return 'err';
-  const waiting = (function(){ try { return getPriceChanges().length + countUnpushedTxns(); } catch(e) { return 0; } })();
-  if (_posUpdateRelease || authState() !== 'in' || waiting > 0) return 'warn';
+  if (_posUpdateRelease || authState() !== 'in') return 'warn';
   return '';
 }
 function updateAdminDot() {
@@ -1541,11 +1498,9 @@ function updateAdminDot() {
   const level = adminAlertLevel();
   dot.className = 'admin-dot' + (level === 'err' ? ' err' : '');
   dot.style.display = level ? '' : 'none';
-  const waiting = (function(){ try { return getPriceChanges().length + countUnpushedTxns(); } catch(e) { return 0; } })();
   dot.title = level === 'err'
     ? 'No parts loaded — open Admin'
     : _posUpdateRelease ? 'POS update ready — open Admin after the current sale'
-    : waiting > 0 ? waiting + ' waiting to sync to Drive — open Admin'
     : 'Not signed in to Google — open Admin';
 }
 
@@ -1601,9 +1556,10 @@ function maybeAutoRefresh() {
   if (sameDay && (now - _lastFetchAt) < 30 * 60 * 1000) return;   // already fresh today
   fetchFromDrive();
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingPriceChanges(); } });
 setInterval(() => { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); }, 60 * 1000);
 setInterval(checkForPosUpdate, 5 * 60 * 1000);
+setInterval(flushPendingPriceChanges, PRICE_CHANGE_RETRY_MS);
 
 async function fetchFromDrive() {
   if (desktopGoogleAvailable()) {
@@ -5330,9 +5286,107 @@ function applyDiscountToRow(i) {
 function getPriceChanges() {
   try { return JSON.parse(localStorage.getItem(PRICE_CHANGES_KEY) || '[]'); } catch(e) { return []; }
 }
-function savePriceChanges(arr) {
+let priceChangeFlushTimer = null;
+let priceChangeFlushPromise = null;
+
+function writePriceChanges(arr) {
   localStorage.setItem(PRICE_CHANGES_KEY, JSON.stringify(arr));
   updatePriceChangesBadge();
+}
+function savePriceChanges(arr) {
+  writePriceChanges(arr);
+  schedulePriceChangeFlush();
+}
+function priceChangeSheetRow(change) {
+  return [
+    sheetText(change.pn),
+    change.newPrice ?? change.listPrice ?? '',
+    change.kind === 'newItem' ? change.desc : (change.newDesc || ''),
+    change.make || '',
+    change.date || '',
+    change.kind === 'newItem' ? (change.newCost ?? '') : '',
+  ];
+}
+function priceChangeCell(value, index) {
+  let text = String(value ?? '').trim();
+  if (index === 0 && text.startsWith("'")) text = text.slice(1);
+  if ((index === 1 || index === 5) && text !== '' && Number.isFinite(Number(text))) {
+    return String(Number(text));
+  }
+  return text;
+}
+function priceChangeRowsMatch(expected, actual) {
+  return expected.every((value, index) =>
+    priceChangeCell(value, index) === priceChangeCell(actual?.[index], index));
+}
+function consumeExistingPriceRows(changes, existingRows) {
+  const available = existingRows.map(row => ({ row, used: false }));
+  const alreadyThere = [], missing = [];
+  for (const change of changes) {
+    const expected = priceChangeSheetRow(change);
+    const found = available.find(item => !item.used && priceChangeRowsMatch(expected, item.row));
+    if (found) { found.used = true; alreadyThere.push(change); }
+    else missing.push(change);
+  }
+  return { alreadyThere, missing };
+}
+function removeVerifiedPriceChanges(verified) {
+  const counts = new Map();
+  for (const change of verified) {
+    const key = JSON.stringify(change);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const remaining = getPriceChanges().filter(change => {
+    const key = JSON.stringify(change), count = counts.get(key) || 0;
+    if (!count) return true;
+    counts.set(key, count - 1);
+    return false;
+  });
+  writePriceChanges(remaining);
+  if (remaining.length) schedulePriceChangeFlush();
+}
+// WRITES TO: Google Drive Bridge "Prices" sheet only.
+// TRIGGER: A confirmed POS item change enters the local queue, plus safe retries.
+// DOES NOT TOUCH: Master, POS catalog data, transaction history, QBO, or Drive price feeds.
+async function _flushPendingPriceChanges() {
+  if (!googleSessionAvailable() || authState() !== 'in') return false;
+  const snapshot = getPriceChanges();
+  if (!snapshot.length) return true;
+  try {
+    const existing = await sheetsGet('Prices!A:F');
+    const { alreadyThere, missing } = consumeExistingPriceRows(snapshot, existing);
+    const verified = [...alreadyThere];
+    if (missing.length) {
+      const expected = missing.map(priceChangeSheetRow);
+      const result = await sheetsAppend('Prices!A1', expected);
+      const writtenRange = result?.updates?.updatedRange;
+      if (!writtenRange) throw new Error('Prices append returned no range to verify');
+      const written = await sheetsGet(writtenRange);
+      if (written.length !== expected.length
+          || expected.some((row, index) => !priceChangeRowsMatch(row, written[index]))) {
+        throw new Error('Prices append could not be verified');
+      }
+      verified.push(...missing);
+    }
+    removeVerifiedPriceChanges(verified);
+    return true;
+  } catch (error) {
+    console.warn('[MPE] Item-change sync deferred:', error.message);
+    return false;
+  }
+}
+function flushPendingPriceChanges() {
+  if (priceChangeFlushPromise) return priceChangeFlushPromise;
+  priceChangeFlushPromise = _flushPendingPriceChanges()
+    .finally(() => { priceChangeFlushPromise = null; });
+  return priceChangeFlushPromise;
+}
+function schedulePriceChangeFlush(delay = PRICE_CHANGE_AUTO_DELAY_MS) {
+  if (priceChangeFlushTimer) clearTimeout(priceChangeFlushTimer);
+  priceChangeFlushTimer = setTimeout(() => {
+    priceChangeFlushTimer = null;
+    flushPendingPriceChanges();
+  }, Math.max(0, Number(delay) || 0));
 }
 function logPriceChange(rowIdx, newPrice, listPrice) {
   const inp = tbody.querySelector(`[data-row="${rowIdx}"].part-input`);
@@ -5458,57 +5512,7 @@ function countUnpushedTxns() {
   } catch (e) { return 0; }
 }
 function updatePriceChangesBadge() {
-  const pc = getPriceChanges().length;
-  const txn = countUnpushedTxns();          // transactions saved locally but not yet on Drive
-  const total = pc + txn;
-  ['uploadsBadge','dataBadge'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.textContent = total > 0 ? String(total) : '';
-      el.style.display = total > 0 ? '' : 'none';
-      el.title = total > 0 ? `${txn} transaction(s) + ${pc} item change(s) waiting to push to Drive` : '';
-    }
-  });
-  const tabBadge = document.getElementById('pcTabBadge');
-  if (tabBadge) tabBadge.textContent = pc > 0 ? `(${pc})` : '';
-  const btn = document.getElementById('uploadsBtn');
-  if (btn) btn.classList.toggle('active', total > 0);
   updateAdminDot();
-}
-function renderPriceChanges() {
-  const changes = getPriceChanges();
-  const tb = document.getElementById('priceChangesTbody');
-  if (!tb) return;
-  tb.innerHTML = changes.length === 0
-    ? '<tr><td colspan="9" style="text-align:center;color:#aaa;padding:20px;">No pending item changes</td></tr>'
-    : changes.map((c, i) =>
-        `<tr>` +
-        `<td style="text-align:center;"><button class="hist-del-btn" title="Remove" onclick="deletePriceChangeEntry(${i})">✕</button></td>` +
-        `<td style="font-size:13px;font-weight:500;">${c.pn}${c.kind === 'newItem' ? '<br><span class="pc-new-item-pill">New Master item</span>' : ''}</td>` +
-        `<td style="font-size:12px;color:#555;">${c.desc || '—'}</td>` +
-        `<td style="font-size:12px;color:#2f4339;">${c.newDesc != null ? c.newDesc : '—'}</td>` +
-        `<td style="font-size:13px;text-align:right;color:#c0392b;">${c.newPrice != null ? '<strong>$'+parseFloat(c.newPrice).toFixed(2)+'</strong>' : '—'}</td>` +
-        `<td style="font-size:12px;text-align:right;color:#888;">${c.listPrice != null ? '$'+parseFloat(c.listPrice).toFixed(2) : '—'}</td>` +
-        `<td style="font-size:12px;text-align:right;">${c.newCost != null ? '$'+parseFloat(c.newCost).toFixed(2) : '—'}</td>` +
-        `<td style="font-size:12px;text-align:right;color:#888;">${c.origCost != null ? '$'+parseFloat(c.origCost).toFixed(2) : '—'}</td>` +
-        `<td style="font-size:12px;color:#aaa;text-align:right;">${c.date}</td></tr>`
-      ).join('');
-}
-function openUploads(tab) {
-  switchUploadTab(tab || 'history');
-  document.getElementById('uploadsModal').classList.remove('hidden');
-}
-function closeUploads() {
-  document.getElementById('uploadsModal').classList.add('hidden');
-}
-function switchUploadTab(tab) {
-  const isHistory = tab === 'history';
-  document.getElementById('uploadsPanelHistory').style.display = isHistory ? 'flex' : 'none';
-  document.getElementById('uploadsPanelPriceChanges').style.display = isHistory ? 'none' : 'flex';
-  document.getElementById('tabHistory').classList.toggle('active', isHistory);
-  document.getElementById('tabPriceChanges').classList.toggle('active', !isHistory);
-  if (isHistory) renderHistory();
-  else renderPriceChanges();
 }
 const SHEETS_READ_RETRY_MS = [2000, 5000, 10000, 20000, 30000];
 
@@ -5864,73 +5868,6 @@ async function flushUnpushedTxns() {
   try { updatePriceChangesBadge(); } catch (e) {}
 }
 
-async function pushAllToSheet() {
-  // Auth gate — trigger sign-in and resume automatically on success
-  if (!googleSessionAvailable()) {
-    _pendingAction = () => pushAllToSheet();
-    handleSignIn();
-    return;
-  }
-
-  const btn = document.getElementById('pushAllBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⬆ Pushing…'; }
-  let pricesPushed = 0, txnsPushed = 0, errors = [];
-
-  // Push item changes (price/desc updates)
-  const changes = getPriceChanges();
-  if (changes.length) {
-    try {
-      const rows = changes.map(c => [c.pn, c.newPrice ?? c.listPrice ?? '', c.kind === 'newItem' ? c.desc : (c.newDesc || ''), c.make || '', c.date, c.kind === 'newItem' ? (c.newCost ?? '') : '']);
-      const ok = await sheetsAppend('Prices!A1', rows);
-      if (ok) pricesPushed = rows.length;
-    } catch(e) { errors.push('Item changes: ' + e.message); }
-  }
-
-  // Push unpushed transactions from history
-  const history = getHistory();
-  const pushed = getPushedTxnIds();
-  for (const order of history) {
-    const txnId = order.txnId;
-    if (!txnId || pushed.has(txnId)) continue;
-    try {
-      await pushTransactionToSheet(order);
-      txnsPushed++;
-    } catch(e) { errors.push('Txn ' + txnId + ': ' + e.message); }
-  }
-
-  if (btn) { btn.disabled = false; btn.textContent = '⬆ Push to Drive Sheet'; }
-
-  if (errors.length) {
-    alert('Push errors — nothing cleared:\n' + errors.join('\n'));
-    return;
-  }
-
-  const parts = [];
-  if (pricesPushed) parts.push(`${pricesPushed} item change${pricesPushed !== 1 ? 's' : ''}`);
-  if (txnsPushed)   parts.push(`${txnsPushed} transaction${txnsPushed !== 1 ? 's' : ''}`);
-  if (!parts.length) { alert('Nothing new to push.'); return; }
-
-  // Confirmed push — clear both tabs and close
-  savePriceChanges([]); updatePriceChangesBadge();
-  localStorage.removeItem(HISTORY_KEY);
-  closeUploads();
-  alert('✓ Pushed: ' + parts.join(' + ') + '\n\nHistory and item changes cleared.');
-}
-
-async function pushPriceChangesToSheet() {
-  const changes = getPriceChanges();
-  if (!changes.length) return;
-  if (!SHEETS_ID) { alert('Set SHEETS_ID in the app config first.'); return; }
-  const rows = changes.map(c => [c.pn, c.newPrice ?? c.listPrice ?? '', c.kind === 'newItem' ? c.desc : (c.newDesc || ''), c.make || '', c.date, c.kind === 'newItem' ? (c.newCost ?? '') : '']);
-  try {
-    const ok = await sheetsAppend('Prices!A1', rows);
-    if (!ok) return;
-    savePriceChanges([]);
-    updatePriceChangesBadge();
-    closeUploads();
-    alert(`Pushed ${rows.length} change${rows.length > 1 ? 's' : ''} to Drive sheet.`);
-  } catch(e) { alert('Push failed: ' + e.message); }
-}
 async function pushTransactionToSheet(order) {
   // WRITES TO: Google Drive Bridge "Transactions" sheet.
   // TRIGGER: Print, Auto Print, Export PDF, Email, or an explicit history push.
@@ -8252,9 +8189,6 @@ function getHistory() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch(e) { return []; }
 }
 
-function openHistory() { openUploads('history'); }
-function closeHistory() { closeUploads(); }
-
 function renderHistory() {
   const history = getHistory();
   const list = document.getElementById('histList');
@@ -8831,29 +8765,6 @@ function deleteHistoryEntry(idx) {
   try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e) {}
   renderHistory();
 }
-
-function deletePriceChangeEntry(idx) {
-  const changes = getPriceChanges();
-  if (idx < 0 || idx >= changes.length) return;
-  changes.splice(idx, 1);
-  savePriceChanges(changes);
-  updatePriceChangesBadge();
-  renderPriceChanges();
-}
-
-document.getElementById('uploadsModal').addEventListener('click', function(e) {
-  if (e.target === this) closeUploads();
-});
-
-document.getElementById('uploadsModal').querySelector('.hist-panel').addEventListener('wheel', function(e) {
-  e.stopPropagation();
-}, { passive: true });
-
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape' && !document.getElementById('uploadsModal').classList.contains('hidden')) {
-    closeUploads();
-  }
-});
 
 // ─── CUSTOMER FIELDS ───────────────────────────────────────────────────────
 const custFields = ['custName','custCompany','custAddr','custCity','custState','custZip','custPhone','custEmail'];
