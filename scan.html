@@ -1649,6 +1649,28 @@ function queueCodeUnbind(rawCode, format) {
 // price — never Cost and never MSRP — which is why the sheet labels it that way.
 function changeKeyFor(pn) { return normalizePN(pn); }
 
+function bridgeChangeRow(change) {
+  return [sheetText(change.pn), change.newPrice === '' ? '' : change.newPrice,
+    change.newDesc || '', change.make || '', change.date || '', ''];
+}
+function bridgeChangeCell(value, index) {
+  let text = String(value ?? '').trim();
+  if (index === 0 && text.startsWith("'")) text = text.slice(1);
+  if ((index === 1 || index === 5) && text !== '' && Number.isFinite(Number(text))) return String(Number(text));
+  return text;
+}
+function bridgeChangeKey(value) {
+  const row = Array.isArray(value) ? value : bridgeChangeRow(value);
+  const pn = bridgeChangeCell(row[0], 0).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return JSON.stringify([pn, bridgeChangeCell(row[1], 1),
+    bridgeChangeCell(row[2], 2).replace(/\s+/g, ' '), bridgeChangeCell(row[5], 5)]);
+}
+function bridgeChangeMeaningful(value) {
+  const row = Array.isArray(value) ? value : bridgeChangeRow(value);
+  return !!bridgeChangeCell(row[0], 0)
+    && !!(bridgeChangeCell(row[1], 1) || bridgeChangeCell(row[2], 2) || bridgeChangeCell(row[5], 5));
+}
+
 function queuedChangeFor(pn) {
   const key = changeKeyFor(pn);
   return key ? pendingChanges.find(c => changeKeyFor(c.pn) === key) || null : null;
@@ -1917,17 +1939,29 @@ async function _flushPendingChanges() {
     // No ensureTab: `Prices` is a permanent headerless Bridge tab, and writing a
     // header row into it would reach Bridge Pull as a bogus price change.
     while (pendingChanges.length) {
-      const batch = pendingChanges.slice();
-      const result = await sheetsAppend(`${PRICES_SHEET}!A1`, batch.map(c => [
-        sheetText(c.pn), c.newPrice === '' ? '' : c.newPrice, c.newDesc || '', c.make || '', c.date, ''
-      ]));
-      const range = result?.updates?.updatedRange;
-      if (!range) throw new Error('append returned no range to verify');
-      const written = await sheetsGet(range);
-      const confirmed = new Set(written.map(r => normalizePN(r[0])));
-      const missing = batch.find(c => !confirmed.has(normalizePN(c.pn)));
-      if (missing) throw new Error(`change for ${missing.pn} was not found after append`);
-      pendingChanges = pendingChanges.slice(batch.length);
+      const batch = pendingChanges.filter(bridgeChangeMeaningful);
+      const existing = await sheetsGet(`${PRICES_SHEET}!A:F`);
+      const existingKeys = new Set(existing.filter(bridgeChangeMeaningful).map(bridgeChangeKey));
+      const unique = [], seen = new Set();
+      batch.forEach(change => {
+        const key = bridgeChangeKey(change);
+        if (!seen.has(key)) { seen.add(key); unique.push(change); }
+      });
+      const missing = unique.filter(change => !existingKeys.has(bridgeChangeKey(change)));
+      if (missing.length) {
+        const expected = missing.map(bridgeChangeRow);
+        const result = await sheetsAppend(`${PRICES_SHEET}!A1`, expected);
+        const range = result?.updates?.updatedRange;
+        if (!range) throw new Error('append returned no range to verify');
+        const written = await sheetsGet(range);
+        if (written.length !== expected.length || expected.some((row, index) =>
+          row.some((cell, col) => bridgeChangeCell(cell, col) !== bridgeChangeCell(written[index]?.[col], col)))) {
+          throw new Error('item changes were not found after append');
+        }
+      }
+      const verifiedKeys = new Set(unique.map(bridgeChangeKey));
+      pendingChanges = pendingChanges.filter(change =>
+        bridgeChangeMeaningful(change) && !verifiedKeys.has(bridgeChangeKey(change)));
       save(K_CHANGES, pendingChanges);
       renderPending();
     }

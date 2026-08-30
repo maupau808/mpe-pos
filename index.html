@@ -112,7 +112,7 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .search-table th.r { text-align: right; }
 .search-table td { padding: 4px 4px; border-bottom: 1px solid #eef1ec; vertical-align: middle; }
 .row-num { font-size: 12px; color: #bbb; text-align: center; width: 22px; }
-.search-wrap { position: relative; }
+.part-cell .search-wrap { position: relative; width: calc(100% + 20px); margin-left: -20px; }
 .part-input { width: 100%; font-size: 14px; padding: 6px 8px; border: 1px solid #d9dfd6; border-radius: 7px; background: #fff; color: #1a1a1a; }
 .part-input:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.06); }
 .part-input.matched { border-color: #4caf50; }
@@ -165,11 +165,12 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .not-found { font-size: 13px; color: #e53935; }
 .clear-row { width: 20px; text-align: center; cursor: pointer; font-size: 15px; color: #c7cfc4; user-select: none; }
 .clear-row:hover { color: #e53935; }
-.reorder-head { width: 64px; color: #a52a24 !important; font-size: 10px !important; font-weight: 650 !important; line-height: 1.15; text-align: center !important; }
-.reorder-cell { width: 64px; text-align: center; }
+.reorder-head { width: 42px; min-width: 42px; max-width: 42px; padding-left: 1px !important; padding-right: 1px !important; color: #a52a24 !important; font-size: 9px !important; font-weight: 650 !important; line-height: 1.15; text-align: center !important; }
+.reorder-cell { width: 42px; min-width: 42px; max-width: 42px; padding-left: 4px !important; padding-right: 0 !important; text-align: left; }
 .reorder-toggle { width: 17px; height: 17px; margin: 0; accent-color: #b3261e; cursor: pointer; vertical-align: middle; }
 .reorder-toggle:disabled { opacity: .22; cursor: default; }
 .reorder-marked .reorder-cell { background: #fff7f6; }
+.make-head, .make-cell, .mobile-make { display: none !important; }
 .summary { background: #f9f8f7; border-radius: 8px; border: 1px solid #2f4339; padding: 14px 18px; margin-bottom: 1rem; width: 300px; margin-left: auto; }
 .mahalo-cell { display: none; }
 .sum-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; }
@@ -219,14 +220,19 @@ body.doc-internal .sum-internal { display: block; }
 .license-diag button { margin-top: 8px; font: inherit; font-size: 11px; padding: 5px 8px;
   border: 1px solid #b9c5b8; border-radius: 5px; background: #fff; color: #2f4339; cursor: pointer; }
 .license-diag button:hover { background: #eef5ef; }
-.bottom-actions { display: flex; gap: 10px; margin-bottom: 1rem; }
+.bottom-actions { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 1rem; }
 .btn-danger { color: #c62828; border-color: #ef9a9a; }
 .btn-danger:hover { background: #fff5f5; border-color: #e53935; }
-/* Half-width sibling of Print: same height and type so the row still reads as
-   one set of controls, narrower box so Print stays the primary action. */
-.btn-auto { padding: 8px 4px; width: 56px; }
+.print-choice { display: grid; gap: 4px; }
+.print-choice-label { color: #666; font-size: 12px; font-weight: 600; line-height: 1; text-align: center; }
+.print-choice-buttons { display: flex; gap: 5px; }
+.print-choice-buttons .btn-big { min-width: 70px; padding-left: 12px; padding-right: 12px; }
 .btn-filled { background: #2f4339; color: #fff; border-color: #2f4339; }
 .btn-filled:hover { background: #202d27; border-color: #202d27; }
+.checkout-summary { display: flex; align-items: flex-end; gap: 8px; margin-left: auto; }
+.checkout-summary .summary { margin-left: 0; }
+.discounts-trigger { margin-bottom: 1rem; }
+.discounts-trigger.active { border-color: #7cad80; background: #eef5ef; color: #2d7a3a; }
 .review-star-btn { background: none; border: 1.5px solid #d9dfd6; border-radius: 6px; cursor: pointer; font-size: 13px; padding: 6px 8px; line-height: 1; white-space: nowrap; transition: border-color .15s, background .15s; }
 .review-star-btn:hover { border-color: #aaa; }
 .review-star-btn.active { border-color: #4caf50; background: #f1f8e9; }
@@ -546,6 +552,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .bottom-bar .scan-panel:not(.review-mode) { position: static; }
   .scan-slot .scan-panel:not(.review-mode) { width: min(320px, calc(100vw - 32px)); }
   .bottom-actions { margin-bottom: 0; }
+  .checkout-summary { width: 100%; margin-left: 0; }
+  .checkout-summary .summary { flex: 1; min-width: 0; width: auto; }
   .scan-panel.review-mode { width: 100%; min-width: 100%; }
   .scan-camera { height: 60px; }
 }
@@ -563,14 +571,16 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   body.dark .scanner-mode-list-head { color: #aeb7ae; }
   .scanner-mode-lines { flex: none; border-top: 1px solid #e1e7de; }
   body.dark .scanner-mode-lines { border-color: #353d36; }
-  .scanner-mode-line { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; align-items: center; gap: 16px; min-height: 88px; border-bottom: 1px solid #e1e7de; }
+  .scanner-mode-line { display: grid; grid-template-columns: minmax(0, 1fr) 54px auto; align-items: center; gap: 14px; min-height: 88px; padding: 0 10px; border-bottom: 1px solid #e1e7de; }
+  .scanner-mode-line:nth-child(even) { background: #f2f5f0; }
   body.dark .scanner-mode-line { border-color: #353d36; }
-  .scanner-mode-qty { color: #667066; font-size: 20px; font-variant-numeric: tabular-nums; }
+  body.dark .scanner-mode-line:nth-child(even) { background: #252b26; }
+  .scanner-mode-qty { color: #667066; font-size: 17px; font-variant-numeric: tabular-nums; text-align: center; }
   body.dark .scanner-mode-qty { color: #aeb7ae; }
-  .scanner-mode-description { min-width: 0; font-size: 26px; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; overflow-wrap: anywhere; }
+  .scanner-mode-description { min-width: 0; font-size: 18px; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; overflow-wrap: anywhere; }
   .scanner-mode-serial { margin-top: 5px; color: #4e6856; font-size: 14px; font-weight: 700; letter-spacing: .025em; }
   body.dark .scanner-mode-serial { color: #b8cbbb; }
-  .scanner-mode-price { font-size: 28px; font-weight: 700; line-height: 1.1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .scanner-mode-price { font-size: 19px; font-weight: 700; line-height: 1.1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .scanner-mode-empty { padding: 26px 0; color: #667066; font-size: 18px; }
   body.dark .scanner-mode-empty { color: #aeb7ae; }
   .scanner-mode-side { position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; gap: 14px; min-height: min(560px, calc(100vh - 24px)); padding: 20px 18px 16px; background: #f2f5f0; box-sizing: border-box; }
@@ -584,38 +594,37 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-status.err { color: #8e2f32; }
   .scanner-mode-total-block { margin-top: auto; }
   .scanner-mode-totals { margin-bottom: 10px; }
-  .scanner-mode-total-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 4px 0; color: #667066; font-size: 15px; }
+  .scanner-mode-total-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 4px 0; color: #667066; font-size: 17px; }
   body.dark .scanner-mode-total-row { color: #c1c9c1; }
   .scanner-mode-total-row span:last-child { color: inherit; font-weight: 600; font-variant-numeric: tabular-nums; }
   .scanner-mode-total-row.total { margin-top: 5px; padding-top: 12px; border-top: 1px solid #cbd4ca; color: inherit; }
   body.dark .scanner-mode-total-row.total { border-color: #4a554b; }
   .scanner-mode-total-label { color: #667066; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   body.dark .scanner-mode-total-label { color: #aeb7ae; }
-  .scanner-mode-total { font-size: clamp(40px, 4.5vw, 56px); font-weight: 700; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+  .scanner-mode-total { font-size: clamp(30px, 3.375vw, 42px); font-weight: 700; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
   .scanner-mode-command-deck { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid #cbd4ca; }
   body.dark .scanner-mode-command-deck { border-color: #4a554b; }
   .scanner-mode-command-kicker { color: #667066; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   body.dark .scanner-mode-command-kicker { color: #aeb7ae; }
   .scanner-mode-command { min-width: 0; border: 1px solid #cbd4ca; background: rgba(255,255,255,.56); box-sizing: border-box; }
   body.dark .scanner-mode-command { border-color: #4a554b; background: rgba(0,0,0,.12); }
-  .scanner-mode-command-primary { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 12px; padding: 6px 12px 6px 6px; border-color: #2f5a3f; }
+  .scanner-mode-command-horizontal { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 12px; padding: 6px 12px 6px 6px; }
+  .scanner-mode-command-primary { border-color: #2f5a3f; }
   body.dark .scanner-mode-command-primary { border-color: #78927f; }
-  .scanner-mode-command-secondary-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .scanner-mode-command-secondary { display: grid; justify-items: center; align-content: start; gap: 2px; padding: 7px 6px 6px; text-align: center; }
-  .scanner-mode-command-next.is-next { border: 2px solid #b3261e; padding: 6px 5px 5px; }
+  .scanner-mode-command-qr-right { grid-template-columns: minmax(0, 1fr) 90px; padding: 6px 6px 6px 12px; }
+  .scanner-mode-command-next.is-next { border: 2px solid #b3261e; padding: 5px 11px 5px 5px; }
   .scanner-mode-command-label { color: #26362c; font-size: 15px; font-weight: 800; line-height: 1.12; letter-spacing: .02em; text-transform: uppercase; text-wrap: balance; }
   body.dark .scanner-mode-command-label { color: #eef2ef; }
-  .scanner-mode-command-primary .scanner-mode-command-label { color: #2f5a3f; font-size: clamp(18px, 1.8vw, 22px); }
+  .scanner-mode-command-horizontal .scanner-mode-command-label { font-size: clamp(18px, 1.8vw, 22px); }
+  .scanner-mode-command-primary .scanner-mode-command-label { color: #2f5a3f; }
   body.dark .scanner-mode-command-primary .scanner-mode-command-label { color: #b7c8bb; }
   .scanner-mode-command-next .scanner-mode-command-label { color: #a32323; }
   body.dark .scanner-mode-command-next .scanner-mode-command-label { color: #eea1a1; }
-  .scanner-mode-command-secondary .scanner-mode-command-label { display: grid; min-height: 32px; place-items: center; }
   .scanner-mode-command-help { margin-top: 2px; color: #667066; font-size: 11px; font-weight: 600; line-height: 1.2; text-wrap: pretty; }
   body.dark .scanner-mode-command-help { color: #aeb7ae; }
-  .scanner-mode-command-secondary .scanner-mode-command-help { display: grid; min-height: 18px; place-items: start center; }
   .scanner-mode-command-code { display: block; width: 100%; max-width: 72px; height: auto; aspect-ratio: 1; background: #fff; shape-rendering: crispEdges; }
   body.dark .scanner-mode-command-code { filter: invert(1) contrast(1.2821); }
-  .scanner-mode-command-primary .scanner-mode-command-code { max-width: 90px; }
+  .scanner-mode-command-horizontal .scanner-mode-command-code { max-width: 90px; }
   .scanner-mode-exit-bar { display: block; flex: none; width: 100%; min-height: 64px; margin-top: auto; padding: 14px 18px; border: 0; background: transparent; color: #c62828; font: inherit; font-size: clamp(20px, 2.2vw, 28px); font-weight: 800; line-height: 1.15; letter-spacing: .025em; text-align: center; text-transform: uppercase; text-wrap: balance; cursor: pointer; box-sizing: border-box; -webkit-tap-highlight-color: rgba(198,40,40,.12); }
   .scanner-mode-exit-bar:hover { color: #a82020; }
   .scanner-mode-exit-bar:active { color: #8a1c19; }
@@ -626,19 +635,18 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     .scanner-mode-list { padding: 16px; border-right: 0; }
     .scanner-mode-side { position: static; min-height: 0; gap: 16px; padding: 18px 16px; }
     .scanner-mode-total-block { margin-top: 0; }
+    .scanner-mode-line { grid-template-columns: minmax(0, 1fr) 44px auto; gap: 10px; }
     .scanner-mode-description { font-size: 17px; }
-    .scanner-mode-command-primary { grid-template-columns: 104px minmax(0, 1fr); }
-    .scanner-mode-command-primary .scanner-mode-command-code { max-width: 104px; }
-    .scanner-mode-command-secondary .scanner-mode-command-label { min-height: 34px; }
-    .scanner-mode-command-secondary .scanner-mode-command-help { min-height: 30px; }
-    .scanner-mode-command-secondary .scanner-mode-command-code { max-width: 104px; }
+    .scanner-mode-command-horizontal { grid-template-columns: 104px minmax(0, 1fr); }
+    .scanner-mode-command-qr-right { grid-template-columns: minmax(0, 1fr) 104px; }
+    .scanner-mode-command-horizontal .scanner-mode-command-code { max-width: 104px; }
   }
 }
 @media print {
   #scannerModeView { display: none !important; }
   body { background: #fff; padding: 0; zoom: 1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .wrap { border: none; border-radius: 0; padding: 1.2rem; max-width: 100%; }
-  .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, .reorder-cell, .reorder-head, #printBanner, .doc-screen-title, .bottom-actions, .scan-command-flash { display: none !important; }
+  .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, .reorder-cell, .reorder-head, #printBanner, .doc-screen-title, .bottom-actions, .discounts-trigger, .scan-command-flash { display: none !important; }
   .qty-input { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; border: none; background: transparent; font-size: 14px; padding: 0; pointer-events: none; width: auto; text-align: center; color: #000 !important; -webkit-text-fill-color: #000 !important; }
   .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .part-input { border: none; background: transparent; font-size: 14px; font-weight: 500; padding: 0; pointer-events: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
@@ -885,23 +893,25 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         </div>
         <div class="scanner-mode-command-deck" aria-label="Scanner commands">
           <div class="scanner-mode-command-kicker">Scanner commands</div>
-          <div class="scanner-mode-command scanner-mode-command-primary" aria-label="Print command QR code">
+          <div class="scanner-mode-command scanner-mode-command-horizontal scanner-mode-command-primary" aria-label="Print command QR code">
             <svg id="scannerModePrintCode" class="scanner-mode-command-code" role="img" aria-label="Print QR code"></svg>
             <div>
               <div class="scanner-mode-command-label">Print</div>
               <div class="scanner-mode-command-help">Finish and print this sale</div>
             </div>
           </div>
-          <div class="scanner-mode-command-secondary-row">
-            <div id="scannerModeNextCommand" class="scanner-mode-command scanner-mode-command-secondary scanner-mode-command-next" aria-label="Next transaction command QR code">
-              <div class="scanner-mode-command-label">Next transaction</div>
-              <div class="scanner-mode-command-help">Scan twice to clear</div>
-              <svg id="scannerModeClearCode" class="scanner-mode-command-code" role="img" aria-label="Next transaction QR code"></svg>
-            </div>
-            <div class="scanner-mode-command scanner-mode-command-secondary" aria-label="Undo command QR code">
+          <div class="scanner-mode-command scanner-mode-command-horizontal scanner-mode-command-qr-right" aria-label="Undo command QR code">
+            <div>
               <div class="scanner-mode-command-label">Undo</div>
               <div class="scanner-mode-command-help">Last item or clear</div>
-              <svg id="scannerModeUndoCode" class="scanner-mode-command-code" role="img" aria-label="Undo QR code"></svg>
+            </div>
+            <svg id="scannerModeUndoCode" class="scanner-mode-command-code" role="img" aria-label="Undo QR code"></svg>
+          </div>
+          <div id="scannerModeNextCommand" class="scanner-mode-command scanner-mode-command-horizontal scanner-mode-command-next" aria-label="Next transaction command QR code">
+            <svg id="scannerModeClearCode" class="scanner-mode-command-code" role="img" aria-label="Next transaction QR code"></svg>
+            <div>
+              <div class="scanner-mode-command-label">Next transaction</div>
+              <div class="scanner-mode-command-help">Scan twice to clear</div>
             </div>
           </div>
         </div>
@@ -917,16 +927,15 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   <table class="search-table">
     <thead>
       <tr>
-        <th style="width:22px;"></th>
-        <th style="width:155px;">Product</th>
+        <th class="reorder-head">Restock?</th>
+        <th style="width:135px;">Product</th>
         <th>Description</th>
-        <th style="width:80px;">Make</th>
+        <th class="make-head">Make</th>
         <th class="r" style="width:72px;">Cost</th>
         <th class="r" style="width:65px;">Margin</th>
         <th class="r" style="width:150px;" id="hdr-unitprice">Ea.</th>
         <th style="width:44px;text-align:center;">Qty</th>
         <th class="r" style="width:90px;">Price</th>
-        <th class="reorder-head">Need to<br>Order?</th>
         <th style="width:20px;"></th>
       </tr>
     </thead>
@@ -975,12 +984,19 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="bottom-actions">
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
       <button class="btn-big" id="saveBtn" onclick="saveOnly()" title="Save to transaction history without printing">Save</button>
-      <button class="btn-big btn-filled" id="printBtn" onclick="printQuote()" title="Print one single-sided copy to the counter printer">🖨 Print</button>
-      <button class="btn-big btn-auto" id="autoPrintBtn" onclick="autoPrint()" title="Auto Print — straight to the counter printer, single-sided">Auto</button>
+      <div class="print-choice" role="group" aria-labelledby="printChoiceLabel">
+        <div class="print-choice-label" id="printChoiceLabel">Print</div>
+        <div class="print-choice-buttons">
+          <button class="btn-big" id="printBtn" onclick="manualPrint()" title="Open the system print dialog">Manual</button>
+          <button class="btn-big btn-filled" id="autoPrintBtn" onclick="autoPrint()" title="Send one single-sided copy directly to the Brother counter printer">Auto</button>
+        </div>
+      </div>
       <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
     </div>
     <div class="mahalo-cell"><div class="mahalo">Mahalo for choosing us!</div></div>
-    <div class="summary">
+    <div class="checkout-summary">
+      <button class="btn-big discounts-trigger" id="discountsBtn" type="button" aria-pressed="false" onclick="showDiscountControls()" title="Show a $ off control on each line item">Discounts</button>
+      <div class="summary">
       <div class="sum-row">
         <span class="sum-label">Subtotal</span>
         <span class="sum-val" id="sumSubtotal">—</span>
@@ -997,7 +1013,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <span class="sum-label">Total</span>
         <span class="sum-val" id="sumTotal">—</span>
       </div>
-      <div class="sum-internal" id="sumInternal">
+        <div class="sum-internal" id="sumInternal">
         <div class="sum-row">
           <span class="sum-label">Cost</span>
           <span class="sum-val" id="sumCost">—</span>
@@ -1011,6 +1027,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
           <span class="sum-val" id="sumMarginPct">—</span>
         </div>
         <div class="sum-nocost" id="sumNoCost"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1077,7 +1094,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.30.2';
+const POS_RELEASE = '2026.08.30.3';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -3785,7 +3802,7 @@ function syncScannerModeView(message, state) {
       const price = document.createElement('div');
       price.className = 'scanner-mode-price';
       price.textContent = line.price;
-      item.append(qty, description, price);
+      item.append(description, qty, price);
       linesEl.appendChild(item);
     });
   }
@@ -4947,12 +4964,24 @@ function applyActiveSaleToLine(i, part, listPrice) {
   return true;
 }
 
-function enableDiscountControls() {
-  discountControlsEnabled = true;
+function setDiscountControlsEnabled(enabled) {
+  discountControlsEnabled = !!enabled;
   for (let i = 0; i < NUM_ROWS; i++) {
     renderLineDiscount(i);
     renderMobileDiscountState(i);
   }
+  const btn = document.getElementById('discountsBtn');
+  btn?.classList.toggle('active', discountControlsEnabled);
+  btn?.setAttribute('aria-pressed', String(discountControlsEnabled));
+}
+
+function enableDiscountControls() {
+  setDiscountControlsEnabled(true);
+}
+
+function showDiscountControls() {
+  enableDiscountControls();
+  flashScanCommand('Discount controls shown on each line', 'ok');
 }
 
 document.addEventListener('click', e => {
@@ -5006,7 +5035,7 @@ function onEditableKeydown(e) {
   }
 }
 
-function onPriceEdit(i) {
+function onPriceEdit(i, commitBridge = false) {
   const priceEl = document.getElementById(`price-${i}`);
   if (!priceEl) return;
   if (parseFloat(priceEl.dataset.discountPerUnit) > 0) clearLineDiscountMetadata(i);
@@ -5018,14 +5047,21 @@ function onPriceEdit(i) {
     priceEl.dataset.price = price;
     const _pInput = tbody.querySelector(`[data-row="${i}"].part-input`);
     const _listP = parseFloat(_pInput?.dataset.list) || 0;
-    if (_pInput?.dataset.isOther === '1') logOtherSuggestion(i);
-    else if (_listP && Math.abs(price - _listP) > 0.001) logPriceChange(i, price, _listP);
-    else clearPriceChange(i);
+    if (commitBridge) {
+      if (_pInput?.dataset.isOther === '1') logOtherSuggestion(i);
+      else if (_listP && Math.abs(price - _listP) > 0.001) logPriceChange(i, price, _listP);
+      else clearPriceChange(i);
+    }
     const cost = parseFloat(document.getElementById(`cost-${i}`)?.dataset.cost) || 0;
     const margin = marginText(cost, price);
     document.getElementById(`margin-${i}`).textContent = margin;
   } else {
     priceEl.dataset.price = '';
+    if (commitBridge) {
+      const _pInput = tbody.querySelector(`[data-row="${i}"].part-input`);
+      if (_pInput?.dataset.isOther === '1') logOtherSuggestion(i);
+      else clearPriceChange(i);
+    }
   }
   renderMobileDiscountState(i);
   updateSubtotal(i); updateSummary();
@@ -5045,8 +5081,8 @@ function onSubEdit(i) {
   if (pInput) pInput.value = fmt(newEa);
   subEl.value = fmt(subVal);
   subEl.dataset.val = subVal;
-  // Reuse onPriceEdit for margin + price-change tracking (it will also call updateSubtotal but that's fine)
-  onPriceEdit(i);
+  // Subtotal commits only when its field is finished (blur/Enter/Tab).
+  onPriceEdit(i, true);
 }
 
 function onCostEdit(i) {
@@ -5054,7 +5090,14 @@ function onCostEdit(i) {
   if (!costEl || costEl.tagName !== 'INPUT') return;
   const raw = (costEl.value || '').replace(/[$,]/g, '').trim();
   const newCost = parseFloat(raw);
-  if (isNaN(newCost) || newCost < 0) { costEl.value = costEl.dataset.cost > 0 ? fmt(parseFloat(costEl.dataset.cost)) : ''; return; }
+  if (isNaN(newCost) || newCost < 0) {
+    const originalCost = parseFloat(costEl.dataset.origCost) || 0;
+    costEl.dataset.cost = originalCost;
+    costEl.value = originalCost > 0 ? fmt(originalCost) : '';
+    const draftInput = tbody.querySelector(`[data-row="${i}"].part-input`);
+    if (draftInput?.dataset.isOther === '1') logOtherSuggestion(i); else clearCostChange(i);
+    return;
+  }
   costEl.dataset.cost = newCost;
   costEl.value = newCost > 0 ? fmt(newCost) : '';
   // Refresh margin display
@@ -5069,14 +5112,13 @@ function onCostEdit(i) {
   const make = (inp.dataset.partMake || '').trim();
   if (!make || /^other$/i.test(make)) return;
   const origCost = parseFloat(costEl.dataset.origCost) || 0;
-  if (Math.abs(newCost - origCost) < 0.001) return;
+  if (Math.abs(newCost - origCost) < 0.001) { clearCostChange(i); return; }
   const changes = getPriceChanges();
   const key = inp.dataset.partPn + '_' + i;
   const idx = changes.findIndex(c => c.rowKey === key);
   const entry = idx >= 0 ? changes[idx] : {
     rowKey: key, pn: inp.dataset.partPn, desc: inp.dataset.partDesc,
-    make: inp.dataset.partMake, listPrice: parseFloat(inp.dataset.list) || 0,
-    newPrice: price, newMargin: margin, oldMargin: '—', date: new Date().toLocaleDateString('en-US')
+    make: inp.dataset.partMake, date: new Date().toLocaleDateString('en-US')
   };
   entry.newCost = newCost;
   entry.origCost = origCost;
@@ -5085,26 +5127,41 @@ function onCostEdit(i) {
   updatePriceChangesBadge();
 }
 
+function clearCostChange(rowIdx) {
+  const inp = tbody.querySelector(`[data-row="${rowIdx}"].part-input`);
+  if (!inp?.dataset.partPn) return;
+  const key = inp.dataset.partPn + '_' + rowIdx;
+  const changes = getPriceChanges();
+  const idx = changes.findIndex(c => c.rowKey === key);
+  if (idx < 0) return;
+  const entry = changes[idx];
+  delete entry.newCost;
+  delete entry.origCost;
+  const hasPrice = entry.newPrice != null && Number.isFinite(Number(entry.newPrice));
+  const hasDesc = !!String(entry.newDesc || '').trim();
+  if (!hasPrice && !hasDesc) changes.splice(idx, 1); else changes[idx] = entry;
+  savePriceChanges(changes);
+}
+
 function addRow() {
   const i = NUM_ROWS;
   NUM_ROWS++;
   const tr = document.createElement('tr');
   tr.dataset.row = i;
   tr.innerHTML = `
-    <td class="row-num">${i+1}</td>
-    <td><div class="search-wrap">
+    <td class="reorder-cell"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Restock line ${i+1}" disabled></td>
+    <td class="part-cell"><div class="search-wrap">
       <input class="part-input" type="text" placeholder="Product" data-row="${i}" autocomplete="off" autocorrect="off" spellcheck="false">
       <span class="supersede-mark" id="supmark-${i}" aria-hidden="true">*</span>
       <div class="dropdown" id="dd-${i}"></div>
     </div></td>
     <td><span id="desc-${i}" class="empty-cell">—</span></td>
-    <td><span id="make-${i}" style="font-size:12px;color:#888;">—</span></td>
+    <td class="make-cell"><span id="make-${i}" style="font-size:12px;color:#888;">—</span></td>
     <td style="text-align:right;"><span class="cell-cost" id="cost-${i}">—</span></td>
     <td style="text-align:right;"><span class="cell-margin" id="margin-${i}">—</span></td>
     <td style="text-align:right;"><span class="cell-r" id="price-${i}" data-price="">—</span></td>
     <td style="text-align:center;"><input class="qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="qty-${i}"></td>
     <td style="text-align:right;"><span class="cell-r sub-total" id="sub-${i}" data-val="">—</span></td>
-    <td class="reorder-cell"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Need to order line ${i+1}" disabled></td>
     <td class="clear-row" data-row="${i}" title="Clear row">×</td>
   `;
   tbody.appendChild(tr);
@@ -5128,13 +5185,12 @@ function addNoteRow() {
   const tr = document.createElement('tr');
   tr.dataset.noteRow = id;
   tr.innerHTML = `
-    <td class="row-num"><span class="note-label">Note</span></td>
+    <td class="reorder-cell"></td>
     <td colspan="6">
       <textarea class="note-desc-input" id="${id}-desc" placeholder="Note description…" autocomplete="off" spellcheck="false" rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
     </td>
     <td style="text-align:center;"><input class="qty-input" type="number" value="1" min="1" step="1" id="${id}-qty" onchange="updateNoteSubtotal('${id}')"></td>
     <td style="text-align:right;"><input class="note-price-input" id="${id}-price" type="text" placeholder="$0.00" autocomplete="off" onchange="updateNoteSubtotal('${id}')"></td>
-    <td class="reorder-cell"></td>
     <td class="clear-row" title="Remove note" onclick="this.closest('tr').remove(); updateSummary();">×</td>
   `;
   tbody.appendChild(tr);
@@ -5200,6 +5256,7 @@ function applyNoteToRow(i) {
   priceEl.innerHTML = `<input class="price-edit" id="price-input-${i}" data-row="${i}" data-cost="0" value="" type="text" placeholder="$0.00" autocomplete="off" spellcheck="false">`;
   const pInput = priceEl.querySelector('.price-edit');
   pInput.addEventListener('input', () => onPriceEdit(i));
+  pInput.addEventListener('blur', () => onPriceEdit(i, true));
   pInput.addEventListener('focus', function() { this.select(); });
   pInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
@@ -5266,6 +5323,7 @@ function applyDiscountToRow(i) {
     if (pInput.value !== v) pInput.value = v;
     onPriceEdit(i);
   });
+  pInput.addEventListener('blur', () => onPriceEdit(i, true));
   pInput.addEventListener('focus', function() { this.select(); });
   pInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
@@ -5297,14 +5355,19 @@ function savePriceChanges(arr) {
   writePriceChanges(arr);
   schedulePriceChangeFlush();
 }
+function priceChangeNumberOrBlank(value, allowZero = false) {
+  if (value == null || String(value).trim() === '') return '';
+  const number = Number(value);
+  return Number.isFinite(number) && (allowZero ? number >= 0 : number > 0) ? number : '';
+}
 function priceChangeSheetRow(change) {
   return [
     sheetText(change.pn),
-    change.newPrice ?? change.listPrice ?? '',
+    priceChangeNumberOrBlank(change.newPrice),
     change.kind === 'newItem' ? change.desc : (change.newDesc || ''),
     change.make || '',
     change.date || '',
-    change.kind === 'newItem' ? (change.newCost ?? '') : '',
+    priceChangeNumberOrBlank(change.newCost, true),
   ];
 }
 function priceChangeCell(value, index) {
@@ -5319,29 +5382,47 @@ function priceChangeRowsMatch(expected, actual) {
   return expected.every((value, index) =>
     priceChangeCell(value, index) === priceChangeCell(actual?.[index], index));
 }
+function priceChangeProposalKey(value) {
+  const row = Array.isArray(value) ? value : priceChangeSheetRow(value);
+  const pn = priceChangeCell(row[0], 0).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const isNew = priceChangeCell(row[3], 3).toUpperCase() === '@NEW';
+  const list = priceChangeCell(row[1], 1);
+  const desc = priceChangeCell(row[2], 2).replace(/\s+/g, ' ');
+  const cost = priceChangeCell(row[5], 5);
+  return JSON.stringify([pn, isNew ? '@NEW' : '', list, desc, cost]);
+}
+function priceChangeIsMeaningful(value) {
+  const row = Array.isArray(value) ? value : priceChangeSheetRow(value);
+  const pn = priceChangeCell(row[0], 0);
+  if (!pn) return false;
+  const list = priceChangeCell(row[1], 1);
+  const desc = priceChangeCell(row[2], 2).replace(/\s+/g, ' ');
+  const cost = priceChangeCell(row[5], 5);
+  if (priceChangeCell(row[3], 3).toUpperCase() === '@NEW') {
+    const sameAsPn = desc.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+      === pn.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return !!desc && !sameAsPn && !/^other$|^—$/i.test(desc);
+  }
+  return !!(list || desc || cost);
+}
 function consumeExistingPriceRows(changes, existingRows) {
-  const available = existingRows.map(row => ({ row, used: false }));
+  const existingKeys = new Set(existingRows.filter(priceChangeIsMeaningful).map(priceChangeProposalKey));
+  const seen = new Set();
   const alreadyThere = [], missing = [];
   for (const change of changes) {
-    const expected = priceChangeSheetRow(change);
-    const found = available.find(item => !item.used && priceChangeRowsMatch(expected, item.row));
-    if (found) { found.used = true; alreadyThere.push(change); }
+    if (!priceChangeIsMeaningful(change)) continue;
+    const key = priceChangeProposalKey(change);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (existingKeys.has(key)) alreadyThere.push(change);
     else missing.push(change);
   }
   return { alreadyThere, missing };
 }
 function removeVerifiedPriceChanges(verified) {
-  const counts = new Map();
-  for (const change of verified) {
-    const key = JSON.stringify(change);
-    counts.set(key, (counts.get(key) || 0) + 1);
-  }
-  const remaining = getPriceChanges().filter(change => {
-    const key = JSON.stringify(change), count = counts.get(key) || 0;
-    if (!count) return true;
-    counts.set(key, count - 1);
-    return false;
-  });
+  const verifiedKeys = new Set(verified.map(priceChangeProposalKey));
+  const remaining = getPriceChanges().filter(change =>
+    priceChangeIsMeaningful(change) && !verifiedKeys.has(priceChangeProposalKey(change)));
   writePriceChanges(remaining);
   if (remaining.length) schedulePriceChangeFlush();
 }
@@ -5350,7 +5431,10 @@ function removeVerifiedPriceChanges(verified) {
 // DOES NOT TOUCH: Master, POS catalog data, transaction history, QBO, or Drive price feeds.
 async function _flushPendingPriceChanges() {
   if (!googleSessionAvailable() || authState() !== 'in') return false;
-  const snapshot = getPriceChanges();
+  const rawSnapshot = getPriceChanges();
+  if (!rawSnapshot.length) return true;
+  const snapshot = rawSnapshot.filter(priceChangeIsMeaningful);
+  if (snapshot.length !== rawSnapshot.length) writePriceChanges(snapshot);
   if (!snapshot.length) return true;
   try {
     const existing = await sheetsGet('Prices!A:F');
@@ -5400,11 +5484,15 @@ function logPriceChange(rowIdx, newPrice, listPrice) {
   const _cost = parseFloat(inp.dataset.partCost) || 0;
   const _newMarg = marginText(_cost, newPrice);
   const _oldMarg = marginText(_cost, listPrice);
-  const entry = { rowKey: key, pn: inp.dataset.partPn, desc: inp.dataset.partDesc,
+  const entry = idx >= 0 ? changes[idx] : {
+    rowKey: key, pn: inp.dataset.partPn, desc: inp.dataset.partDesc,
     make: inp.dataset.partMake, cost: inp.dataset.partCost,
-    listPrice: listPrice, newPrice: newPrice,
-    newMargin: _newMarg, oldMargin: _oldMarg,
-    date: new Date().toLocaleDateString('en-US') };
+    date: new Date().toLocaleDateString('en-US')
+  };
+  entry.listPrice = listPrice;
+  entry.newPrice = newPrice;
+  entry.newMargin = _newMarg;
+  entry.oldMargin = _oldMarg;
   if (idx >= 0) changes[idx] = entry; else changes.push(entry);
   savePriceChanges(changes);
 }
@@ -5415,10 +5503,12 @@ function clearPriceChange(rowIdx) {
   const changes = getPriceChanges();
   const idx = changes.findIndex(c => c.rowKey === key);
   if (idx < 0) return;
-  // Only remove entry if there's no desc change on it; otherwise just clear price fields
+  // Preserve any description or cost proposal carried by the same line.
   const entry = changes[idx];
-  if (entry.newDesc) { delete entry.listPrice; delete entry.newPrice; delete entry.newMargin; delete entry.oldMargin; changes[idx] = entry; }
-  else changes.splice(idx, 1);
+  delete entry.listPrice; delete entry.newPrice; delete entry.newMargin; delete entry.oldMargin;
+  const hasDesc = !!String(entry.newDesc || '').trim();
+  const hasCost = entry.newCost != null && Number.isFinite(Number(entry.newCost));
+  if (hasDesc || hasCost) changes[idx] = entry; else changes.splice(idx, 1);
   savePriceChanges(changes);
 }
 function onDescEdit(i) {
@@ -5431,7 +5521,7 @@ function onDescEdit(i) {
   if (inp.dataset.isOther === '1') { logOtherSuggestion(i); return; }
   const make = (inp.dataset.partMake || '').trim();
   if (!make || /^other$/i.test(make)) return;
-  if (newDesc === origDesc) { clearDescChange(i); return; }
+  if (!newDesc || newDesc === origDesc) { clearDescChange(i); return; }
   logDescChange(i, newDesc, origDesc);
 }
 function logDescChange(rowIdx, newDesc, origDesc) {
@@ -5459,8 +5549,8 @@ function clearDescChange(rowIdx) {
   const entry = changes[idx];
   delete entry.newDesc;
   // If no other changes remain, remove the entry entirely
-  const hasPrice = entry.newPrice != null && entry.newPrice !== entry.listPrice;
-  const hasCost = entry.newCost != null && entry.newCost !== entry.origCost;
+  const hasPrice = entry.newPrice != null && Number.isFinite(Number(entry.newPrice));
+  const hasCost = entry.newCost != null && Number.isFinite(Number(entry.newCost));
   if (!hasPrice && !hasCost) changes.splice(idx, 1); else changes[idx] = entry;
   savePriceChanges(changes);
 }
@@ -5474,9 +5564,13 @@ function logOtherSuggestion(rowIdx) {
   const changes = getPriceChanges();
   const key = inp.dataset.newItemKey || '';
   const idx = key ? changes.findIndex(c => c.rowKey === key) : -1;
-  if (!typed || /^other$/i.test(typed)) {
+  const descRaw = (document.getElementById(`desc-${rowIdx}`)?.textContent || '').trim();
+  const description = (!descRaw || /^other$|^—$/i.test(descRaw)) ? '' : descRaw;
+  const sameAsPn = description.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+    === typed.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  if (!typed || /^other$/i.test(typed) || !description || sameAsPn) {
     if (idx >= 0) { changes.splice(idx, 1); savePriceChanges(changes); }
-    return;
+    return false;
   }
   // A row number is reused after every sale. Give each edited Other line its
   // own identity so a later row 1 cannot overwrite an earlier unpushed item.
@@ -5484,8 +5578,6 @@ function logOtherSuggestion(rowIdx) {
     inp.dataset.newItemKey = 'new-item_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
   }
   const entryIdx = changes.findIndex(c => c.rowKey === inp.dataset.newItemKey);
-  const descRaw = (document.getElementById(`desc-${rowIdx}`)?.textContent || '').trim();
-  const description = (!descRaw || /^other$|^—$/i.test(descRaw)) ? typed : descRaw;
   const price = parseFloat(document.getElementById(`price-${rowIdx}`)?.dataset.price);
   const cost = parseFloat(document.getElementById(`cost-${rowIdx}`)?.dataset.cost);
   const entry = { rowKey: inp.dataset.newItemKey, kind: 'newItem', pn: typed, desc: description,
@@ -5495,6 +5587,7 @@ function logOtherSuggestion(rowIdx) {
   if (entryIdx >= 0) changes[entryIdx] = entry; else changes.push(entry);
   savePriceChanges(changes);
   saveCustomPartCodeBinding(rowIdx);
+  return true;
 }
 
 function clearOtherSuggestion(rowIdx) {
@@ -5504,6 +5597,12 @@ function clearOtherSuggestion(rowIdx) {
   const changes = getPriceChanges();
   const next = changes.filter(c => c.rowKey !== key);
   if (next.length !== changes.length) savePriceChanges(next);
+}
+function commitActiveBridgeDraft() {
+  const active = document.activeElement;
+  const inSaleEditor = active && (tbody.contains(active)
+    || document.getElementById('mobileRows')?.contains(active));
+  if (inSaleEditor && typeof active.blur === 'function') active.blur();
 }
 function countUnpushedTxns() {
   try {
@@ -6238,20 +6337,19 @@ function buildRows() {
     const tr = document.createElement('tr');
     tr.dataset.row = i;
     tr.innerHTML = `
-      <td class="row-num">${i+1}</td>
-      <td><div class="search-wrap">
+      <td class="reorder-cell"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Restock line ${i+1}" disabled></td>
+      <td class="part-cell"><div class="search-wrap">
         <input class="part-input" type="text" placeholder="Product" data-row="${i}" autocomplete="off" autocorrect="off" spellcheck="false">
         <span class="supersede-mark" id="supmark-${i}" aria-hidden="true">*</span>
         <div class="dropdown" id="dd-${i}"></div>
       </div></td>
       <td><span id="desc-${i}" class="empty-cell">—</span></td>
-      <td><span id="make-${i}" style="font-size:12px;color:#888;">—</span></td>
+      <td class="make-cell"><span id="make-${i}" style="font-size:12px;color:#888;">—</span></td>
       <td style="text-align:right;"><span class="cell-cost" id="cost-${i}">—</span></td>
       <td style="text-align:right;"><span class="cell-margin" id="margin-${i}">—</span></td>
       <td style="text-align:right;"><span class="cell-r" id="price-${i}" data-price="">—</span></td>
       <td style="text-align:center;"><input class="qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="qty-${i}"></td>
       <td style="text-align:right;"><span class="cell-r sub-total" id="sub-${i}" data-val="">—</span></td>
-      <td class="reorder-cell"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Need to order line ${i+1}" disabled></td>
       <td class="clear-row" data-row="${i}" title="Clear row">×</td>
     `;
     tbody.appendChild(tr);
@@ -6270,6 +6368,7 @@ function buildRows() {
     });
   }
   tbody.addEventListener('input', onInput);
+  tbody.addEventListener('focusout', onBridgeDraftFocusOut);
   tbody.addEventListener('click', onTableClick);
   tbody.addEventListener('keydown', onEditableKeydown);
   document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) closeAllDropdowns(); });
@@ -6314,7 +6413,6 @@ function onInput(e) {
   if (e.target.classList.contains('part-input')) {
     if (e.target.dataset.isOther === '1') {
       e.target.dataset.partPn = e.target.value;
-      logOtherSuggestion(i);
       return;
     }
     handleSearch(i);
@@ -6322,6 +6420,25 @@ function onInput(e) {
   else if (e.target.classList.contains('qty-input')) {
     const mobileQty = document.getElementById(`mqty-${i}`); if (mobileQty) mobileQty.value = e.target.value;
     updateSubtotal(i); renderLineDiscount(i); updateSummary(); updateSNFields(i);
+  }
+}
+
+function onBridgeDraftFocusOut(e) {
+  const target = e.target;
+  if (target.classList.contains('part-input') && target.dataset.isOther === '1') {
+    const i = parseInt(target.dataset.row);
+    if (!isNaN(i)) { target.dataset.partPn = target.value; logOtherSuggestion(i); }
+    return;
+  }
+  if (target.classList.contains('cell-desc')) {
+    const i = parseInt(target.dataset.row);
+    const inp = tbody.querySelector(`[data-row="${i}"].part-input`);
+    if (!isNaN(i) && inp?.dataset.isOther === '1') logOtherSuggestion(i);
+    return;
+  }
+  if (target.classList.contains('cell-editable') && target.id?.startsWith('price-')) {
+    const i = parseInt(target.id.replace('price-', ''));
+    if (!isNaN(i)) onPriceEdit(i, true);
   }
 }
 
@@ -6664,9 +6781,9 @@ function renderSNFields(i, qty, pn) {
   snTr.dataset.snFor = i;
   snTr.className = 'sn-tr';
 
-  // Col1 (row-num, hidden in print) | colspan td with SN content
+  // Col1 (Restock, hidden in print) | colspan td with SN content
   // Indent matches desc column: on-screen col2 is ~155px wide, in print col2 is 20%
-  let innerHtml = '<td></td><td colspan="10" class="sn-content-cell">';
+  let innerHtml = '<td></td><td colspan="9" class="sn-content-cell">';
   // Up to 4 SN per line
   for (let row = 0; row < n; row += 4) {
     innerHtml += '<div class="sn-row">';
@@ -6756,6 +6873,7 @@ function applyPart(i, part, options) {
   priceEl.innerHTML = `<input class="price-edit" id="price-input-${i}" data-row="${i}" data-cost="${cost}" value="${fmt(price)}" type="text" autocomplete="off" spellcheck="false">`;
   const pInput = priceEl.querySelector('.price-edit');
   pInput.addEventListener('input', () => onPriceEdit(i));
+  pInput.addEventListener('blur', () => onPriceEdit(i, true));
   pInput.addEventListener('focus', function() { this.select(); });
   pInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
@@ -6998,9 +7116,11 @@ function updateSummary() {
 }
 
 function clearAll() {
+  commitActiveBridgeDraft();
+  void flushPendingPriceChanges();
   _scannerModeAwaitingClear = false;
   renderScannerModeCommandCodes();
-  discountControlsEnabled = false;
+  setDiscountControlsEnabled(false);
   NOTE_COUNT = 0;
   scanIssues.clear();
   clearScanChoices();
@@ -7361,9 +7481,11 @@ function cleanupPrint() {
 let _printPrepared = false;
 let _directPrintInFlight = false;
 function recordOutgoingDocument() {
-  // Renew first so the callback can flush this transaction along with any
-  // older local entries waiting for Drive.
+  commitActiveBridgeDraft();
+  // Renew before the flush so this proposal and any older local entries can
+  // leave together even after a quiet hour at the register.
   renewOnPrint();
+  void flushPendingPriceChanges();
   const saved = saveToHistory();
   updatePriceChangesBadge();
   return saved;
@@ -7429,14 +7551,9 @@ function serializedPrintDocument() {
   return '<!doctype html>\n' + copy.outerHTML;
 }
 
-async function printQuote() {
-  // The desktop shell can enforce one copy + simplex. Route the ordinary Print
-  // button and Ctrl/Cmd-P through that same fixed path instead of opening an OS
-  // dialog whose remembered duplex/copy settings the web page cannot control.
-  if (window.mpeDesktop && typeof window.mpeDesktop.printReceipt === 'function') {
-    await autoPrint('print');
-    return;
-  }
+function manualPrint() {
+  // Manual always means manual, including inside MPE POS Desktop. Auto Print is
+  // the separate path that pins the configured Brother, simplex, and one copy.
   prepareAndSaveForPrint();
   window.print();
 }
@@ -7444,22 +7561,21 @@ async function printQuote() {
 const AUTO_PRINT_REPEAT_GUARD_MS = 5000;
 let _lastDirectPrintTxnId = '';
 let _lastDirectPrintAt = 0;
-async function autoPrint(trigger = 'auto') {
+async function autoPrint() {
   if (_directPrintInFlight) return;
   if (_currentTxnId && _currentTxnId === _lastDirectPrintTxnId && Date.now() - _lastDirectPrintAt < AUTO_PRINT_REPEAT_GUARD_MS) {
-    const repeatBtn = document.getElementById(trigger === 'print' ? 'printBtn' : 'autoPrintBtn');
+    const repeatBtn = document.getElementById('autoPrintBtn');
     if (repeatBtn) {
-      const idle = trigger === 'print' ? '🖨 Print' : 'Auto';
       repeatBtn.textContent = '✓ Sent';
-      setTimeout(() => { repeatBtn.textContent = idle; repeatBtn.disabled = false; }, 1800);
+      setTimeout(() => { repeatBtn.textContent = 'Auto'; repeatBtn.disabled = false; }, 1800);
     }
     flashScanCommand('Already sent once — duplicate blocked', 'warn');
     return;
   }
   _directPrintInFlight = true;
   const printStartedAt = performance.now();
-  const btn = document.getElementById(trigger === 'print' ? 'printBtn' : 'autoPrintBtn');
-  const idleLabel = trigger === 'print' ? '🖨 Print' : 'Auto';
+  const btn = document.getElementById('autoPrintBtn');
+  const idleLabel = 'Auto';
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
   clearToolFailure();
   setBtn('⏳', true);
@@ -7550,7 +7666,7 @@ window.addEventListener('afterprint', () => {
   }
 });
 document.addEventListener('keydown', e => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'p') { e.preventDefault(); printQuote(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'p') { e.preventDefault(); manualPrint(); }
 });
 
 // ─── EMAIL (Gmail draft + PDF attachment) ───────────────────────────────────
@@ -8357,6 +8473,7 @@ function reprintOrder(idx) {
       priceEl.innerHTML = `<input class="price-edit" data-row="${i}" value="$${ea.toFixed(2)}" type="text" autocomplete="off" spellcheck="false">`;
       const pInput = priceEl.querySelector('.price-edit');
       pInput.addEventListener('input', () => onPriceEdit(i));
+      pInput.addEventListener('blur', () => onPriceEdit(i, true));
       pInput.addEventListener('focus', function() { this.select(); });
       pInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); const qty = document.getElementById(`qty-${i}`); if (qty) { qty.focus(); qty.select(); } }
@@ -9182,6 +9299,7 @@ function buildMobileRows() {
     div.querySelector('.part-input').addEventListener('keydown', onMobileKeydown);
   }
   container.addEventListener('input', onMobileInput);
+  container.addEventListener('focusout', onMobileBridgeDraftFocusOut);
   container.addEventListener('click', onMobileClick);
   container.addEventListener('keydown', onMobileDescKeydown);
   document.addEventListener('click', e => { if (!e.target.closest('.mobile-search-wrap')) closeMobileDropdowns(); });
@@ -9197,7 +9315,6 @@ function onMobileInput(e) {
   else if (e.target.classList.contains('part-input')) {
     if (e.target.dataset.isOther === '1') {
       const desktop = tbody.querySelector(`[data-row="${i}"].part-input`); if (desktop) { desktop.value = e.target.value; desktop.dataset.partPn = e.target.value; }
-      logOtherSuggestion(i);
       return;
     }
     if (e.target.classList.contains('matched')) {
@@ -9213,8 +9330,22 @@ function onMobileInput(e) {
   }
   else if (e.target.classList.contains('mobile-desc') && e.target.dataset.isOther === '1') {
     const desktopDesc = document.getElementById(`desc-${i}`); if (desktopDesc) desktopDesc.textContent = e.target.textContent;
-    logOtherSuggestion(i);
   }
+}
+
+function onMobileBridgeDraftFocusOut(e) {
+  const target = e.target;
+  if (target.dataset.isOther !== '1') return;
+  const i = parseInt(target.dataset.row);
+  if (isNaN(i)) return;
+  if (target.classList.contains('part-input')) {
+    const desktop = tbody.querySelector(`[data-row="${i}"].part-input`);
+    if (desktop) { desktop.value = target.value; desktop.dataset.partPn = target.value; }
+  } else if (target.classList.contains('mobile-desc')) {
+    const desktopDesc = document.getElementById(`desc-${i}`);
+    if (desktopDesc) desktopDesc.textContent = target.textContent;
+  } else return;
+  logOtherSuggestion(i);
 }
 
 function onMobileDescKeydown(e) {
