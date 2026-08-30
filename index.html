@@ -1082,7 +1082,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.30.6';
+const POS_RELEASE = '2026.08.30.7';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -7797,9 +7797,34 @@ const PDF_GREEN = '#2f4339';
 const PDF_INK   = '#111111';
 const PDF_LINE  = '#d7d7d7';
 
+let _pdfMutedLogoSrc = '';
 function _pdfLogoSrc() {
   const img = document.querySelector('img[alt="MPE Logo"]');
-  return img?.getAttribute('src') || img?.src || '';
+  const original = img?.getAttribute('src') || img?.src || '';
+  if (!original || !img.complete || !img.naturalWidth || !img.naturalHeight) return original;
+  if (_pdfMutedLogoSrc) return _pdfMutedLogoSrc;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return original;
+    ctx.drawImage(img, 0, 0);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const target = PDF_GREEN.match(/[0-9a-f]{2}/gi).map(hex => parseInt(hex, 16));
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      if (!pixels.data[i + 3]) continue;
+      pixels.data[i] = target[0];
+      pixels.data[i + 1] = target[1];
+      pixels.data[i + 2] = target[2];
+    }
+    ctx.putImageData(pixels, 0, 0);
+    _pdfMutedLogoSrc = canvas.toDataURL('image/png');
+    return _pdfMutedLogoSrc;
+  } catch (error) {
+    console.warn('[MPE] Could not mute PDF logo color:', error);
+    return original;
+  }
 }
 
 function buildEmailDocHTML(order, title, number, dateStr) {
