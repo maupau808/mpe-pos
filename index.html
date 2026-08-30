@@ -105,14 +105,14 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .drive-btn.refresh:hover { background: #c8e6c9; }
 .drive-status { font-size: 13px; color: #888; }
 
-.cell-cost { font-size: 12px; color: #777; text-align: right; white-space: nowrap; }
-.cell-margin { font-size: 12px; color: #777; text-align: right; white-space: nowrap; }
+.cell-cost { font-size: var(--value-fit-size, 12px); color: #777; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cell-margin { font-size: var(--value-fit-size, 12px); color: #777; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .search-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
 .search-table th { font-size: 12px; font-weight: 500; color: #888; text-align: left; padding: 6px 8px; border-bottom: 1px solid #e5eae2; }
 .search-table th.r { text-align: right; }
 .search-table td { padding: 4px 4px; border-bottom: 1px solid #eef1ec; vertical-align: middle; }
 .row-num { font-size: 12px; color: #bbb; text-align: center; width: 22px; }
-.part-cell .search-wrap { position: relative; width: calc(100% + 20px); margin-left: -20px; }
+.part-cell .search-wrap { position: relative; width: 100%; }
 .part-input { width: 100%; font-size: 14px; padding: 6px 8px; border: 1px solid #d9dfd6; border-radius: 7px; background: #fff; color: #1a1a1a; }
 .part-input:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.06); }
 .part-input.matched { border-color: #4caf50; }
@@ -137,7 +137,7 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .cell-editable { outline: none; border-radius: 3px; cursor: text; user-select: text; -webkit-user-select: text; }
 .cell-editable:hover { background: #eef1ec; }
 .cell-editable:focus { background: #fff; box-shadow: 0 0 0 2px rgba(0,0,0,0.1); }
-.price-edit { width: 72px; font-size: 14px; font-family: inherit; text-align: right; border: 1px solid #d9dfd6; border-radius: 4px; padding: 2px 4px; background: #fff; color: #1a1a1a; box-sizing: border-box; }
+.price-edit { width: 72px; font-size: var(--value-fit-size, 14px); font-family: inherit; font-variant-numeric: tabular-nums; text-align: right; border: 1px solid #d9dfd6; border-radius: 4px; padding: 2px 4px; background: #fff; color: #1a1a1a; box-sizing: border-box; }
 .price-edit:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.08); }
 .line-price-cell { position: relative; display: inline-block; min-width: 132px; white-space: normal; }
 .discount-display { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex-wrap: wrap; }
@@ -152,21 +152,21 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .discount-editor.open { display: block; }
 .discount-editor label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; }
 .discount-editor-line { display: flex; align-items: center; gap: 5px; }
-.discount-money { width: 72px; min-width: 0; font: inherit; font-size: 13px; padding: 4px 5px; border: 1px solid #c7cfc4; border-radius: 4px; text-align: right; }
+.discount-money { width: 72px; min-width: 0; font: inherit; font-size: var(--value-fit-size, 13px); font-variant-numeric: tabular-nums; padding: 4px 5px; border: 1px solid #c7cfc4; border-radius: 4px; text-align: right; }
 .discount-editor button { font: inherit; font-size: 11px; padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
 .discount-editor .discount-apply { color: #2d7a3a; border-color: #8ebc92; }
 .card-fee-row.hidden { display: none; }
-.sub-edit { width: 80px; font-size: 16px; font-weight: 700; font-family: inherit; text-align: right; border: 1px solid #d9dfd6; border-radius: 4px; padding: 2px 4px; background: #fff; color: #1a1a1a; box-sizing: border-box; }
+.sub-edit { width: 80px; font-size: var(--value-fit-size, 16px); font-weight: 700; font-family: inherit; font-variant-numeric: tabular-nums; text-align: right; border: 1px solid #d9dfd6; border-radius: 4px; padding: 2px 4px; background: #fff; color: #1a1a1a; box-sizing: border-box; }
 .sub-edit:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.08); }
-.cost-edit { width: 62px; font-size: 12px; font-family: inherit; text-align: right; border: 1px solid #d9dfd6; border-radius: 4px; padding: 2px 4px; background: #fff8f0; color: #777; box-sizing: border-box; }
+.cost-edit { width: 62px; font-size: var(--value-fit-size, 12px); font-family: inherit; font-variant-numeric: tabular-nums; text-align: right; border: 1px solid #d9dfd6; border-radius: 4px; padding: 2px 4px; background: #fff8f0; color: #777; box-sizing: border-box; }
 .cost-edit:focus { outline: none; border-color: #e0a000; box-shadow: 0 0 0 2px rgba(224,160,0,0.12); }
-.cell-r { font-size: 14px; font-weight: 400; text-align: right; white-space: nowrap; }
+.cell-r { font-size: var(--value-fit-size, 14px); font-weight: 400; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .empty-cell { font-size: 13px; color: #c7cfc4; }
 .not-found { font-size: 13px; color: #e53935; }
 .clear-row { width: 20px; text-align: center; cursor: pointer; font-size: 15px; color: #c7cfc4; user-select: none; }
 .clear-row:hover { color: #e53935; }
 .reorder-head { width: 42px; min-width: 42px; max-width: 42px; padding-left: 1px !important; padding-right: 1px !important; color: #a52a24 !important; font-size: 9px !important; font-weight: 650 !important; line-height: 1.15; text-align: center !important; }
-.reorder-cell { width: 42px; min-width: 42px; max-width: 42px; padding-left: 4px !important; padding-right: 0 !important; text-align: left; }
+.reorder-cell { width: 42px; min-width: 42px; max-width: 42px; padding-left: 12px !important; padding-right: 0 !important; text-align: left; }
 .reorder-toggle { width: 17px; height: 17px; margin: 0; accent-color: #b3261e; cursor: pointer; vertical-align: middle; }
 .reorder-toggle:disabled { opacity: .22; cursor: default; }
 .reorder-marked .reorder-cell { background: #fff7f6; }
@@ -224,8 +224,9 @@ body.doc-internal .sum-internal { display: block; }
 .btn-danger { color: #c62828; border-color: #ef9a9a; }
 .btn-danger:hover { background: #fff5f5; border-color: #e53935; }
 .print-choice { display: grid; gap: 4px; }
-.print-choice-label { color: #666; font-size: 12px; font-weight: 600; line-height: 1; text-align: center; }
+.print-choice-label { color: #333; font-size: 12px; font-weight: 650; line-height: 1; text-align: center; }
 .print-choice-buttons { display: flex; gap: 5px; }
+.print-choice-option { display: grid; gap: 4px; }
 .print-choice-buttons .btn-big { min-width: 70px; padding-left: 12px; padding-right: 12px; }
 .btn-filled { background: #2f4339; color: #fff; border-color: #2f4339; }
 .btn-filled:hover { background: #202d27; border-color: #202d27; }
@@ -240,10 +241,10 @@ body.doc-internal .sum-internal { display: block; }
 .loading-msg { font-size: 14px; color: #888; padding: 6px 0; }
 .note-desc-input { font-size: 14px; font-family: inherit; padding: 4px 6px; border: 1px solid #d9dfd6; border-radius: 5px; background: #fffef0; color: #1a1a1a; width: 100%; box-sizing: border-box; resize: none; overflow: hidden; min-height: 28px; line-height: 1.4; display: block; }
 .note-desc-input:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.06); }
-.note-price-input { width: 72px; font-size: 14px; font-family: inherit; text-align: right; border: 1px solid #d9dfd6; border-radius: 4px; padding: 2px 4px; background: #fffef0; color: #1a1a1a; box-sizing: border-box; }
+.note-price-input { width: 72px; font-size: var(--value-fit-size, 14px); font-family: inherit; font-variant-numeric: tabular-nums; text-align: right; border: 1px solid #d9dfd6; border-radius: 4px; padding: 2px 4px; background: #fffef0; color: #1a1a1a; box-sizing: border-box; }
 .note-price-input:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.08); }
 .note-label { font-size: 11px; color: #aaa; font-style: italic; white-space: nowrap; }
-.sn-content-cell { padding-left: 177px !important; }
+.sn-content-cell { padding-left: 135px !important; }
 .sn-row { display: flex; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
 .sn-field { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #555; flex: 1; min-width: 120px; }
 .sn-field label { white-space: nowrap; font-weight: 500; }
@@ -457,7 +458,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
    (Cost | Margin | Ea. | Price) packs tight against the right edge instead of
    floating with auto widths. Qty is dropped — an internal sheet is a cost/margin
    review, not a receipt. Multi-qty lines still show a unit price in "Ea."
-   col2 PN 16% | col3 Desc 46% | col5 Cost 11% | col6 Margin 8% | col7 Ea 8% | col9 Price 11% */
+   col1 PN 16% | col2 Desc 46% | col5 Cost 11% | col6 Margin 8% | col7 Ea 8% | col9 Price 11% */
 @media print {
   body.internal-print #printCopy2 { display: none !important; }
   body.internal-print .mahalo-cell { display: none !important; }
@@ -467,14 +468,12 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   body.internal-print .search-table td:nth-child(6) { display: table-cell !important; }
   body.internal-print .search-table th:nth-child(8),
   body.internal-print .search-table td:nth-child(8) { display: none !important; }
-  /* !important is load-bearing: every <th> carries an inline width= attribute
-     (155px PN, 150px Ea., …) and an inline style beats a plain stylesheet rule.
-     Without it the 150px "Ea." column reserves a fat empty gap mid-page and the
-     description gets squeezed — which is exactly what these sheets looked like. */
+  /* !important is load-bearing: the screen headers carry inline pixel widths,
+     while the internal printout deliberately uses a compact percentage grid. */
+  body.internal-print .search-table th:nth-child(1),
+  body.internal-print .search-table td:nth-child(1) { width: 16% !important; }
   body.internal-print .search-table th:nth-child(2),
-  body.internal-print .search-table td:nth-child(2) { width: 16% !important; }
-  body.internal-print .search-table th:nth-child(3),
-  body.internal-print .search-table td:nth-child(3) { width: 46% !important; }
+  body.internal-print .search-table td:nth-child(2) { width: 46% !important; }
   body.internal-print .search-table th:nth-child(5),
   body.internal-print .search-table td:nth-child(5) { width: 11% !important; text-align: right; }
   body.internal-print .search-table th:nth-child(6),
@@ -521,7 +520,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .mobile-desc.empty { color: #bbb; font-size: 12px; }
   .mobile-bottom { display: flex; align-items: center; gap: 6px; }
   .mobile-make { font-size: 11px; color: #aaa; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mobile-price { font-size: 13px; font-weight: 500; color: #444; white-space: nowrap; }
+  .mobile-price { font-size: var(--value-fit-size, 13px); font-weight: 500; color: #444; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .mobile-price.discounted { white-space: normal; display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; flex-wrap: wrap; }
   .mobile-discount-total { display: none; color: #2d7a3a; font-size: 11px; font-weight: 600; white-space: nowrap; }
   .mobile-discount-total.visible { display: inline; }
@@ -537,7 +536,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .mobile-qty { width: 52px; font-size: 14px; padding: 4px 5px; border: 1px solid #d9dfd6; border-radius: 7px; background: #fff; text-align: center; -webkit-appearance: none; -moz-appearance: textfield; }
   .mobile-qty::-webkit-outer-spin-button, .mobile-qty::-webkit-inner-spin-button { -webkit-appearance: none; }
   .mobile-qty:focus { outline: none; border-color: #999; }
-  .mobile-sub { font-size: 15px; font-weight: 600; white-space: nowrap; min-width: 60px; text-align: right; }
+  .mobile-sub { font-size: var(--value-fit-size, 15px); font-weight: 600; white-space: nowrap; min-width: 60px; text-align: right; font-variant-numeric: tabular-nums; }
   .mobile-clear { font-size: 20px; color: #d9dfd6; cursor: pointer; line-height: 1; padding-left: 4px; user-select: none; }
   .mobile-clear:active { color: #e53935; }
   .mobile-reorder { display: inline-flex; align-items: center; gap: 3px; color: #98938e; font-size: 10px; white-space: nowrap; }
@@ -664,7 +663,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .sn-input { border: none; background: transparent; pointer-events: none; min-width: 100px; -webkit-appearance: none; appearance: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
   .sn-field label { font-weight: 600; }
   .sn-row { margin-top: 3px; }
-  .sn-tr td:first-child { display: none !important; }
   .sn-tr td { border-bottom: 1px solid #ddd; }
   .sn-content-cell { padding-left: 18% !important; }
   .sn-row { flex-wrap: wrap; }
@@ -689,10 +687,10 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .print-titlerow .print-date { display: inline-block !important; text-align: right; margin: 0 0 0 auto; font-weight: 600; }
   .print-date .due-date { display: block; font-weight: 700; }
   .print-date { display: block !important; font-size: 13px; color: #000 !important; margin-top: 4px; text-align: right; }
-  /* col1:#(hide) | col2:PN 18% | col3:Desc 48% | col4:Make(hide) | col5:Cost(hide) | col6:Margin(hide) | col7:Ea. 12% | col8:Qty 8% | col9:Price 14% | col10:Reorder(hide) | col11:X(hide) */
-  .search-table th:nth-child(1), .search-table td:nth-child(1) { display: none !important; }
-  .search-table th:nth-child(2), .search-table td:nth-child(2) { width: 18%; }
-  .search-table th:nth-child(3), .search-table td:nth-child(3) { width: 48%; word-break: break-word; overflow-wrap: break-word; }
+  /* col1:PN 18% | col2:Desc 48% | col3:Make(hide) | col4:Restock(hide) | col5:Cost(hide) | col6:Margin(hide) | col7:Ea. 12% | col8:Qty 8% | col9:Price 14% | col10:X(hide) */
+  .search-table th:nth-child(1), .search-table td:nth-child(1) { width: 18%; }
+  .search-table th:nth-child(2), .search-table td:nth-child(2) { width: 48%; word-break: break-word; overflow-wrap: break-word; }
+  .search-table th:nth-child(3), .search-table td:nth-child(3) { display: none !important; }
   .search-table th:nth-child(4), .search-table td:nth-child(4) { display: none !important; }
   .search-table th:nth-child(5), .search-table td:nth-child(5) { display: none !important; }
   .search-table th:nth-child(6), .search-table td:nth-child(6) { display: none !important; }
@@ -700,10 +698,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .search-table th:nth-child(8), .search-table td:nth-child(8) { width: 8%; text-align: center; }
   .search-table th:nth-child(9), .search-table td:nth-child(9) { width: 14%; text-align: right; }
   .search-table th:nth-child(10), .search-table td:nth-child(10) { display: none !important; }
-  .search-table th:nth-child(11), .search-table td:nth-child(11) { display: none !important; }
   .search-table th { font-size: 10px; color: #000; border-bottom: 1px solid #999; padding: 4px 3px; }
   .search-table td { border-bottom: 1px solid #ddd; padding: 4px 3px; font-size: 13px; }
-  .search-table td:nth-child(3) { overflow: hidden; }
+  .search-table td:nth-child(2) { overflow: hidden; }
   .cell-r.sub-total { font-size: 13px !important; font-weight: 700 !important; }
   .price-edit { font-size: 12px !important; }
   .sub-edit { font-size: 13px !important; font-weight: 700 !important; }
@@ -919,13 +916,13 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   <table class="search-table">
     <thead>
       <tr>
-        <th class="reorder-head">Restock?</th>
         <th style="width:135px;">Product</th>
         <th>Description</th>
         <th class="make-head">Make</th>
+        <th class="reorder-head">Restock?</th>
         <th class="r" style="width:72px;">Cost</th>
         <th class="r" style="width:65px;">Margin</th>
-        <th class="r" style="width:150px;" id="hdr-unitprice">Ea.</th>
+        <th class="r" style="width:80px;" id="hdr-unitprice">Ea.</th>
         <th style="width:44px;text-align:center;">Qty</th>
         <th class="r" style="width:90px;">Price</th>
         <th style="width:20px;"></th>
@@ -976,18 +973,17 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="bottom-actions">
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
       <button class="btn-big" id="saveBtn" onclick="saveOnly()" title="Save to transaction history without printing">Save</button>
-      <div class="print-choice" role="group" aria-labelledby="printChoiceLabel">
-        <div class="print-choice-label" id="printChoiceLabel">Print</div>
+      <div class="print-choice" role="group" aria-label="Print">
         <div class="print-choice-buttons">
-          <button class="btn-big" id="printBtn" onclick="manualPrint()" title="Open the system print dialog">Manual</button>
-          <button class="btn-big btn-filled" id="autoPrintBtn" onclick="autoPrint()" title="Send one single-sided copy directly to the Brother counter printer">Auto</button>
+          <div class="print-choice-option"><div class="print-choice-label">Print</div><button class="btn-big" id="printBtn" onclick="manualPrint()" title="Open the system print dialog">Manual</button></div>
+          <div class="print-choice-option"><div class="print-choice-label">Print</div><button class="btn-big btn-filled" id="autoPrintBtn" onclick="autoPrint()" title="Send one single-sided copy directly to the Brother counter printer">Auto</button></div>
         </div>
       </div>
       <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
     </div>
     <div class="mahalo-cell"><div class="mahalo">Mahalo for choosing us!</div></div>
     <div class="checkout-summary">
-      <button class="btn-big discounts-trigger" id="discountsBtn" type="button" aria-pressed="false" onclick="showDiscountControls()" title="Show a $ off control on each line item">Discounts</button>
+      <button class="btn-big discounts-trigger" id="discountsBtn" type="button" aria-pressed="false" onclick="showDiscountControls()" title="Show a discount control on each line item">Discounts</button>
       <div class="summary">
       <div class="sum-row">
         <span class="sum-label">Subtotal</span>
@@ -1086,7 +1082,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.30.5';
+const POS_RELEASE = '2026.08.30.6';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -3111,14 +3107,14 @@ function ensureScannerMobileRow(i) {
       <span class="mobile-make" id="mmake-${i}"></span>
       <label class="mobile-reorder"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Need to order line ${i+1}" disabled><span>Order?</span></label>
       <span class="mobile-price" id="mprice-${i}" data-price=""></span>
-      <button type="button" class="mobile-discount-btn" data-row="${i}" style="display:none">$ off</button>
+      <button type="button" class="mobile-discount-btn" data-row="${i}" style="display:none">Off</button>
       <div class="mobile-x-qty"><span class="mobile-qty-sym">×</span><input class="mobile-qty qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="mqty-${i}"></div>
       <span class="mobile-discount-total" id="mdiscount-total-${i}"></span>
       <span class="mobile-sub" id="msub-${i}"></span>
       <span class="mobile-clear" data-row="${i}">×</span>
     </div>
     <div class="mobile-discount-editor" id="mdiscount-${i}">
-      <label>Off each</label><input class="discount-money" data-row="${i}" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off">
+      <label>Off each</label><input class="discount-money" data-row="${i}" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off">
       <button type="button" class="mobile-discount-apply" data-row="${i}">Apply</button><button type="button" class="mobile-discount-remove" data-row="${i}">Cancel</button>
     </div>`;
   container.appendChild(div);
@@ -4806,7 +4802,36 @@ function editDistLE1(a, b) {
   while (li < l.length) { if (s[si] !== l[li]) return false; si++; li++; }
   return true;
 }
-function fmt(n) { return n < 0 ? '- $' + Math.abs(n).toFixed(2) : '$' + n.toFixed(2); }
+// Counter values omit currency symbols to preserve the cents in narrow fields.
+// Printed documents restore the symbol explicitly through fmtPrint.
+function fmt(n) { return n < 0 ? '- ' + Math.abs(n).toFixed(2) : n.toFixed(2); }
+function fmtPrint(n) { return n < 0 ? '- $' + Math.abs(n).toFixed(2) : '$' + n.toFixed(2); }
+
+const VALUE_FIT_SELECTOR = '.price-edit, .sub-edit, .cost-edit, .cell-cost, .cell-margin, .sub-total, .note-price-input, .discount-money, .mobile-price, .mobile-sub';
+let _valueFitFrame = 0;
+const _valueFitCanvas = document.createElement('canvas');
+const _valueFitContext = _valueFitCanvas.getContext('2d');
+function scheduleValueFieldFit() {
+  cancelAnimationFrame(_valueFitFrame);
+  _valueFitFrame = requestAnimationFrame(() => {
+    document.querySelectorAll(VALUE_FIT_SELECTOR).forEach(el => {
+      el.style.removeProperty('--value-fit-size');
+      if (!el.getClientRects().length || el.clientWidth <= 0 || !_valueFitContext) return;
+      const text = el.matches('input, textarea') ? el.value : el.textContent;
+      if (!text || text === '—') return;
+      const style = getComputedStyle(el);
+      const base = parseFloat(style.fontSize) || 14;
+      const available = el.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0) - 2;
+      _valueFitContext.font = `${style.fontWeight} ${base}px ${style.fontFamily}`;
+      const needed = _valueFitContext.measureText(text).width;
+      if (needed > available && available > 0) {
+        const fitted = Math.max(9, Math.floor(base * available / needed * 10) / 10);
+        el.style.setProperty('--value-fit-size', `${fitted}px`);
+      }
+    });
+  });
+}
+window.addEventListener('resize', scheduleValueFieldFit);
 
 function isOtherPart(part) {
   if (!part) return false;
@@ -4833,12 +4858,12 @@ function installLineDiscountUI(i) {
   const original = document.createElement('span');
   original.className = 'discount-original hidden';
   const btn = document.createElement('button');
-  btn.type = 'button'; btn.className = 'discount-btn'; btn.textContent = '$ off'; btn.title = 'Discount this item';
+  btn.type = 'button'; btn.className = 'discount-btn'; btn.textContent = 'Off'; btn.title = 'Discount this item';
   btn.addEventListener('click', e => { e.stopPropagation(); openLineDiscount(i); });
   display.append(original, pInput, btn);
   const editor = document.createElement('span');
   editor.className = 'discount-editor';
-  editor.innerHTML = `<label>Off each</label><span class="discount-editor-line"><input class="discount-money" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off"><button type="button" class="discount-apply">Apply</button><button type="button" class="discount-remove">Cancel</button></span>`;
+  editor.innerHTML = `<label>Off each</label><span class="discount-editor-line"><input class="discount-money" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"><button type="button" class="discount-apply">Apply</button><button type="button" class="discount-remove">Cancel</button></span>`;
   editor.querySelector('.discount-apply').addEventListener('click', () => applyLineDiscount(i));
   editor.querySelector('.discount-remove').addEventListener('click', () => {
     if (parseFloat(priceEl.dataset.discountPerUnit) > 0) removeLineDiscount(i);
@@ -4870,7 +4895,7 @@ function renderLineDiscount(i) {
     lineDiscount.textContent = offEach > 0 ? `(${fmt(offEach * qty)} off)` : '';
     lineDiscount.classList.toggle('hidden', !(offEach > 0));
   }
-  if (btn) { btn.style.display = discountControlsEnabled && partInput?.dataset.partPn && !legacy ? '' : 'none'; btn.classList.toggle('active', offEach > 0); btn.textContent = offEach > 0 ? 'Edit' : '$ off'; }
+  if (btn) { btn.style.display = discountControlsEnabled && partInput?.dataset.partPn && !legacy ? '' : 'none'; btn.classList.toggle('active', offEach > 0); btn.textContent = offEach > 0 ? 'Edit' : 'Off'; }
 }
 
 function ensureDiscountTotalDisplay(i) {
@@ -5172,7 +5197,6 @@ function addRow() {
   const tr = document.createElement('tr');
   tr.dataset.row = i;
   tr.innerHTML = `
-    <td class="reorder-cell"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Restock line ${i+1}" disabled></td>
     <td class="part-cell"><div class="search-wrap">
       <input class="part-input" type="text" placeholder="Product" data-row="${i}" autocomplete="off" autocorrect="off" spellcheck="false">
       <span class="supersede-mark" id="supmark-${i}" aria-hidden="true">*</span>
@@ -5180,6 +5204,7 @@ function addRow() {
     </div></td>
     <td><span id="desc-${i}" class="empty-cell">—</span></td>
     <td class="make-cell"><span id="make-${i}" style="font-size:12px;color:#888;">—</span></td>
+    <td class="reorder-cell"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Restock line ${i+1}" disabled></td>
     <td style="text-align:right;"><span class="cell-cost" id="cost-${i}">—</span></td>
     <td style="text-align:right;"><span class="cell-margin" id="margin-${i}">—</span></td>
     <td style="text-align:right;"><span class="cell-r" id="price-${i}" data-price="">—</span></td>
@@ -5208,12 +5233,11 @@ function addNoteRow() {
   const tr = document.createElement('tr');
   tr.dataset.noteRow = id;
   tr.innerHTML = `
-    <td class="reorder-cell"></td>
-    <td colspan="6">
+    <td colspan="7">
       <textarea class="note-desc-input" id="${id}-desc" placeholder="Note description…" autocomplete="off" spellcheck="false" rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
     </td>
     <td style="text-align:center;"><input class="qty-input" type="number" value="1" min="1" step="1" id="${id}-qty" onchange="updateNoteSubtotal('${id}')"></td>
-    <td style="text-align:right;"><input class="note-price-input" id="${id}-price" type="text" placeholder="$0.00" autocomplete="off" onchange="updateNoteSubtotal('${id}')"></td>
+      <td style="text-align:right;"><input class="note-price-input" id="${id}-price" type="text" placeholder="0.00" autocomplete="off" onchange="updateNoteSubtotal('${id}')"></td>
     <td class="clear-row" title="Remove note" onclick="this.closest('tr').remove(); updateSummary();">×</td>
   `;
   tbody.appendChild(tr);
@@ -5276,7 +5300,7 @@ function applyNoteToRow(i) {
   const priceEl = document.getElementById(`price-${i}`);
   priceEl.dataset.price = '';
   priceEl.style.visibility = '';
-  priceEl.innerHTML = `<input class="price-edit" id="price-input-${i}" data-row="${i}" data-cost="0" value="" type="text" placeholder="$0.00" autocomplete="off" spellcheck="false">`;
+  priceEl.innerHTML = `<input class="price-edit" id="price-input-${i}" data-row="${i}" data-cost="0" value="" type="text" placeholder="0.00" autocomplete="off" spellcheck="false">`;
   const pInput = priceEl.querySelector('.price-edit');
   pInput.addEventListener('input', () => onPriceEdit(i));
   pInput.addEventListener('blur', () => onPriceEdit(i, true));
@@ -5337,7 +5361,7 @@ function applyDiscountToRow(i) {
   const priceEl = document.getElementById(`price-${i}`);
   priceEl.dataset.price = '';
   priceEl.style.visibility = '';
-  priceEl.innerHTML = `<input class="price-edit" id="price-input-${i}" data-row="${i}" data-cost="0" value="" type="text" placeholder="-$0.00" autocomplete="off" spellcheck="false" style="color:#c0392b;">`;
+  priceEl.innerHTML = `<input class="price-edit" id="price-input-${i}" data-row="${i}" data-cost="0" value="" type="text" placeholder="-0.00" autocomplete="off" spellcheck="false" style="color:#c0392b;">`;
   const pInput = priceEl.querySelector('.price-edit');
   pInput.addEventListener('input', () => {
     // Auto-prepend minus if user types a number without it
@@ -6252,7 +6276,7 @@ function renderTxnResults() {
 function _fmtMoney(v) {
   if (v == null || v === '') return '';
   const n = Number(String(v).replace(/[^0-9.\-]/g, ''));
-  return isNaN(n) ? _esch(String(v)) : '$' + n.toFixed(2);
+  return isNaN(n) ? _esch(String(v)) : n.toFixed(2);
 }
 function _txnRowHtml(t, i) {
   const n = t.items.length;
@@ -6279,8 +6303,8 @@ function _txnDetailHtml(t, idx) {
   const items = t.items.map(it => `<tr>
       <td>${_esch(it.pn)}</td><td>${_esch(it.desc)}</td>
       <td style="text-align:center;">${_esch(it.qty)}</td>
-      <td style="text-align:right;">${_esch(it.ea)}</td>
-      <td style="text-align:right;">${_esch(it.sub)}</td>
+      <td style="text-align:right;">${_fmtMoney(it.ea)}</td>
+      <td style="text-align:right;">${_fmtMoney(it.sub)}</td>
       <td>${it.sn ? '<b>'+_esch(it.sn)+'</b>' : ''}</td></tr>`).join('');
   return `<div class="txn-meta-line">${docMeta ? '<b>' + _esch(docMeta) + '</b>  ·  ' : ''}${meta}${meta?'  ·  ':''}<span class="txn-id">${_esch(t.txnId)}</span></div>
     <table class="txn-items"><thead><tr>
@@ -6360,7 +6384,6 @@ function buildRows() {
     const tr = document.createElement('tr');
     tr.dataset.row = i;
     tr.innerHTML = `
-      <td class="reorder-cell"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Restock line ${i+1}" disabled></td>
       <td class="part-cell"><div class="search-wrap">
         <input class="part-input" type="text" placeholder="Product" data-row="${i}" autocomplete="off" autocorrect="off" spellcheck="false">
         <span class="supersede-mark" id="supmark-${i}" aria-hidden="true">*</span>
@@ -6368,6 +6391,7 @@ function buildRows() {
       </div></td>
       <td><span id="desc-${i}" class="empty-cell">—</span></td>
       <td class="make-cell"><span id="make-${i}" style="font-size:12px;color:#888;">—</span></td>
+      <td class="reorder-cell"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Restock line ${i+1}" disabled></td>
       <td style="text-align:right;"><span class="cell-cost" id="cost-${i}">—</span></td>
       <td style="text-align:right;"><span class="cell-margin" id="margin-${i}">—</span></td>
       <td style="text-align:right;"><span class="cell-r" id="price-${i}" data-price="">—</span></td>
@@ -6548,7 +6572,7 @@ function handleSearch(i) {
     return;
   }
   if (/^disc(ount)?$/i.test(val)) {
-    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">💲 Show $ off controls and add discount line</div>`;
+    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">Show discount controls and add discount line</div>`;
     dd.classList.add('open'); sizeDropdown(dd);
     dd._noteMode = 'discount';
     return;
@@ -6766,7 +6790,7 @@ function searchParts(val) {
 function renderDropdown(i, results) {
   const dd = document.getElementById(`dd-${i}`);
   const shown = results.slice(0, MAX_RESULTS);
-  dd.innerHTML = shown.map((p, idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.og || p.pn}${p._supersededFrom ? `<span class="dd-supersede">* replaces ${p._supersededFrom}</span>` : ''}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? '$'+(+p.list).toFixed(2) : ''}</span></div></div>`).join('')
+  dd.innerHTML = shown.map((p, idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.og || p.pn}${p._supersededFrom ? `<span class="dd-supersede">* replaces ${p._supersededFrom}</span>` : ''}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? (+p.list).toFixed(2) : ''}</span></div></div>`).join('')
     + (results.length > MAX_RESULTS ? `<div class="dd-more">${results.length} results — type more to narrow down</div>` : '');
   dd._results = shown; dd.classList.add('open'); sizeDropdown(dd);
 }
@@ -6804,9 +6828,8 @@ function renderSNFields(i, qty, pn) {
   snTr.dataset.snFor = i;
   snTr.className = 'sn-tr';
 
-  // Col1 (Restock, hidden in print) | colspan td with SN content
-  // Indent matches desc column: on-screen col2 is ~155px wide, in print col2 is 20%
-  let innerHtml = '<td></td><td colspan="9" class="sn-content-cell">';
+  // One full-width cell, indented to the Description start on screen and print.
+  let innerHtml = '<td colspan="10" class="sn-content-cell">';
   // Up to 4 SN per line
   for (let row = 0; row < n; row += 4) {
     innerHtml += '<div class="sn-row">';
@@ -7067,6 +7090,7 @@ function updateSubtotal(i) {
   }).some(Boolean);
   const hdr = document.getElementById('hdr-unitprice');
   if (hdr) hdr.classList.toggle('ea-hidden', !anyPart);
+  scheduleValueFieldFit();
 }
 
 // Internal-sheet figures: what the order cost us, what it makes us, at what margin.
@@ -7124,6 +7148,7 @@ function updateSummary() {
     feeRow?.classList.add('hidden');
     updateInternalTotals(0, false);
     syncScannerModeView();
+    scheduleValueFieldFit();
     return;
   }
   const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
@@ -7136,6 +7161,7 @@ function updateSummary() {
   // Gross profit is measured against the goods, not the card fee or tax.
   updateInternalTotals(subtotal, true);
   syncScannerModeView();
+  scheduleValueFieldFit();
 }
 
 function clearAll() {
@@ -7222,23 +7248,21 @@ function buildCopy2HTML() {
     const offEach = parseFloat(priceEl.dataset.discountPerUnit) || 0;
     const lineOff = offEach * qty;
     const eaHtml = offEach > 0
-      ? `<span class="discount-original">${esc(fmt(originalEa))}</span> ${esc(eaVal)}`
+      ? `<span class="discount-original">${esc(fmtPrint(originalEa))}</span> ${esc(eaVal)}`
       : (anyMulti && qty !== 1 ? esc(eaVal) : '');
     const priceHtml = lineOff > 0
-      ? `<span class="discount-line-total">(${esc(fmt(lineOff))} off)</span>${esc(subVal)}`
+      ? `<span class="discount-line-total">(${esc(fmtPrint(lineOff))} off)</span>${esc(subVal)}`
       : esc(subVal);
 
-    // 11 columns to match the live table and print CSS nth-child selectors:
-    // 1(hide) 2:PN 3:Desc 4(hide) 5(hide) 6(hide) 7:Ea 8:Qty 9:Price 10-11(hide)
+    // 10 columns to match the live table and print CSS nth-child selectors:
+    // 1:PN 2:Desc 3-6(hide) 7:Ea 8:Qty 9:Price 10(hide)
     rowsHtml += `<tr>
-      <td></td>
       <td>${esc(pn)}</td>
       <td>${esc(desc)}</td>
-      <td></td><td></td><td></td>
+      <td></td><td></td><td></td><td></td>
       <td style="text-align:right">${eaHtml}</td>
       <td style="text-align:center">${esc(qty)}</td>
       <td style="text-align:right">${priceHtml}</td>
-      <td></td>
       <td></td>
     </tr>`;
 
@@ -7253,7 +7277,7 @@ function buildCopy2HTML() {
           snInner += `<div class="sn-field"><label>${esc(lbl)}</label><span style="font-size:12px">${esc(val)}</span></div>`;
         });
         snInner += '</div>';
-        rowsHtml += `<tr class="sn-tr"><td></td><td colspan="9" class="sn-content-cell">${snInner}</td><td></td></tr>`;
+        rowsHtml += `<tr class="sn-tr"><td colspan="10" class="sn-content-cell">${snInner}</td></tr>`;
       }
     }
   }
@@ -7295,12 +7319,11 @@ function buildCopy2HTML() {
     </div>
     <table class="search-table">
       <thead><tr>
-        <th></th><th>Product</th><th>Description</th>
-        <th></th><th></th><th></th>
+        <th>Product</th><th>Description</th>
+        <th></th><th></th><th></th><th></th>
         <th style="text-align:right"${eaHdrStyle}>Ea.</th>
         <th style="text-align:center">Qty</th>
         <th style="text-align:right">Price</th>
-        <th></th>
         <th></th>
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
@@ -7353,6 +7376,32 @@ function buildInvoiceSig() {
     + `<div class="sig-received">Received by:</div>`
     + `<div class="sig-line">Print: <span class="sig-underline"></span></div>`
     + `<div class="sig-line">Sign: <span class="sig-underline"></span></div>`;
+}
+
+let _printMoneySnapshot = [];
+function applyPrintMoneyFormatting() {
+  if (_printMoneySnapshot.length) return;
+  const selectors = '.price-edit, .sub-edit, .cost-edit, .note-price-input, .sum-val, .discount-original, .discount-line-total';
+  document.querySelectorAll(selectors).forEach(el => {
+    const isField = el.matches('input, textarea');
+    const original = isField ? el.value : el.textContent;
+    if (!original || original.includes('$')) return;
+    const printed = original.replace(/-?\s*\d[\d,]*\.\d{2}/g, token => {
+      const value = Number(token.replace(/[\s,]/g, ''));
+      return Number.isFinite(value) ? fmtPrint(value) : token;
+    });
+    if (printed === original) return;
+    _printMoneySnapshot.push({ el, isField, original });
+    if (isField) el.value = printed; else el.textContent = printed;
+  });
+}
+
+function restoreScreenMoneyFormatting() {
+  _printMoneySnapshot.forEach(({ el, isField, original }) => {
+    if (isField) el.value = original; else el.textContent = original;
+  });
+  _printMoneySnapshot = [];
+  scheduleValueFieldFit();
 }
 
 function preparePrint() {
@@ -7408,6 +7457,7 @@ function preparePrint() {
   if (isInternal) {
     tbody.querySelectorAll('tr[data-sn-for]').forEach(tr => tr.classList.add('print-hide'));
   }
+  applyPrintMoneyFormatting();
   // Two-copy logic: RECEIPTS ONLY, and only when a serial number field is actually
   // filled in (or the Warranty toggle is manually on). Quotes and invoices never get
   // the duplicate copy — invoices carry their own "our copy" format via the invoice sig block.
@@ -7473,6 +7523,7 @@ function preparePrint() {
 }
 
 function cleanupPrint() {
+  restoreScreenMoneyFormatting();
   // Restore any blanked discount descriptions
   tbody.querySelectorAll('.discount-desc-input').forEach(el => {
     if (el.dataset.printBlank === '1') { el.value = 'Discount'; delete el.dataset.printBlank; }
@@ -7798,7 +7849,12 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   // this an exported "Internal" would look like a customer copy with its defining
   // numbers quietly missing.
   const warnEl = document.getElementById('sumNoCost');
-  const figure = id => esc(document.getElementById(id)?.textContent || '—');
+  const figure = id => {
+    const text = document.getElementById(id)?.textContent || '—';
+    if (id === 'sumMarginPct' || text === '—') return esc(text);
+    const value = Number(text.replace(/[$,\s]/g, ''));
+    return esc(Number.isFinite(value) ? fmtPrint(value) : text);
+  };
   const internalHtml = _docType !== 'internal' ? '' : `<div style="margin-top:9px;margin-left:auto;width:240px;font-size:13px;border-top:1px solid ${PDF_LINE};padding-top:8px">
       <div style="${sumRow};color:${PDF_INK}"><span>Cost</span><span>${figure('sumCost')}</span></div>
       <div style="${sumRow};font-weight:700;color:${PDF_INK}"><span>Gross Profit</span><span>${figure('sumProfit')}</span></div>
@@ -8350,8 +8406,8 @@ function renderHistory() {
         <td>${it.pn}</td>
         <td>${it.desc}</td>
         <td style="text-align:center;">${it.qty}</td>
-        <td style="text-align:right;">${offEach > 0 ? `<span style="color:#888;text-decoration:line-through;">$${parseFloat(it.originalEa).toFixed(2)}</span><br>$${it.ea.toFixed(2)}` : '$' + it.ea.toFixed(2)}</td>
-        <td style="text-align:right;">${lineOff > 0 ? `<div style="color:#2d7a3a;font-size:11px;">($${lineOff.toFixed(2)} off)</div>` : ''}$${it.sub.toFixed(2)}</td>
+        <td style="text-align:right;">${offEach > 0 ? `<span style="color:#888;text-decoration:line-through;">${parseFloat(it.originalEa).toFixed(2)}</span><br>${it.ea.toFixed(2)}` : it.ea.toFixed(2)}</td>
+        <td style="text-align:right;">${lineOff > 0 ? `<div style="color:#2d7a3a;font-size:11px;">(${lineOff.toFixed(2)} off)</div>` : ''}${it.sub.toFixed(2)}</td>
       </tr>`;
     }).join('');
     return `
@@ -8362,7 +8418,7 @@ function renderHistory() {
             ${order.customer?.name ? `<span class="hist-entry-cust"> — ${order.customer.name}</span>` : ''}
           </span>
           <span style="display:flex;align-items:center;gap:6px;">
-            <span class="hist-entry-total">${order.total}</span>
+            <span class="hist-entry-total">${_fmtMoney(order.total)}</span>
             <span class="hist-entry-toggle" id="hist-toggle-${idx}">▶</span>
             <button class="hist-del-btn" title="Remove entry" onclick="event.stopPropagation();deleteHistoryEntry(${idx})">✕</button>
           </span>
@@ -8494,7 +8550,7 @@ function reprintOrder(idx) {
       if (costEl) costEl.dataset.cost = item.cost || 0;
       const priceEl = document.getElementById(`price-${i}`);
       priceEl.dataset.price = ea;
-      priceEl.innerHTML = `<input class="price-edit" data-row="${i}" value="$${ea.toFixed(2)}" type="text" autocomplete="off" spellcheck="false">`;
+      priceEl.innerHTML = `<input class="price-edit" data-row="${i}" value="${ea.toFixed(2)}" type="text" autocomplete="off" spellcheck="false">`;
       const pInput = priceEl.querySelector('.price-edit');
       pInput.addEventListener('input', () => onPriceEdit(i));
       pInput.addEventListener('blur', () => onPriceEdit(i, true));
@@ -8728,7 +8784,7 @@ function renderPhoneLists() {
         <td>${_esch(it.pn)}</td>
         <td>${_esch(it.desc)}${it.serial ? `<div style="font-size:11px;color:#888;">SN ${_esch(it.serial)}</div>` : ''}${it.note ? `<div style="font-size:11px;color:#b26a00;">${_esch(it.note)}</div>` : ''}</td>
         <td style="text-align:center;">${it.qty}</td>
-        <td style="text-align:right;">${it.price ? '$' + it.price.toFixed(2) : '—'}</td>
+        <td style="text-align:right;">${it.price ? it.price.toFixed(2) : '—'}</td>
       </tr>`).join('');
     return `
       <div class="hist-entry">
@@ -8738,7 +8794,7 @@ function renderPhoneLists() {
             <span class="hist-entry-cust"> — ${units} item${units === 1 ? '' : 's'}</span>
           </span>
           <span style="display:flex;align-items:center;gap:6px;">
-            <span class="hist-entry-total">${total ? '$' + total.toFixed(2) : ''}</span>
+            <span class="hist-entry-total">${total ? total.toFixed(2) : ''}</span>
             <span class="hist-entry-toggle" id="plist-toggle-${idx}">${idx === 0 ? '▼' : '▶'}</span>
           </span>
         </div>
@@ -9305,7 +9361,7 @@ function buildMobileRows() {
         <span class="mobile-make" id="mmake-${i}"></span>
         <label class="mobile-reorder"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Need to order line ${i+1}" disabled><span>Order?</span></label>
         <span class="mobile-price" id="mprice-${i}" data-price=""></span>
-        <button type="button" class="mobile-discount-btn" data-row="${i}" style="display:none">$ off</button>
+        <button type="button" class="mobile-discount-btn" data-row="${i}" style="display:none">Off</button>
         <div class="mobile-x-qty">
           <span class="mobile-qty-sym">×</span>
           <input class="mobile-qty qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="mqty-${i}">
@@ -9315,7 +9371,7 @@ function buildMobileRows() {
         <span class="mobile-clear" data-row="${i}">×</span>
       </div>
       <div class="mobile-discount-editor" id="mdiscount-${i}">
-        <label>Off each</label><input class="discount-money" data-row="${i}" type="text" inputmode="decimal" placeholder="$0.00" autocomplete="off">
+        <label>Off each</label><input class="discount-money" data-row="${i}" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off">
         <button type="button" class="mobile-discount-apply" data-row="${i}">Apply</button><button type="button" class="mobile-discount-remove" data-row="${i}">Cancel</button>
       </div>`;
     container.appendChild(div);
@@ -9469,7 +9525,7 @@ function handleMobileSearch(i) {
   }
   if (/^disc(ount)?$/i.test(val)) {
     const dd = document.getElementById(`mdd-${i}`);
-    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">💲 Show $ off controls</div>`;
+    dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">Show discount controls</div>`;
     dd.classList.add('open'); dd._noteMode = 'discount'; return;
   }
   if (!loaded) { document.getElementById(`mdesc-${i}`).textContent = 'Load a file first'; return; }
@@ -9483,7 +9539,7 @@ function handleMobileSearch(i) {
   input.className = 'mobile-part-input part-input';
   clearMobileRowData(i);
   const shown = results.slice(0, MAX_RESULTS);
-  dd.innerHTML = shown.map((p,idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.og || p.pn}${p._supersededFrom ? `<span class="dd-supersede">* replaces ${p._supersededFrom}</span>` : ''}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? '$'+(+p.list).toFixed(2) : ''}</span></div></div>`).join('')
+  dd.innerHTML = shown.map((p,idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.og || p.pn}${p._supersededFrom ? `<span class="dd-supersede">* replaces ${p._supersededFrom}</span>` : ''}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? (+p.list).toFixed(2) : ''}</span></div></div>`).join('')
     + (results.length > MAX_RESULTS ? `<div class="dd-more">${results.length} results — type more to narrow</div>` : '');
   dd._results = shown; dd.classList.add('open');
   updateSummary();
@@ -9586,7 +9642,7 @@ function renderMobileDiscountState(i) {
   const btn = document.querySelector(`#mobileRows .mobile-discount-btn[data-row="${i}"]`);
   const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
   const eligible = !!partInput?.dataset.partPn && !/^(note|discount)$/i.test(partInput.value || '');
-  if (btn) { btn.style.display = discountControlsEnabled && eligible && (charged > 0 || offEach > 0) ? '' : 'none'; btn.textContent = offEach > 0 ? 'Edit' : '$ off'; }
+  if (btn) { btn.style.display = discountControlsEnabled && eligible && (charged > 0 || offEach > 0) ? '' : 'none'; btn.textContent = offEach > 0 ? 'Edit' : 'Off'; }
   const remove = document.querySelector(`#mdiscount-${i} .mobile-discount-remove`);
   if (remove) remove.textContent = offEach > 0 ? 'Remove' : 'Cancel';
   updateMobileSubtotal(i);
