@@ -166,6 +166,11 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .not-found { font-size: 13px; color: #e53935; }
 .clear-row { width: 20px; text-align: center; cursor: pointer; font-size: 15px; color: #c7cfc4; user-select: none; }
 .clear-row:hover { color: #e53935; }
+.reorder-head { width: 64px; color: #a52a24 !important; font-size: 10px !important; font-weight: 650 !important; line-height: 1.15; text-align: center !important; }
+.reorder-cell { width: 64px; text-align: center; }
+.reorder-toggle { width: 17px; height: 17px; margin: 0; accent-color: #b3261e; cursor: pointer; vertical-align: middle; }
+.reorder-toggle:disabled { opacity: .22; cursor: default; }
+.reorder-marked .reorder-cell { background: #fff7f6; }
 .summary { background: #f9f8f7; border-radius: 8px; border: 1px solid #2f4339; padding: 14px 18px; margin-bottom: 1rem; width: 300px; margin-left: auto; }
 .mahalo-cell { display: none; }
 .sum-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; }
@@ -534,6 +539,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .mobile-sub { font-size: 15px; font-weight: 600; white-space: nowrap; min-width: 60px; text-align: right; }
   .mobile-clear { font-size: 20px; color: #d9dfd6; cursor: pointer; line-height: 1; padding-left: 4px; user-select: none; }
   .mobile-clear:active { color: #e53935; }
+  .mobile-reorder { display: inline-flex; align-items: center; gap: 3px; color: #98938e; font-size: 10px; white-space: nowrap; }
+  .mobile-reorder:has(.reorder-toggle:checked) { color: #a52a24; font-weight: 650; }
+  .mobile-reorder .reorder-toggle { width: 16px; height: 16px; }
   .mobile-search-wrap .dropdown { border-radius: 8px; font-size: 14px; }
   .summary { padding: 12px 14px; }
   .sum-row.total .sum-val { font-size: 20px; }
@@ -635,7 +643,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   #scannerModeView { display: none !important; }
   body { background: #fff; padding: 0; zoom: 1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .wrap { border: none; border-radius: 0; padding: 1.2rem; max-width: 100%; }
-  .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, #printBanner, .doc-screen-title, .bottom-actions, .scan-command-flash { display: none !important; }
+  .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, .reorder-cell, .reorder-head, #printBanner, .doc-screen-title, .bottom-actions, .scan-command-flash { display: none !important; }
   .qty-input { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; border: none; background: transparent; font-size: 14px; padding: 0; pointer-events: none; width: auto; text-align: center; color: #000 !important; -webkit-text-fill-color: #000 !important; }
   .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .part-input { border: none; background: transparent; font-size: 14px; font-weight: 500; padding: 0; pointer-events: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
@@ -677,7 +685,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .print-titlerow .print-date { display: inline-block !important; text-align: right; margin: 0 0 0 auto; font-weight: 600; }
   .print-date .due-date { display: block; font-weight: 700; }
   .print-date { display: block !important; font-size: 13px; color: #000 !important; margin-top: 4px; text-align: right; }
-  /* col1:#(hide) | col2:PN 18% | col3:Desc 48% | col4:Make(hide) | col5:Cost(hide) | col6:Margin(hide) | col7:Ea. 12% | col8:Qty 8% | col9:Price 14% | col10:X(hide) */
+  /* col1:#(hide) | col2:PN 18% | col3:Desc 48% | col4:Make(hide) | col5:Cost(hide) | col6:Margin(hide) | col7:Ea. 12% | col8:Qty 8% | col9:Price 14% | col10:Reorder(hide) | col11:X(hide) */
   .search-table th:nth-child(1), .search-table td:nth-child(1) { display: none !important; }
   .search-table th:nth-child(2), .search-table td:nth-child(2) { width: 18%; }
   .search-table th:nth-child(3), .search-table td:nth-child(3) { width: 48%; word-break: break-word; overflow-wrap: break-word; }
@@ -688,6 +696,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .search-table th:nth-child(8), .search-table td:nth-child(8) { width: 8%; text-align: center; }
   .search-table th:nth-child(9), .search-table td:nth-child(9) { width: 14%; text-align: right; }
   .search-table th:nth-child(10), .search-table td:nth-child(10) { display: none !important; }
+  .search-table th:nth-child(11), .search-table td:nth-child(11) { display: none !important; }
   .search-table th { font-size: 10px; color: #000; border-bottom: 1px solid #999; padding: 4px 3px; }
   .search-table td { border-bottom: 1px solid #ddd; padding: 4px 3px; font-size: 13px; }
   .search-table td:nth-child(3) { overflow: hidden; }
@@ -923,6 +932,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <th class="r" style="width:150px;" id="hdr-unitprice">Ea.</th>
         <th style="width:44px;text-align:center;">Qty</th>
         <th class="r" style="width:90px;">Price</th>
+        <th class="reorder-head">Need to<br>Order?</th>
         <th style="width:20px;"></th>
       </tr>
     </thead>
@@ -970,6 +980,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="scan-command-flash" id="scanCommandFlash" aria-live="polite"></div>
     <div class="bottom-actions">
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
+      <button class="btn-big" id="saveBtn" onclick="saveOnly()" title="Save to transaction history without printing">Save</button>
       <button class="btn-big btn-filled" id="printBtn" onclick="printQuote()" title="Print one single-sided copy to the counter printer">🖨 Print</button>
       <button class="btn-big btn-auto" id="autoPrintBtn" onclick="autoPrint()" title="Auto Print — straight to the counter printer, single-sided">Auto</button>
       <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
@@ -1109,7 +1120,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.25.3';
+const POS_RELEASE = '2026.08.30.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1227,6 +1238,7 @@ function googleConnectedActions() {
   fetchFromDrive();
   syncCustomersFromSheet();
   flushPendingPartCodes();
+  flushPendingReorders();
   flushUnpushedTxns();
   schedulePhoneListNotice();
   if (_pendingAction) { const fn = _pendingAction; _pendingAction = null; fn(); }
@@ -1289,6 +1301,7 @@ function initTokenClient() {
       fetchFromDrive();
       syncCustomersFromSheet();
       flushPendingPartCodes();
+      flushPendingReorders();
       schedulePhoneListNotice();
     }
     // If no session token, user clicks Refresh to re-auth with one popup
@@ -2076,10 +2089,16 @@ let partCodeCustomMap = {};
 const customBindingTimers = new Map();
 let partCodesSheetEnsured = false;
 let partCodeFlushPromise = null;
+const REORDER_PENDING_KEY = 'mpeReorderPendingV1';
+const REORDER_REGISTER_KEY = 'mpeReorderRegisterV1';
+let reorderPending = [];
+let reorderFlushPromise = null;
 try { partCodePending = JSON.parse(localStorage.getItem(PART_CODES_PENDING_KEY) || '[]') || []; }
 catch (e) { partCodePending = []; }
 try { partCodeLearned = JSON.parse(localStorage.getItem(PART_CODES_LEARNED_KEY) || '{}') || {}; }
 catch (e) { partCodeLearned = {}; }
+try { reorderPending = JSON.parse(localStorage.getItem(REORDER_PENDING_KEY) || '[]') || []; }
+catch (e) { reorderPending = []; }
 for (const item of partCodePending) {
   const key = canonicalScannedCode(item?.code);
   if (key && item?.pn) partCodeLearned[key] = item.desc
@@ -2087,6 +2106,176 @@ for (const item of partCodePending) {
     : normalizePN(item.pn);
 }
 persistLearnedPartCodes();
+
+function reorderIdentifier(prefix) {
+  const random = globalThis.crypto?.randomUUID?.().replace(/-/g, '')
+    || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`;
+  return `${prefix}_${random}`;
+}
+
+function reorderRegisterId() {
+  let value = localStorage.getItem(REORDER_REGISTER_KEY) || '';
+  if (!value) {
+    value = reorderIdentifier('register');
+    try { localStorage.setItem(REORDER_REGISTER_KEY, value); } catch (e) {}
+  }
+  return value;
+}
+
+function persistPendingReorders() {
+  try { localStorage.setItem(REORDER_PENDING_KEY, JSON.stringify(reorderPending)); } catch (e) {}
+}
+
+// Bridge writes use USER_ENTERED. Guard digit-leading identifiers so Sheets
+// stores them as text and does not strip meaningful leading zeros.
+function sheetText(value) {
+  const text = String(value ?? '');
+  return /^\d/.test(text) ? "'" + text : text;
+}
+
+function reorderRowIdentity(row) {
+  const input = tbody.querySelector(`[data-row="${row}"].part-input`);
+  const pn = String(input?.dataset.partPn || '').trim();
+  const make = String(input?.dataset.partMake || '').trim();
+  if (!input || !pn || !make || input.dataset.isOther === '1' || /^(note|discount)$/i.test(input.value || '')) return null;
+  const description = (document.getElementById(`desc-${row}`)?.textContent || input.dataset.partDesc || '').trim();
+  return {
+    make,
+    partNumber: input.value.trim() || pn,
+    description,
+  };
+}
+
+function reorderRowSignal(row) {
+  const tr = tbody.querySelector(`tr[data-row="${row}"]`);
+  if (!tr?.dataset.reorderSignalId) return null;
+  return {
+    signalId: tr.dataset.reorderSignalId,
+    make: tr.dataset.reorderMake || '',
+    partNumber: tr.dataset.reorderPartNumber || '',
+    description: tr.dataset.reorderDescription || '',
+  };
+}
+
+function reorderToggles(row) {
+  return document.querySelectorAll(`.reorder-toggle[data-reorder-row="${row}"]`);
+}
+
+function clearReorderVisual(row) {
+  const tr = tbody.querySelector(`tr[data-row="${row}"]`);
+  if (tr) {
+    tr.classList.remove('reorder-marked');
+    delete tr.dataset.reorderSignalId;
+    delete tr.dataset.reorderMake;
+    delete tr.dataset.reorderPartNumber;
+    delete tr.dataset.reorderDescription;
+  }
+  reorderToggles(row).forEach(toggle => { toggle.checked = false; toggle.disabled = true; });
+}
+
+function updateReorderAvailability(row) {
+  const active = !!reorderRowSignal(row);
+  const enabled = active || !!reorderRowIdentity(row);
+  reorderToggles(row).forEach(toggle => {
+    toggle.checked = active;
+    toggle.disabled = !enabled;
+  });
+}
+
+function setReorderVisual(row, signalId, identity) {
+  const tr = tbody.querySelector(`tr[data-row="${row}"]`);
+  if (!tr) return;
+  tr.dataset.reorderSignalId = signalId;
+  tr.dataset.reorderMake = identity.make;
+  tr.dataset.reorderPartNumber = identity.partNumber;
+  tr.dataset.reorderDescription = identity.description;
+  tr.classList.add('reorder-marked');
+  reorderToggles(row).forEach(toggle => { toggle.checked = true; toggle.disabled = false; });
+}
+
+function queueReorderAction(action, signal) {
+  const event = {
+    eventId: reorderIdentifier('event'),
+    signalId: signal.signalId,
+    action,
+    make: signal.make,
+    partNumber: signal.partNumber,
+    description: signal.description,
+    occurredAt: new Date().toISOString(),
+    registerId: reorderRegisterId(),
+    release: POS_RELEASE,
+  };
+  reorderPending.push(event);
+  persistPendingReorders();
+  flushPendingReorders();
+}
+
+function setRowReorder(row, active) {
+  const current = reorderRowSignal(row);
+  if (active) {
+    if (current) {
+      updateReorderAvailability(row);
+      flashScanCommand(`${current.partNumber} is already marked for order`, 'ok');
+      return true;
+    }
+    const identity = reorderRowIdentity(row);
+    if (!identity) {
+      clearReorderVisual(row);
+      flashScanCommand('Choose an item before marking it for order', 'err');
+      return false;
+    }
+    const signalId = reorderIdentifier('signal');
+    setReorderVisual(row, signalId, identity);
+    queueReorderAction('FLAG', { signalId, ...identity });
+    flashScanCommand(`${identity.partNumber} marked for order`, 'ok');
+    return true;
+  }
+  if (!current) {
+    clearReorderVisual(row);
+    updateReorderAvailability(row);
+    return false;
+  }
+  clearReorderVisual(row);
+  updateReorderAvailability(row);
+  queueReorderAction('UNFLAG', current);
+  flashScanCommand(`${current.partNumber} removed from order list`, 'warn');
+  return true;
+}
+
+async function _flushPendingReorders() {
+  if (!googleSessionAvailable() || !reorderPending.length) return;
+  try {
+    while (reorderPending.length && googleSessionAvailable()) {
+      const batch = reorderPending.slice(0, 100);
+      const rows = batch.map(item => [
+        'REORDER', item.eventId, item.signalId, item.action, item.make,
+        sheetText(item.partNumber), item.description, item.occurredAt, item.registerId, item.release,
+      ]);
+      const result = await sheetsAppend('Transactions!A1', rows);
+      if (!result) return;
+      const writtenRange = result?.updates?.updatedRange;
+      if (!writtenRange) throw new Error('Reorder append returned no range to verify');
+      const writtenRows = await sheetsGet(writtenRange);
+      const confirmed = new Set(writtenRows
+        .filter(row => String(row[0] || '').trim().toUpperCase() === 'REORDER')
+        .map(row => `${row[1]}|${row[2]}|${String(row[3] || '').toUpperCase()}`));
+      const confirmedIds = new Set(batch
+        .filter(item => confirmed.has(`${item.eventId}|${item.signalId}|${item.action}`))
+        .map(item => item.eventId));
+      reorderPending = reorderPending.filter(item => !confirmedIds.has(item.eventId));
+      persistPendingReorders();
+      if (confirmedIds.size !== batch.length) throw new Error('Reorder event was not found after append');
+    }
+  } catch (error) {
+    console.warn('Reorder sync deferred:', error.message);
+  }
+}
+
+function flushPendingReorders() {
+  if (reorderFlushPromise) return reorderFlushPromise;
+  reorderFlushPromise = _flushPendingReorders().finally(() => { reorderFlushPromise = null; });
+  return reorderFlushPromise;
+}
 
 function learnedPartNumber(value) {
   return normalizePN(value && typeof value === 'object' ? value.pn : value);
@@ -2904,6 +3093,7 @@ function ensureScannerMobileRow(i) {
     <div class="mobile-desc empty" id="mdesc-${i}">Description</div>
     <div class="mobile-bottom">
       <span class="mobile-make" id="mmake-${i}"></span>
+      <label class="mobile-reorder"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Need to order line ${i+1}" disabled><span>Order?</span></label>
       <span class="mobile-price" id="mprice-${i}" data-price=""></span>
       <button type="button" class="mobile-discount-btn" data-row="${i}" style="display:none">$ off</button>
       <div class="mobile-x-qty"><span class="mobile-qty-sym">×</span><input class="mobile-qty qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="mqty-${i}"></div>
@@ -3541,6 +3731,7 @@ const SCAN_COMMANDS = new Map([
   ['~MPE2:Q7X4:PRINT:8K3N', 'PRINT'],
   ['~MPE2:Q7X4:CLEAR:2D9M', 'CLEAR'],
   ['~MPE2:Q7X4:UNDO:5R8P', 'UNDO'],
+  ['~MPE2:Q7X4:REORDER:9V2J', 'REORDER'],
   ['~MPE2:Q7X4:ADD-LABOR-30:4H6W', 'ADD=LABOR:30'],
   ['~MPE2:Q7X4:ADD-FIXED-HEAD:7T2C', 'ADD=METALHEADSWAP'],
 ]);
@@ -4076,6 +4267,13 @@ function runScanCommand(raw) {
       flashScanCommand(`${name} → ${landed}`, 'ok');
     }
     updateSummary();
+    return;
+  }
+
+  if (body === 'REORDER') {
+    const row = latestScannedItemRow();
+    if (row < 0) { flashScanCommand('Scan a part first — nothing to mark for order', 'err'); return; }
+    setRowReorder(row, true);
     return;
   }
 
@@ -4950,6 +5148,7 @@ function addRow() {
     <td style="text-align:right;"><span class="cell-r" id="price-${i}" data-price="">—</span></td>
     <td style="text-align:center;"><input class="qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="qty-${i}"></td>
     <td style="text-align:right;"><span class="cell-r sub-total" id="sub-${i}" data-val="">—</span></td>
+    <td class="reorder-cell"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Need to order line ${i+1}" disabled></td>
     <td class="clear-row" data-row="${i}" title="Clear row">×</td>
   `;
   tbody.appendChild(tr);
@@ -4979,6 +5178,7 @@ function addNoteRow() {
     </td>
     <td style="text-align:center;"><input class="qty-input" type="number" value="1" min="1" step="1" id="${id}-qty" onchange="updateNoteSubtotal('${id}')"></td>
     <td style="text-align:right;"><input class="note-price-input" id="${id}-price" type="text" placeholder="$0.00" autocomplete="off" onchange="updateNoteSubtotal('${id}')"></td>
+    <td class="reorder-cell"></td>
     <td class="clear-row" title="Remove note" onclick="this.closest('tr').remove(); updateSummary();">×</td>
   `;
   tbody.appendChild(tr);
@@ -5006,6 +5206,7 @@ function updateNoteSubtotal(id) {
 function applyNoteToRow(i) {
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (!input) return;
+  clearReorderVisual(i);
   // Mark row as note
   input.value = 'Note';
   input.className = 'part-input matched';
@@ -5065,6 +5266,7 @@ function applyNoteToRow(i) {
 function applyDiscountToRow(i) {
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (!input) return;
+  clearReorderVisual(i);
   input.value = 'Discount';
   input.className = 'part-input matched';
   input.readOnly = true;
@@ -6112,6 +6314,7 @@ function buildRows() {
       <td style="text-align:right;"><span class="cell-r" id="price-${i}" data-price="">—</span></td>
       <td style="text-align:center;"><input class="qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="qty-${i}"></td>
       <td style="text-align:right;"><span class="cell-r sub-total" id="sub-${i}" data-val="">—</span></td>
+      <td class="reorder-cell"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Need to order line ${i+1}" disabled></td>
       <td class="clear-row" data-row="${i}" title="Clear row">×</td>
     `;
     tbody.appendChild(tr);
@@ -6136,6 +6339,8 @@ function buildRows() {
 }
 
 function onTableClick(e) {
+  const reorder = e.target.closest('.reorder-toggle[data-reorder-row]');
+  if (reorder) { setRowReorder(parseInt(reorder.dataset.reorderRow), reorder.checked); return; }
   if (e.target.classList.contains('clear-row')) { clearRow(parseInt(e.target.dataset.row)); updateSummary(); }
   if (e.target.closest('.dd-item[data-note-trigger]')) {
     const item = e.target.closest('.dd-item[data-note-trigger]');
@@ -6524,7 +6729,7 @@ function renderSNFields(i, qty, pn) {
 
   // Col1 (row-num, hidden in print) | colspan td with SN content
   // Indent matches desc column: on-screen col2 is ~155px wide, in print col2 is 20%
-  let innerHtml = '<td></td><td colspan="9" class="sn-content-cell">';
+  let innerHtml = '<td></td><td colspan="10" class="sn-content-cell">';
   // Up to 4 SN per line
   for (let row = 0; row < n; row += 4) {
     innerHtml += '<div class="sn-row">';
@@ -6553,6 +6758,11 @@ function updateSNFields(i) {
 
 function applyPart(i, part, options) {
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+  const activeReorder = reorderRowSignal(i);
+  if (activeReorder && (normalizePN(activeReorder.partNumber) !== normalizePN(part?.pn)
+      || String(activeReorder.make || '').trim().toUpperCase() !== String(part?.make || '').trim().toUpperCase())) {
+    clearReorderVisual(i);
+  }
   const correctedScanIssue = scanIssues.get(i);
   scanIssues.delete(i);
   delete input.dataset.scanIssue;
@@ -6658,7 +6868,7 @@ function applyPart(i, part, options) {
     const tr = tbody.querySelector(`tr[data-row="${i}"]`);
     if (tr) delete tr.dataset.warranty;
   }
-  updateSubtotal(i); updateSummary();
+  updateSubtotal(i); updateSummary(); updateReorderAvailability(i);
   if (i === NUM_ROWS - 1 && !options?.skipAddRow) addRow();
   if (other && !options?.skipFocus) setTimeout(() => { input.focus(); input.select(); }, 0);
   if (correctedScanIssue) {
@@ -6720,6 +6930,7 @@ function clearRowData(i) {
   const s = document.getElementById(`sub-${i}`);
   if (s.tagName === 'INPUT') s.outerHTML = `<span class="cell-r sub-total" id="sub-${i}" data-val="">—</span>`;
   else { s.textContent = '—'; s.dataset.val = ''; }
+  clearReorderVisual(i);
 }
 
 function clearRow(i) {
@@ -6936,8 +7147,8 @@ function buildCopy2HTML() {
       ? `<span class="discount-line-total">(${esc(fmt(lineOff))} off)</span>${esc(subVal)}`
       : esc(subVal);
 
-    // 10 columns to match print CSS nth-child selectors:
-    // 1(hide) 2:PN 3:Desc 4(hide) 5(hide) 6(hide) 7:Ea 8:Qty 9:Price 10(hide)
+    // 11 columns to match the live table and print CSS nth-child selectors:
+    // 1(hide) 2:PN 3:Desc 4(hide) 5(hide) 6(hide) 7:Ea 8:Qty 9:Price 10-11(hide)
     rowsHtml += `<tr>
       <td></td>
       <td>${esc(pn)}</td>
@@ -6946,6 +7157,7 @@ function buildCopy2HTML() {
       <td style="text-align:right">${eaHtml}</td>
       <td style="text-align:center">${esc(qty)}</td>
       <td style="text-align:right">${priceHtml}</td>
+      <td></td>
       <td></td>
     </tr>`;
 
@@ -6960,7 +7172,7 @@ function buildCopy2HTML() {
           snInner += `<div class="sn-field"><label>${esc(lbl)}</label><span style="font-size:12px">${esc(val)}</span></div>`;
         });
         snInner += '</div>';
-        rowsHtml += `<tr class="sn-tr"><td></td><td colspan="8" class="sn-content-cell">${snInner}</td><td></td></tr>`;
+        rowsHtml += `<tr class="sn-tr"><td></td><td colspan="9" class="sn-content-cell">${snInner}</td><td></td></tr>`;
       }
     }
   }
@@ -7007,6 +7219,7 @@ function buildCopy2HTML() {
         <th style="text-align:right"${eaHdrStyle}>Ea.</th>
         <th style="text-align:center">Qty</th>
         <th style="text-align:right">Price</th>
+        <th></th>
         <th></th>
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
@@ -7214,8 +7427,36 @@ function recordOutgoingDocument() {
   // Renew first so the callback can flush this transaction along with any
   // older local entries waiting for Drive.
   renewOnPrint();
-  saveToHistory();
+  const saved = saveToHistory();
   updatePriceChangesBadge();
+  return saved;
+}
+
+let _saveFeedbackTimer = null;
+function saveOnly() {
+  if (_docType === 'internal') {
+    alert('Internal copies cannot be saved to transaction history because they contain private cost and margin information. Switch to Receipt, Invoice, or Quote first.');
+    return;
+  }
+  if (!captureOrder()) {
+    flashScanCommand('Add an item before saving', 'warn');
+    return;
+  }
+
+  reserveDocDate();
+  if (!recordOutgoingDocument()) return;
+  updateScreenDocTitle();
+  showPrintBanner();
+
+  const btn = document.getElementById('saveBtn');
+  if (!btn) return;
+  clearTimeout(_saveFeedbackTimer);
+  btn.textContent = '✓ Saved';
+  btn.disabled = true;
+  _saveFeedbackTimer = setTimeout(() => {
+    btn.textContent = 'Save';
+    btn.disabled = false;
+  }, 2200);
 }
 function prepareAndSaveForPrint() {
   if (_printPrepared) return;
@@ -7878,9 +8119,9 @@ function updateScreenDocTitle() {
 }
 
 function saveToHistory() {
-  if (_docType === 'internal') return;   // internal printouts are never recorded
+  if (_docType === 'internal') return false;   // internal printouts are never recorded
   const order = captureOrder();
-  if (!order) return;
+  if (!order) return false;
   maybeSaveNewCustomer();
 
   if (_reprintSource) {
@@ -7900,7 +8141,7 @@ function saveToHistory() {
     } else {
       _lastPushStatus = 'skipped';
     }
-    return; // don't add duplicate entry to localStorage history
+    return true; // don't add duplicate entry to localStorage history
   }
 
   if (_currentTxnId) {
@@ -7917,7 +8158,7 @@ function saveToHistory() {
     } else {
       _lastPushStatus = 'skipped';
     }
-    return; // already in history — don't duplicate
+    return true; // already in history — don't duplicate
   }
 
   // New transaction: assign txnId and date at initial print time.
@@ -7957,6 +8198,7 @@ function saveToHistory() {
   } else {
     _lastPushStatus = 'skipped';
   }
+  return true;
 }
 
 function showPrintBanner() {
@@ -9009,6 +9251,7 @@ function buildMobileRows() {
       <div class="mobile-desc empty" id="mdesc-${i}">Description</div>
       <div class="mobile-bottom">
         <span class="mobile-make" id="mmake-${i}"></span>
+        <label class="mobile-reorder"><input class="reorder-toggle" type="checkbox" data-reorder-row="${i}" aria-label="Need to order line ${i+1}" disabled><span>Order?</span></label>
         <span class="mobile-price" id="mprice-${i}" data-price=""></span>
         <button type="button" class="mobile-discount-btn" data-row="${i}" style="display:none">$ off</button>
         <div class="mobile-x-qty">
@@ -9078,6 +9321,8 @@ function onMobileDescKeydown(e) {
 }
 
 function onMobileClick(e) {
+  const reorder = e.target.closest('.reorder-toggle[data-reorder-row]');
+  if (reorder) { setRowReorder(parseInt(reorder.dataset.reorderRow), reorder.checked); return; }
   const discountBtn = e.target.closest('.mobile-discount-btn');
   if (discountBtn) { openMobileDiscount(parseInt(discountBtn.dataset.row)); return; }
   const discountApply = e.target.closest('.mobile-discount-apply');

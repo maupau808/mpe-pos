@@ -497,13 +497,19 @@ pos.addEventListener('load', async () => {
       assert(!/Scan an item/.test(pos.contentDocument.getElementById('scannerModeLines').textContent), 'Scanner Mode view did not update');
     });
 
-    for (const type of ['invoice', 'quote', 'internal']) {
+    for (const type of ['invoice', 'quote']) {
       await test(`${type} accepts scans but cannot enter Scanner Mode`, async () => {
         reset(pos, type); win.setScannerModeActive(true); await burst(pos, codeB);
         assert(!pos.contentDocument.body.classList.contains('scanner-mode-active'), 'Scanner Mode took over document');
         assert(filledRows(pos).length === 1, 'regular document scan did not add');
       });
     }
+
+    await test('Internal mode cannot be entered without its trusted confirmation', async () => {
+      reset(pos);
+      assert(win.setDocType('internal') === false, 'programmatic Internal switch bypassed confirmation');
+      assert(win.eval('_docType') === 'receipt', 'rejected Internal switch changed the document');
+    });
 
     await test('browser workload cannot split an acquired scan', async () => {
       reset(pos); const input = pos.contentDocument.getElementById('custName'); input.value = 'KEEP'; input.focus();
@@ -787,6 +793,36 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 1, 'first Clear pull cleared sale');
       await burst(pos, clear, { burstGap: 120 });
       assert(filledRows(pos).length === 0, 'second Clear pull did not clear sale');
+    });
+
+    await test('Need to Order marks the last scan, repeats safely, and can be unticked', async () => {
+      reset(pos);
+      win.eval("reorderPending = []; localStorage.removeItem('mpeReorderPendingV1')");
+      assert(win.sheetText('00009302535') === "'00009302535", 'leading-zero part is not protected for Sheets');
+      await burst(pos, codeA);
+      const command = '~MPE2:Q7X4:REORDER:9V2J';
+      await burst(pos, command, { burstGap: 3000 });
+      const row = pos.contentDocument.querySelector('#searchRows tr[data-row="0"]');
+      const firstSignal = row?.dataset.reorderSignalId || '';
+      assert(firstSignal, 'command did not create a reorder signal');
+      assert(pos.contentDocument.querySelector('.reorder-toggle[data-reorder-row="0"]')?.checked,
+        'desktop checkbox did not respond');
+      assert(pos.contentDocument.querySelector('#mobileRows .reorder-toggle[data-reorder-row="0"]')?.checked,
+        'mobile checkbox did not mirror the mark');
+      assert(win.eval("reorderPending.filter(item => item.action === 'FLAG').length") === 1,
+        'first command did not queue exactly one flag');
+      await burst(pos, command, { burstGap: 120 });
+      assert(row.dataset.reorderSignalId === firstSignal, 'repeat command replaced the stable signal');
+      assert(win.eval("reorderPending.filter(item => item.action === 'FLAG').length") === 1,
+        'repeat command queued a duplicate flag');
+      assert(/already marked/i.test(pos.contentDocument.getElementById('scanCommandFlash')?.textContent || ''),
+        'repeat command gave no visual response');
+      assert(win.setRowReorder(0, false), 'untick action was rejected');
+      assert(!pos.contentDocument.querySelector('.reorder-toggle[data-reorder-row="0"]')?.checked,
+        'checkbox stayed checked after untick');
+      assert(win.eval("reorderPending.filter(item => item.action === 'UNFLAG').length") === 1,
+        'untick did not queue one matching unflag');
+      win.eval("reorderPending = []; localStorage.removeItem('mpeReorderPendingV1')");
     });
 
     await test('Scanner Mode Auto Print keeps sale and emphasizes Next transaction', async () => {
