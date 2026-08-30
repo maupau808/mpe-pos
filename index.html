@@ -1082,7 +1082,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.30.7';
+const POS_RELEASE = '2026.08.30.8';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -4808,30 +4808,50 @@ function fmt(n) { return n < 0 ? '- ' + Math.abs(n).toFixed(2) : n.toFixed(2); }
 function fmtPrint(n) { return n < 0 ? '- $' + Math.abs(n).toFixed(2) : '$' + n.toFixed(2); }
 
 const VALUE_FIT_SELECTOR = '.price-edit, .sub-edit, .cost-edit, .cell-cost, .cell-margin, .sub-total, .note-price-input, .discount-money, .mobile-price, .mobile-sub';
+const VALUE_FIT_MIN_PX = 7.5;
 let _valueFitFrame = 0;
 const _valueFitCanvas = document.createElement('canvas');
 const _valueFitContext = _valueFitCanvas.getContext('2d');
+function valueFitAvailableWidth(el, style) {
+  const inset = computed => (parseFloat(computed.paddingLeft) || 0) + (parseFloat(computed.paddingRight) || 0);
+  const own = el.clientWidth > 0 ? el.clientWidth - inset(style) : 0;
+  const cell = el.closest?.('td');
+  let cellWidth = 0;
+  if (cell?.clientWidth > 0) cellWidth = cell.clientWidth - inset(getComputedStyle(cell));
+  let available = own > 0 && cellWidth > 0 ? Math.min(own, cellWidth) : Math.max(own, cellWidth);
+  // Inputs need breathing room beyond their CSS padding for the caret and the
+  // browser's internal text edge. Plain table text needs only a small cushion.
+  available -= el.matches('input, textarea') ? 8 : 4;
+  return Math.max(0, available);
+}
+function valueFitTextWidth(text, style, size) {
+  _valueFitContext.font = `${style.fontStyle || 'normal'} ${style.fontWeight || '400'} ${size}px ${style.fontFamily}`;
+  const tracking = parseFloat(style.letterSpacing) || 0;
+  return _valueFitContext.measureText(text).width + Math.max(0, text.length - 1) * tracking;
+}
 function scheduleValueFieldFit() {
   cancelAnimationFrame(_valueFitFrame);
   _valueFitFrame = requestAnimationFrame(() => {
     document.querySelectorAll(VALUE_FIT_SELECTOR).forEach(el => {
       el.style.removeProperty('--value-fit-size');
-      if (!el.getClientRects().length || el.clientWidth <= 0 || !_valueFitContext) return;
+      if (!el.getClientRects().length || !_valueFitContext) return;
       const text = el.matches('input, textarea') ? el.value : el.textContent;
       if (!text || text === '—') return;
       const style = getComputedStyle(el);
       const base = parseFloat(style.fontSize) || 14;
-      const available = el.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0) - 2;
-      _valueFitContext.font = `${style.fontWeight} ${base}px ${style.fontFamily}`;
-      const needed = _valueFitContext.measureText(text).width;
+      const available = valueFitAvailableWidth(el, style);
+      const needed = valueFitTextWidth(text, style, base);
       if (needed > available && available > 0) {
-        const fitted = Math.max(9, Math.floor(base * available / needed * 10) / 10);
+        const fitted = Math.max(VALUE_FIT_MIN_PX, Math.floor(base * available / needed * 9.6) / 10);
         el.style.setProperty('--value-fit-size', `${fitted}px`);
       }
     });
   });
 }
 window.addEventListener('resize', scheduleValueFieldFit);
+document.addEventListener('input', e => {
+  if (e.target?.matches?.(VALUE_FIT_SELECTOR)) scheduleValueFieldFit();
+});
 
 function isOtherPart(part) {
   if (!part) return false;
