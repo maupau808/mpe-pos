@@ -828,6 +828,7 @@ function desktopGoogleAvailable() {
 }
 function phoneBridgeAvailable() {
   return location.origin === 'https://maupau808.github.io' &&
+    !!phoneBridgeKey() &&
     /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(PHONE_BRIDGE_URL);
 }
 function phoneBridgeKey() { return localStorage.getItem(K_BRIDGE) || ''; }
