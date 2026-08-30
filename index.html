@@ -1094,7 +1094,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.30.3';
+const POS_RELEASE = '2026.08.30.4';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1573,10 +1573,11 @@ function maybeAutoRefresh() {
   if (sameDay && (now - _lastFetchAt) < 30 * 60 * 1000) return;   // already fresh today
   fetchFromDrive();
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingPriceChanges(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); } });
 setInterval(() => { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); }, 60 * 1000);
 setInterval(checkForPosUpdate, 5 * 60 * 1000);
 setInterval(flushPendingPriceChanges, PRICE_CHANGE_RETRY_MS);
+setInterval(flushPendingReorders, PRICE_CHANGE_RETRY_MS);
 
 async function fetchFromDrive() {
   if (desktopGoogleAvailable()) {
@@ -2096,7 +2097,11 @@ function reorderRegisterId() {
 }
 
 function persistPendingReorders() {
-  try { localStorage.setItem(REORDER_PENDING_KEY, JSON.stringify(reorderPending)); } catch (e) {}
+  const serialized = JSON.stringify(reorderPending);
+  localStorage.setItem(REORDER_PENDING_KEY, serialized);
+  if (localStorage.getItem(REORDER_PENDING_KEY) !== serialized) {
+    throw new Error('Restock queue could not be saved locally');
+  }
 }
 
 // Bridge writes use USER_ENTERED. Guard digit-leading identifiers so Sheets
@@ -2179,8 +2184,14 @@ function queueReorderAction(action, signal) {
     release: POS_RELEASE,
   };
   reorderPending.push(event);
-  persistPendingReorders();
+  try {
+    persistPendingReorders();
+  } catch (error) {
+    reorderPending = reorderPending.filter(item => item.eventId !== event.eventId);
+    throw error;
+  }
   flushPendingReorders();
+  return event;
 }
 
 function setRowReorder(row, active) {
@@ -2198,8 +2209,14 @@ function setRowReorder(row, active) {
       return false;
     }
     const signalId = reorderIdentifier('signal');
+    try {
+      queueReorderAction('FLAG', { signalId, ...identity });
+    } catch (error) {
+      clearReorderVisual(row);
+      flashScanCommand('Restock mark could not be saved — try again', 'err');
+      return false;
+    }
     setReorderVisual(row, signalId, identity);
-    queueReorderAction('FLAG', { signalId, ...identity });
     flashScanCommand(`${identity.partNumber} marked for order`, 'ok');
     return true;
   }
@@ -2208,39 +2225,73 @@ function setRowReorder(row, active) {
     updateReorderAvailability(row);
     return false;
   }
+  try {
+    queueReorderAction('UNFLAG', current);
+  } catch (error) {
+    updateReorderAvailability(row);
+    flashScanCommand('Restock removal could not be saved — try again', 'err');
+    return false;
+  }
   clearReorderVisual(row);
   updateReorderAvailability(row);
-  queueReorderAction('UNFLAG', current);
   flashScanCommand(`${current.partNumber} removed from order list`, 'warn');
   return true;
 }
 
+function reorderEventKey(item) {
+  return JSON.stringify([
+    String(item?.eventId || '').trim(),
+    String(item?.signalId || '').trim(),
+    String(item?.action || '').trim().toUpperCase(),
+    String(item?.make || '').trim().toUpperCase(),
+    normalizePN(item?.partNumber),
+  ]);
+}
+
+function reorderSheetEventKey(row) {
+  if (String(row?.[0] || '').trim().toUpperCase() !== 'REORDER') return '';
+  return reorderEventKey({
+    eventId: row?.[1], signalId: row?.[2], action: row?.[3],
+    make: row?.[4], partNumber: row?.[5],
+  });
+}
+
+function removeVerifiedReorders(verified) {
+  const ids = new Set(verified.map(item => item.eventId));
+  reorderPending = reorderPending.filter(item => !ids.has(item.eventId));
+  persistPendingReorders();
+}
+
 async function _flushPendingReorders() {
-  if (!googleSessionAvailable() || !reorderPending.length) return;
+  if (!googleSessionAvailable() || !reorderPending.length) return false;
   try {
     while (reorderPending.length && googleSessionAvailable()) {
       const batch = reorderPending.slice(0, 100);
-      const rows = batch.map(item => [
+      const existingRows = await sheetsGet('Transactions!A:J');
+      const existingKeys = new Set(existingRows.map(reorderSheetEventKey).filter(Boolean));
+      const alreadyThere = batch.filter(item => existingKeys.has(reorderEventKey(item)));
+      const missing = batch.filter(item => !existingKeys.has(reorderEventKey(item)));
+      const verified = [...alreadyThere];
+      const rows = missing.map(item => [
         'REORDER', item.eventId, item.signalId, item.action, item.make,
         sheetText(item.partNumber), item.description, item.occurredAt, item.registerId, item.release,
       ]);
-      const result = await sheetsAppend('Transactions!A1', rows);
-      if (!result) return;
-      const writtenRange = result?.updates?.updatedRange;
-      if (!writtenRange) throw new Error('Reorder append returned no range to verify');
-      const writtenRows = await sheetsGet(writtenRange);
-      const confirmed = new Set(writtenRows
-        .filter(row => String(row[0] || '').trim().toUpperCase() === 'REORDER')
-        .map(row => `${row[1]}|${row[2]}|${String(row[3] || '').toUpperCase()}`));
-      const confirmedIds = new Set(batch
-        .filter(item => confirmed.has(`${item.eventId}|${item.signalId}|${item.action}`))
-        .map(item => item.eventId));
-      reorderPending = reorderPending.filter(item => !confirmedIds.has(item.eventId));
-      persistPendingReorders();
-      if (confirmedIds.size !== batch.length) throw new Error('Reorder event was not found after append');
+      if (missing.length) {
+        const result = await sheetsAppend('Transactions!A:J', rows);
+        if (!result) return false;
+        const writtenRange = result?.updates?.updatedRange;
+        if (!writtenRange) throw new Error('Reorder append returned no range to verify');
+        const writtenKeys = new Set((await sheetsGet(writtenRange)).map(reorderSheetEventKey).filter(Boolean));
+        const confirmed = missing.filter(item => writtenKeys.has(reorderEventKey(item)));
+        if (confirmed.length !== missing.length) throw new Error('Reorder event was not found after append');
+        verified.push(...confirmed);
+      }
+      removeVerifiedReorders(verified);
     }
+    return true;
   } catch (error) {
     console.warn('Reorder sync deferred:', error.message);
+    return false;
   }
 }
 
@@ -7117,6 +7168,7 @@ function updateSummary() {
 
 function clearAll() {
   commitActiveBridgeDraft();
+  void flushPendingReorders();
   void flushPendingPriceChanges();
   _scannerModeAwaitingClear = false;
   renderScannerModeCommandCodes();
