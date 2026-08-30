@@ -903,23 +903,32 @@ class PhoneBridgeClient {
     finally { this.sessionPromise = null; }
   }
 
-  jsonp(params) {
-    return new Promise((resolve, reject) => {
-      const callback = `__mpeScanBridge_${this.requestId()}`;
-      const script = document.createElement('script');
-      const timer = setTimeout(() => finish(new Error('Scanner connection timed out')), 30000);
-      const finish = (error, value) => {
-        clearTimeout(timer);
-        script.remove();
-        try { delete window[callback]; } catch (ignored) { window[callback] = undefined; }
-        if (error) reject(error); else resolve(value);
-      };
-      window[callback] = value => finish(null, value);
-      script.onerror = () => finish(new Error('Scanner connection could not be reached'));
-      const query = new URLSearchParams({ ...params, callback });
-      script.src = `${this.url}?${query}`;
-      document.head.appendChild(script);
-    });
+  async jsonp(params) {
+    const callback = `__mpeScanBridge_${this.requestId()}`;
+    const query = new URLSearchParams({ ...params, callback });
+    try {
+      const response = await fetch(`${this.url}?${query}`, { cache: 'no-store', credentials: 'omit' });
+      if (!response.ok) throw new Error('Scanner connection could not be reached');
+      const body = (await response.text()).trim();
+      const prefix = `${callback}(`;
+      if (!body.startsWith(prefix) || !body.endsWith(');')) throw new Error('Scanner connection returned an invalid response');
+      return JSON.parse(body.slice(prefix.length, -2));
+    } catch (fetchError) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        const timer = setTimeout(() => finish(new Error('Scanner connection timed out')), 30000);
+        const finish = (error, value) => {
+          clearTimeout(timer);
+          script.remove();
+          try { delete window[callback]; } catch (ignored) { window[callback] = undefined; }
+          if (error) reject(error); else resolve(value);
+        };
+        window[callback] = value => finish(null, value);
+        script.onerror = () => finish(fetchError instanceof Error ? fetchError : new Error('Scanner connection could not be reached'));
+        script.src = `${this.url}?${query}`;
+        document.head.appendChild(script);
+      });
+    }
   }
 
   async signedGet(method, args) {
