@@ -569,14 +569,17 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   body.dark .scanner-mode-list { border-color: #434b43; }
   .scanner-mode-list-head { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 12px; color: #667066; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   body.dark .scanner-mode-list-head { color: #aeb7ae; }
+  .scanner-mode-column-head { display: grid; grid-template-columns: minmax(0, 1fr) 54px auto; gap: 14px; padding: 0 10px 6px; color: #667066; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .scanner-mode-column-head span:nth-child(2) { text-align: center; }
+  body.dark .scanner-mode-column-head { color: #aeb7ae; }
   .scanner-mode-lines { flex: none; border-top: 1px solid #e1e7de; }
   body.dark .scanner-mode-lines { border-color: #353d36; }
   .scanner-mode-line { display: grid; grid-template-columns: minmax(0, 1fr) 54px auto; align-items: center; gap: 14px; min-height: 88px; padding: 0 10px; border-bottom: 1px solid #e1e7de; }
   .scanner-mode-line:nth-child(even) { background: #f2f5f0; }
   body.dark .scanner-mode-line { border-color: #353d36; }
   body.dark .scanner-mode-line:nth-child(even) { background: #252b26; }
-  .scanner-mode-qty { color: #667066; font-size: 17px; font-variant-numeric: tabular-nums; text-align: center; }
-  body.dark .scanner-mode-qty { color: #aeb7ae; }
+  .scanner-mode-qty { color: #1a1a1a; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; }
+  body.dark .scanner-mode-qty { color: #f3f5f1; }
   .scanner-mode-description { min-width: 0; font-size: 18px; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; overflow-wrap: anywhere; }
   .scanner-mode-serial { margin-top: 5px; color: #4e6856; font-size: 14px; font-weight: 700; letter-spacing: .025em; }
   body.dark .scanner-mode-serial { color: #b8cbbb; }
@@ -604,8 +607,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-total { font-size: clamp(30px, 3.375vw, 42px); font-weight: 700; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
   .scanner-mode-command-deck { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid #cbd4ca; }
   body.dark .scanner-mode-command-deck { border-color: #4a554b; }
-  .scanner-mode-command-kicker { color: #667066; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-  body.dark .scanner-mode-command-kicker { color: #aeb7ae; }
   .scanner-mode-command { min-width: 0; border: 1px solid #cbd4ca; background: rgba(255,255,255,.56); box-sizing: border-box; }
   body.dark .scanner-mode-command { border-color: #4a554b; background: rgba(0,0,0,.12); }
   .scanner-mode-command-horizontal { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 12px; padding: 6px 12px 6px 6px; }
@@ -615,13 +616,12 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-command-next.is-next { border: 2px solid #b3261e; padding: 5px 11px 5px 5px; }
   .scanner-mode-command-label { color: #26362c; font-size: 15px; font-weight: 800; line-height: 1.12; letter-spacing: .02em; text-transform: uppercase; text-wrap: balance; }
   body.dark .scanner-mode-command-label { color: #eef2ef; }
-  .scanner-mode-command-horizontal .scanner-mode-command-label { font-size: clamp(18px, 1.8vw, 22px); }
+  .scanner-mode-command-horizontal .scanner-mode-command-label { font-size: clamp(27px, 2.7vw, 33px); }
+  .scanner-mode-command-next .scanner-mode-command-label { font-size: clamp(23px, 2.35vw, 28px); }
   .scanner-mode-command-primary .scanner-mode-command-label { color: #2f5a3f; }
   body.dark .scanner-mode-command-primary .scanner-mode-command-label { color: #b7c8bb; }
   .scanner-mode-command-next .scanner-mode-command-label { color: #a32323; }
   body.dark .scanner-mode-command-next .scanner-mode-command-label { color: #eea1a1; }
-  .scanner-mode-command-help { margin-top: 2px; color: #667066; font-size: 11px; font-weight: 600; line-height: 1.2; text-wrap: pretty; }
-  body.dark .scanner-mode-command-help { color: #aeb7ae; }
   .scanner-mode-command-code { display: block; width: 100%; max-width: 72px; height: auto; aspect-ratio: 1; background: #fff; shape-rendering: crispEdges; }
   body.dark .scanner-mode-command-code { filter: invert(1) contrast(1.2821); }
   .scanner-mode-command-horizontal .scanner-mode-command-code { max-width: 90px; }
@@ -636,6 +636,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     .scanner-mode-side { position: static; min-height: 0; gap: 16px; padding: 18px 16px; }
     .scanner-mode-total-block { margin-top: 0; }
     .scanner-mode-line { grid-template-columns: minmax(0, 1fr) 44px auto; gap: 10px; }
+    .scanner-mode-column-head { grid-template-columns: minmax(0, 1fr) 44px auto; gap: 10px; }
     .scanner-mode-description { font-size: 17px; }
     .scanner-mode-command-horizontal { grid-template-columns: 104px minmax(0, 1fr); }
     .scanner-mode-command-qr-right { grid-template-columns: minmax(0, 1fr) 104px; }
@@ -872,6 +873,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <span>Current sale</span>
         <span id="scannerModeCount">0 pieces</span>
       </div>
+      <div class="scanner-mode-column-head"><span></span><span>Qty</span><span></span></div>
       <div id="scannerModeLines" class="scanner-mode-lines">
         <div class="scanner-mode-empty">Scan an item to begin</div>
       </div>
@@ -892,27 +894,17 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
           </div>
         </div>
         <div class="scanner-mode-command-deck" aria-label="Scanner commands">
-          <div class="scanner-mode-command-kicker">Scanner commands</div>
           <div class="scanner-mode-command scanner-mode-command-horizontal scanner-mode-command-primary" aria-label="Print command QR code">
             <svg id="scannerModePrintCode" class="scanner-mode-command-code" role="img" aria-label="Print QR code"></svg>
-            <div>
-              <div class="scanner-mode-command-label">Print</div>
-              <div class="scanner-mode-command-help">Finish and print this sale</div>
-            </div>
+            <div class="scanner-mode-command-label">Print</div>
           </div>
           <div class="scanner-mode-command scanner-mode-command-horizontal scanner-mode-command-qr-right" aria-label="Undo command QR code">
-            <div>
-              <div class="scanner-mode-command-label">Undo</div>
-              <div class="scanner-mode-command-help">Last item or clear</div>
-            </div>
+            <div class="scanner-mode-command-label">Undo</div>
             <svg id="scannerModeUndoCode" class="scanner-mode-command-code" role="img" aria-label="Undo QR code"></svg>
           </div>
           <div id="scannerModeNextCommand" class="scanner-mode-command scanner-mode-command-horizontal scanner-mode-command-next" aria-label="Next transaction command QR code">
             <svg id="scannerModeClearCode" class="scanner-mode-command-code" role="img" aria-label="Next transaction QR code"></svg>
-            <div>
-              <div class="scanner-mode-command-label">Next transaction</div>
-              <div class="scanner-mode-command-help">Scan twice to clear</div>
-            </div>
+            <div class="scanner-mode-command-label">Next transaction</div>
           </div>
         </div>
       </div>
@@ -1094,7 +1086,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.08.30.4';
+const POS_RELEASE = '2026.08.30.5';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -3374,9 +3366,6 @@ function acceptDecodedScan(rawValue, format, options = {}) {
     if (format === 'hardware') runScanCommand(raw);
     return;
   }
-  // Any ordinary scan cancels a half-finished Clear confirmation. A packaging
-  // code between the two pulls must never leave Clear armed.
-  _pendingClearAt = 0;
   // A license is not a part. It fills the customer fields and stops here, before
   // the catalog, the dedupe guard, review, and the binding queue ever see it.
   if (looksLikeLicensePayload(raw)) {
@@ -3897,29 +3886,20 @@ document.getElementById('scannerModeView')?.addEventListener('pointerdown', even
   setScannerModeActive(false);
 });
 const SCAN_COMMAND_REPEAT_MS = 900;
-// No minimum gap: two pulls as fast as the trigger repeats must clear. The old
-// 250ms floor rejected a fast double pull and silently re-armed instead, so the
-// operator had to pull a third time. Clear is still two scans, and a misfire is
-// one scan of Undo away.
-const CLEAR_CONFIRM_MIN_MS = 0;
-const CLEAR_CONFIRM_MAX_MS = 4000;
 let _lastScanCommand = '', _lastScanCommandAt = 0;
 let _clearedSale = null;
-let _pendingClearAt = 0;
 
 function isScanCommand(value) {
   return SCAN_COMMANDS.has(String(value || '').trim().toUpperCase());
 }
 
-// Feedback sits above the Clear/Print buttons, where the eye already is for
+// Feedback sits above the command controls, where the eye already is for
 // these commands, and floats so a message never moves the line items.
 //
-// That bar is inside .wrap, which Scanner Mode hides outright, so a command
-// answered only here says nothing at all on a scanner till: "Scan Clear again
-// to confirm" is the half of the two-pull Clear the operator most needs to see.
-// The Scanner Mode status line speaks the same ok/warn/err vocabulary, so the
-// message is mirrored there and stays until the next scan, exactly like the
-// item and packaging feedback that already lands in that pane.
+// That bar is inside .wrap, which Scanner Mode hides outright. The Scanner Mode
+// status line speaks the same ok/warn/err vocabulary, so command feedback is
+// mirrored there and stays until the next scan, exactly like item and packaging
+// feedback that already lands in that pane.
 function flashScanCommand(message, kind) {
   if (_scannerModeActive) syncScannerModeView(message, kind);
   const el = document.getElementById('scanCommandFlash');
@@ -4247,13 +4227,12 @@ function runScanCommand(raw) {
   const body = SCAN_COMMANDS.get(payload);
   if (!body) return;
   const now = Date.now();
-  // Print and Undo ignore an electrical double-read. Clear deliberately uses
-  // two pulls below; ADD commands deliberately stack on repeat.
-  const guarded = /^(PRINT|UNDO)$/.test(body);
+  // Print, Undo, and Clear ignore an electrical double-read. ADD commands
+  // deliberately stack on repeat.
+  const guarded = /^(PRINT|UNDO|CLEAR)$/.test(body);
   if (guarded && body === _lastScanCommand && now - _lastScanCommandAt < SCAN_COMMAND_REPEAT_MS) return;
   _lastScanCommand = body;
   _lastScanCommandAt = now;
-  if (body !== 'CLEAR') _pendingClearAt = 0;
 
   const qty = body.match(/^QTY([=+-])(\d{1,3})$/);
   if (qty) {
@@ -4310,13 +4289,6 @@ function runScanCommand(raw) {
 
   if (body === 'CLEAR') {
     if (!sheetHasContent()) { flashScanCommand('Already empty', 'ok'); return; }
-    const elapsed = now - _pendingClearAt;
-    if (!_pendingClearAt || elapsed < CLEAR_CONFIRM_MIN_MS || elapsed > CLEAR_CONFIRM_MAX_MS) {
-      _pendingClearAt = now;
-      flashScanCommand('Scan Clear again to confirm', 'warn');
-      return;
-    }
-    _pendingClearAt = 0;
     // Stashed BEFORE the wipe: a misfired trigger pull costs one scan of Undo,
     // not a retyped sale with a customer standing at the counter.
     _clearedSale = captureSaleLines();
@@ -7703,7 +7675,7 @@ async function autoPrint() {
   _directPrintInFlight = false;
   if (_scannerModeActive || _scannerModeDefault) {
     _scannerModeAwaitingClear = true;
-    setScannerModeActive(true, { message: 'Printed — sale kept. Scan Clear twice for the next sale.', state: 'warn' });
+    setScannerModeActive(true, { message: 'Printed — sale kept. Scan Next Transaction for the next sale.', state: 'warn' });
   }
 }
 
@@ -7714,7 +7686,7 @@ window.addEventListener('afterprint', () => {
   _printPrepared = false;
   if (_scannerModeActive || _scannerModeDefault) {
     _scannerModeAwaitingClear = true;
-    setScannerModeActive(true, { message: 'Print window closed — sale kept. Scan Clear twice for the next sale.', state: 'warn' });
+    setScannerModeActive(true, { message: 'Print window closed — sale kept. Scan Next Transaction for the next sale.', state: 'warn' });
   }
 });
 document.addEventListener('keydown', e => {
