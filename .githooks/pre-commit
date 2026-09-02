@@ -1,26 +1,44 @@
 #!/bin/sh
 set -eu
 
-if ! git diff --cached --name-only -- index.html | grep -qx 'index.html'; then
+staged_index=$(git diff --cached --name-only -- index.html)
+staged_manifest=$(git diff --cached --name-only -- version.json)
+
+if [ -z "$staged_index" ] && [ -z "$staged_manifest" ]; then
   exit 0
 fi
 
-if ! git diff --cached --name-only -- version.json | grep -qx 'version.json'; then
+read_page_release() {
+  sed -n "s/.*const POS_RELEASE = '\([^']*\)'.*/\1/p" | head -n 1
+}
+
+read_manifest_release() {
+  sed -n 's/.*"posRelease"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+page_release=$(git show :index.html | read_page_release)
+manifest_release=$(git show :version.json | read_manifest_release)
+previous_release=$(git show HEAD:version.json 2>/dev/null | read_manifest_release || true)
+
+# POS shows its update banner while the fetched posRelease differs from the
+# POS_RELEASE constant compiled into the running page. If the two ever drift the
+# banner can never clear: each reload serves the same constant. So they are
+# checked together on every commit that touches either file, not just on
+# index.html commits — a version.json-only bump is what stranded the banner
+# through 2026.08.30.9 to .12.
+if [ -z "$page_release" ] || [ "$page_release" != "$manifest_release" ]; then
+  echo "POS release blocked: index.html is '$page_release' but version.json is '$manifest_release'." >&2
+  echo 'Bump POS_RELEASE and version.json.posRelease to the same new value.' >&2
+  exit 1
+fi
+
+if [ -n "$staged_index" ] && [ -z "$staged_manifest" ]; then
   echo 'POS release blocked: index.html changed without version.json.' >&2
   echo 'Bump POS_RELEASE and version.json.posRelease to the same new value.' >&2
   exit 1
 fi
 
-page_release=$(git show :index.html | sed -n "s/.*const POS_RELEASE = '\([^']*\)'.*/\1/p" | head -n 1)
-manifest_release=$(git show :version.json | sed -n 's/.*"posRelease"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
-previous_release=$(git show HEAD:version.json 2>/dev/null | sed -n 's/.*"posRelease"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1 || true)
-
-if [ -z "$page_release" ] || [ "$page_release" != "$manifest_release" ]; then
-  echo "POS release blocked: index.html is '$page_release' but version.json is '$manifest_release'." >&2
-  exit 1
-fi
-
-if [ -n "$previous_release" ] && [ "$manifest_release" = "$previous_release" ]; then
+if [ -n "$staged_index" ] && [ -n "$previous_release" ] && [ "$manifest_release" = "$previous_release" ]; then
   echo "POS release blocked: version.json is still '$manifest_release'." >&2
   echo 'Use a new release value before publishing index.html.' >&2
   exit 1
