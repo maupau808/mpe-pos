@@ -183,6 +183,13 @@ function bridgeCall(deviceKey, request) {
   return dispatchBridgeCall_(clean.method, clean.args);
 }
 
+// Editor-only setup helper. It is deliberately absent from dispatchBridgeCall_,
+// so the public web app and phone cannot invoke it. Run once as the owner to
+// grant the manifest's Drive/Sheets scopes and verify the required tabs exist.
+function authorizeBridgeAccess() {
+  return bridgeStatus_();
+}
+
 function bridgeCatalogInfo_(kind) {
   if (kind !== 'json') throw new Error('Only the scanner catalog is allowed');
   const response = googleFetch_(
