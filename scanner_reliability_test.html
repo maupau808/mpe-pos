@@ -162,6 +162,8 @@ pos.addEventListener('load', async () => {
       assert(doc.getElementById('bindBtn')?.closest('#setSheet'), 'Bind action did not move into Settings');
       assert(/bind barcodes to parts/i.test(doc.getElementById('bindBtn').closest('.set-row').textContent),
         'Bind action is not plainly labeled in Settings');
+      assert(!/standalonePhoneApp/.test(phoneWin.phoneBridgeAvailable.toString()),
+        'Home Screen mode still hides the persistent Connect path');
       doc.body.classList.add('bind');
       assert(phoneWin.getComputedStyle(doc.getElementById('searchBtn')).display === 'none',
         'Search remains available during the separate Bind workflow');

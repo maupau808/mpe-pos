@@ -827,11 +827,8 @@ function cachedToken() {
 function desktopGoogleAvailable() {
   return !!(window.mpeDesktop?.google && typeof window.mpeDesktop.google.getStatus === 'function');
 }
-function standalonePhoneApp() {
-  return window.navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches === true;
-}
 function phoneBridgeAvailable() {
-  return !standalonePhoneApp() && location.origin === 'https://maupau808.github.io' &&
+  return location.origin === 'https://maupau808.github.io' &&
     /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(PHONE_BRIDGE_URL);
 }
 function phoneBridgeKey() { return localStorage.getItem(K_BRIDGE) || ''; }
