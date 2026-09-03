@@ -177,6 +177,8 @@ pos.addEventListener('load', async () => {
         'camera preview is not a centered crop of its normal view');
       assert(/\.reticle i\s*\{[^}]*width:\s*56%[^}]*height:\s*38%/i.test(phoneCss),
         'camera target is still too broad to isolate neighbouring barcodes');
+      assert(/\.reticle i::after\s*\{[^}]*left:\s*7%[^}]*right:\s*7%[^}]*top:\s*50%[^}]*height:\s*2px[^}]*var\(--scan-beam\)/i.test(phoneCss),
+        'camera target is not a long horizontal scanner beam');
       const centred = phoneWin.preferredScanSymbol([
         { rawValue: 'TEST1001', boundingBox: { x: 10, y: 35, width: 20, height: 20 } },
         { rawValue: 'TEST2002', boundingBox: { x: 43, y: 42, width: 14, height: 16 } },

@@ -26,6 +26,7 @@
   --accent-ink: #12140f;
   --warn: #e0a53c;
   --err: #e8705f;
+  --scan-beam: #ff3b30;
   --shadow: 0 6px 24px rgba(0,0,0,.45);
 }
 html[data-theme="light"] {
@@ -40,6 +41,7 @@ html[data-theme="light"] {
   --accent-ink: #ffffff;
   --warn: #a9701a;
   --err: #c2382a;
+  --scan-beam: #d9251b;
   --shadow: 0 6px 24px rgba(0,0,0,.10);
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
@@ -119,8 +121,8 @@ button { cursor: pointer; border: none; background: none; }
   box-shadow: 0 0 0 100vmax rgba(0,0,0,.28);
 }
 .reticle i::after {
-  content: ''; position: absolute; left: 50%; top: 14%; bottom: 14%; width: 2px;
-  transform: translateX(-1px); border-radius: 2px; background: rgba(125,201,138,.9);
+  content: ''; position: absolute; left: 7%; right: 7%; top: 50%; height: 2px;
+  transform: translateY(-1px); border-radius: 2px; background: var(--scan-beam);
 }
 .cam-idle {
   position: absolute; inset: 0; display: flex;
