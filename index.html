@@ -984,6 +984,10 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="bottom-actions">
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
       <button class="btn-big" id="saveBtn" onclick="saveOnly()" title="Save to transaction history without printing">Save</button>
+      <!-- Sends the checkout total to the Clover terminal. Hidden unless this
+           register is paired to one. It does not save or print: the existing
+           Save and Print paths remain the only transaction seam. -->
+      <button class="btn-big" id="chargeCardBtn" style="display:none" onclick="chargeCardOnTerminal()" title="Send this total to the card terminal">Charge card</button>
       <div class="print-choice" role="group" aria-label="Print">
         <div class="print-choice-buttons">
           <div class="print-choice-option"><div class="print-choice-label">Print</div><button class="btn-big" id="printBtn" onclick="manualPrint()" title="Open the system print dialog">Manual</button></div>
@@ -1093,7 +1097,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.09.01.1';
+const POS_RELEASE = '2026.09.01.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1218,6 +1222,10 @@ function renderCardTerminalStatus(status) {
   chip.className = `drive-btn terminal ${TERMINAL_CHIP_CLASSES[status.state] || 'busy'}`;
   chip.title = status.detail ? `${status.message} — ${status.detail}` : (status.message || '');
   chip.style.display = '';
+  const chargeBtn = document.getElementById('chargeCardBtn');
+  // Only a ready terminal may offer a charge; anything else sends the counter
+  // to the terminal itself rather than to a button that cannot work.
+  if (chargeBtn) chargeBtn.style.display = status.canCharge ? '' : 'none';
 }
 
 async function initCardTerminalStatus() {
@@ -1227,6 +1235,50 @@ async function initCardTerminalStatus() {
     renderCardTerminalStatus(await window.mpeDesktop.terminal.getStatus());
   } catch (error) {
     noteToolFailure('Card terminal status', error);
+  }
+}
+
+let _cardChargeInFlight = false;
+
+function newChargeExternalId() {
+  // Clover requires 13-32 characters and uses it to recognise a retry of the
+  // same sale rather than a second one.
+  return `mpe${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function chargeCardOnTerminal() {
+  if (_cardChargeInFlight || !cardTerminalAvailable()) return;
+  const btn = document.getElementById('chargeCardBtn');
+  const { subtotal, hasAny } = currentSubtotal();
+  if (!hasAny || subtotal <= 0) { flashScanCommand('Nothing to charge yet', 'warn'); return; }
+  const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
+  const { total } = checkoutTotals(subtotal, cardFeeActive);
+  const amountCents = Math.round(total * 100);
+  if (!(amountCents > 0)) { flashScanCommand('Nothing to charge yet', 'warn'); return; }
+  if (!confirm(`Charge ${fmtPrint(total)} on the card terminal?`)) return;
+
+  _cardChargeInFlight = true;
+  const idle = btn ? btn.textContent : 'Charge card';
+  if (btn) { btn.textContent = 'On terminal…'; btn.disabled = true; }
+  try {
+    const result = await window.mpeDesktop.terminal.charge({
+      amountCents,
+      externalId: newChargeExternalId(),
+    });
+    if (result?.approved) {
+      const card = result.payment || {};
+      flashScanCommand(`Approved ${fmtPrint(total)} · ${card.cardBrand || 'card'} ${card.last4 || ''}`.trim(), 'ok');
+    } else if (result && result.outcomeKnown === false) {
+      // The card may already be charged. Never invite a second swipe here.
+      alert(`${result.reason}\n\nDo not charge again until you have checked the terminal.`);
+    } else {
+      flashScanCommand(result?.reason || 'Card was not approved', 'err');
+    }
+  } catch (error) {
+    noteToolFailure('Card charge', error);
+  } finally {
+    _cardChargeInFlight = false;
+    if (btn) { btn.textContent = idle; btn.disabled = false; }
   }
 }
 
@@ -7207,7 +7259,7 @@ function updateInternalTotals(revenue, hasAny) {
   noCostEl.classList.toggle('show', missing > 0);
 }
 
-function updateSummary() {
+function currentSubtotal() {
   let subtotal = 0, hasAny = false;
   for (let i = 0; i < NUM_ROWS; i++) {
     const raw = document.getElementById(`sub-${i}`)?.dataset.val;
@@ -7218,6 +7270,11 @@ function updateSummary() {
   tbody.querySelectorAll('[data-note-row] .note-price-input').forEach(el => {
     const v = parseFloat(el.dataset.subtotal); if (v) { subtotal += v; hasAny = true; }
   });
+  return { subtotal, hasAny };
+}
+
+function updateSummary() {
+  const { subtotal, hasAny } = currentSubtotal();
   const feeRow = document.getElementById('cardFeeRow');
   if (!hasAny) {
     document.getElementById('sumSubtotal').textContent = '—';
