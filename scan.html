@@ -114,9 +114,13 @@ button { cursor: pointer; border: none; background: none; }
   display: flex; align-items: center; justify-content: center;
 }
 .reticle i {
-  display: block; width: 82%; height: 46%;
+  position: relative; display: block; width: 56%; height: 38%;
   border: 2px solid rgba(255,255,255,.55); border-radius: 12px;
   box-shadow: 0 0 0 100vmax rgba(0,0,0,.28);
+}
+.reticle i::after {
+  content: ''; position: absolute; left: 50%; top: 14%; bottom: 14%; width: 2px;
+  transform: translateX(-1px); border-radius: 2px; background: rgba(125,201,138,.9);
 }
 .cam-idle {
   position: absolute; inset: 0; display: flex;
@@ -323,7 +327,7 @@ textarea.new-item-input { min-height: 72px; resize: vertical; }
 /* Binding still gives most of the screen to the part pool, but leaves enough
    camera context to separate neighbouring labels. */
 body.bind .cam-wrap { height: 150px; }
-body.bind .reticle i { width: 70%; height: 54%; border-radius: 8px; }
+body.bind .reticle i { width: 56%; height: 46%; border-radius: 8px; }
 body.bind .hero,
 body.bind .list-wrap { display: none; }
 body.bind #searchBtn,
@@ -1614,8 +1618,17 @@ function preferredScanSymbol(items, frameWidth = 0, frameHeight = 0) {
     return { item, distance: dx * dx + dy * dy };
   }).filter(Boolean).sort((a, b) => a.distance - b.distance);
   if (aimed.length) {
-    const usable = aimed.find(entry => !ignorableScanCode(entry.item.rawValue));
-    return (usable || aimed[0]).item;
+    // A partly visible code at the crop edge is exactly how the neighbouring
+    // label used to win. Its centre must be comfortably inside the target.
+    const centred = aimed.filter(entry => {
+      const box = entry.item.boundingBox;
+      const dx = (Number(box.x) + Number(box.width) / 2) / frameWidth - 0.5;
+      const dy = (Number(box.y) + Number(box.height) / 2) / frameHeight - 0.5;
+      return Math.abs(dx) <= 0.36 && Math.abs(dy) <= 0.40;
+    });
+    if (!centred.length) return null;
+    const usable = centred.find(entry => !ignorableScanCode(entry.item.rawValue));
+    return (usable || centred[0]).item;
   }
   const stihlUnit = values.find(item => stihlUnitDataMatrix(item.rawValue));
   if (stihlUnit) return stihlUnit;
@@ -2085,8 +2098,8 @@ function setCamStatus(msg, kind) {
 
 function scanTargetRatio() {
   return document.body.classList.contains('bind')
-    ? { width: 0.70, height: 0.54 }
-    : { width: 0.82, height: 0.46 };
+    ? { width: 0.56, height: 0.46 }
+    : { width: 0.56, height: 0.38 };
 }
 
 function drawScanTarget(video, canvas, { zoomed = false, angle = 0 } = {}) {
@@ -2283,7 +2296,7 @@ async function startCamera() {
 async function afterCameraUp() {
   $('camStop').hidden = false;
   $('againBtn').textContent = 'Stop scanning';
-  setCamStatus('Ready — point at a barcode');
+  setCamStatus('Ready — center one barcode on the green line');
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) {}
 }
 
