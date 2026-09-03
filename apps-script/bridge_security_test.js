@@ -77,11 +77,11 @@ context.__id = '0123456789abcdef0123456789abcdef';
 context.__payload = Buffer.from(JSON.stringify(['Lists!B:B'])).toString('base64url');
 context.__canonical = `GET\n${context.__id}\nsheetsGet\n${context.__payload}`;
 context.__sig = crypto.createHmac('sha256', context.__secret).update(context.__canonical).digest('base64url');
-assert.equal(evaluate("verifySignedCall_('GET',{sid:__sid,id:__id,method:'sheetsGet',payload:__payload,sig:__sig}).args[0]"), 'Lists!B:B');
+assert.equal(evaluate("verifySignedCall_('GET',{session:__sid,id:__id,method:'sheetsGet',payload:__payload,sig:__sig}).args[0]"), 'Lists!B:B');
 context.__wrongSig = crypto.createHmac('sha256', 'wrong').update(context.__canonical).digest('base64url');
-rejects("verifySignedCall_('GET',{sid:__sid,id:__id,method:'sheetsGet',payload:__payload,sig:__wrongSig})", /signature is invalid/);
+rejects("verifySignedCall_('GET',{session:__sid,id:__id,method:'sheetsGet',payload:__payload,sig:__wrongSig})", /signature is invalid/);
 cache.delete(`session:${context.__sid}`);
-rejects("verifySignedCall_('GET',{sid:__sid,id:__id,method:'sheetsGet',payload:__payload,sig:__sig})", /session expired/);
+rejects("verifySignedCall_('GET',{session:__sid,id:__id,method:'sheetsGet',payload:__payload,sig:__sig})", /session expired/);
 
 assert.match(source, /verifyDeviceKey_\(form\.key\)/);
 assert.match(source, /\['getStatus', 'sheetsGet', 'sheetId', 'catalogInfo', 'catalogChunk'\]/);

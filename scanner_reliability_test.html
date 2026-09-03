@@ -150,7 +150,7 @@ pos.addEventListener('load', async () => {
     const [codeA, codeB, codeC] = chooseCodes(win);
     assert(codeA && codeB && codeC, 'three unique test parts not found');
 
-    await test('phone scanner uses the compact labeled controls and camera strip', async () => {
+    await test('phone scanner uses labeled controls and a targeted camera view', async () => {
       const doc = phone.contentDocument;
       const phoneWin = frameWindow(phone);
       assert(!doc.querySelector('.top'), 'retired MPE Scan header still exists');
@@ -167,12 +167,21 @@ pos.addEventListener('load', async () => {
         'Search remains available during the separate Bind workflow');
       doc.body.classList.remove('bind');
       const cameraHeight = doc.querySelector('.cam-wrap').getBoundingClientRect().height;
-      assert(cameraHeight >= 95 && cameraHeight <= 97, `camera strip is ${cameraHeight}px tall`);
+      assert(cameraHeight >= 200 && cameraHeight <= 240, `camera view is ${cameraHeight}px tall`);
       const phoneCss = [...doc.querySelectorAll('style')].map(style => style.textContent).join('\n');
       assert(/\.cam-wrap video\s*\{[^}]*height:\s*auto/i.test(phoneCss),
         'camera preview is still forced into the slit ratio');
       assert(/\.cam-wrap video\s*\{[^}]*position:\s*absolute[^}]*translateY\(-50%\)/i.test(phoneCss),
         'camera preview is not a centered crop of its normal view');
+      const centred = phoneWin.preferredScanSymbol([
+        { rawValue: 'TEST1001', boundingBox: { x: 10, y: 35, width: 20, height: 20 } },
+        { rawValue: 'TEST2002', boundingBox: { x: 43, y: 42, width: 14, height: 16 } },
+      ], 100, 100);
+      assert(centred?.rawValue === 'TEST2002', 'camera does not prefer the barcode centred in the target');
+      assert(/scanDetector\.detect\(frame\)/.test(phoneWin.nativeFrame.toString()),
+        'native camera still scans outside the visible target');
+      assert(/fallbackDetector\.detect\(canvas\)/.test(phoneWin.fallbackFrame.toString()),
+        'fallback camera still scans outside the visible target');
       assert(doc.getElementById('listCount')?.closest('.list-head'), 'list count is not in the sticky List header');
     });
 

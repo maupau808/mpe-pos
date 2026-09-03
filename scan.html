@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12140f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -42,7 +42,7 @@ html[data-theme="light"] {
   --err: #c2382a;
   --shadow: 0 6px 24px rgba(0,0,0,.10);
 }
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 html, body { margin: 0; padding: 0; height: 100%; }
 body {
   background: var(--bg);
@@ -95,12 +95,12 @@ button { cursor: pointer; border: none; background: none; }
 /* ── camera ─────────────────────────────────────────────────────────────── */
 .cam-wrap {
   position: relative; flex: none;
-  height: 96px;
+  height: clamp(200px, 28dvh, 240px);
   background: #000; overflow: hidden;
 }
 .cam-wrap video {
-  /* Keep the preview at its natural camera ratio, then let the 96px wrapper
-     reveal only its centre slice. Giving the video the slit dimensions makes
+  /* Keep the preview at its natural camera ratio, then let the camera window
+     reveal its centre. Giving the video the wrapper dimensions makes
      iOS WebKit squash/zoom some rear-camera formats despite object-fit. */
   position: absolute; left: 0; top: 50%;
   width: 100%; height: auto; min-height: 100%;
@@ -114,7 +114,7 @@ button { cursor: pointer; border: none; background: none; }
   display: flex; align-items: center; justify-content: center;
 }
 .reticle i {
-  display: block; width: 78%; height: 26%;
+  display: block; width: 82%; height: 46%;
   border: 2px solid rgba(255,255,255,.55); border-radius: 12px;
   box-shadow: 0 0 0 100vmax rgba(0,0,0,.28);
 }
@@ -320,12 +320,10 @@ textarea.new-item-input { min-height: 72px; resize: vertical; }
 .danger { color: var(--err); }
 
 /* ── bind mode ──────────────────────────────────────────────────────────── */
-/* Learning a barcode is a shelf job, not a lookup: the camera only has to
-   confirm aim, so it shrinks to a strip and every pixel it gives up goes to the
-   pool of parts being matched. The lookup list is hidden rather than reused —
-   the two workflows must never write into each other. */
-body.bind .cam-wrap { height: 96px; }
-body.bind .reticle i { width: 62%; height: 54%; border-radius: 8px; }
+/* Binding still gives most of the screen to the part pool, but leaves enough
+   camera context to separate neighbouring labels. */
+body.bind .cam-wrap { height: 150px; }
+body.bind .reticle i { width: 70%; height: 54%; border-radius: 8px; }
 body.bind .hero,
 body.bind .list-wrap { display: none; }
 body.bind #searchBtn,
@@ -705,7 +703,6 @@ const SCAN_REPEAT_LOCKOUT_MS       = 2250;
 const FALLBACK_SCAN_ANGLES         = [8, -8, 15, -15];
 const FALLBACK_TILT_AFTER_MISSES   = 6;
 const FALLBACK_RELEASE_AFTER_MISSES = 5;
-const FALLBACK_FULL_FRAME_EVERY    = 11;
 const FALLBACK_RETRY_MS            = 12;
 const SCAN_FORMATS = ['code_128','code_39','codabar','data_matrix','ean_13','ean_8','itf','qr_code','upc_a','upc_e'];
 
@@ -938,7 +935,9 @@ class PhoneBridgeClient {
     const id = this.requestId();
     const payload = this.encode(args);
     const sig = await this.signature('GET', id, method, payload);
-    const envelope = await this.jsonp({ action: 'call', sid: this.session.sessionId, id, method, payload, sig });
+    // `sid` is reserved by Google's Drive front door and can be rejected before
+    // Apps Script runs, so the bridge uses the explicit `session` name.
+    const envelope = await this.jsonp({ action: 'call', session: this.session.sessionId, id, method, payload, sig });
     if (!envelope.ok) throw new Error(envelope.error || 'Scanner connection failed');
     return envelope.result;
   }
@@ -952,7 +951,7 @@ class PhoneBridgeClient {
     await fetch(this.url, {
       method: 'POST', mode: 'no-cors',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ action: 'call', sid: this.session.sessionId, id, method, payload, sig }),
+      body: new URLSearchParams({ action: 'call', session: this.session.sessionId, id, method, payload, sig }),
     });
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline) {
@@ -1596,11 +1595,28 @@ function resolveScannedValue(rawValue) {
   return { code, mappedPN, candidates: [], via: '' };
 }
 
-function preferredScanSymbol(items) {
+function preferredScanSymbol(items, frameWidth = 0, frameHeight = 0) {
   const values = [...new Map((items || [])
     .map(i => [String(i.rawValue || '').trim(), i])).values()]
     .filter(i => String(i.rawValue || '').trim());
   if (!values.length) return null;
+  // When more than one label is visible, the barcode nearest the centre of
+  // the target wins. This makes the reticle a real selector instead of merely
+  // decoration. Some older detectors omit bounding boxes, so retain the
+  // semantic preference below as their fallback.
+  const aimed = values.map(item => {
+    const box = item.boundingBox;
+    const x = Number(box?.x), y = Number(box?.y);
+    const w = Number(box?.width), h = Number(box?.height);
+    if (!frameWidth || !frameHeight || ![x, y, w, h].every(Number.isFinite)) return null;
+    const dx = (x + w / 2) / frameWidth - 0.5;
+    const dy = (y + h / 2) / frameHeight - 0.5;
+    return { item, distance: dx * dx + dy * dy };
+  }).filter(Boolean).sort((a, b) => a.distance - b.distance);
+  if (aimed.length) {
+    const usable = aimed.find(entry => !ignorableScanCode(entry.item.rawValue));
+    return (usable || aimed[0]).item;
+  }
   const stihlUnit = values.find(item => stihlUnitDataMatrix(item.rawValue));
   if (stihlUnit) return stihlUnit;
   const toroUnit = values.find(item => toroUnitQr(item.rawValue));
@@ -2056,7 +2072,7 @@ function buzz(pattern) { try { navigator.vibrate?.(pattern); } catch (e) {} }
 let scanActive = false, scanStream = null, scanTimer = null, scanBusy = false;
 let scanPausedForVisibility = false, scanLoopVersion = 0;
 let scanDetector = null, fallbackDetector = null, fallbackLoad = null;
-let cropCanvas = null, fullCanvas = null, angleIndex = 0, frameCount = 0;
+let cropCanvas = null, angleIndex = 0, frameCount = 0;
 let absentFrames = 0, startVersion = 0, wakeLock = null;
 const recentValues = new Map();
 
@@ -2065,6 +2081,38 @@ function setCamStatus(msg, kind) {
   if (!msg) { el.hidden = true; return; }
   el.hidden = false; el.textContent = msg;
   el.className = 'cam-status' + (kind ? ' ' + kind : '');
+}
+
+function scanTargetRatio() {
+  return document.body.classList.contains('bind')
+    ? { width: 0.70, height: 0.54 }
+    : { width: 0.82, height: 0.46 };
+}
+
+function drawScanTarget(video, canvas, { zoomed = false, angle = 0 } = {}) {
+  const sourceWidth = video.videoWidth;
+  const sourceHeight = video.videoHeight;
+  if (!sourceWidth || !sourceHeight) return null;
+  const target = scanTargetRatio();
+  const outputWidth = Math.max(1, Math.round(sourceWidth * target.width));
+  const outputHeight = Math.max(1, Math.round(sourceHeight * target.height));
+  const sampleWidth = Math.max(1, Math.round(outputWidth / (zoomed ? 2 : 1)));
+  const sampleHeight = Math.max(1, Math.round(outputHeight / (zoomed ? 2 : 1)));
+  const sampleX = Math.round((sourceWidth - sampleWidth) / 2);
+  const sampleY = Math.round((sourceHeight - sampleHeight) / 2);
+  if (canvas.width !== outputWidth || canvas.height !== outputHeight) {
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+  }
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, outputWidth, outputHeight);
+  ctx.translate(outputWidth / 2, outputHeight / 2);
+  if (angle) ctx.rotate(angle * Math.PI / 180);
+  ctx.drawImage(video, sampleX, sampleY, sampleWidth, sampleHeight,
+    -outputWidth / 2, -outputHeight / 2, outputWidth, outputHeight);
+  return canvas;
 }
 
 function loadPonyfill() {
@@ -2099,7 +2147,9 @@ async function nativeFrame(loopVersion = scanLoopVersion) {
   if (!scanBusy && video?.readyState >= 2) {
     scanBusy = true;
     try {
-      const item = preferredScanSymbol(await scanDetector.detect(video));
+      if (!cropCanvas) cropCanvas = document.createElement('canvas');
+      const frame = drawScanTarget(video, cropCanvas);
+      const item = frame && preferredScanSymbol(await scanDetector.detect(frame), frame.width, frame.height);
       if (loopVersion !== scanLoopVersion || !scanActive || scanPausedForVisibility || document.hidden) return;
       if (!item) { absentFrames++; }
       else { absentFrames = 0; acceptScan(item.rawValue, item.format); }
@@ -2112,10 +2162,8 @@ async function nativeFrame(loopVersion = scanLoopVersion) {
   }
 }
 
-// The ponyfill path, tuned exactly as the POS tuned it: straight-on passes by
-// default, a 2x centre magnification every third pass for dense parts-box
-// codes, tilts only after straight-on has been failing, and never a horizontal
-// crop (that would shave a wide Code 128's quiet zone or end characters).
+// The ponyfill uses the same visible target as the native detector. Straight-on
+// passes lead, with occasional centre magnification and tilt for dense labels.
 async function fallbackFrame(loopVersion = scanLoopVersion) {
   if (loopVersion !== scanLoopVersion) return;
   scanTimer = null;
@@ -2126,34 +2174,17 @@ async function fallbackFrame(loopVersion = scanLoopVersion) {
     const tilted = absentFrames >= FALLBACK_TILT_AFTER_MISSES && frameCount % 2 === 1;
     const zoomed = !tilted && frameCount % 3 === 2;
     try {
-      const fullFrame = frameCount > 0 && frameCount % FALLBACK_FULL_FRAME_EVERY === 0;
-      const sourceY = fullFrame ? 0 : Math.round(video.videoHeight * 0.10);
-      const width = video.videoWidth;
-      const height = fullFrame ? video.videoHeight : Math.round(video.videoHeight * 0.80);
-      if (!width || !height) {
+      if (!cropCanvas) cropCanvas = document.createElement('canvas');
+      const angle = tilted ? FALLBACK_SCAN_ANGLES[angleIndex] : 0;
+      const canvas = drawScanTarget(video, cropCanvas, { zoomed, angle });
+      if (!canvas) {
         scanBusy = false;
         if (loopVersion === scanLoopVersion && !scanPausedForVisibility && !document.hidden) {
           scanTimer = setTimeout(() => fallbackFrame(loopVersion), FALLBACK_RETRY_MS);
         }
         return;
       }
-      if (fullFrame && !fullCanvas) fullCanvas = document.createElement('canvas');
-      if (!fullFrame && !cropCanvas) cropCanvas = document.createElement('canvas');
-      const canvas = fullFrame ? fullCanvas : cropCanvas;
-      if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      const angle = tilted ? FALLBACK_SCAN_ANGLES[angleIndex] : 0;
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, width, height);
-      ctx.translate(width / 2, height / 2);
-      if (angle) ctx.rotate(angle * Math.PI / 180);
-      const sampleW = zoomed ? Math.round(width / 2) : width;
-      const sampleH = zoomed ? Math.round(height / 2) : height;
-      const sampleX = Math.round((width - sampleW) / 2);
-      const sampleY = sourceY + Math.round((height - sampleH) / 2);
-      ctx.drawImage(video, sampleX, sampleY, sampleW, sampleH, -width / 2, -height / 2, width, height);
-      const pick = preferredScanSymbol(await fallbackDetector.detect(canvas));
+      const pick = preferredScanSymbol(await fallbackDetector.detect(canvas), canvas.width, canvas.height);
       if (loopVersion !== scanLoopVersion || !scanActive || scanPausedForVisibility || document.hidden) return;
       if (pick) { absentFrames = 0; acceptScan(pick.rawValue, pick.format || 'zxing-wasm'); }
       else { absentFrames++; }
@@ -2264,7 +2295,7 @@ function stopCamera() {
   scanTimer = null;
   if (scanStream) scanStream.getTracks().forEach(t => t.stop());
   scanStream = null;
-  fallbackDetector = null; cropCanvas = null; fullCanvas = null;
+  fallbackDetector = null; cropCanvas = null;
   const video = $('cam');
   if (video) video.srcObject = null;
   try { wakeLock?.release(); } catch (e) {}

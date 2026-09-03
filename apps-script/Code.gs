@@ -60,7 +60,7 @@ function doPost(event) {
   } catch (error) {
     const id = String(form.id || '');
     if (ID_PATTERN.test(id)) {
-      const prefix = form.action === 'bootstrap' ? 'bootstrap' : `result:${String(form.sid || '')}`;
+      const prefix = form.action === 'bootstrap' ? 'bootstrap' : `result:${String(form.session || '')}`;
       CacheService.getScriptCache().put(`${prefix}:${id}`, JSON.stringify({ ok: false, error: safeError_(error) }), RESULT_SECONDS);
     }
   }
@@ -105,7 +105,9 @@ function signedPostCall_(form) {
 }
 
 function verifySignedCall_(verb, fields) {
-  const sessionId = String(fields.sid || '');
+  // `sid` is reserved by Google's Drive front door and may be rejected before
+  // this web app runs. Keep the bridge field unambiguous.
+  const sessionId = String(fields.session || '');
   if (!SESSION_PATTERN.test(sessionId)) throw new Error('Scanner session expired');
   const id = validId_(fields.id);
   const method = String(fields.method || '');
