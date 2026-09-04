@@ -1097,7 +1097,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.09.01.2';
+const POS_RELEASE = '2026.09.03.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -3856,6 +3856,7 @@ const SCAN_COMMANDS = new Map([
   ['~MPE2:Q7X4:ADD-FIXED-HEAD:7T2C', 'ADD=METALHEADSWAP'],
 ]);
 const SCANNER_DEFAULT_KEY = 'mpePosScannerDefault';
+const SCANNER_IDLE_MS = 3 * 60 * 1000;
 // Same exact protected payloads as SCAN_COMMANDS, rendered as QR with high
 // error correction. The counter scanner already reads the printed command QR
 // stickers and PDF417 licences, and a 29 × 29 grid gives each onscreen mark
@@ -3868,6 +3869,19 @@ const SCANNER_COMMAND_QR_ROWS = {
 let _scannerModeDefault = false;
 let _scannerModeActive = false;
 let _scannerModeAwaitingClear = false;
+let _scannerIdleTimer = null;
+
+function resetScannerModeIdleTimer() {
+  clearTimeout(_scannerIdleTimer);
+  _scannerIdleTimer = null;
+  if (_scannerModeActive || _docType !== 'receipt' || document.hidden) return;
+  _scannerIdleTimer = window.setTimeout(() => {
+    _scannerIdleTimer = null;
+    if (!_scannerModeActive && _docType === 'receipt' && !document.hidden) {
+      setScannerModeActive(true, { message: 'Scanner ready', state: 'ok' });
+    }
+  }, SCANNER_IDLE_MS);
+}
 
 function renderScannerModeCommandCodes() {
   const commands = [
@@ -3972,9 +3986,13 @@ function setScannerModeActive(active, options = {}) {
   document.getElementById('scannerModeView')?.setAttribute('aria-hidden', String(!_scannerModeActive));
   document.getElementById('scannerModeBtn')?.setAttribute('aria-pressed', String(_scannerModeActive));
   if (_scannerModeActive) {
+    clearTimeout(_scannerIdleTimer);
+    _scannerIdleTimer = null;
     renderScannerModeCommandCodes();
     syncScannerModeView(options.message, options.state);
     revealScannedResult(lastFilledSaleRow());
+  } else {
+    resetScannerModeIdleTimer();
   }
 }
 
@@ -3992,6 +4010,13 @@ document.getElementById('scannerModeView')?.addEventListener('pointerdown', even
   event.stopImmediatePropagation();
   setScannerModeActive(false);
 });
+['pointerdown', 'keydown', 'input', 'change', 'focusin'].forEach(type => {
+  document.addEventListener(type, event => {
+    if (type === 'keydown' && ['Alt', 'Control', 'Meta', 'Shift'].includes(event.key)) return;
+    resetScannerModeIdleTimer();
+  }, true);
+});
+document.addEventListener('visibilitychange', resetScannerModeIdleTimer);
 const SCAN_COMMAND_REPEAT_MS = 900;
 let _lastScanCommand = '', _lastScanCommandAt = 0;
 let _clearedSale = null;
@@ -8377,6 +8402,7 @@ function historyDocTypeTag(type) {
       document.getElementById('custPanel')?.classList.add('hidden');
     }
     updateScreenDocTitle();
+    resetScannerModeIdleTimer();
     return true;
   };
 })();

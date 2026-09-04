@@ -392,11 +392,23 @@ pos.addEventListener('load', async () => {
       assert(filledRows(pos).length === 1, 'scanner listener stayed detached after resume');
     });
 
-    await test('idle never changes the register into Scanner Mode', async () => {
+    await test('three idle minutes returns the register to Scanner Mode', async () => {
       reset(pos);
-      assert(win.eval("typeof SCANNER_IDLE_MS === 'undefined' && typeof _scannerIdleTimer === 'undefined'"),
-        'an automatic Scanner Mode idle transition is still armed');
-      assert(!pos.contentDocument.body.classList.contains('scanner-mode-active'), 'regular POS did not remain active');
+      const scheduled = win.eval(`(() => {
+        let idleCallback = null;
+        const nativeSetTimeout = window.setTimeout;
+        window.setTimeout = (callback, delay, ...args) => {
+          if (delay === SCANNER_IDLE_MS) { idleCallback = callback; return 2147483646; }
+          return nativeSetTimeout(callback, delay, ...args);
+        };
+        try { setScannerModeActive(false); }
+        finally { window.setTimeout = nativeSetTimeout; }
+        if (!idleCallback) return false;
+        idleCallback();
+        return true;
+      })()`);
+      assert(scheduled, 'the three-minute Scanner Mode return was not scheduled');
+      assert(pos.contentDocument.body.classList.contains('scanner-mode-active'), 'idle did not return to Scanner Mode');
     });
 
     await test('product-field focus is restored', async () => {
