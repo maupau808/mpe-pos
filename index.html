@@ -1097,7 +1097,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.09.03.1';
+const POS_RELEASE = '2026.09.04.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1656,21 +1656,52 @@ function setDriveStatus(msg, isError) {
   refreshStatusUI(msg);
 }
 
-// ─── AUTO-REFRESH (keeps prices current without any UI) ──────────────────────
-// Re-pulls the Drive price list when the POS is brought to the foreground if it
-// hasn't been fetched yet today or in the last 30 min. Combined with the existing
-// hourly token refresh, a POS left open all day stays current on its own.
+// ─── AUTO-REFRESH (catalog changes never rewrite the sale on screen) ─────────
+// Check small Drive metadata each minute and on foreground. Download only after
+// its content changes; older desktop shells use their existing download bridge.
 let _lastFetchAt = 0, _fetching = false;
-function maybeAutoRefresh() {
-  // Only refresh in the background when we already hold a valid token. Never trigger
-  // an interactive sign-in/consent from a timer or tab-refocus — that's what caused
-  // the repeated "share Gmail & Drive" consent popups. If the session is expired the
-  // amber sign-in dot prompts the user to reconnect manually.
-  if (document.hidden || authState() !== 'in') return;
+let _catalogVersion = null, _checkingCatalog = false, _lastCatalogAttempt = 0;
+let _catalogRetryAt = 0, _legacyCatalogAttempt = 0;
+function catalogVersion(info) {
+  if (!info) return null; // older desktop preload has no metadata capability
+  const version = info.md5Checksum || info.version || info.modifiedTime;
+  if (!version) throw new Error('Catalog version unavailable');
+  return String(version) + ':' + String(info.size || '');
+}
+async function readCatalogInfo() {
+  if (desktopGoogleAvailable()) {
+    const api = window.mpeDesktop.google;
+    return typeof api.catalogInfo === 'function' ? api.catalogInfo('json') : null;
+  }
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${POS_JSON_FILE_ID}?fields=version,modifiedTime,md5Checksum,size`, {
+    cache: 'no-store', signal: AbortSignal.timeout(15000),
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!response.ok) throw new Error(`Catalog check ${response.status}`);
+  return response.json();
+}
+async function maybeAutoRefresh() {
+  // Timers must never open sign-in or interrupt a sale. Keep the last good catalog
+  // on network/auth errors and retry at the next minute, not on every focus event.
+  if (document.hidden || authState() !== 'in' || _fetching || _checkingCatalog) return;
   const now = Date.now();
-  const sameDay = _lastFetchAt && new Date(_lastFetchAt).toDateString() === new Date(now).toDateString();
-  if (sameDay && (now - _lastFetchAt) < 30 * 60 * 1000) return;   // already fresh today
-  fetchFromDrive();
+  if (now < _catalogRetryAt || now - _lastCatalogAttempt < 15000) return;
+  _lastCatalogAttempt = now;
+  _checkingCatalog = true;
+  try {
+    const version = catalogVersion(await readCatalogInfo());
+    if (version !== null && version === _catalogVersion && loaded) return;
+    if (version === null && now - Math.max(_lastFetchAt, _legacyCatalogAttempt) < 60000) return;
+    _legacyCatalogAttempt = now;
+    const previousFetch = _lastFetchAt;
+    await fetchFromDrive({ catalogVersion: version, background: true });
+    if (_lastFetchAt === previousFetch) _catalogRetryAt = Date.now() + 60000;
+  } catch (error) {
+    // Existing data and every sale field remain untouched.
+    _catalogRetryAt = Date.now() + 60000;
+  } finally {
+    _checkingCatalog = false;
+  }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); } });
 setInterval(() => { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); }, 60 * 1000);
@@ -1678,7 +1709,7 @@ setInterval(checkForPosUpdate, 5 * 60 * 1000);
 setInterval(flushPendingPriceChanges, PRICE_CHANGE_RETRY_MS);
 setInterval(flushPendingReorders, PRICE_CHANGE_RETRY_MS);
 
-async function fetchFromDrive() {
+async function fetchFromDrive(options = {}) {
   if (desktopGoogleAvailable()) {
     if (!desktopGoogleConnected) {
       setDriveStatus('Sign in to refresh from Drive');
@@ -1688,7 +1719,7 @@ async function fetchFromDrive() {
     _fetching = true;
     setDriveStatus('Fetching…');
     try {
-      if (await tryFetchPosJson()) return;
+      if (await tryFetchPosJson(options.catalogVersion)) return;
       const bytes = await window.mpeDesktop.google.downloadCatalog('xlsx');
       const ab = desktopBytesToArrayBuffer(bytes);
       const binary = arrayBufferToBinary(ab);
@@ -1700,7 +1731,7 @@ async function fetchFromDrive() {
     } catch (error) {
       if (/not signed in|authorization/i.test(error.message || '')) desktopGoogleConnected = false;
       setDriveStatus('Using cached data', true);
-      tryLoadFromDB();
+      if (!loaded) tryLoadFromDB();
     } finally {
       _fetching = false;
       refreshStatusUI();
@@ -1712,7 +1743,7 @@ async function fetchFromDrive() {
   // If still no token, request one then re-call
   if (!accessToken) {
     setDriveStatus('Reconnecting…');
-    requestToken();
+    if (!options.background) requestToken();
     // fetchFromDrive will be called again from the token callback
     return;
   }
@@ -1722,11 +1753,12 @@ async function fetchFromDrive() {
 
   try {
     // Stage 4: try the lean POS JSON feed first; on ANY failure fall through to xlsx.
-    if (await tryFetchPosJson()) return;
+    if (await tryFetchPosJson(options.catalogVersion)) return;
 
     // Export the Google Sheet / Excel as xlsx
     const url = `https://www.googleapis.com/drive/v3/files/${DRIVE_FILE_ID}?alt=media`;
     const resp = await fetch(url, {
+      signal: AbortSignal.timeout(45000),
       headers: { Authorization: `Bearer ${accessToken}` }
     });
 
@@ -1735,7 +1767,7 @@ async function fetchFromDrive() {
       accessToken = null;
       localStorage.removeItem('gToken');
       setDriveStatus('Reconnecting…');
-      requestToken();
+      if (!options.background) requestToken();
       return;
     }
 
@@ -1743,6 +1775,7 @@ async function fetchFromDrive() {
       // Try exporting as xlsx (in case it's a native Google Sheet)
       const exportUrl = `https://www.googleapis.com/drive/v3/files/${DRIVE_FILE_ID}/export?mimeType=application%2Fvnd.openxmlformats-officedocument.spreadsheetml.sheet`;
       const exportResp = await fetch(exportUrl, {
+        signal: AbortSignal.timeout(45000),
         headers: { Authorization: `Bearer ${accessToken}` }
       });
       if (!exportResp.ok) throw new Error(`Drive error ${exportResp.status}`);
@@ -1766,7 +1799,7 @@ async function fetchFromDrive() {
 
   } catch(err) {
     setDriveStatus('Using cached data', true);
-    tryLoadFromDB();
+    if (!loaded) tryLoadFromDB();
   } finally {
     _fetching = false;
   }
@@ -1889,9 +1922,13 @@ async function loadLocalPosFeed() {
 
 // Fetch the JSON feed from its Drive file. Returns true only on full success; returns
 // false (never throws) on ANY problem so the caller falls back to the xlsx path.
-async function tryFetchPosJson() {
+async function tryFetchPosJson(capturedVersion) {
   if (!posJsonReady() || typeof DecompressionStream === 'undefined') return false;
   try {
+    // A failed metadata check must not prevent a deliberate manual refresh.
+    if (capturedVersion === undefined) {
+      try { capturedVersion = catalogVersion(await readCatalogInfo()); } catch (error) { capturedVersion = null; }
+    }
     let ab;
     if (desktopGoogleAvailable()) {
       const bytes = await window.mpeDesktop.google.downloadCatalog('json');
@@ -1899,13 +1936,14 @@ async function tryFetchPosJson() {
     } else {
       const url = `https://www.googleapis.com/drive/v3/files/${POS_JSON_FILE_ID}?alt=media`;
       const resp = await fetch(url, {
-        cache: 'no-store',
+        cache: 'no-store', signal: AbortSignal.timeout(45000),
         headers: { Authorization: `Bearer ${accessToken}` }
       });
       if (!resp.ok) return false;   // 401/404/etc -> let the xlsx path handle token/refresh
       ab = await resp.arrayBuffer();
     }
     const feed = await loadPosJsonBytes(ab, 'JSON');
+    _catalogVersion = capturedVersion;
     await saveKeyToDB(DB_KEY_JSON, ab);
     await saveKeyToDB(DB_KEY_SALES, normalizeSaleRules(feed.sales));
     _lastFetchAt = Date.now();

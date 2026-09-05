@@ -988,6 +988,7 @@ function phoneGoogle() {
   return {
     getStatus: () => phoneBridgeClient.request('getStatus'),
     downloadCatalog: kind => phoneBridgeClient.request('downloadCatalog', [kind]),
+    catalogInfo: kind => phoneBridgeClient.request('catalogInfo', [kind]),
     sheetsGet: range => phoneBridgeClient.request('sheetsGet', [range]),
     sheetsUpdate: (range, rows) => phoneBridgeClient.request('sheetsUpdate', [range, rows]),
     sheetsAppend: (range, rows) => phoneBridgeClient.request('sheetsAppend', [range, rows]),
@@ -1266,25 +1267,79 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   return feed;
 }
 
-async function loadFeed({ quiet = false } = {}) {
+let _feedVersion = null, _feedLoading = false, _feedChecking = false;
+let _feedLastAttempt = 0, _feedLastDownloaded = 0, _feedRetryAt = 0, _feedLegacyAttempt = 0;
+function feedVersion(info) {
+  if (!info) return null;
+  const version = info.md5Checksum || info.version || info.modifiedTime;
+  if (!version) throw new Error('Catalog version unavailable');
+  return String(version) + ':' + String(info.size || '');
+}
+async function readFeedInfo() {
+  if (bridgeGoogleConnected) {
+    const api = googleBridge();
+    return typeof api.catalogInfo === 'function' ? api.catalogInfo('json') : null;
+  }
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files/${POS_JSON_FILE_ID}?fields=version,modifiedTime,md5Checksum,size`, {
+    cache: 'no-store', signal: AbortSignal.timeout(15000),
+    headers: { Authorization: `Bearer ${token()}` }
+  });
+  if (!response.ok) throw new Error(`Catalog check ${response.status}`);
+  return response.json();
+}
+async function maybeRefreshFeed() {
+  if (document.hidden || !token() || tokenMsLeft() <= 0 || _feedLoading || _feedChecking) return;
+  const now = Date.now();
+  if (now < _feedRetryAt || now - _feedLastAttempt < 15000) return;
+  _feedLastAttempt = now;
+  _feedChecking = true;
+  try {
+    const version = feedVersion(await readFeedInfo());
+    if (version !== null && version === _feedVersion && loaded) return;
+    if (version === null && now - Math.max(_feedLastDownloaded, _feedLegacyAttempt) < 60000) return;
+    _feedLegacyAttempt = now;
+    if (!await loadFeed({ quiet: true, catalogVersion: version })) _feedRetryAt = Date.now() + 60000;
+  } catch (error) {
+    // Keep the cached catalog and unfinished pick list; foreground/timer retries.
+    _feedRetryAt = Date.now() + 60000;
+  } finally { _feedChecking = false; }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) void maybeRefreshFeed(); });
+setInterval(maybeRefreshFeed, 60000);
+
+async function loadFeed(options = {}) {
+  if (_feedLoading) return false;
+  _feedLoading = true;
+  try { return await _loadFeed(options); }
+  finally { _feedLoading = false; }
+}
+
+async function _loadFeed({ quiet = false, catalogVersion: capturedVersion } = {}) {
   const t = token();
   if (t) {
     try {
+      if (capturedVersion === undefined) {
+        try { capturedVersion = feedVersion(await readFeedInfo()); } catch (error) { capturedVersion = null; }
+      }
       if (bridgeGoogleConnected) {
         const bytes = await googleBridge().downloadCatalog('json');
         const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
         const ab = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
         await loadPosJsonBytes(ab, 'Drive');
+        _feedVersion = capturedVersion;
+        _feedLastDownloaded = Date.now();
         await cachePut('feed', ab);
         if (!quiet) toast('Prices updated');
         return true;
       }
       const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${POS_JSON_FILE_ID}?alt=media`, {
-        cache: 'no-store', headers: { Authorization: `Bearer ${t}` }
+        cache: 'no-store', signal: AbortSignal.timeout(45000), headers: { Authorization: `Bearer ${t}` }
       });
       if (resp.ok) {
         const ab = await resp.arrayBuffer();
         await loadPosJsonBytes(ab, 'Drive');
+        _feedVersion = capturedVersion;
+        _feedLastDownloaded = Date.now();
         await cachePut('feed', ab);
         if (!quiet) toast('Prices updated');
         return true;
@@ -1292,6 +1347,7 @@ async function loadFeed({ quiet = false } = {}) {
       if (resp.status === 401) { localStorage.removeItem(K_TOKEN); accessToken = null; renderAuth(); }
     } catch (e) { /* fall through to cache */ }
   }
+  if (loaded) return false; // a failed refresh must not replace a newer in-memory catalog
   const cached = await cacheGet('feed');
   if (cached) {
     try { await loadPosJsonBytes(cached, 'cache'); if (!quiet) toast('Offline — using the last saved prices'); return true; }
