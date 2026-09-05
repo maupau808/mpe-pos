@@ -1097,7 +1097,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.09.04.1';
+const POS_RELEASE = '2026.09.05.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1117,7 +1117,7 @@ const QBO_CUSTOMERS_URL = 'http://localhost:8766/customers/cache';
 // (unset id, fetch error, gunzip/parse error, empty feed). Paste the id once created.
 const POS_JSON_FILE_ID = '1I4pT1MUWAm2cIkch2T7JW_hKt3wcLIyd';
 function posJsonReady() { return POS_JSON_FILE_ID && !POS_JSON_FILE_ID.startsWith('PUT_'); }
-const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/gmail.compose';
+const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.settings.basic';
 
 // ─── APP STATE ─────────────────────────────────────────────────────────────
 const TAX_RATE = 0.04712;
@@ -7960,31 +7960,94 @@ function _b64UrlUtf8(str) {
 function _blobToB64(blob) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(blob); });
 }
-function _buildEmailMime(to, subject, bodyText, filename, pdfB64) {
+function _buildEmailMime(to, subject, bodyText, filename, pdfB64, bodyHtml = '', from = '') {
   const boundary = 'mpe_' + Date.now();
-  const bodyB64 = _bytesToB64(new TextEncoder().encode(bodyText));
+  const alternative = boundary + '_body';
+  const header = value => String(value || '').replace(/[\r\n]/g, ' ');
+  const encoded = value => _bytesToB64(new TextEncoder().encode(value)).match(/.{1,76}/g)?.join('\r\n') || '';
   return [
     'MIME-Version: 1.0',
-    'To: ' + to,
-    'Subject: ' + subject,
+    'To: ' + header(to),
+    ...(from ? ['From: ' + header(from)] : []),
+    'Subject: =?UTF-8?B?' + _bytesToB64(new TextEncoder().encode(header(subject))) + '?=',
     'Content-Type: multipart/mixed; boundary="' + boundary + '"',
-    '',
-    '--' + boundary,
+    '', '--' + boundary,
+    'Content-Type: multipart/alternative; boundary="' + alternative + '"',
+    '', '--' + alternative,
     'Content-Type: text/plain; charset="UTF-8"',
-    'Content-Transfer-Encoding: base64',
-    '',
-    bodyB64,
-    '',
-    '--' + boundary,
+    'Content-Transfer-Encoding: base64', '', encoded(bodyText),
+    ...(bodyHtml ? ['', '--' + alternative,
+      'Content-Type: text/html; charset="UTF-8"',
+      'Content-Transfer-Encoding: base64', '', encoded(bodyHtml)] : []),
+    '', '--' + alternative + '--',
+    '', '--' + boundary,
     'Content-Type: application/pdf',
     'Content-Transfer-Encoding: base64',
-    'Content-Disposition: attachment; filename="' + filename + '"',
-    '',
-    pdfB64,
-    '',
-    '--' + boundary + '--',
-    ''
+    'Content-Disposition: attachment; filename="' + header(filename).replace(/["\\]/g, '_') + '"',
+    '', pdfB64.match(/.{1,76}/g)?.join('\r\n') || '',
+    '', '--' + boundary + '--', ''
   ].join('\r\n');
+}
+
+async function _emailIdentity(token) {
+  if (desktopGoogleAvailable()) {
+    if (typeof window.mpeDesktop.google.gmailIdentity !== 'function') {
+      throw new Error('This POS Desktop needs an update to load your Gmail signature. Use the browser POS for this email.');
+    }
+    return window.mpeDesktop.google.gmailIdentity();
+  }
+  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs?fields=sendAs(sendAsEmail,isDefault,isPrimary,signature)', {
+    headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(15000),
+  });
+  if (response.status === 401 || response.status === 403) {
+    const error = new Error('Sign in again to allow POS to read your Gmail signature.');
+    error.emailConsentRequired = true;
+    throw error;
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || 'Could not read your Gmail signature.');
+  const aliases = data.sendAs || [];
+  const sender = aliases.find(alias => alias.isDefault) || aliases.find(alias => alias.isPrimary);
+  if (!sender?.sendAsEmail) throw new Error('Gmail did not return your default From address.');
+  return { email: sender.sendAsEmail, accountEmail: aliases.find(alias => alias.isPrimary)?.sendAsEmail || sender.sendAsEmail, signature: sender.signature || '' };
+}
+
+function buildEmailBody(order, title, number, dateStr, signature = '') {
+  const esc = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const money = value => '$' + Number(value).toFixed(2);
+  const items = order.items || [];
+  const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.sub) || 0), 0);
+  const { tax, cardFee, total } = checkoutTotals(subtotal, !!order.toggles?.cardFee);
+  const greeting = 'Aloha' + (order.customer?.name ? ' ' + order.customer.name : '') + ',';
+  const intro = `Please find your ${title.toLowerCase()} (No. ${number}) attached. A summary is included below.`;
+  const cell = 'padding:8px 6px;border-bottom:1px solid #d7d7d7;text-align:left;vertical-align:top';
+  const rows = items.map(item => {
+    const qty = parseFloat(item.qty) || 1, ea = parseFloat(item.ea) || 0;
+    const sub = Number.isFinite(parseFloat(item.sub)) ? parseFloat(item.sub) : ea * qty;
+    const serials = item.sn?.length ? `<br><small>Serial: ${item.sn.map(esc).join(', ')}</small>` : '';
+    const discount = (parseFloat(item.discountPerUnit) || 0) > 0
+      ? `<br><small>${money(item.discountPerUnit * qty)} discount included</small>` : '';
+    return `<tr><td style="${cell}">${esc(item.desc)}<br><small>${esc(item.pn)}</small>${serials}${discount}</td>` +
+      `<td style="${cell};text-align:right">${esc(qty)}</td><td style="${cell};text-align:right;white-space:nowrap">${money(ea)}</td>` +
+      `<td style="${cell};text-align:right;white-space:nowrap">${money(sub)}</td></tr>`;
+  }).join('');
+  const sums = [['Subtotal', subtotal], ['Tax', tax], ...(order.toggles?.cardFee ? [['Card fee (3%)', cardFee]] : []), ['Total', total]];
+  // Keep the document OUTSIDE the signature wrapper: replacing a signature must
+  // never remove line items. Gmail's marker is a compatibility hint, not an API
+  // guarantee. The prefix AND wrapper were checked in Gmail: From changes
+  // replace the signature while preserving the following document.
+  const signatureHtml = signature ? `<br clear="all"><div><br></div><span class="gmail_signature_prefix">-- </span><br><div dir="ltr" class="gmail_signature" data-smartmail="gmail_signature">${signature}</div>` : '';
+  const html = `<div dir="ltr" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111">` +
+    `<p>${esc(greeting)}</p><p>${esc(intro)}</p>${signatureHtml}` +
+    `<div style="margin-top:24px;max-width:680px"><h2 style="font-size:20px;color:#2f4339;margin-bottom:6px">${esc(title)} ${esc(number)}</h2>` +
+    `<p style="font-size:12px">${esc(dateStr)}</p><table style="width:100%;border-collapse:collapse;font-size:13px">` +
+    `<thead><tr>${['Description / Product', 'Qty', 'Each', 'Price'].map((label, i) => `<th scope="col" style="${cell};border-bottom:2px solid #111;${i ? 'text-align:right' : ''}">${label}</th>`).join('')}</tr></thead>` +
+    `<tbody>${rows}</tbody><tfoot>${sums.map(([label, amount]) => `<tr><th colspan="3" style="${cell};text-align:right">${label}</th><td style="${cell};text-align:right;white-space:nowrap;${label === 'Total' ? 'font-weight:bold' : ''}">${money(amount)}</td></tr>`).join('')}</tfoot></table></div></div>`;
+  const signatureDoc = new DOMParser().parseFromString(signature.replace(/<br\s*\/?\s*>/gi, '\n').replace(/<\/(?:div|p|tr)>/gi, '\n'), 'text/html');
+  const text = [greeting, intro, signatureDoc.body.textContent.trim(), `${title} ${number} — ${dateStr}`,
+    ...items.map(item => `${item.desc} (${item.pn}) — ${item.qty} @ ${money(item.ea)}: ${money(item.sub)}`),
+    ...sums.map(([label, amount]) => `${label}: ${money(amount)}`)].filter(Boolean).join('\n\n');
+  return { html, text };
 }
 
 // Brand palette, matching the website (Website/index.html :root) so the emailed
@@ -8245,6 +8308,8 @@ async function emailDoc() {
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
 
+    const identity = await _emailIdentity(token);
+
     // Render PDF from an offscreen, fully inline-styled copy (print CSS isn't active for html2canvas)
     const holder = document.getElementById('emailPdfHolder');
     holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
@@ -8254,15 +8319,8 @@ async function emailDoc() {
 
     const to = (order.customer && order.customer.email) || '';
     const subject = `${title} ${number} - Maui Power Equipment`;
-    const bodyText =
-`Aloha${order.customer && order.customer.name ? ' ' + order.customer.name : ''},
-
-Please find your ${title.toLowerCase()} (No. ${number}) attached.
-
-Mahalo,
-Maui Power Equipment
-(808) 249-2730`;
-    const raw = _b64UrlUtf8(_buildEmailMime(to, subject, bodyText, number + '.pdf', pdfB64));
+    const body = buildEmailBody(order, title, number, _pdfDateStr(now), identity.signature);
+    const raw = _b64UrlUtf8(_buildEmailMime(to, subject, body.text, number + '.pdf', pdfB64, body.html, identity.email));
 
     setBtn('⏳', true);
     let data;
@@ -8290,13 +8348,21 @@ Maui Power Equipment
     _emailScopeRetried = false;
 
     const msgId = data.messageId || data.message?.id;
-    if (msgId) window.open('https://mail.google.com/mail/u/0/#drafts?compose=' + msgId, '_blank');
+    if (msgId) window.open('https://mail.google.com/mail/u/' + encodeURIComponent(identity.accountEmail || identity.email) + '/#drafts?compose=' + encodeURIComponent(msgId), '_blank');
     setBtn('✓', false);
     saveToHistory();            // record the transaction (local + Drive), same as printing
     updatePriceChangesBadge();
     setTimeout(() => setBtn('✉', false), 4000);
   } catch (e) {
     document.getElementById('emailPdfHolder').innerHTML = '';
+    if (e.emailConsentRequired && !_emailScopeRetried) {
+      _emailScopeRetried = true;
+      accessToken = null; localStorage.removeItem('gToken');
+      _pendingAction = () => emailDoc();
+      setBtn('✉', false);
+      handleSignIn();
+      return;
+    }
     noteToolFailure('Email draft', e);
     setBtn('✕', false);
     setTimeout(() => setBtn('✉', false), 4000);
