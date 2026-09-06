@@ -1097,7 +1097,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.09.05.1';
+const POS_RELEASE = '2026.09.05.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -2551,9 +2551,9 @@ function loadUnitSerialRules(codes) {
     const code = String(rawCode || '').toUpperCase();
     const pn = normalizePN(rawPN);
     if (!pn) continue;
-    if (code.startsWith('@UNIT-EXACT:')) {
-      const serial = canonicalSerialNumber(code.slice(12));
-      if (serial) serialNumberMap[serial] = pn;
+    if (code.startsWith('@UNIT-EXACT:') || code.startsWith('@UNIT-MANUAL:')) {
+      const serial = canonicalSerialNumber(code.slice(code.indexOf(':') + 1));
+      if (serial && (!serialNumberMap[serial] || !code.startsWith('@UNIT-MANUAL:'))) serialNumberMap[serial] = pn;
       continue;
     }
     if (code.startsWith('@UNIT-PREFIX:')) {
@@ -2869,13 +2869,9 @@ function buildWarrantyModelMap() {
 // its serial field appears on the receipt. `label` is what prints beside that
 // serial on the warranty copy so the customer's registration is unambiguous.
 //
-// Scanning reads the recipe backwards. Every scanned unit that could belong to
-// a deal is remembered with its serial; after each scan the POS re-groups the
-// remembered units into whichever combination of deals and singles costs the
-// customer least, and rewrites those rows. Scan a battery, then a charger, and
-// the two lines collapse into the package with both serials carried across.
-//
-// Adding a fourth deal is one entry here plus its Master row. Nothing else.
+// New sales regroup AP300S pairs and price additional batteries/eligible
+// chargers from the entire cart. Legacy charger recipes still describe serial
+// slots on saved receipts, but no longer grant an unconditional charger deal.
 const PKG_AP300S = '48504006586';   // AP 300 S Battery
 const PKG_AL301  = 'EA094305502';   // AL 301, 120 V Battery charger
 const PACKAGE_DEALS = [
@@ -2890,10 +2886,6 @@ const PACKAGE_DEALS = [
       { pn: PKG_AP300S, label: 'AP 300 S #2' },
       { pn: PKG_AL301,  label: 'AL 301' } ] },
 ];
-// Re-grouping is exhaustive, so it needs a ceiling. Well past any real counter
-// sale; beyond it the remembered units are simply left as scanned.
-const MAX_PACKAGE_UNITS = 24;
-
 let packageComponentSet = null;
 function packageComponentPNs() {
   if (!packageComponentSet) {
@@ -2930,17 +2922,13 @@ function packageListPrice(pn) {
   return Number.isFinite(price) && price > 0 ? price : null;
 }
 
-// Remember a unit that could belong to a deal, so the re-grouping pass below can
-// move it. A serial is optional: the everyday counter scan is the product
-// barcode on the box, and waiting for a serial would leave a battery and a
-// charger sitting there as two full-price lines. Quantity has to stay at 1: a
-// line that means "3 of these" is not a specific unit with a specific serial,
-// and is left alone.
+// Track product scans and selections before a serial is available. Collection
+// expands integer quantities into physical units using the current SN fields.
 function trackPackageUnit(row, serial) {
   const tr = tbody.querySelector(`tr[data-row="${row}"]`);
   const pn = normalizePN(tbody.querySelector(`[data-row="${row}"].part-input`)?.dataset.partPn);
   if (!tr || !pn || !packageComponentPNs().has(pn)) return;
-  if ((parseFloat(document.getElementById(`qty-${row}`)?.value) || 1) !== 1) return;
+  
   tr.dataset.pkgUnits = JSON.stringify([{ pn, sn: String(serial || '').trim() }]);
   tr.dataset.pkgDeal = '';
   tr.dataset.pkgPrice = document.getElementById(`price-${row}`)?.dataset.price || '';
@@ -2959,7 +2947,7 @@ function collectPackageRows() {
     const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
     let units = null;
     try { units = JSON.parse(tr.dataset.pkgUnits); } catch (e) { units = null; }
-    if (!Array.isArray(units) || !units.length || qty !== 1 ||
+    if (!Array.isArray(units) || !units.length || !Number.isInteger(qty) || qty < 1 ||
         (tr.dataset.pkgPrice || '') !== priceNow ||
         parseFloat(document.getElementById(`price-${i}`)?.dataset.discountPerUnit) > 0) {
       delete tr.dataset.pkgUnits; delete tr.dataset.pkgDeal; delete tr.dataset.pkgPrice;
@@ -2968,70 +2956,62 @@ function collectPackageRows() {
     // Serials are read off the row, not out of the remembered copy: a serial
     // typed by hand never went through the scanner, and re-grouping from the
     // stale copy would blank it the next time a row moved.
+    const rowPN = tbody.querySelector(`[data-row="${i}"].part-input`)?.dataset.partPn;
+    const recipe = packageForPN(rowPN)?.units || [{ pn: rowPN }];
+    units = Array.from({ length: qty }, () => recipe.map(slot => ({ pn: normalizePN(slot.pn), sn: '' }))).flat();
     const snInputs = tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);
     units.forEach((unit, k) => { if (snInputs[k]) unit.sn = snInputs[k].value.trim(); });
-    tracked.push({ row: i, deal: tr.dataset.pkgDeal || '', units });
+    tracked.push({ row: i, deal: tr.dataset.pkgDeal || '', units, price: Number(priceNow), qty });
   }
   return tracked;
 }
 
-// Cheapest way to cover these units with deals and singles. Exhaustive rather
-// than greedy because greedy gets it wrong: two batteries and two chargers are
-// two of the $300 package ($600), not the $500 deal plus a loose charger ($618).
-// Every branch consumes the first remaining unit, which bounds the search and
-// stops the same grouping being reached by different orders.
-function bestPackaging(units) {
-  const pns = [];
-  const idxOf = new Map();
-  for (const u of units) if (!idxOf.has(u.pn)) { idxOf.set(u.pn, pns.length); pns.push(u.pn); }
-  const counts = new Array(pns.length).fill(0);
-  for (const u of units) counts[idxOf.get(u.pn)]++;
-
-  const singles = pns.map(packageListPrice);
-  if (singles.some(price => price == null)) return null;
-
-  const recipes = [];
-  for (const deal of PACKAGE_DEALS) {
-    const price = packageListPrice(deal.pn);
-    if (price == null) continue;
-    const need = new Array(pns.length).fill(0);
-    let usable = true;
-    for (const slot of deal.units) {
-      const k = idxOf.get(normalizePN(slot.pn));
-      if (k === undefined) { usable = false; break; }
-      need[k]++;
-    }
-    if (usable) recipes.push({ deal, need, price });
+// Tool quantity controls charger eligibility; serial entry is optional.
+// Master warranty status excludes accessories, and battery/charger rows never
+// qualify as tools. Model families cover shortened Master descriptions.
+function qualifyingBatteryToolCount() {
+  let count = 0;
+  for (let row = 0; row < NUM_ROWS; row++) {
+    const pn = tbody.querySelector(`[data-row="${row}"].part-input`)?.dataset.partPn;
+    const part = findPartByPn(pn);
+    if (!part?.warranty || !/^stihl$/i.test(String(part.make || '').trim()) ||
+        packageForPN(pn) || packageComponentPNs().has(normalizePN(pn))) continue;
+    const desc = String(part.desc || '');
+    if (!/cordless|battery|^\s*(?:BGA|BRA|FCA|FSA|GTA|HLA|HSA|HTA|KGA|KMA|MSA|RMA|RCA|SEA|TSA|ASA)\s*\d/i.test(desc) || /charger|^\s*(?:AP|AK|AR|AS)\s*\d|^\s*Battery\b/i.test(desc)) continue;
+    const qty = Math.max(0, Math.floor(Number(document.getElementById(`qty-${row}`)?.value) || 0));
+    count += qty;
   }
-
-  const memo = new Map();
-  function solve(remaining) {
-    const key = remaining.join(',');
-    const cached = memo.get(key);
-    if (cached) return cached;
-    const first = remaining.findIndex(n => n > 0);
-    if (first === -1) return { total: 0, picks: [] };
-    const alone = remaining.slice();
-    alone[first]--;
-    const sub = solve(alone);
-    let best = { total: sub.total + singles[first], picks: [{ deal: null, index: first }, ...sub.picks] };
-    for (const recipe of recipes) {
-      if (!recipe.need[first] || recipe.need.some((n, k) => n > remaining[k])) continue;
-      const after = solve(remaining.map((n, k) => n - recipe.need[k]));
-      const total = after.total + recipe.price;
-      if (total < best.total) best = { total, picks: [{ deal: recipe.deal }, ...after.picks] };
-    }
-    memo.set(key, best);
-    return best;
-  }
-
-  // Hand the real scanned units back out, taking each deal's slots in recipe
-  // order so every serial lands against the label for its own unit.
-  const pool = pns.map(pn => units.filter(u => u.pn === pn));
-  return solve(counts).picks.map(pick => pick.deal
-    ? { deal: pick.deal, units: pick.deal.units.map(slot => pool[idxOf.get(normalizePN(slot.pn))].shift()) }
-    : { deal: null, units: [pool[pick.index].shift()] });
+  return count;
 }
+
+function bestPackaging(units, toolCount = qualifyingBatteryToolCount()) {
+  const batteries = units.filter(u => u.pn === normalizePN(PKG_AP300S));
+  const chargers = units.filter(u => u.pn === normalizePN(PKG_AL301));
+  const batteryCount = batteries.length;
+  const groups = [];
+  const pair = packageForPN('PKGAP300X2');
+  // Only the battery pair is an automatic package. Legacy charger packages
+  // remain readable for old receipts, but cannot bypass tool eligibility.
+  while (batteries.length >= 2 && packageListPrice(pair.pn) === 400) {
+    groups.push({ deal: pair, units: batteries.splice(0, 2), price: 400 });
+  }
+  for (const unit of batteries) groups.push({ deal: null, units: [unit],
+    price: batteryCount >= 2 ? 200 : packageListPrice(PKG_AP300S) });
+  let allowance = batteryCount ? toolCount : 0;
+  for (const unit of chargers) groups.push({ deal: null, units: [unit],
+    price: allowance-- > 0 ? 100 : packageListPrice(PKG_AL301) });
+  return groups.some(g => g.price == null) ? null : groups;
+}
+
+let packageRefreshPending = false;
+function schedulePackageRefresh() {
+  if (applyingPackageDeals || packageRefreshPending) return;
+  packageRefreshPending = true;
+  queueMicrotask(() => { packageRefreshPending = false; applyPackageDeals(); });
+}
+tbody.addEventListener('input', event => {
+  if (event.target.matches('.sn-input, .qty-input')) schedulePackageRefresh();
+});
 
 function packageDealStatus(deal) {
   const part = findPartByPn(deal.pn);
@@ -3043,7 +3023,17 @@ function writePackageRow(row, group) {
   const part = findPartByPn(group.deal ? group.deal.pn : group.units[0].pn);
   if (!part) return false;
   ensureScannerMobileRow(row);
+  document.getElementById(`qty-${row}`).value = 1;
+  document.getElementById(`mqty-${row}`).value = 1;
   applyMobilePart(row, part);
+  for (const id of [`price-${row}`, `mprice-${row}`]) {
+    const el = document.getElementById(id);
+    el.dataset.price = String(group.price);
+    const editor = el.querySelector('.price-edit');
+    if (editor) editor.value = fmt(group.price);
+    else el.textContent = fmt(group.price);
+  }
+  document.getElementById(`margin-${row}`).textContent = marginText(Number(part.cost) || 0, group.price);
   const tr = tbody.querySelector(`tr[data-row="${row}"]`);
   if (!tr) return false;
   const inputs = tbody.querySelectorAll(`tr[data-sn-for="${row}"] .sn-input`);
@@ -3060,16 +3050,22 @@ function writePackageRow(row, group) {
 // Returns the deal the just-scanned unit now sits in, so the scanner can say so.
 // It is found by serial when there is one and by the row it landed on otherwise,
 // because a product barcode carries no serial to match against.
+let applyingPackageDeals = false;
 function applyPackageDeals(latestSerial, latestRow) {
+  if (applyingPackageDeals) return null;
+  applyingPackageDeals = true;
+  try { return regroupPackageDeals(latestSerial, latestRow); }
+  finally { applyingPackageDeals = false; }
+}
+function regroupPackageDeals(latestSerial, latestRow) {
   const tracked = collectPackageRows();
   if (!tracked.length) return null;
   const units = tracked.flatMap(t => t.units);
-  if (units.length > MAX_PACKAGE_UNITS) return null;
   const groups = bestPackaging(units);
   if (!groups) return null;
 
-  const shape = list => JSON.stringify(list.map(g => [g.deal || '', (g.units || []).map(u => u.sn)]));
-  const next = groups.map(g => ({ deal: g.deal ? g.deal.pn : '', units: g.units }));
+  const shape = list => JSON.stringify(list.map(g => [g.deal || '', g.price, g.qty || 1, (g.units || []).map(u => [u.pn, u.sn])]));
+  const next = groups.map(g => ({ deal: g.deal ? g.deal.pn : '', units: g.units, price: g.price, qty: 1 }));
   // bestPackaging hands the very same unit objects back out, so the unit that
   // arrived on `latestRow` can be followed into whichever group took it.
   const fresh = Number.isInteger(latestRow) ? (tracked.find(t => t.row === latestRow)?.units || []) : [];
@@ -3084,12 +3080,17 @@ function applyPackageDeals(latestSerial, latestRow) {
   }
 
   const rows = tracked.map(t => t.row);
-  while (rows.length < groups.length) rows.push(firstOpenScanRow());
-  groups.forEach((group, n) => writePackageRow(rows[n], group));
+  groups.forEach((group, n) => {
+    if (n >= rows.length) rows.push(firstOpenScanRow());
+    writePackageRow(rows[n], group);
+  });
   for (let n = groups.length; n < rows.length; n++) {
     // Both views, or the phone keeps showing a line the register no longer has.
     if (document.querySelector(`#mobileRows [data-row="${rows[n]}"]`)) clearMobileRow(rows[n]);
     else clearRow(rows[n]);
+  }
+  if (Number.isInteger(pendingUnitSerialRow) && rows.includes(pendingUnitSerialRow)) {
+    pendingUnitSerialRow = landedIndex >= 0 && rowNeedsUnitSerial(rows[landedIndex]) ? rows[landedIndex] : null;
   }
   if (landedIndex >= 0) rememberLatestScannedSaleRow(rows[landedIndex]);
   updateSummary();
@@ -3503,6 +3504,14 @@ function flushPendingCatalogScans() {
 }
 
 function acceptDecodedScan(rawValue, format, options = {}) {
+  try {
+    return _acceptDecodedScan(rawValue, format, options);
+  } finally {
+    if (loaded && !isScanCommand(String(rawValue || '').trim())) applyPackageDeals();
+  }
+}
+
+function _acceptDecodedScan(rawValue, format, options = {}) {
   const raw = String(rawValue || '').trim();
   if (!raw) return;
   // Commands run before the catalog check: Print and Clear have nothing to do
@@ -3532,6 +3541,18 @@ function acceptDecodedScan(rawValue, format, options = {}) {
     return;
   }
   const result = resolveScannedValue(raw);
+  const scannedSerial = result.serial || (unitSerialCandidates(raw).length ||
+    (rowNeedsUnitSerial(pendingUnitSerialRow) && likelySecondUnitSerial(raw) && !result.candidates.length) ? raw : '');
+  if (scannedSerial) {
+    const key = canonicalSerialNumber(scannedSerial);
+    const duplicate = Array.from(tbody.querySelectorAll('.sn-input')).find(field => canonicalSerialNumber(field.value) === key);
+    if (duplicate) {
+      const row = Number(duplicate.closest('tr').dataset.snFor);
+      rememberLatestScannedSaleRow(row);
+      setScanStatus(`SN ${scannedSerial} is already on row ${row + 1}`, 'warn');
+      return;
+    }
+  }
   if (result.via === 'stihl-unit' || result.via === 'toro-unit') {
     if (result.candidates.length === 1) {
       playScanBeep(false);
@@ -4381,12 +4402,13 @@ function captureSaleLines() {
     const pn = input.dataset.partPn || '';
     const typed = input.value.trim();
     if (!pn && !typed) continue;
-    const serial = tbody.querySelector(`tr[data-sn-for="${i}"] .sn-input`)?.value.trim() || '';
+    const serials = Array.from(tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`)).map(field => field.value.trim());
+    const serial = serials[0] || '';
     out.push({
       pn,
       desc: document.getElementById(`desc-${i}`)?.textContent.trim() || typed,
       qty: parseInt(document.getElementById(`qty-${i}`)?.value, 10) || 1,
-      serial,
+      serial, serials,
     });
   }
   return out;
@@ -5289,7 +5311,9 @@ function onPriceEdit(i, commitBridge = false) {
     priceEl.dataset.price = price;
     const _pInput = tbody.querySelector(`[data-row="${i}"].part-input`);
     const _listP = parseFloat(_pInput?.dataset.list) || 0;
-    if (commitBridge) {
+    const pkgRow = tbody.querySelector(`tr[data-row="${i}"]`);
+    const unchangedPackagePrice = pkgRow?.dataset.pkgUnits && Number(pkgRow.dataset.pkgPrice) === price;
+    if (commitBridge && !unchangedPackagePrice) {
       if (_pInput?.dataset.isOther === '1') logOtherSuggestion(i);
       else if (_listP && Math.abs(price - _listP) > 0.001) logPriceChange(i, price, _listP);
       else clearPriceChange(i);
@@ -7163,6 +7187,17 @@ function applyPart(i, part, options) {
     const tr = tbody.querySelector(`tr[data-row="${i}"]`);
     if (tr) delete tr.dataset.warranty;
   }
+  if (!applyingPackageDeals && !options?.skipAutomaticSale) {
+    trackPackageUnit(i, '');
+    const recipe = packageForPN(part.pn);
+    if (recipe) {
+      const tr = tbody.querySelector(`tr[data-row="${i}"]`);
+      tr.dataset.pkgUnits = JSON.stringify(recipe.units.map(u => ({ pn: normalizePN(u.pn), sn: '' })));
+      tr.dataset.pkgDeal = recipe.pn;
+      tr.dataset.pkgPrice = document.getElementById(`price-${i}`).dataset.price || '';
+    }
+    schedulePackageRefresh();
+  }
   updateSubtotal(i); updateSummary(); updateReorderAvailability(i);
   if (i === NUM_ROWS - 1 && !options?.skipAddRow) addRow();
   if (other && !options?.skipFocus) setTimeout(() => { input.focus(); input.select(); }, 0);
@@ -7239,6 +7274,7 @@ function clearRow(i) {
   clearPriceChange(i);
   clearDescChange(i);
   clearRowData(i); closeAllDropdowns();
+  schedulePackageRefresh();
   if (removedScanIssue) {
     updateScanNext();
     updateScanButton();
@@ -9183,8 +9219,10 @@ function loadSaleLines(lines) {
     if (mobileQty) mobileQty.value = item.qty;
     if (part.warranty) {
       renderSNFields(i, item.qty, part.pn);
-      if (item.serial) fillRowSerial(i, item.serial);   // also remembers the unit for packaging
-      else missingSerial.push(part.desc || part.pn);
+      const serials = Array.isArray(item.serials) ? item.serials : [item.serial || ''];
+      const fields = tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);
+      serials.forEach((sn, k) => { if (fields[k]) fields[k].value = sn; });
+      if (!serials.some(Boolean)) missingSerial.push(part.desc || part.pn);
     }
     // A list carries a serial only for units that could be identified, so
     // remembering has to happen either way or an unserialised battery and

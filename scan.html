@@ -382,9 +382,48 @@ body.bind .bind-wrap { display: flex; }
   transition: opacity .18s;
 }
 .toast.show { opacity: 1; }
+
+/* Modes share one camera, catalog and sync queue. Their work stays separate. */
+.mode-header { flex: none; display:flex; align-items:center; gap:12px; justify-content:space-between; padding:14px; padding-top:max(14px,env(safe-area-inset-top)); border-bottom:1px solid var(--line); background:var(--panel); }
+.mode-header > div { flex:1; min-width:0; }
+.mode-brand { color:var(--muted); font-size:12px; }
+.mode-header h1 { font-size:20px; line-height:1.2; margin:3px 0; }
+.mode-header p { color:var(--muted); font-size:12px; margin:4px 0 0; }
+.mode-header .mini { min-height:44px; flex:none; }
+.mode-home { flex:1; overflow-y:auto; padding:18px 14px; }
+.mode-choice { display:block; width:100%; text-align:left; padding:18px 14px; margin-bottom:12px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; font:inherit; }
+.mode-choice strong { display:block; font-size:18px; margin-bottom:5px; }
+.mode-choice span,.mode-footnote { color:var(--muted); font-size:13px; }
+body:not([data-mode="home"]) #modeHome, body:not([data-mode="home"]) #homeSettings { display:none; }
+body[data-mode="home"] .cam-wrap,body[data-mode="home"] .hero,body[data-mode="home"] .acts,body[data-mode="home"] .list-wrap { display:none; }
+body:not([data-mode="pos"]) .list-wrap { display:none; }
+body[data-mode="serial"] .hero,body[data-mode="serial"] #searchBtn,body[data-mode="serial"] #reloadBtn { display:none; }
+body[data-mode="serial"] .cam-wrap { height:150px; }
+.serial-work { display:none; flex:1; overflow-y:auto; padding:14px; }
+body[data-mode="serial"] .serial-work { display:block; }
+.serial-target { padding-bottom:14px; border-bottom:1px solid var(--line); }
+.serial-target b { display:block; font-size:17px; margin:5px 0; }
+.serial-target p { color:var(--muted); font-size:13px; margin:6px 0 10px; }
+.serial-actions { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+.serial-actions button,.serial-target button { min-height:44px; }
+.serial-status { padding:12px 0; font-size:14px; }
+.serial-status.warn { color:var(--warn); }
+.serial-manual { display:flex; gap:8px; margin-top:12px; }
+.serial-manual input { min-width:0; flex:1; }
+.serial-item { display:flex; align-items:center; justify-content:space-between; gap:8px; border-bottom:1px solid var(--line); padding:9px 0; }
+.serial-item code { overflow-wrap:anywhere; }
+.serial-sync { color:var(--muted); font-size:12px; margin-top:12px; }
+button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 </style>
 </head>
-<body>
+<body data-mode="home">
+<header class="mode-header">
+  <div><div class="mode-brand">MPE Scan</div><h1 id="modeTitle">Choose a mode</h1><p id="modeHint">What are you working on?</p></div>
+  <button class="mini" id="leaveMode" hidden>Leave mode</button>
+  <button class="mini" id="homeSettings">Settings</button>
+</header>
+<main id="modeHome" class="mode-home"><div id="modeChoices"></div><p class="mode-footnote" id="modeDraftNote">Your POS list and unsent matches stay saved on this phone.</p></main>
+
 
 <div class="authbar" id="authBar">
   <div class="authbar-main">
@@ -453,6 +492,13 @@ body.bind .bind-wrap { display: flex; }
   <div class="bind-list" id="bindList"></div>
 </div>
 
+<section class="serial-work" aria-label="Match serial numbers">
+ <div class="serial-target"><span>Selected model</span><b id="serialModel">Choose a model first</b><p id="serialModelDetail">Scan its product barcode or search for the exact model. Then scan each serial label.</p><button class="mini go" id="serialChoose">Choose model</button></div>
+ <div class="serial-status" id="serialStatus" role="status" aria-live="polite">No serials scanned yet.</div>
+ <div class="serial-manual"><input id="serialInput" class="search-input" aria-label="Serial number" placeholder="Or type a serial" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"><button class="mini" id="serialAdd">Add</button></div>
+ <div class="serial-actions"><button class="mini go" id="serialSave" disabled>Save matches</button><button class="mini" id="serialClear" disabled>Clear scans</button></div>
+ <div id="serialRows"></div><div class="serial-sync" id="serialSync"></div>
+</section>
 <!-- search / bind sheet -->
 <div class="sheet" id="searchSheet">
   <div class="sheet-panel">
@@ -1172,12 +1218,12 @@ function renderAuthBar() {
   const state = authState();
   bar.className = 'authbar' + (state === 'ok' ? '' : ' show ' + state);
   if (state === 'ok') return;
-  const held = list.length ? `${list.length} line${list.length === 1 ? '' : 's'} saved on this phone.` : '';
+  const held = scannerMode === 'pos' && list.length ? `${list.length} line${list.length === 1 ? '' : 's'} saved on this phone.` : '';
   if (state === 'out') {
     $('authBarTitle').textContent = phoneBridgeAvailable()
       ? 'Phone not connected — sending is unavailable'
       : 'Signed out — sending needs a sign-in';
-    $('authBarNote').textContent = (held ? held + ' ' : '') + 'Keep scanning, prices still work.';
+    $('authBarNote').textContent = (held ? held + ' ' : '') + (loaded ? 'Cached prices work. Unsent work stays on this phone.' : 'Connect to load the catalog.');
     $('authBarGo').textContent = phoneBridgeAvailable() ? 'Connect' : 'Sign in';
   } else {
     const mins = Math.ceil(tokenMsLeft() / 60000);
@@ -1254,6 +1300,7 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
     const key = canonicalScannedCode(code);
     if (key && pn) partCodeMap[key] = normalizePN(pn);
   }
+  overlayPendingSerialMatches();
   partsArray = parts;
   scanExactIndex = null;
   buildWarrantyModelMap();
@@ -1412,9 +1459,9 @@ function loadUnitSerialRules(codes) {
     const code = String(rawCode || '').toUpperCase();
     const pn = normalizePN(rawPN);
     if (!pn) continue;
-    if (code.startsWith('@UNIT-EXACT:')) {
-      const serial = canonicalSerialNumber(code.slice(12));
-      if (serial) serialNumberMap[serial] = pn;
+    if (code.startsWith('@UNIT-EXACT:') || code.startsWith('@UNIT-MANUAL:')) {
+      const serial = canonicalSerialNumber(code.slice(code.indexOf(':') + 1));
+      if (serial && (!serialNumberMap[serial] || !code.startsWith('@UNIT-MANUAL:'))) serialNumberMap[serial] = pn;
       continue;
     }
     if (code.startsWith('@UNIT-PREFIX:')) {
@@ -2002,7 +2049,7 @@ async function _flushPendingCodes() {
   try {
     await ensureTab(CODES_SHEET, CODES_HEADER);
     while (pendingCodes.length) {
-      const batch = pendingCodes.slice();
+      const batch = pendingCodes.slice(0, 500);
       // The Code column survives Sheets' number-coercion because the server
       // re-pads numeric codes to GTIN-14 on read; a part number has no such
       // repair, so it needs the text guard.
@@ -2019,6 +2066,7 @@ async function _flushPendingCodes() {
       pendingCodes = pendingCodes.slice(batch.length);
       save(K_PENDING, pendingCodes);
       renderPending();
+      renderSerialWork();
     }
   } catch (e) {
     console.warn('Code sync deferred:', e.message);   // stays queued; nothing is lost
@@ -2083,12 +2131,12 @@ function schedulePendingCodesFlush() {
 }
 function renderPending() {
   $('pendHelp').textContent = pendingCodes.length
-    ? `${pendingCodes.length} saved locally — syncs after Send`
+    ? `${pendingCodes.length} saved locally — waiting to sync`
     : 'All synced.';
   const help = $('changeHelp');
   if (help) {
     help.textContent = pendingChanges.length
-      ? `${pendingChanges.length} waiting — syncs after Send, then approve in Tools`
+      ? `${pendingChanges.length} waiting to sync, then approve in Tools`
       : 'All synced.';
   }
   const back = $('backlogHelp');
@@ -2288,6 +2336,7 @@ function claimScannedValue(value, now = Date.now()) {
 }
 
 async function startCamera() {
+  if (scannerMode === 'home') return;
   const version = ++startVersion;
   scanLoopVersion++;
   scanPausedForVisibility = false;
@@ -2426,13 +2475,15 @@ document.addEventListener('visibilitychange', () => {
 // ── ACCEPTING A SCAN ──────────────────────────────────────────────────────
 function acceptScan(rawValue, format) {
   const raw = String(rawValue || '').trim();
-  if (!raw || !claimScannedValue(raw)) return;
+  if (scannerMode === 'home' || !raw || !claimScannedValue(raw)) return;
 
   if (!loaded) { showHero({ bad: true, desc: 'Prices are not loaded yet', meta: raw }); beep('unknown'); return; }
 
   // Bind mode is a different job with the same scanner: the code arms itself
   // and waits for a part instead of becoming a price or a list row.
-  if (bindMode) { bindScan(raw, format); return; }
+  const mode = SCANNER_MODES[scannerMode];
+  if (!mode) return;
+  if (mode.scan) { mode.scan(raw, format); return; }
 
   // Resolve FIRST. The packaging-noise filter below must only ever see codes
   // that already failed to resolve — that ordering is what keeps genuinely
@@ -2996,6 +3047,7 @@ function revertItemEdit() {
 }
 
 function renderHits(parts) {
+  if (scannerMode === 'serial') parts = parts.filter(part => part.warranty);
   const box = $('searchResults');
   if (!parts.length) {
     box.innerHTML = `<div class="empty-note">${loaded ? 'Type a part number or a few words.' : 'Prices are not loaded yet.'}</div>`;
@@ -3017,6 +3069,8 @@ function renderHits(parts) {
 }
 
 function chooseHit(part) {
+  if (scannerMode === 'serial') { closeSheet('searchSheet'); bindTarget = null; selectSerialModel(part); return; }
+  if (scannerMode === 'price') { closeSheet('searchSheet'); bindTarget = null; showPricePart(part); return; }
   const target = bindTarget;
   closeSheet('searchSheet');
   if (target?.entry) {
@@ -3062,6 +3116,187 @@ function chooseHit(part) {
   });
 }
 
+// ── SCANNER MODES ─────────────────────────────────────────────────────────
+// Add a mode here; navigation, camera lifetime and the catalog stay shared.
+const SCANNER_MODES = {
+  price: { title: 'Check prices', hint: 'Scan or search for a price. Your POS list stays separate.', scan: scanPrice,
+    description: 'Look up an item without building a list.' },
+  pos: { title: 'Build POS list', hint: 'Scan items, then send this list to the counter.',
+    description: 'Collect items and serials for a sale at the counter.' },
+  barcode: { title: 'Match product barcodes', hint: 'Filter the products, scan a barcode, then pick its match.', scan: bindScan,
+    description: 'Teach the shop which product a UPC or package barcode belongs to.' },
+  serial: { title: 'Match serial numbers', hint: 'Choose one model, scan its serial labels, then save the batch.', scan: scanSerialMatch,
+    description: 'Match a batch of AL301 chargers, Maruyama units, or other serialized items.' }
+};
+let scannerMode = 'home';
+const K_SERIAL_DRAFT = 'mpeScanSerialDraftV1';
+let serialDraft = { pn: '', scans: [] };
+try {
+  const draft = JSON.parse(localStorage.getItem(K_SERIAL_DRAFT) || 'null');
+  if (draft && typeof draft.pn === 'string' && Array.isArray(draft.scans)) serialDraft = draft;
+} catch (e) {}
+
+function enterScannerMode(id) {
+  if (id !== 'home' && !SCANNER_MODES[id]) return;
+  stopCamera();
+  recentValues.clear();
+  document.querySelectorAll('.sheet.open').forEach(sheet => closeSheet(sheet.id));
+  bindTarget = null;
+  scannerMode = id;
+  document.body.dataset.mode = id;
+  setBindMode(id === 'barcode');
+  $('leaveMode').hidden = id === 'home';
+  $('modeTitle').textContent = SCANNER_MODES[id]?.title || 'Choose a mode';
+  $('modeHint').textContent = SCANNER_MODES[id]?.hint || 'What are you working on?';
+  if (id === 'home') {
+    $('modeDraftNote').textContent = `${list.length ? `${list.length} item${list.length === 1 ? '' : 's'} in your saved POS list. ` : ''}Your list and unsent matches stay on this phone when you leave a mode.`;
+  }
+  if (id === 'price') showHero({ desc: 'Scan or search for an item', meta: 'Price lookup only' });
+  if (id === 'serial') renderSerialWork();
+  renderAuthBar();
+}
+function showPricePart(part, serial = '') {
+  const value = pricing(part);
+  showHero({ make: part.make, desc: part.desc, price: value.price, was: value.was,
+    onSale: value.onSale, meta: [part.pn, serial && `Serial ${serial}`].filter(Boolean).join(' · '), cost: Number(part.cost) || 0 });
+}
+function scanPrice(raw, format) {
+  const result = resolveScannedValue(raw);
+  if (result.candidates.length === 1) {
+    showPricePart(result.candidates[0], result.serial || (result.via === 'serial' ? raw : ''));
+    beep('ok'); return;
+  }
+  if (ignorableScanCode(raw)) { setCamStatus('Packaging label — scan the product barcode', 'warn'); return; }
+  showHero({ bad: true, desc: result.candidates.length ? 'Choose the matching item' : 'Not recognized', meta: raw });
+  openSearch({ pick: result.candidates.length ? result.candidates : null, title: 'Find an item to check its price' });
+}
+function serialModel() { return partsArray.find(part => !part._supersedeAlias && normalizePN(part.pn) === normalizePN(serialDraft.pn) && part.warranty); }
+function saveSerialDraft(next) {
+  const value = JSON.stringify(next);
+  try {
+    localStorage.setItem(K_SERIAL_DRAFT, value);
+    if (localStorage.getItem(K_SERIAL_DRAFT) !== value) throw Error('readback');
+    serialDraft = next; return true;
+  } catch (e) { serialNote('Could not save on this phone. Free storage before scanning more.', true); return false; }
+}
+function selectSerialModel(part) {
+  if (part?._salePn) part = partsArray.find(item => !item._supersedeAlias && normalizePN(item.pn) === normalizePN(part._salePn)) || part;
+  if (!part?.warranty) { serialNote('Choose a serialized unit from the catalog.', true); return; }
+  if (serialDraft.scans.length && normalizePN(part.pn) !== normalizePN(serialDraft.pn)) {
+    serialNote('Save or clear the scanned serials before changing models.', true); return;
+  }
+  if (saveSerialDraft({ pn: part.pn, scans: serialDraft.scans })) {
+    renderSerialWork(); serialNote('Model selected. Now scan each serial label.');
+  }
+}
+function serialNote(message, warning = false) {
+  $('serialStatus').textContent = message;
+  $('serialStatus').className = 'serial-status' + (warning ? ' warn' : '');
+}
+function overlayPendingSerialMatches() {
+  for (const row of pendingCodes) {
+    if (!String(row.code).startsWith('@UNIT-MANUAL:')) continue;
+    const serial = canonicalSerialNumber(row.code.slice(13));
+    if (!serialNumberMap[serial]) serialNumberMap[serial] = normalizePN(row.pn);
+  }
+}
+function scanSerialMatch(raw, format) {
+  const result = resolveScannedValue(raw);
+  const model = serialModel();
+  if (!model) {
+    if (result.candidates.length === 1 && result.candidates[0].warranty) selectSerialModel(result.candidates[0]);
+    else openSearch({ pick: result.candidates.length ? result.candidates : null, title: 'Choose the model to match serials' });
+    return;
+  }
+  const value = result.serial || raw;
+  const serial = canonicalSerialNumber(value);
+  const pn = normalizePN(model.pn);
+  const known = unitSerialCandidates(serial);
+  if (serialNumberMap[serial]) {
+    serialNote(known.every(part => normalizePN(part.pn) === pn)
+      ? `${serial} is already matched to this model.`
+      : `${serial} belongs to ${known.map(part => part.desc || part.pn).join(' / ')}. Nothing changed.`, true);
+    return;
+  }
+  if (result.candidates.length && !result.serial) {
+    serialNote('That is a product barcode. Aim at the serial-number label.', true); return;
+  }
+  if (result.serial && !result.candidates.some(part => normalizePN(part.pn) === pn)) {
+    serialNote('That unit label is for a different model. Nothing changed.', true); return;
+  }
+  if (!/^[A-Z0-9][A-Z0-9 -]{5,39}$/i.test(value) || !/[0-9]/.test(serial) || serial.length > 30 ||
+      /ean|upc/i.test(format || '') || ignorableScanCode(value)) {
+    serialNote('Not a serial label. Scan or type the letters and numbers beside S/N.', true); return;
+  }
+  if (serialDraft.scans.some(item => item.serial === serial)) { serialNote(`${serial} is already in this batch.`, true); return; }
+  if (saveSerialDraft({ pn: serialDraft.pn, scans: [...serialDraft.scans, { serial, format: format || 'manual' }] })) {
+    renderSerialWork(); serialNote(`${serial} added — scan the next box.`); beep('ok'); buzz(25);
+  }
+}
+function renderSerialWork() {
+  const model = serialModel();
+  $('serialModel').textContent = model?.desc || (serialDraft.pn ? 'Model not available in the current catalog' : 'Choose a model first');
+  $('serialModelDetail').textContent = model ? `${model.make} · ${model.pn} · Every serial in this batch will match this model.` : 'Scan its product barcode or search for the exact model. Then scan each serial label.';
+  $('serialChoose').textContent = model ? 'Change model' : 'Choose model';
+  $('serialSave').disabled = !model || !serialDraft.scans.length;
+  $('serialSave').textContent = serialDraft.scans.length ? `Save ${serialDraft.scans.length} match${serialDraft.scans.length === 1 ? '' : 'es'}` : 'Save matches';
+  $('serialClear').disabled = !serialDraft.scans.length;
+  $('serialRows').replaceChildren(...serialDraft.scans.map((item, index) => {
+    const row = document.createElement('div'); row.className = 'serial-item';
+    const label = document.createElement('code'); label.textContent = item.serial;
+    const remove = document.createElement('button'); remove.className = 'mini'; remove.textContent = 'Remove'; remove.setAttribute('aria-label', `Remove serial ${item.serial}`);
+    remove.addEventListener('click', () => { if (saveSerialDraft({ pn: serialDraft.pn, scans: serialDraft.scans.filter((_, n) => n !== index) })) renderSerialWork(); });
+    row.append(label, remove); return row;
+  }));
+  const waiting = pendingCodes.filter(row => String(row.code).startsWith('@UNIT-MANUAL:')).length;
+  $('serialSync').textContent = waiting ? `${waiting} saved match${waiting === 1 ? '' : 'es'} waiting to sync. Kept on this phone while offline.` : 'Saved matches sync to the shop without sending a POS list.';
+}
+function saveSerialMatches() {
+  const model = serialModel();
+  if (!model || !serialDraft.scans.length) return;
+  const next = [...pendingCodes];
+  for (const item of serialDraft.scans) {
+    const existing = unitSerialCandidates(item.serial);
+    if (serialNumberMap[item.serial] && normalizePN(serialNumberMap[item.serial]) !== normalizePN(model.pn)) {
+      serialNote(`${item.serial} now matches another model. Remove it before saving this batch.`, true); return;
+    }
+    const code = '@UNIT-MANUAL:' + item.serial;
+    if (next.some(row => row.code === code && normalizePN(row.pn) !== normalizePN(model.pn))) {
+      serialNote(`${item.serial} is queued for another model. Nothing changed.`, true); return;
+    }
+    if (!serialNumberMap[item.serial] && !next.some(row => row.code === code)) next.push({ code, pn: model.pn,
+      format: item.format, source: 'scan-phone-serial', added: new Date().toISOString() });
+  }
+  try {
+    const value = JSON.stringify(next);
+    localStorage.setItem(K_PENDING, value);
+    if (localStorage.getItem(K_PENDING) !== value) throw Error('readback');
+  } catch (e) { serialNote('Could not save these matches on this phone. The batch is still here.', true); return; }
+  const count = serialDraft.scans.length;
+  pendingCodes = next;
+  overlayPendingSerialMatches();
+  saveSerialDraft({ pn: serialDraft.pn, scans: [] });
+  renderPending(); renderSerialWork(); schedulePendingCodesFlush();
+  serialNote(`${count} match${count === 1 ? '' : 'es'} saved on this phone. Ready for the next batch.`);
+}
+$('modeChoices').replaceChildren(...Object.entries(SCANNER_MODES).map(([id, mode]) => {
+  const button = document.createElement('button'); button.className = 'mode-choice';
+  const title = document.createElement('strong'); title.textContent = mode.title;
+  const detail = document.createElement('span'); detail.textContent = mode.description;
+  button.append(title, detail); button.addEventListener('click', () => enterScannerMode(id)); return button;
+}));
+$('leaveMode').addEventListener('click', () => enterScannerMode('home'));
+$('homeSettings').addEventListener('click', () => openSheet('setSheet'));
+$('serialChoose').addEventListener('click', () => openSearch({ title: 'Choose the model to match serials' }));
+$('serialSave').addEventListener('click', saveSerialMatches);
+$('serialClear').addEventListener('click', () => {
+  if (!confirm(`Clear ${serialDraft.scans.length} unsaved serials?`)) return;
+  if (saveSerialDraft({ pn: serialDraft.pn, scans: [] })) { renderSerialWork(); serialNote('Batch cleared.'); }
+});
+function addTypedSerial() { const input = $('serialInput'); if (input.value.trim()) scanSerialMatch(input.value.trim(), 'manual'); input.value = ''; }
+$('serialAdd').addEventListener('click', addTypedSerial);
+$('serialInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addTypedSerial(); } });
+
 // ── BIND MODE ─────────────────────────────────────────────────────────────
 // Scan the package, then tap the part it belongs to. Deliberately scan-first:
 // the code is the thing in your hand that the shop does not know yet, and
@@ -3078,7 +3313,7 @@ function chooseHit(part) {
 const K_BINDON = 'mpeScanBindMode';
 const K_BINDQ  = 'mpeScanBindFilter';
 const K_BINDONLY = 'mpeScanBindUnbound';
-let bindMode = localStorage.getItem(K_BINDON) === '1';
+let bindMode = false;
 let bindPending = null;        // { raw, code, format } armed, waiting for its part
 let bindLast = null;           // last binding made here, for a single undo
 let bindPool = [];
@@ -3097,7 +3332,7 @@ function boundPartNumbers() {
 function setBindMode(on) {
   bindMode = !!on;
   document.body.classList.toggle('bind', bindMode);
-  localStorage.setItem(K_BINDON, bindMode ? '1' : '0');
+  localStorage.removeItem(K_BINDON);
   $('bindBtn').className = 'mini' + (bindMode ? ' go' : '');
   $('bindBtn').textContent = bindMode ? 'Exit Bind' : 'Start';
   bindPending = null;
@@ -3224,6 +3459,7 @@ function bindChoose(part) {
     return;
   }
   bindLast = { code, before, hadLearned, desc: part.desc || part.pn };
+  schedulePendingCodesFlush();
   bindCount += 1;
   bindPending = null;
   beep('ok'); buzz(35);
@@ -3258,7 +3494,7 @@ function bindUndo() {
 }
 
 $('bindBtn').addEventListener('click', () => {
-  setBindMode(!bindMode);
+  enterScannerMode('barcode');
   closeSheet('setSheet');
 });
 $('bindUndoBtn').addEventListener('click', bindUndo);
@@ -3281,7 +3517,7 @@ $('bindFilter').addEventListener('input', ev => {
 });
 $('bindFilter').value = localStorage.getItem(K_BINDQ) || '';
 $('bindOnlyBtn').className = 'mini' + (bindUnboundOnly ? ' go' : '');
-setBindMode(bindMode);
+setBindMode(false);
 
 let searchTimer = null;
 $('searchInput').addEventListener('input', ev => {
@@ -3487,6 +3723,8 @@ function bindSwitch(el, key, def, onChange) {
 bindSwitch($('costSw'), K_COST, false, on => document.body.classList.toggle('show-cost', on));
 bindSwitch($('themeSw'), K_THEME, false, on => document.documentElement.dataset.theme = on ? 'light' : 'dark');
 bindSwitch($('beepSw'), K_BEEP, true, () => {});
+
+enterScannerMode('home');
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
 renderList();
