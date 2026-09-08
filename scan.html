@@ -399,6 +399,22 @@ body[data-mode="home"] .cam-wrap,body[data-mode="home"] .hero,body[data-mode="ho
 body:not([data-mode="pos"]) .list-wrap { display:none; }
 body[data-mode="serial"] .hero,body[data-mode="serial"] #searchBtn,body[data-mode="serial"] #reloadBtn { display:none; }
 body[data-mode="serial"] .cam-wrap { height:150px; }
+body[data-mode="labels"] .hero { display:none; }
+body[data-mode="labels"] .cam-wrap { height:150px; }
+.label-work { display:none; flex:1; overflow-y:auto; padding:14px; }
+body[data-mode="labels"] .label-work { display:block; }
+.label-status { padding:4px 0 12px; font-size:14px; }
+.label-status.warn { color:var(--warn); }
+.label-actions { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 14px; }
+.label-actions button { min-height:44px; }
+.label-item { display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line); padding:9px 0; }
+.label-item div { flex:1; min-width:0; }
+.label-item b { display:block; font-size:15px; }
+.label-item small { color:var(--muted); overflow-wrap:anywhere; }
+.label-qty { display:flex; align-items:center; gap:6px; flex:none; }
+.label-qty button { min-width:38px; min-height:38px; }
+.label-qty span { min-width:20px; text-align:center; }
+.label-note { color:var(--muted); font-size:12px; margin-top:14px; }
 .serial-work { display:none; flex:1; overflow-y:auto; padding:14px; }
 body[data-mode="serial"] .serial-work { display:block; }
 .serial-target { padding-bottom:14px; border-bottom:1px solid var(--line); }
@@ -499,6 +515,15 @@ button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
  <div class="serial-actions"><button class="mini go" id="serialSave" disabled>Save matches</button><button class="mini" id="serialClear" disabled>Clear scans</button></div>
  <div id="serialRows"></div><div class="serial-sync" id="serialSync"></div>
 </section>
+<!-- label mode: a scanned run of parts, copied to the Mac for Label Studio -->
+<section class="label-work" aria-label="Make bag labels">
+ <div class="label-status" id="labelStatus" role="status" aria-live="polite">Scan each part you are bagging.</div>
+ <div class="label-actions"><button class="mini go" id="labelCopy" disabled>Copy list</button><button class="mini" id="labelShare" disabled hidden>Share</button><button class="mini" id="labelClear" disabled>Clear list</button></div>
+ <div id="labelRows"></div>
+ <textarea id="labelFallback" class="search-input" rows="4" readonly hidden aria-label="Scanned list to copy"></textarea>
+ <p class="label-note">On the Mac: Label Studio → Parts bags → <b>Paste a scanned list</b> → paste. One label per part, using the paper and size already set there. This list stays on this phone and is never sent to the counter.</p>
+</section>
+
 <!-- search / bind sheet -->
 <div class="sheet" id="searchSheet">
   <div class="sheet-panel">
@@ -3070,6 +3095,7 @@ function renderHits(parts) {
 
 function chooseHit(part) {
   if (scannerMode === 'serial') { closeSheet('searchSheet'); bindTarget = null; selectSerialModel(part); return; }
+  if (scannerMode === 'labels') { closeSheet('searchSheet'); bindTarget = null; addLabelPart(part); return; }
   if (scannerMode === 'price') { closeSheet('searchSheet'); bindTarget = null; showPricePart(part); return; }
   const target = bindTarget;
   closeSheet('searchSheet');
@@ -3126,9 +3152,19 @@ const SCANNER_MODES = {
   barcode: { title: 'Match product barcodes', hint: 'Filter the products, scan a barcode, then pick its match.', scan: bindScan,
     description: 'Teach the shop which product a UPC or package barcode belongs to.' },
   serial: { title: 'Match serial numbers', hint: 'Choose one model, scan its serial labels, then save the batch.', scan: scanSerialMatch,
-    description: 'Match a batch of AL301 chargers, Maruyama units, or other serialized items.' }
+    description: 'Match a batch of AL301 chargers, Maruyama units, or other serialized items.' },
+  labels: { title: 'Make bag labels', hint: 'Scan each part, then copy the list and paste it into Label Studio.', scan: scanLabelPart,
+    description: 'Collect the parts you are bagging and print their labels on the Mac.' }
 };
 let scannerMode = 'home';
+const K_LABEL_RUN = 'mpeScanLabelRunV1';
+let labelRun = [];
+try {
+  const saved = JSON.parse(localStorage.getItem(K_LABEL_RUN) || '[]');
+  if (Array.isArray(saved)) labelRun = saved
+    .filter(row => row && typeof row.pn === 'string' && row.pn)
+    .map(row => ({ pn: row.pn, desc: String(row.desc || ''), make: String(row.make || ''), qty: Math.min(99, Math.max(1, Number(row.qty) || 1)) }));
+} catch (e) {}
 const K_SERIAL_DRAFT = 'mpeScanSerialDraftV1';
 let serialDraft = { pn: '', scans: [] };
 try {
@@ -3149,10 +3185,11 @@ function enterScannerMode(id) {
   $('modeTitle').textContent = SCANNER_MODES[id]?.title || 'Choose a mode';
   $('modeHint').textContent = SCANNER_MODES[id]?.hint || 'What are you working on?';
   if (id === 'home') {
-    $('modeDraftNote').textContent = `${list.length ? `${list.length} item${list.length === 1 ? '' : 's'} in your saved POS list. ` : ''}Your list and unsent matches stay on this phone when you leave a mode.`;
+    $('modeDraftNote').textContent = `${list.length ? `${list.length} item${list.length === 1 ? '' : 's'} in your saved POS list. ` : ''}${labelRun.length ? `${labelRun.length} part${labelRun.length === 1 ? '' : 's'} in your bag-label list. ` : ''}Your list and unsent matches stay on this phone when you leave a mode.`;
   }
   if (id === 'price') showHero({ desc: 'Scan or search for an item', meta: 'Price lookup only' });
   if (id === 'serial') renderSerialWork();
+  if (id === 'labels') renderLabelRun();
   renderAuthBar();
 }
 function showPricePart(part, serial = '') {
@@ -3279,6 +3316,123 @@ function saveSerialMatches() {
   renderPending(); renderSerialWork(); schedulePendingCodesFlush();
   serialNote(`${count} match${count === 1 ? '' : 'es'} saved on this phone. Ready for the next batch.`);
 }
+// ── LABEL MODE ────────────────────────────────────────────────────────────
+// A shelf pass that ends in printed bag labels. It collects Master parts only,
+// keeps them on this phone, and hands them to Label Studio on the Mac as plain
+// text — this page has no route to the Mac's local server, and the Bridge tabs
+// belong to the counter, so the run must never touch either.
+function saveLabelRun(next) {
+  const value = JSON.stringify(next);
+  try {
+    localStorage.setItem(K_LABEL_RUN, value);
+    if (localStorage.getItem(K_LABEL_RUN) !== value) throw Error('readback');
+    labelRun = next; return true;
+  } catch (e) { labelNote('Could not save on this phone. Free storage before scanning more.', true); return false; }
+}
+function labelNote(message, warning = false) {
+  $('labelStatus').textContent = message;
+  $('labelStatus').className = 'label-status' + (warning ? ' warn' : '');
+}
+function labelListText() {
+  return ['~MPE-LABELS 1'].concat(labelRun.map(row =>
+    `${row.pn}${row.qty > 1 ? ` x${row.qty}` : ''}${row.desc ? ` | ${row.desc}` : ''}`)).join('\n');
+}
+function renderLabelRun() {
+  const box = $('labelRows');
+  box.replaceChildren(...labelRun.map((row, index) => {
+    const item = document.createElement('div');
+    item.className = 'label-item';
+    const main = document.createElement('div');
+    const title = document.createElement('b'); title.textContent = row.desc || row.pn;
+    const sub = document.createElement('small'); sub.textContent = [row.make, row.pn].filter(Boolean).join(' · ');
+    main.append(title, sub);
+    const qty = document.createElement('div'); qty.className = 'label-qty';
+    const less = document.createElement('button'); less.className = 'mini'; less.type = 'button';
+    less.textContent = '−'; less.setAttribute('aria-label', `One less ${row.pn}`);
+    const count = document.createElement('span'); count.textContent = row.qty;
+    const more = document.createElement('button'); more.className = 'mini'; more.type = 'button';
+    more.textContent = '+'; more.setAttribute('aria-label', `One more ${row.pn}`);
+    const remove = document.createElement('button'); remove.className = 'mini'; remove.type = 'button';
+    remove.textContent = '×'; remove.setAttribute('aria-label', `Remove ${row.pn}`);
+    less.addEventListener('click', () => changeLabelQty(index, -1));
+    more.addEventListener('click', () => changeLabelQty(index, 1));
+    remove.addEventListener('click', () => changeLabelQty(index, -row.qty));
+    qty.append(less, count, more, remove);
+    item.append(main, qty); return item;
+  }));
+  const labels = labelRun.reduce((total, row) => total + row.qty, 0);
+  $('labelCopy').disabled = !labelRun.length;
+  $('labelShare').disabled = !labelRun.length;
+  $('labelClear').disabled = !labelRun.length;
+  if ($('labelFallback').hidden === false) $('labelFallback').value = labelListText();
+  labelNote(labelRun.length
+    ? `${labelRun.length} part${labelRun.length === 1 ? '' : 's'} · ${labels} label${labels === 1 ? '' : 's'}. Copy the list, then paste it in Label Studio.`
+    : 'Scan each part you are bagging.');
+}
+function changeLabelQty(index, delta) {
+  const next = labelRun.map(row => ({ ...row }));
+  const row = next[index];
+  if (!row) return;
+  row.qty += delta;
+  if (row.qty < 1) next.splice(index, 1); else row.qty = Math.min(99, row.qty);
+  if (saveLabelRun(next)) renderLabelRun();
+}
+function addLabelPart(part) {
+  // A sale alias points at the real Master row; the label must carry the real part number.
+  if (part?._salePn) part = partsArray.find(item => !item._supersedeAlias && normalizePN(item.pn) === normalizePN(part._salePn)) || part;
+  const pn = String(part?.pn || '').trim();
+  if (!pn) { labelNote('That row has no part number to label.', true); return; }
+  const next = labelRun.map(row => ({ ...row }));
+  const at = next.findIndex(row => normalizePN(row.pn) === normalizePN(pn));
+  if (at >= 0) next[at].qty = Math.min(99, next[at].qty + 1);
+  else next.unshift({ pn, desc: String(part.desc || ''), make: String(part.make || ''), qty: 1 });
+  if (!saveLabelRun(next)) return;
+  renderLabelRun();
+  const row = next[at >= 0 ? at : 0];
+  labelNote(`${row.desc || pn} — ${row.qty} label${row.qty === 1 ? '' : 's'}.`);
+}
+function scanLabelPart(raw) {
+  const result = resolveScannedValue(raw);
+  if (result.candidates.length === 1) { addLabelPart(result.candidates[0]); beep('ok'); buzz(35); return; }
+  if (result.candidates.length > 1) {
+    openSearch({ pick: result.candidates, title: 'Which one gets the label?' });
+    beep('unknown'); buzz([25, 60, 25]); return;
+  }
+  // Same order as every other mode: resolve first, only then call it packaging noise.
+  if (ignorableScanCode(raw)) { setCamStatus('Packaging label — scan the product barcode', 'warn'); return; }
+  labelNote(`Not recognized: ${raw}. Search for the part instead.`, true);
+  openSearch({ title: 'Find the part to label' });
+  beep('unknown'); buzz([25, 60, 25]);
+}
+async function copyLabelList() {
+  const text = labelListText();
+  try {
+    if (!navigator.clipboard?.writeText) throw Error('no clipboard');
+    await navigator.clipboard.writeText(text);
+    $('labelFallback').hidden = true;
+    toast('Copied. Paste it into Label Studio on the Mac.');
+  } catch (e) {
+    // iOS refuses a programmatic copy in some contexts. Show the text selected so a
+    // long-press Copy still works rather than leaving the run stranded on the phone.
+    const area = $('labelFallback');
+    area.hidden = false; area.value = text; area.focus(); area.setSelectionRange(0, text.length);
+    labelNote('Press and hold the text below, then Copy.', true);
+  }
+}
+async function shareLabelList() {
+  try { await navigator.share({ title: 'MPE bag labels', text: labelListText() }); }
+  catch (e) { if (e && e.name !== 'AbortError') labelNote('Sharing was not available. Use Copy list instead.', true); }
+}
+$('labelCopy').addEventListener('click', copyLabelList);
+$('labelShare').addEventListener('click', shareLabelList);
+$('labelClear').addEventListener('click', () => {
+  const labels = labelRun.reduce((total, row) => total + row.qty, 0);
+  if (!confirm(`Clear ${labels} label${labels === 1 ? '' : 's'} from this list?`)) return;
+  if (saveLabelRun([])) { $('labelFallback').hidden = true; renderLabelRun(); labelNote('List cleared.'); }
+});
+if (navigator.share) $('labelShare').hidden = false;
+renderLabelRun();
+
 $('modeChoices').replaceChildren(...Object.entries(SCANNER_MODES).map(([id, mode]) => {
   const button = document.createElement('button'); button.className = 'mode-choice';
   const title = document.createElement('strong'); title.textContent = mode.title;
