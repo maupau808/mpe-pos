@@ -503,7 +503,6 @@ button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   <div class="bind-filterbar">
     <input class="search-input" id="bindFilter" type="search" placeholder="Filter — blade, Corona, hedge shear"
            autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
-    <button class="mini go" id="bindOnlyBtn">Unbound</button>
   </div>
   <div class="bind-head" id="bindHead"></div>
   <div class="bind-list" id="bindList"></div>
@@ -3478,13 +3477,11 @@ $('serialInput').addEventListener('keydown', event => { if (event.key === 'Enter
 // exactly the order acceptScan applies them.
 const K_BINDON = 'mpeScanBindMode';
 const K_BINDQ  = 'mpeScanBindFilter';
-const K_BINDONLY = 'mpeScanBindUnbound';
 let bindMode = false;
 let bindPending = null;        // { raw, code, format } armed, waiting for its part
 let bindLast = null;           // last binding made here, for a single undo
 let bindPool = [];
 let bindCount = 0;
-let bindUnboundOnly = localStorage.getItem(K_BINDONLY) !== '0';
 
 // Every part number that already has at least one product barcode. Unit-serial
 // rules never reach partCodeMap, so this is genuinely "has a UPC", which is the
@@ -3586,15 +3583,12 @@ function renderBindPool() {
   }
   const bound = boundPartNumbers();
   const all = searchParts(q, 400).map(p => ({ p, bound: bound.has(normalizePN(p.pn)) }));
-  const unbound = all.filter(r => !r.bound).length;
-  bindPool = bindUnboundOnly ? all.filter(r => !r.bound) : all;
+  bindPool = all;
   head.textContent = all.length
-    ? `${all.length} match${all.length === 1 ? '' : 'es'} · ${unbound} without a barcode${tally}`
+    ? `${all.length} match${all.length === 1 ? '' : 'es'}${tally}`
     : `Nothing matches "${q}"${tally}`;
   if (!bindPool.length) {
-    box.innerHTML = all.length
-      ? '<div class="empty-note">Every match already has a barcode.<br>Turn off <b>Unbound</b> to add a second one.</div>'
-      : '<div class="empty-note">Try fewer words, or the brand name.</div>';
+    box.innerHTML = '<div class="empty-note">Try fewer words, or the brand name.</div>';
     return;
   }
   box.replaceChildren(...bindPool.map((row, i) => {
@@ -3664,12 +3658,6 @@ $('bindBtn').addEventListener('click', () => {
   closeSheet('setSheet');
 });
 $('bindUndoBtn').addEventListener('click', bindUndo);
-$('bindOnlyBtn').addEventListener('click', () => {
-  bindUnboundOnly = !bindUnboundOnly;
-  localStorage.setItem(K_BINDONLY, bindUnboundOnly ? '1' : '0');
-  $('bindOnlyBtn').className = 'mini' + (bindUnboundOnly ? ' go' : '');
-  renderBindPool();
-});
 $('bindList').addEventListener('click', ev => {
   const el = ev.target.closest('.pool'); if (!el) return;
   const row = bindPool[Number(el.dataset.i)]; if (!row) return;
@@ -3682,7 +3670,6 @@ $('bindFilter').addEventListener('input', ev => {
   bindFilterTimer = setTimeout(renderBindPool, 130);
 });
 $('bindFilter').value = localStorage.getItem(K_BINDQ) || '';
-$('bindOnlyBtn').className = 'mini' + (bindUnboundOnly ? ' go' : '');
 setBindMode(false);
 
 let searchTimer = null;
