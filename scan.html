@@ -798,6 +798,7 @@ const K_COST     = 'mpeScanShowCost';
 const K_THEME    = 'mpeScanTheme';
 const K_BEEP     = 'mpeScanBeep';
 const K_BRIDGE   = 'mpeScanBridgeKey';
+const K_BRIDGE_DRAFT = 'mpeScanBridgeKeyDraft';
 // Whichever Google account actually signed in last on THIS phone. The shop
 // account is only the fallback for a phone that has never signed in, so a
 // device that legitimately uses another account is not sent to the picker
@@ -1150,13 +1151,23 @@ async function initBridgeGoogle() {
 async function connectPhoneBridge() {
   if (!phoneBridgeAvailable()) throw new Error('Scanner connection is not configured');
   if (!phoneBridgeClient) phoneBridgeClient = new PhoneBridgeClient(PHONE_BRIDGE_URL);
-  const entered = prompt('Paste the MPE scanner device key:', phoneBridgeKey());
+  const entered = prompt('Paste the MPE scanner device key:', localStorage.getItem(K_BRIDGE_DRAFT) || phoneBridgeKey());
   if (entered === null) return null;
   const key = entered.trim();
   if (!key) throw new Error('No device key was entered');
+  // Remember the entry even if the connection fails; keep the working key
+  // separate until its replacement has connected successfully.
+  try {
+    localStorage.setItem(K_BRIDGE_DRAFT, key);
+    if (localStorage.getItem(K_BRIDGE_DRAFT) !== key) throw new Error('readback');
+  } catch (error) {
+    throw new Error('This browser could not save the scanner key. Allow website storage and try again.');
+  }
   const status = await phoneBridgeClient.request('getStatus', [], key);
   if (!status?.connected) throw new Error('This phone could not be connected');
   localStorage.setItem(K_BRIDGE, key);
+  if (phoneBridgeKey() !== key) throw new Error('This browser could not save the scanner connection');
+  localStorage.removeItem(K_BRIDGE_DRAFT);
   bridgeGoogleConnected = true;
   bridgeGoogleAccount = status.accountEmail || SHOP_GOOGLE_ACCOUNT;
   localStorage.setItem(K_SIGNED, '1');
