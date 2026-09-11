@@ -568,10 +568,11 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 @media screen {
   #scannerModeView { display: none; }
   body.scanner-mode-active .wrap > :not(#scannerModeView) { display: none !important; }
-  body.scanner-mode-active .wrap { max-width: 1280px; padding: 0; overflow: visible; }
-  body.scanner-mode-active #scannerModeView { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(270px, .85fr); min-height: min(620px, calc(100vh - 24px)); background: #fffdfa; color: #1a1a1a; }
+  body.scanner-mode-active { zoom:1; padding:12px 24px; }
+  body.scanner-mode-active .wrap { max-width:1280px; padding:0; overflow:hidden; }
+  body.scanner-mode-active #scannerModeView { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(270px, .85fr); height:calc(100dvh - 24px); min-height:550px; grid-template-rows:minmax(0,1fr) auto; background: #fffdfa; color: #1a1a1a; }
   body.dark.scanner-mode-active #scannerModeView { background: #1d211e; color: #f3f5f1; }
-  .scanner-mode-list { display: flex; flex-direction: column; min-width: 0; padding: 20px 22px; border-right: 1px solid #d6ded5; }
+  .scanner-mode-list { overflow:auto; min-height:0; display: flex; flex-direction: column; min-width: 0; padding: 20px 22px; border-right: 1px solid #d6ded5; }
   body.dark .scanner-mode-list { border-color: #434b43; }
   .scanner-mode-list-head { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 12px; color: #667066; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   body.dark .scanner-mode-list-head { color: #aeb7ae; }
@@ -592,7 +593,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-price { font-size: 19px; font-weight: 700; line-height: 1.1; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .scanner-mode-empty { padding: 26px 0; color: #667066; font-size: 18px; }
   body.dark .scanner-mode-empty { color: #aeb7ae; }
-  .scanner-mode-side { position: sticky; top: 0; align-self: start; display: flex; flex-direction: column; gap: 14px; min-height: min(560px, calc(100vh - 24px)); padding: 20px 18px 16px; background: #f2f5f0; box-sizing: border-box; }
+  .scanner-mode-side { display:flex; flex-direction:column; gap:14px; min-height:0; overflow:auto; padding:20px 24px; background:#f2f5f0; box-sizing:border-box; }
   body.dark .scanner-mode-side { background: #252b26; }
   .scanner-mode-ready { color: #2f5a3f; font-size: 23px; font-weight: 700; line-height: 1.15; }
   body.dark .scanner-mode-ready { color: #b7c8bb; }
@@ -611,42 +612,45 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .scanner-mode-total-label { color: #667066; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   body.dark .scanner-mode-total-label { color: #aeb7ae; }
   .scanner-mode-total { font-size: clamp(30px, 3.375vw, 42px); font-weight: 700; line-height: 1; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
-  .scanner-mode-command-deck { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid #cbd4ca; }
-  body.dark .scanner-mode-command-deck { border-color: #4a554b; }
-  .scanner-mode-command { min-width: 0; border: 1px solid #cbd4ca; background: rgba(255,255,255,.56); box-sizing: border-box; }
-  body.dark .scanner-mode-command { border-color: #4a554b; background: rgba(0,0,0,.12); }
-  .scanner-mode-command-horizontal { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 12px; padding: 6px 12px 6px 6px; }
-  .scanner-mode-command-primary { border-color: #2f5a3f; }
-  body.dark .scanner-mode-command-primary { border-color: #78927f; }
-  .scanner-mode-command-qr-right { grid-template-columns: minmax(0, 1fr) 90px; padding: 6px 6px 6px 12px; }
-  .scanner-mode-command-next.is-next { border: 2px solid #b3261e; padding: 5px 11px 5px 5px; }
-  .scanner-mode-command-label { color: #26362c; font-size: 15px; font-weight: 800; line-height: 1.12; letter-spacing: .02em; text-transform: uppercase; text-wrap: balance; }
-  body.dark .scanner-mode-command-label { color: #eef2ef; }
-  .scanner-mode-command-horizontal .scanner-mode-command-label { font-size: clamp(27px, 2.7vw, 33px); }
-  .scanner-mode-command-next .scanner-mode-command-label { font-size: clamp(23px, 2.35vw, 28px); }
-  .scanner-mode-command-primary .scanner-mode-command-label { color: #2f5a3f; }
-  body.dark .scanner-mode-command-primary .scanner-mode-command-label { color: #b7c8bb; }
-  .scanner-mode-command-next .scanner-mode-command-label { color: #a32323; }
-  body.dark .scanner-mode-command-next .scanner-mode-command-label { color: #eea1a1; }
-  .scanner-mode-command-code { display: block; width: 100%; max-width: 72px; height: auto; aspect-ratio: 1; background: #fff; shape-rendering: crispEdges; }
-  body.dark .scanner-mode-command-code { filter: invert(1) contrast(1.2821); }
-  .scanner-mode-command-horizontal .scanner-mode-command-code { max-width: 90px; }
+  /* Scanner commands span the bottom; Clear has its own separated warning area. */
+  .scanner-mode-command-deck { grid-column:1 / -1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:clamp(24px,4vw,64px); padding:20px 28px; border-top:1px solid #cbd4ca; background:#f9fbf7; }
+  .scanner-mode-command { min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:12px; box-sizing:border-box; }
+  .scanner-mode-command-label { color:#26362c; font-size:25px; font-weight:800; line-height:1.12; text-align:center; }
+  .scanner-mode-command-note { color:#647065; font-size:12px; line-height:1.3; text-align:center; }
+  .scanner-mode-command-primary .scanner-mode-command-label { color:#2f5a3f; }
+  .scanner-mode-clear-zone { border-left:2px solid #c8ceca; padding-left:clamp(20px,3.5vw,45px); display:flex; align-items:center; justify-content:center; }
+  .scanner-mode-command-next { width:230px; max-width:100%; border:1px solid #d9aaa4; border-radius:8px; background:#fff4f2; }
+  .scanner-mode-command-next.is-next { border:2px solid #b3261e; padding:11px; }
+  .scanner-mode-command-next .scanner-mode-command-label { color:#9a352a; }
+  .scanner-mode-command-code { display:block; width:104px; height:104px; flex:none; background:#fff; shape-rendering:crispEdges; }
+  .scanner-mode-command-next .scanner-mode-command-code { width:92px; height:92px; }
+  body.dark.scanner-mode-active .wrap { filter:none; }
+  body.dark .scanner-mode-command-deck { background:#202722; border-color:#4a554b; }
+  body.dark .scanner-mode-command-label { color:#eef2ef; }
+  body.dark .scanner-mode-command-primary .scanner-mode-command-label { color:#b7c8bb; }
+  body.dark .scanner-mode-command-note { color:#c1c9c1; }
+  body.dark .scanner-mode-clear-zone { border-color:#68746b; }
+  body.dark .scanner-mode-command-next { background:#382522; border-color:#b8796f; }
+  body.dark .scanner-mode-command-next .scanner-mode-command-label { color:#ffb6a9; }
   .scanner-mode-exit-bar { display: block; flex: none; width: 100%; min-height: 64px; margin-top: auto; padding: 14px 18px; border: 0; background: transparent; color: #c62828; font: inherit; font-size: clamp(20px, 2.2vw, 28px); font-weight: 800; line-height: 1.15; letter-spacing: .025em; text-align: center; text-transform: uppercase; text-wrap: balance; cursor: pointer; box-sizing: border-box; -webkit-tap-highlight-color: rgba(198,40,40,.12); }
   .scanner-mode-exit-bar:hover { color: #a82020; }
   .scanner-mode-exit-bar:active { color: #8a1c19; }
   .scanner-mode-exit-bar:focus-visible { outline: 3px solid #1a1a1a; outline-offset: 3px; }
   body.dark .scanner-mode-exit-bar:focus-visible { outline-color: #fff; }
   @media (max-width: 720px) {
-    body.scanner-mode-active #scannerModeView { grid-template-columns: 1fr; min-height: 100vh; }
+    body.scanner-mode-active #scannerModeView { grid-template-columns:1fr; grid-template-rows:auto auto auto; height:auto; min-height:calc(100dvh - 24px); }
     .scanner-mode-list { padding: 16px; border-right: 0; }
     .scanner-mode-side { position: static; min-height: 0; gap: 16px; padding: 18px 16px; }
     .scanner-mode-total-block { margin-top: 0; }
+    .scanner-mode-command-deck { grid-template-columns:repeat(3,minmax(150px,1fr)); gap:24px; padding:16px; overflow-x:auto; }
+    .scanner-mode-clear-zone { padding-left:20px; }
+    .scanner-mode-command-label { font-size:21px; }
     .scanner-mode-line { grid-template-columns: minmax(0, 1fr) 44px auto; gap: 10px; }
     .scanner-mode-column-head { grid-template-columns: minmax(0, 1fr) 44px auto; gap: 10px; }
     .scanner-mode-description { font-size: 17px; }
-    .scanner-mode-command-horizontal { grid-template-columns: 104px minmax(0, 1fr); }
-    .scanner-mode-command-qr-right { grid-template-columns: minmax(0, 1fr) 104px; }
-    .scanner-mode-command-horizontal .scanner-mode-command-code { max-width: 104px; }
+
+
+
   }
 }
 @media print {
@@ -901,22 +905,27 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <div id="scannerModeTotal" class="scanner-mode-total">—</div>
           </div>
         </div>
-        <div class="scanner-mode-command-deck" aria-label="Scanner commands">
-          <div class="scanner-mode-command scanner-mode-command-horizontal scanner-mode-command-primary" aria-label="Print command QR code">
-            <svg id="scannerModePrintCode" class="scanner-mode-command-code" role="img" aria-label="Print QR code"></svg>
-            <div class="scanner-mode-command-label">Print</div>
-          </div>
-          <div class="scanner-mode-command scanner-mode-command-horizontal scanner-mode-command-qr-right" aria-label="Undo command QR code">
-            <div class="scanner-mode-command-label">Undo</div>
-            <svg id="scannerModeUndoCode" class="scanner-mode-command-code" role="img" aria-label="Undo QR code"></svg>
-          </div>
-          <div id="scannerModeNextCommand" class="scanner-mode-command scanner-mode-command-horizontal scanner-mode-command-next" aria-label="Next transaction command QR code">
-            <svg id="scannerModeClearCode" class="scanner-mode-command-code" role="img" aria-label="Next transaction QR code"></svg>
-            <div class="scanner-mode-command-label">Next transaction</div>
-          </div>
-        </div>
       </div>
     </aside>
+    <div class="scanner-mode-command-deck" aria-label="Scanner commands">
+      <div class="scanner-mode-command scanner-mode-command-primary" aria-label="Print command QR code">
+        <svg id="scannerModePrintCode" class="scanner-mode-command-code" role="img" aria-label="Print QR code"></svg>
+        <div class="scanner-mode-command-label">Print</div>
+        <div class="scanner-mode-command-note">Print this transaction</div>
+      </div>
+      <div class="scanner-mode-command" aria-label="Undo command QR code">
+        <svg id="scannerModeUndoCode" class="scanner-mode-command-code" role="img" aria-label="Undo QR code"></svg>
+        <div class="scanner-mode-command-label">Undo</div>
+        <div class="scanner-mode-command-note">Undo last action</div>
+      </div>
+      <div class="scanner-mode-clear-zone">
+        <div id="scannerModeNextCommand" class="scanner-mode-command scanner-mode-command-next" aria-label="Next transaction command QR code">
+          <svg id="scannerModeClearCode" class="scanner-mode-command-code" role="img" aria-label="Next transaction QR code"></svg>
+          <div class="scanner-mode-command-label">Next / Clear</div>
+          <div class="scanner-mode-command-note">Clears the current transaction</div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <div class="print-titlerow">
@@ -1097,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.09.05.2';
+const POS_RELEASE = '2026.09.11.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
