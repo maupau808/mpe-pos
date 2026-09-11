@@ -394,7 +394,7 @@ body.bind .bind-wrap { display: flex; }
 .mode-choice { display:block; width:100%; text-align:left; padding:18px 14px; margin-bottom:12px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; font:inherit; }
 .mode-choice strong { display:block; font-size:18px; margin-bottom:5px; }
 .mode-choice span,.mode-footnote { color:var(--muted); font-size:13px; }
-body:not([data-mode="home"]) #modeHome, body:not([data-mode="home"]) #homeSettings { display:none; }
+body:not([data-mode="home"]) #modeHome, body:not([data-mode="home"]) #homeSettings, body:not([data-mode="home"]) #homeReload { display:none; }
 body[data-mode="home"] .cam-wrap,body[data-mode="home"] .hero,body[data-mode="home"] .acts,body[data-mode="home"] .list-wrap { display:none; }
 body:not([data-mode="pos"]) .list-wrap { display:none; }
 body[data-mode="serial"] .hero,body[data-mode="serial"] #searchBtn,body[data-mode="serial"] #reloadBtn { display:none; }
@@ -436,6 +436,7 @@ button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 <header class="mode-header">
   <div><div class="mode-brand">MPE Scan</div><h1 id="modeTitle">Choose a mode</h1><p id="modeHint">What are you working on?</p></div>
   <button class="mini" id="leaveMode" hidden>Leave mode</button>
+  <button class="mini" id="homeReload">Reload</button>
   <button class="mini" id="homeSettings">Settings</button>
 </header>
 <main id="modeHome" class="mode-home"><div id="modeChoices"></div><p class="mode-footnote" id="modeDraftNote">Your POS list and unsent matches stay saved on this phone.</p></main>
@@ -3846,6 +3847,7 @@ $('setClose').addEventListener('click', () => closeSheet('setSheet'));
 $('searchBtn').addEventListener('click', () => openSearch({}));
 $('setBtn').addEventListener('click', () => { renderAuth(); renderPending(); openSheet('setSheet'); });
 $('reloadBtn').addEventListener('click', () => reloadApp());
+$('homeReload').addEventListener('click', () => reloadApp());
 
 $('startBtn').addEventListener('click', startCamera);
 $('camStop').addEventListener('click', stopCamera);
