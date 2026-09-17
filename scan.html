@@ -1445,7 +1445,9 @@ function normalizeSaleRules(rules) {
   return rules.filter(rule => {
     const discount = Number(rule?.discount);
     return rule && rule.enabled === true && normalizePN(rule.pn) &&
-      Number.isFinite(discount) && discount > 0 &&
+      (rule.mode === 'bulk' ? Number.isInteger(rule.quantity) && rule.quantity >= 2 && rule.quantity <= 10000 &&
+        Number.isFinite(rule.total) && rule.total > 0 && ['packs', 'exact'].includes(rule.behavior) :
+        Number.isFinite(discount) && discount > 0) &&
       /^\d{4}-\d{2}-\d{2}$/.test(String(rule.start || '')) &&
       /^\d{4}-\d{2}-\d{2}$/.test(String(rule.end || '')) &&
       rule.start <= rule.end;
@@ -1453,12 +1455,28 @@ function normalizeSaleRules(rules) {
     const regular = Number(rule.from);
     const discount = Number(rule.discount);
     return {
+      mode: rule.mode === 'bulk' ? 'bulk' : 'sale',
+      quantity: rule.quantity, total: rule.total, behavior: rule.behavior,
       id: String(rule.id == null ? '' : rule.id),
       pn: String(rule.pn || ''), make: String(rule.make || '').trim(), og: String(rule.og || ''),
       discount, regular: Number.isFinite(regular) && regular > discount ? regular : 0,
       start: String(rule.start), end: String(rule.end)
     };
   });
+}
+
+// Whole packs use integer cents; leftover bottles keep their regular price.
+function bulkPriceTotal(quantity, listPrice, rule) {
+  const each = Math.round(Number(listPrice) * 100);
+  const qty = Number(quantity), size = Number(rule?.quantity);
+  const pack = Math.round(Number(rule?.total) * 100);
+  if (!Number.isFinite(qty) || !Number.isFinite(each)) return 0;
+  const regular = Math.round(qty * each);
+  if (!rule || rule.mode !== 'bulk' || !Number.isInteger(qty) || qty < size ||
+      !Number.isInteger(size) || size < 2 || !Number.isFinite(pack) || pack <= 0 ||
+      (rule.behavior === 'exact' && qty !== size)) return regular / 100;
+  const packs = Math.floor(qty / size);
+  return Math.min(regular, packs * pack + (qty % size) * each) / 100;
 }
 
 function activeSaleForPart(part, today = localDateYMD()) {
@@ -1475,10 +1493,14 @@ function activeSaleForPart(part, today = localDateYMD()) {
 }
 
 // What the customer pays, and what (if anything) is struck through beside it.
-function pricing(part) {
+function pricing(part, quantity = 1) {
   const listPrice = Number(part?.list);
   const sale = activeSaleForPart(part);
   if (!sale || !Number.isFinite(listPrice)) return { price: listPrice, was: 0, onSale: false };
+  if (sale.mode === 'bulk') {
+    const price = quantity > 0 ? bulkPriceTotal(quantity, listPrice, sale) / quantity : listPrice;
+    return {price, was: price < listPrice ? listPrice : 0, onSale: price < listPrice};
+  }
   // An MSRP anchor raises only the struck-through regular price; the charged
   // price still lands exactly on Master's List.
   const regular = sale.regular > 0 ? sale.regular : listPrice;
@@ -2653,6 +2675,31 @@ function addUnknown(raw, code, format) {
 function persistList() { save(K_LIST, list); renderList(); renderAuthBar(); }
 
 function renderList() {
+  // Requote bulk entries from today's catalog on every quantity edit or reload.
+  const bulkGroups = new Map();
+  for (const entry of list) {
+    if (entry.unresolved) continue;
+    const part = exactScanParts(entry.pn).find(p => String(p.make || '') === String(entry.make || '') && normalizePN(p.og) === normalizePN(entry.og));
+    if (!part) continue;
+    const rule = activeSaleForPart(part);
+    if (rule?.mode !== 'bulk' && !entry.bulkQuoted) continue;
+    const key = JSON.stringify([part.pn, part.make, part.og]);
+    if (!bulkGroups.has(key)) bulkGroups.set(key, {part, rule, entries: []});
+    bulkGroups.get(key).entries.push(entry);
+  }
+  for (const {part, rule, entries} of bulkGroups.values()) {
+    const qty = entries.filter(e => Number.isInteger(Number(e.qty)) && Number(e.qty)>0).reduce((sum,e)=>sum+Number(e.qty),0);
+    const cents = Math.round(bulkPriceTotal(qty, part.list, rule)*100);
+    let used=0, allocated=0;
+    for (const entry of entries) {
+      const count=Number(entry.qty);
+      let total=Number(part.list)*count;
+      if(Number.isInteger(count)&&count>0){used+=count;const cumulative=Math.round(cents*used/qty);total=(cumulative-allocated)/100;allocated=cumulative;}
+      if(!(count>0))continue;
+      entry.price=total/count;entry.was=entry.price<Number(part.list)?Number(part.list):0;
+      entry.onSale=entry.was>0;entry.bulkQuoted=true;
+    }
+  }
   const rows = $('rows');
   const count = list.reduce((n, e) => n + e.qty, 0);
   const pill = $('listCount');

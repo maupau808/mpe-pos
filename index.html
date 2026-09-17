@@ -1106,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.09.11.2';
+const POS_RELEASE = '2026.09.16.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -4924,7 +4924,9 @@ function normalizeSaleRules(rules) {
   return rules.filter(rule => {
     const discount = Number(rule?.discount);
     return rule && rule.enabled === true && normalizePN(rule.pn) &&
-      Number.isFinite(discount) && discount > 0 &&
+      (rule.mode === 'bulk' ? Number.isInteger(rule.quantity) && rule.quantity >= 2 && rule.quantity <= 10000 &&
+        Number.isFinite(rule.total) && rule.total > 0 && ['packs', 'exact'].includes(rule.behavior) :
+        Number.isFinite(discount) && discount > 0) &&
       /^\d{4}-\d{2}-\d{2}$/.test(String(rule.start || '')) &&
       /^\d{4}-\d{2}-\d{2}$/.test(String(rule.end || '')) &&
       rule.start <= rule.end;
@@ -4936,6 +4938,8 @@ function normalizeSaleRules(rules) {
     const regular = Number(rule.from);
     const discount = Number(rule.discount);
     return {
+      mode: rule.mode === 'bulk' ? 'bulk' : 'sale',
+      quantity: rule.quantity, total: rule.total, behavior: rule.behavior,
       id: String(rule.id == null ? '' : rule.id),
       pn: String(rule.pn || ''),
       make: String(rule.make || '').trim(),
@@ -4954,6 +4958,20 @@ function localDateYMD(date = new Date()) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+// Whole packs use integer cents; leftover bottles keep their regular price.
+function bulkPriceTotal(quantity, listPrice, rule) {
+  const each = Math.round(Number(listPrice) * 100);
+  const qty = Number(quantity), size = Number(rule?.quantity);
+  const pack = Math.round(Number(rule?.total) * 100);
+  if (!Number.isFinite(qty) || !Number.isFinite(each)) return 0;
+  const regular = Math.round(qty * each);
+  if (!rule || rule.mode !== 'bulk' || !Number.isInteger(qty) || qty < size ||
+      !Number.isInteger(size) || size < 2 || !Number.isFinite(pack) || pack <= 0 ||
+      (rule.behavior === 'exact' && qty !== size)) return regular / 100;
+  const packs = Math.floor(qty / size);
+  return Math.min(regular, packs * pack + (qty % size) * each) / 100;
 }
 
 function activeSaleForPart(part, today = localDateYMD()) {
@@ -5177,6 +5195,7 @@ function closeLineDiscount(i) {
 
 function applyLineDiscount(i, amount) {
   const priceEl = document.getElementById(`price-${i}`);
+  if (priceEl) { delete priceEl._bulkPart; delete priceEl.dataset.bulkTotal; }
   const pInput = priceEl?.querySelector('.price-edit');
   if (!priceEl || !pInput) return;
   const raw = amount == null ? priceEl.querySelector('.discount-money')?.value : amount;
@@ -5207,6 +5226,7 @@ function clearLineDiscountMetadata(i) {
 
 function removeLineDiscount(i) {
   const priceEl = document.getElementById(`price-${i}`);
+  if (priceEl) { delete priceEl._bulkPart; delete priceEl.dataset.bulkTotal; }
   const pInput = priceEl?.querySelector('.price-edit');
   const original = parseFloat(priceEl?.dataset.originalEa) || 0;
   if (priceEl && original > 0) priceEl.dataset.price = original;
@@ -5225,6 +5245,7 @@ function applyActiveSaleToLine(i, part, listPrice) {
   // An MSRP-anchored rule prices down FROM the manufacturer's suggested retail,
   // so the struck-through regular price sits above our own List and the charged
   // price still lands exactly on List. Every other rule discounts List itself.
+  if (rule.mode === 'bulk') { priceEl._bulkPart = {...part}; return false; }
   const original = rule.regular > listPrice ? rule.regular : listPrice;
   const offEach = Math.min(rule.discount, original);
   const charged = Math.max(0, original - offEach);
@@ -5311,6 +5332,8 @@ function onEditableKeydown(e) {
 function onPriceEdit(i, commitBridge = false) {
   const priceEl = document.getElementById(`price-${i}`);
   if (!priceEl) return;
+  if (priceEl._bulkPart && priceEl.querySelector('.price-edit')?.value === fmt(Number(priceEl.dataset.price))) return;
+  delete priceEl._bulkPart; delete priceEl.dataset.bulkTotal;
   if (parseFloat(priceEl.dataset.discountPerUnit) > 0) clearLineDiscountMetadata(i);
   const pInput = priceEl.querySelector('.price-edit');
   const raw = (pInput ? pInput.value : priceEl.textContent).replace(/[$,]/g, '').trim();
@@ -5347,6 +5370,9 @@ function onSubEdit(i) {
   if (!subEl || subEl.tagName !== 'INPUT') return;
   const raw = (subEl.value || '').replace(/[$,]/g, '').trim();
   const subVal = parseFloat(raw);
+  if (document.getElementById(`price-${i}`)?._bulkPart && subVal === Number(subEl.dataset.val)) return;
+  const bulkEl = document.getElementById(`price-${i}`);
+  if (bulkEl) { delete bulkEl._bulkPart; delete bulkEl.dataset.bulkTotal; }
   if (isNaN(subVal) || subVal <= 0) { updateSubtotal(i); return; }
   const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
   const newEa = subVal / qty;
@@ -6592,6 +6618,13 @@ function loadTxnIntoPOS(i) {
     if (mInp) { mInp.value = it.pn || it.desc || ''; applyMobilePart(r, part, { skipAutomaticSale: true }); }
     const mq = document.getElementById(`mqty-${r}`); if (mq) mq.value = qty;
     updateMobileSubtotal(r);
+    const savedTotal = Number(it.sub);
+    if (Number.isFinite(savedTotal) && qty > 0) {
+      const preciseEa = savedTotal / qty;
+      document.getElementById(`price-${r}`).dataset.price = preciseEa;
+      document.getElementById(`mprice-${r}`).dataset.price = preciseEa;
+      updateSubtotal(r); updateMobileSubtotal(r);
+    }
     // Serial numbers (warranty rows live in the desktop table)
     if (hasSN) {
       const serials = it.sn.split(',').map(s => s.trim()).filter(Boolean);
@@ -7141,6 +7174,8 @@ function applyPart(i, part, options) {
   const price = parseFloat(part.list) || 0;
   // Replace span content with an editable input
   const priceEl = document.getElementById(`price-${i}`);
+  delete priceEl._bulkPart; delete priceEl.dataset.bulkTotal;
+  delete priceEl.dataset.originalEa; delete priceEl.dataset.discountPerUnit;
   priceEl.dataset.price = price;
   priceEl.style.visibility = '';
   priceEl.innerHTML = `<input class="price-edit" id="price-input-${i}" data-row="${i}" data-cost="${cost}" value="${fmt(price)}" type="text" autocomplete="off" spellcheck="false">`;
@@ -7263,6 +7298,7 @@ function clearRowData(i) {
   else { costEl.textContent = '—'; costEl.dataset.cost = ''; }
   document.getElementById(`margin-${i}`).textContent = '—';
   const p = document.getElementById(`price-${i}`);
+  delete p._bulkPart; delete p.dataset.bulkTotal;
   delete p.dataset.originalEa; delete p.dataset.discountPerUnit;
   p.innerHTML = '—'; p.dataset.price = ''; p.className = 'cell-r';
   document.getElementById(`discount-total-${i}`)?.remove();
@@ -7381,7 +7417,47 @@ function currentSubtotal() {
   return { subtotal, hasAny };
 }
 
+function refreshBulkPricing() {
+  const groups = new Map();
+  for (let i = 0; i < NUM_ROWS; i++) {
+    const el = document.getElementById(`price-${i}`), part = el?._bulkPart;
+    if (!part) continue;
+    const qty = Number(document.getElementById(`qty-${i}`)?.value) || 1;
+    const rule = activeSaleForPart(part);
+    const key = JSON.stringify([normalizePN(part._salePn || part.pn), String(part.make || '').trim().toLowerCase(), normalizePN(part._salePn ? part._saleOg : part.og), Number(part.list)]);
+    if (!groups.has(key)) groups.set(key, {part, rule, rows: []});
+    groups.get(key).rows.push({i, el, qty});
+  }
+  for (const {part, rule, rows} of groups.values()) {
+    const eligible = rows.filter(row => Number.isInteger(row.qty) && row.qty > 0);
+    const quantity = eligible.reduce((sum, row) => sum + row.qty, 0);
+    const totalCents = Math.round(bulkPriceTotal(quantity, part.list, rule) * 100);
+    let used = 0, allocated = 0;
+    for (const {i, el, qty} of rows) {
+      let total = Math.round(Number(part.list) * qty * 100) / 100;
+      if (Number.isInteger(qty) && qty > 0) {
+        used += qty;
+        const cumulative = Math.round(totalCents * used / quantity);
+        total = (cumulative - allocated) / 100;
+        allocated = cumulative;
+      }
+      if (!Number.isFinite(total) || !Number.isFinite(qty) || qty === 0) continue;
+      const charged = total / qty, off = Math.max(0, Number(part.list) - charged);
+      el.dataset.bulkTotal = total;
+      el.dataset.price = charged;
+      el.dataset.originalEa = part.list;
+      el.dataset.discountPerUnit = off;
+      el.querySelector('.price-edit').value = fmt(charged);
+      updateSubtotal(i); updateMarginForLine(i); renderLineDiscount(i);
+      renderMobileDiscountState(i);
+      const mobileSub = document.getElementById(`msub-${i}`);
+      if (mobileSub) mobileSub.textContent = fmt(total);
+    }
+  }
+}
+
 function updateSummary() {
+  refreshBulkPricing();
   const { subtotal, hasAny } = currentSubtotal();
   const feeRow = document.getElementById('cardFeeRow');
   if (!hasAny) {
@@ -8855,7 +8931,7 @@ function reprintOrder(idx) {
   order.items.forEach((item, i) => {
     const input = tbody.querySelector(`[data-row="${i}"].part-input`);
     if (!input) return;
-    const ea = parseFloat(item.ea) || 0;
+    const ea = Number.isFinite(Number(item.sub)) && Number(item.qty) > 0 ? Number(item.sub) / Number(item.qty) : parseFloat(item.ea) || 0;
     const part = item.isOther ? null : findPartByPn(item.pn);
     if (part) {
       // Rehydrate cost / margin / make / list from Master via the same path a fresh
