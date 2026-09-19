@@ -1106,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.09.16.2';
+const POS_RELEASE = '2026.09.19.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -6031,7 +6031,7 @@ async function cleanTransactionDuplicates() {
     if (!rows.length) { alert('Transactions sheet is empty.'); return; }
 
     // Parse into blocks: each block = { txnId, rowStart (0-based), rowCount, fingerprint, dateVal }
-    // Fingerprint = date + customer name + total + sorted PNs — content-based dedup
+    // Only identical complete blocks with the same transaction ID are duplicates.
     const blocks = [];
     let i = 0;
     while (i < rows.length) {
@@ -6040,17 +6040,16 @@ async function cleanTransactionDuplicates() {
         const txnId   = row[1] || '';
         const dateStr = row[2] || '';
         const timeStr = row[3] || '';
-        const custName = (row[4] || '').trim();
-        const total    = (row[12] || '').trim();
         // Collect item rows that follow (same txnId in col B, type = 'item')
-        const pns = [];
         let j = i + 1;
         while (j < rows.length && (rows[j][0] || '').trim().toLowerCase() === 'item' && (rows[j][1] || '') === txnId) {
-          pns.push((rows[j][8] || '').trim()); // col I = part number
           j++;
         }
-        pns.sort();
-        const fingerprint = [dateStr, custName.toLowerCase(), total, pns.join('|')].join('||');
+        const fingerprint = JSON.stringify(rows.slice(i, j).map(cells => {
+          const values = Array.from(cells, value => String(value ?? '').trim());
+          while (values.length && values[values.length - 1] === '') values.pop();
+          return values;
+        }));
         // Parse date+time for "earliest" comparison
         let dateVal = 0;
         try { dateVal = new Date(dateStr + ' ' + timeStr).getTime() || 0; } catch {}
@@ -6633,6 +6632,7 @@ function loadTxnIntoPOS(i) {
     }
   }
   updateSummary();
+  _historyContentBaseline = historyContentFingerprint(captureOrder());
   updateScreenDocTitle();   // reflect original date/number + Reprint marker on screen
   closeTxnHistory();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -7500,6 +7500,7 @@ function clearAll() {
   clearCustFields();
   document.getElementById('signatureBtn')?.classList.remove('active');
   toggleCardFee(false);
+  _historyContentBaseline = null;
   _currentTxnId   = null;
   _currentTxnDate = null;
   _pendingTxnDate = null;
@@ -8653,6 +8654,7 @@ function activeDocNumber() {
 }
 // Reserve a date for a brand-new document so its number is stable through print/email
 function reserveDocDate() {
+  refreshHistoryIdentity();
   if (!_reprintSource && !_currentTxnDate && !_pendingTxnDate) _pendingTxnDate = new Date();
   return docDateOrNull();
 }
@@ -8663,10 +8665,45 @@ function updateScreenDocTitle() {
   el.textContent = DOC_TITLES[_docType] + (num ? '   ·   No. ' + num : '') + (_reprintSource ? '   ·   Reprint' : '');
 }
 
+// Only identical document contents may reuse a history/Drive transaction ID.
+// Ignore display-only toggles and money formatting changed during print preparation.
+let _historyContentBaseline = null;
+function historyContentFingerprint(order, docType = _docType) {
+  if (!order) return null;
+  const text = value => String(value == null ? '' : value).trim();
+  const number = value => Number(String(value == null ? 0 : value).replace(/[$,]/g, '')) || 0;
+  return JSON.stringify({
+    docType,
+    customer: ['name', 'company', 'addr', 'city', 'state', 'zip', 'phone', 'email']
+      .map(key => text(order.customer?.[key]).toUpperCase()),
+    items: (order.items || []).map(item => [
+      text(item.pn), text(item.desc), number(item.qty), number(item.ea), number(item.sub),
+      (item.sn || []).map(text), number(item.originalEa), number(item.discountPerUnit),
+    ]),
+    total: number(order.total), cardFee: !!order.toggles?.cardFee,
+    tender: order.tender || null,
+  });
+}
+function refreshHistoryIdentity(order = captureOrder()) {
+  if (!order || _docType === 'internal' || (!_currentTxnId && !_reprintSource)) return;
+  const id = _reprintSource?.txnId || _currentTxnId;
+  const saved = getHistory().find(entry => entry.txnId === id);
+  const baseline = _historyContentBaseline
+    || (saved && historyContentFingerprint(saved, saved.docType || 'receipt'));
+  if (baseline && baseline === historyContentFingerprint(order)) return;
+  // A changed loaded/printed document is a new version. Keep the original intact.
+  _currentTxnId = null;
+  _currentTxnDate = null;
+  _reprintSource = null;
+  _pendingTxnDate = null;
+  _historyContentBaseline = null;
+}
+
 function saveToHistory() {
   if (_docType === 'internal') return false;   // internal printouts are never recorded
   const order = captureOrder();
   if (!order) return false;
+  refreshHistoryIdentity(order);
   maybeSaveNewCustomer();
 
   if (_reprintSource) {
@@ -8674,7 +8711,7 @@ function saveToHistory() {
     // and the Drive record stays anchored to the original transaction time.
     order.txnId = _reprintSource.txnId;
     order.date  = _reprintSource.date;
-    _reprintSource = null;
+    _historyContentBaseline = historyContentFingerprint(order);
     _lastPrintedOrder = order;
     _lastPushStatus = null;
     // Attempt push — dedup in pushTransactionToSheet will silently skip if already sent
@@ -8693,6 +8730,7 @@ function saveToHistory() {
     // Same POS state printed again — reuse txnId/date so dedup blocks double-push
     order.txnId = _currentTxnId;
     order.date  = _currentTxnDate;
+    _historyContentBaseline = historyContentFingerprint(order);
     _lastPrintedOrder = order;
     _lastPushStatus = null;
     if (googleSessionAvailable()) {
@@ -8719,11 +8757,6 @@ function saveToHistory() {
   order.date = order.date || now.toISOString();
   order.docType   = _docType;
   order.docNumber = formatDocNumber(now, _docType);
-  _currentTxnId   = order.txnId;
-  _currentTxnDate = order.date;
-  _pendingTxnDate = null;
-  _lastPrintedOrder = order;
-  _lastPushStatus = null;
   try {
     const raw = localStorage.getItem(HISTORY_KEY);
     const history = raw ? JSON.parse(raw) : [];
@@ -8733,7 +8766,17 @@ function saveToHistory() {
       if (history.length > HISTORY_MAX) history.splice(HISTORY_MAX);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
     }
-  } catch(e) {}
+    const retained = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
+      .find(entry => entry?.txnId === order.txnId);
+    if (!retained || historyContentFingerprint(retained, retained.docType)
+        !== historyContentFingerprint(order)) return false;
+  } catch(e) { return false; }
+  _currentTxnId   = order.txnId;
+  _currentTxnDate = order.date;
+  _pendingTxnDate = null;
+  _historyContentBaseline = historyContentFingerprint(order);
+  _lastPrintedOrder = order;
+  _lastPushStatus = null;
   // Export to Drive Transactions sheet if signed in
   if (googleSessionAvailable()) {
     _lastPushStatus = 'pending';
@@ -9006,6 +9049,7 @@ function reprintOrder(idx) {
     }
   });
   updateSummary();
+  _historyContentBaseline = historyContentFingerprint(captureOrder());
 }
 
 // ─── PHONE LIST (MPE Scan → counter) ───────────────────────────────────────
