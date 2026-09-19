@@ -1106,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.09.19.1';
+const POS_RELEASE = '2026.09.19.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -6248,10 +6248,10 @@ async function flushUnpushedTxns() {
   const existingIds = new Set(sheetRows
     .filter(row => String(row[0] || '').trim().toUpperCase() === 'TXN' && row[1])
     .map(row => String(row[1]).trim()));
-  const alreadyPresent = queue.filter(order => existingIds.has(String(order.txnId).trim()));
+  const alreadyPresent = queue.filter(order => !order.historySyncPending && existingIds.has(String(order.txnId).trim()));
   if (alreadyPresent.length) addPushedTxnIds(alreadyPresent.map(order => order.txnId));
 
-  const missing = queue.filter(order => !existingIds.has(String(order.txnId).trim()));
+  const missing = queue.filter(order => order.historySyncPending || !existingIds.has(String(order.txnId).trim()));
   let n = 0;
   for (const order of missing.slice(0, AUTO_TXN_PUSH_LIMIT)) {
     try { await pushTransactionToSheet(order); n++; }
@@ -6266,25 +6266,12 @@ async function flushUnpushedTxns() {
   try { updatePriceChangesBadge(); } catch (e) {}
 }
 
-async function pushTransactionToSheet(order) {
-  // WRITES TO: Google Drive Bridge "Transactions" sheet.
-  // TRIGGER: Print, Auto Print, Export PDF, Email, or an explicit history push.
-  // DOES NOT TOUCH: Master pricing, POS catalog data, customers, or QBO.
-  if (!order) return;
-  if (!SHEETS_ID) { alert('Set SHEETS_ID in the app config first.'); return; }
-
-  // Use the stable TxnID assigned at capture time; fall back to generating one for old history entries
-  const txnDate = order.date ? new Date(order.date) : new Date();
-  const pad = n => String(n).padStart(2,'0');
-  const txnId = order.txnId || ('TX-' + pad(txnDate.getMonth()+1) + pad(txnDate.getDate()) + '-' + pad(txnDate.getHours()) + pad(txnDate.getMinutes()) + '-' + pad(txnDate.getSeconds()));
-
-  // Dedup check — skip if already successfully pushed; keeps earliest (original) record in Drive
-  if (getPushedTxnIds().has(txnId)) { console.log('[MPE] TxnID already pushed, skipping:', txnId); return; }
+function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(order.date)) {
   // Always use the original transaction date/time, not the push time
   const dateStr = txnDate.toLocaleDateString('en-US');
   const timeStr = txnDate.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
 
-  const c = order.customer;
+  const c = order.customer || {};
   const addr = [c.addr, c.city, c.state, c.zip].filter(Boolean).join(', ');
 
   // Build rows: TXN summary row first, then item rows
@@ -6298,7 +6285,7 @@ async function pushTransactionToSheet(order) {
     [c.name, c.company].filter(Boolean).join(' / ') || '',
     c.phone || '', c.email || '', addr,
     '', '', '', '', order.total, '', savedDocType,
-    savedDocNumber ? "'" + savedDocNumber : '']);
+    savedDocNumber]);
 
   // Item rows
   for (const item of order.items) {
@@ -6308,6 +6295,81 @@ async function pushTransactionToSheet(order) {
       item.sub !== '' && item.sub != null ? '$' + parseFloat(item.sub).toFixed(2) : '',
       (item.sn && item.sn.length) ? item.sn.join(', ') : '', '', '']);
   }
+
+  return rows;
+}
+
+// Compare all saved fields, tolerating only Sheets' number/date display formatting.
+function transactionRowsFingerprint(rows) {
+  return JSON.stringify(rows.map(row => Array.from({ length: 16 }, (_, col) => {
+    let value = String(row[col] ?? '').trim().replace(/^'/, '');
+    if (col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11].includes(col))) {
+      return value === '' ? '' : Number(value.replace(/[$,]/g, '')).toFixed(2);
+    }
+    if (col === 3) value = value.replace(/^0(?=\d:)/, '').toUpperCase();
+    return value;
+  })));
+}
+function transactionBlockEnd(rows, start, id) {
+  let end = start + 1;
+  while (end < rows.length && String(rows[end][0]).toLowerCase() === 'item'
+      && String(rows[end][1]) === id) end++;
+  return end;
+}
+function transactionUserEnteredRows(rows) {
+  return rows.map(row => row.map((value, col) => [8, 13, 15].includes(col) ? sheetText(value) : value));
+}
+function transactionCellRows(rows) {
+  return rows.map(row => ({ values: row.map((value, col) => {
+    const text = String(value ?? '').replace(/^'/, '');
+    const numeric = col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11].includes(col));
+    return { userEnteredValue: numeric && text !== ''
+      ? { numberValue: Number(text.replace(/[$,]/g, '')) }
+      : { stringValue: text } };
+  }) }));
+}
+function acknowledgeTransactionSnapshot(order) {
+  const history = getHistory();
+  const current = history.find(entry => entry.txnId === order.txnId);
+  if (current && historyContentFingerprint(current, current.docType)
+      !== historyContentFingerprint(order, order.docType)) return;
+  if (current?.historySyncPending) {
+    current.historySyncPending = false;
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    if (getHistory().find(entry => entry.txnId === order.txnId)?.historySyncPending !== false) {
+      throw new Error('Transaction sync confirmation could not be saved locally');
+    }
+  }
+  addPushedTxnId(order.txnId);
+}
+// Serialize inserts/row resizing across this register and always send its newest saved copy.
+let _transactionPushChain = Promise.resolve();
+function pushTransactionToSheet(order) {
+  const attempt = _transactionPushChain.catch(() => {}).then(() => {
+    const latest = getHistory().find(entry => entry.txnId === order?.txnId);
+    return writeTransactionToSheet(latest || order);
+  });
+  _transactionPushChain = attempt;
+  return attempt;
+}
+
+async function writeTransactionToSheet(order) {
+  // WRITES TO: Google Drive Bridge "Transactions" sheet.
+  // TRIGGER: Print, Auto Print, Export PDF, Email, or an explicit history push.
+  // DOES NOT TOUCH: Master pricing, POS catalog data, customers, or QBO.
+  if (!order) return;
+  if (!SHEETS_ID) { alert('Set SHEETS_ID in the app config first.'); return; }
+
+  // Use the stable TxnID assigned at capture time; fall back to generating one for old history entries
+  const txnDate = order.date ? new Date(order.date) : new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const txnId = order.txnId || ('TX-' + pad(txnDate.getMonth()+1) + pad(txnDate.getDate()) + '-' + pad(txnDate.getHours()) + pad(txnDate.getMinutes()) + '-' + pad(txnDate.getSeconds()));
+
+  // Only an acknowledged, unchanged snapshot may skip the Drive write.
+  if (!order.historySyncPending && getPushedTxnIds().has(txnId)) { console.log('[MPE] TxnID already pushed, skipping:', txnId); return; }
+  const rows = transactionRowsForOrder(order, txnId, txnDate);
+  const savedDocType = DOC_TITLES[order.docType] ? order.docType : '';
+  const savedDocNumber = order.docNumber ? String(order.docNumber) : '';
 
   try {
     // Read existing sheet to find correct chronological insert position (newest first)
@@ -6321,13 +6383,30 @@ async function pushTransactionToSheet(order) {
     const existingTxnIdx = existingRows.findIndex(row =>
       String(row[0] || '').trim().toUpperCase() === 'TXN' && String(row[1] || '') === txnId);
     if (existingTxnIdx >= 0) {
-      const existing = existingRows[existingTxnIdx];
-      if (String(existing[14] || '') !== savedDocType || String(existing[15] || '') !== savedDocNumber) {
-        await sheetsUpdate(`${TXN_SHEET}!O${existingTxnIdx + 1}:P${existingTxnIdx + 1}`, [[
-          savedDocType, savedDocNumber ? "'" + savedDocNumber : '',
-        ]]);
+      const end = transactionBlockEnd(existingRows, existingTxnIdx, txnId);
+      const savedRows = existingRows.slice(existingTxnIdx, end);
+      const changed = transactionRowsFingerprint(savedRows) !== transactionRowsFingerprint(rows);
+      if (order.historySyncPending && changed) {
+        // Resize this one transaction and replace its complete contents atomically.
+        const delta = rows.length - savedRows.length;
+        const requests = [];
+        if (delta > 0) requests.push({ insertDimension: {
+          range: { sheetId, dimension: 'ROWS', startIndex: end, endIndex: end + delta },
+          inheritFromBefore: false,
+        } });
+        requests.push({ updateCells: {
+          range: { sheetId, startRowIndex: existingTxnIdx, endRowIndex: existingTxnIdx + rows.length,
+            startColumnIndex: 0, endColumnIndex: 16 },
+          rows: transactionCellRows(rows), fields: 'userEnteredValue',
+        } });
+        if (delta < 0) requests.push({ deleteDimension: {
+          range: { sheetId, dimension: 'ROWS', startIndex: existingTxnIdx + rows.length, endIndex: end },
+        } });
+        await sheetsBatchUpdate(requests);
+        writeMode = '(updated existing)';
       }
-      writtenRange = `${TXN_SHEET}!A${existingTxnIdx + 1}:P${existingTxnIdx + 1}`;
+      // Old already-synced local copies never overwrite a newer copy from another register.
+      writtenRange = `${TXN_SHEET}!A${existingTxnIdx + 1}:P${existingTxnIdx + (order.historySyncPending ? rows.length : savedRows.length)}`;
     } else {
       const txnTs = txnDate.getTime();
       // Find the first TXN row that is older than this transaction → insert before it.
@@ -6342,7 +6421,7 @@ async function pushTransactionToSheet(order) {
         // Newer than everything (or sheet empty) — append to end.
         // sheetsAppend returns false (not signed in) WITHOUT throwing — must not mark the
         // txn pushed in that case, or it silently never reaches Bridge. Leave it queued.
-        const result = await sheetsAppend(`${TXN_SHEET}!A1`, rows);
+        const result = await sheetsAppend(`${TXN_SHEET}!A1`, transactionUserEnteredRows(rows));
         if (!result) return;
         writtenRange = result?.updates?.updatedRange || '';
         writeMode = '(appended)';
@@ -6354,7 +6433,7 @@ async function pushTransactionToSheet(order) {
             inheritFromBefore: false
           }
         }]);
-        await sheetsUpdate(`${TXN_SHEET}!A${insertIdx + 1}`, rows);
+        await sheetsUpdate(`${TXN_SHEET}!A${insertIdx + 1}`, transactionUserEnteredRows(rows));
         writtenRange = `${TXN_SHEET}!A${insertIdx + 1}:P${insertIdx + rows.length}`;
         writeMode = `(inserted at row ${insertIdx + 1})`;
       }
@@ -6365,12 +6444,17 @@ async function pushTransactionToSheet(order) {
     const savedSummary = writtenRows.find(row =>
       String(row[0] || '').trim().toUpperCase() === 'TXN' && String(row[1] || '') === txnId);
     if (!savedSummary
-        || String(savedSummary[14] || '') !== savedDocType
-        || String(savedSummary[15] || '') !== savedDocNumber) {
+        || (order.historySyncPending && (String(savedSummary[14] || '') !== savedDocType
+          || String(savedSummary[15] || '') !== savedDocNumber))) {
       throw new Error('Transaction could not be verified after saving');
     }
 
-    addPushedTxnId(txnId);
+    if (order.historySyncPending && transactionRowsFingerprint(writtenRows) !== transactionRowsFingerprint(rows)) {
+      throw new Error('Updated transaction contents could not be verified after saving');
+    }
+    acknowledgeTransactionSnapshot(order);
+    _txns = null;
+    try { await _idbPut('txnCache', null); } catch {}
     try { updatePriceChangesBadge(); } catch (e) {}   // un-synced count just dropped
     console.log('[MPE] Transaction exported:', txnId, writeMode);
   } catch(e) {
@@ -6509,10 +6593,14 @@ function renderTxnResults() {
   const q = (document.getElementById('txnSearch').value || '').trim().toLowerCase();
   const tokens = q.split(/\s+/).filter(Boolean);
   const qCollapsed = q.replace(/[^a-z0-9]/g, '');   // for space-insensitive serial match
+  const pending = getHistory().filter(order => order.historySyncPending);
+  const pendingIds = new Set(pending.map(order => order.txnId));
+  const transactions = _txns.filter(order => !pendingIds.has(order.txnId))
+    .concat(_parseTxnRows(pending.flatMap(order => transactionRowsForOrder(order))));
   let res = tokens.length
-    ? _txns.filter(t => tokens.every(tok => t._hay.includes(tok))
+    ? transactions.filter(t => tokens.every(tok => t._hay.includes(tok))
         || (qCollapsed.length >= 3 && t._serialHay && t._serialHay.includes(qCollapsed)))
-    : _txns.slice();
+    : transactions.slice();
   res.sort((a, b) => b._ts - a._ts);
   const total = res.length;
   _txnShown = res.slice(0, 300);
@@ -6587,7 +6675,7 @@ function loadTxnIntoPOS(i) {
   // shows the original timestamp with a "Reprint" marker, and dedup blocks a
   // duplicate Drive push.
   const _od = new Date(((t.date || '') + ' ' + (t.time || '')).trim());
-  _reprintSource = { txnId: t.txnId || '', date: isNaN(_od.getTime()) ? new Date().toISOString() : _od.toISOString() };
+  _reprintSource = { txnId: t.txnId || '', date: isNaN(_od.getTime()) ? new Date().toISOString() : _od.toISOString(), docType: t.docType || 'receipt', docNumber: t.docNumber || null };
   setDocType(DOC_TITLES[t.docType] ? t.docType : 'receipt');
   // Customer — name field was saved as "name / company"; split it back.
   let name = t.name || '', company = '';
@@ -7956,10 +8044,12 @@ function manualPrint() {
 
 const AUTO_PRINT_REPEAT_GUARD_MS = 5000;
 let _lastDirectPrintTxnId = '';
+let _lastDirectPrintFingerprint = '';
 let _lastDirectPrintAt = 0;
 async function autoPrint() {
   if (_directPrintInFlight) return;
-  if (_currentTxnId && _currentTxnId === _lastDirectPrintTxnId && Date.now() - _lastDirectPrintAt < AUTO_PRINT_REPEAT_GUARD_MS) {
+  if (_currentTxnId && _currentTxnId === _lastDirectPrintTxnId
+      && historyContentFingerprint(captureOrder()) === _lastDirectPrintFingerprint && Date.now() - _lastDirectPrintAt < AUTO_PRINT_REPEAT_GUARD_MS) {
     const repeatBtn = document.getElementById('autoPrintBtn');
     if (repeatBtn) {
       repeatBtn.textContent = '✓ Sent';
@@ -8018,6 +8108,7 @@ async function autoPrint() {
     });
     printedByService = true;
     _lastDirectPrintTxnId = _currentTxnId || '';
+    _lastDirectPrintFingerprint = _currentTxnId ? historyContentFingerprint(captureOrder()) : '';
     _lastDirectPrintAt = Date.now();
     showPrintBanner();
     setBtn('✓', false);
@@ -8495,7 +8586,12 @@ async function emailDoc() {
 const HISTORY_KEY = 'mpe_print_history';
 const HISTORY_MAX = 1000;   // local push-queue cap; raised so un-synced txns aren't evicted before reaching Drive
 const PUSHED_TXNIDS_KEY = 'mpe_pushed_txn';
-function getPushedTxnIds() { try { return new Set(JSON.parse(localStorage.getItem(PUSHED_TXNIDS_KEY) || '[]')); } catch { return new Set(); } }
+function getPushedTxnIds() {
+  try {
+    const pending = new Set(getHistory().filter(order => order.historySyncPending).map(order => order.txnId));
+    return new Set(JSON.parse(localStorage.getItem(PUSHED_TXNIDS_KEY) || '[]').filter(id => !pending.has(id)));
+  } catch { return new Set(); }
+}
 function addPushedTxnIds(newIds) {
   const ids = getPushedTxnIds();
   for (const id of newIds) if (id) ids.add(id);
@@ -8654,7 +8750,6 @@ function activeDocNumber() {
 }
 // Reserve a date for a brand-new document so its number is stable through print/email
 function reserveDocDate() {
-  refreshHistoryIdentity();
   if (!_reprintSource && !_currentTxnDate && !_pendingTxnDate) _pendingTxnDate = new Date();
   return docDateOrNull();
 }
@@ -8665,7 +8760,7 @@ function updateScreenDocTitle() {
   el.textContent = DOC_TITLES[_docType] + (num ? '   ·   No. ' + num : '') + (_reprintSource ? '   ·   Reprint' : '');
 }
 
-// Only identical document contents may reuse a history/Drive transaction ID.
+// A document keeps its identity; saving edits replaces its existing history entry.
 // Ignore display-only toggles and money formatting changed during print preparation.
 let _historyContentBaseline = null;
 function historyContentFingerprint(order, docType = _docType) {
@@ -8684,107 +8779,54 @@ function historyContentFingerprint(order, docType = _docType) {
     tender: order.tender || null,
   });
 }
-function refreshHistoryIdentity(order = captureOrder()) {
-  if (!order || _docType === 'internal' || (!_currentTxnId && !_reprintSource)) return;
-  const id = _reprintSource?.txnId || _currentTxnId;
-  const saved = getHistory().find(entry => entry.txnId === id);
-  const baseline = _historyContentBaseline
-    || (saved && historyContentFingerprint(saved, saved.docType || 'receipt'));
-  if (baseline && baseline === historyContentFingerprint(order)) return;
-  // A changed loaded/printed document is a new version. Keep the original intact.
-  _currentTxnId = null;
-  _currentTxnDate = null;
-  _reprintSource = null;
-  _pendingTxnDate = null;
-  _historyContentBaseline = null;
-}
-
 function saveToHistory() {
-  if (_docType === 'internal') return false;   // internal printouts are never recorded
+  if (_docType === 'internal') return false;
   const order = captureOrder();
   if (!order) return false;
-  refreshHistoryIdentity(order);
   maybeSaveNewCustomer();
-
-  if (_reprintSource) {
-    // Reprint: preserve original txnId and date so dedup blocks double-push
-    // and the Drive record stays anchored to the original transaction time.
-    order.txnId = _reprintSource.txnId;
-    order.date  = _reprintSource.date;
-    _historyContentBaseline = historyContentFingerprint(order);
-    _lastPrintedOrder = order;
-    _lastPushStatus = null;
-    // Attempt push — dedup in pushTransactionToSheet will silently skip if already sent
-    if (googleSessionAvailable()) {
-      _lastPushStatus = 'pending';
-      pushTransactionToSheet(order)
-        .then(() => { _lastPushStatus = 'ok';   updatePrintBanner(); })
-        .catch(() => { _lastPushStatus = 'fail'; updatePrintBanner(); });
-    } else {
-      _lastPushStatus = 'skipped';
-    }
-    return true; // don't add duplicate entry to localStorage history
-  }
-
-  if (_currentTxnId) {
-    // Same POS state printed again — reuse txnId/date so dedup blocks double-push
-    order.txnId = _currentTxnId;
-    order.date  = _currentTxnDate;
-    _historyContentBaseline = historyContentFingerprint(order);
-    _lastPrintedOrder = order;
-    _lastPushStatus = null;
-    if (googleSessionAvailable()) {
-      _lastPushStatus = 'pending';
-      pushTransactionToSheet(order)
-        .then(() => { _lastPushStatus = 'ok';   updatePrintBanner(); })
-        .catch(() => { _lastPushStatus = 'fail'; updatePrintBanner(); });
-    } else {
-      _lastPushStatus = 'skipped';
-    }
-    return true; // already in history — don't duplicate
-  }
-
-  // New transaction: assign txnId and date at initial print time.
-  // Reuse the date reserved in preparePrint so the printed number matches.
+  const history = getHistory();
+  const identity = _reprintSource || (_currentTxnId ? { txnId: _currentTxnId, date: _currentTxnDate } : null);
+  const previous = identity && history.find(entry => entry.txnId === identity.txnId);
   const now = _pendingTxnDate || new Date();
-  const pad = n => String(n).padStart(2,'0');
-  const txnBase = 'TX-' + pad(now.getMonth()+1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + '-' + pad(now.getSeconds());
-  const existingTxnIds = new Set(getHistory().map(entry => entry.txnId).filter(Boolean));
-  order.txnId = txnBase;
-  for (let sequence = 2; existingTxnIds.has(order.txnId); sequence++) {
-    order.txnId = txnBase + '-' + sequence;
+  if (identity) {
+    order.txnId = identity.txnId;
+    order.date = identity.date;
+    order.docType = _docType;
+    order.docNumber = identity.docNumber || previous?.docNumber || formatDocNumber(new Date(identity.date), _docType);
+  } else {
+    const pad = n => String(n).padStart(2, '0');
+    const base = 'TX-' + pad(now.getMonth()+1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + '-' + pad(now.getSeconds());
+    order.txnId = base;
+    const ids = new Set(history.map(entry => entry.txnId));
+    for (let n = 2; ids.has(order.txnId); n++) order.txnId = base + '-' + n;
+    order.date = now.toISOString();
+    order.docType = _docType;
+    order.docNumber = formatDocNumber(now, _docType);
   }
-  order.date = order.date || now.toISOString();
-  order.docType   = _docType;
-  order.docNumber = formatDocNumber(now, _docType);
+  const fingerprint = historyContentFingerprint(order, order.docType);
+  const baseline = _historyContentBaseline
+    || (previous && historyContentFingerprint(previous, previous.docType || 'receipt'));
+  // Persist the pending edit WITH its contents. A pushed ID alone cannot acknowledge an edit.
+  order.historySyncPending = !!previous?.historySyncPending || !identity || baseline !== fingerprint;
+  const index = history.findIndex(entry => entry.txnId === order.txnId);
+  if (index >= 0) history[index] = order;
+  else history.unshift(order);
+  if (history.length > HISTORY_MAX) history.splice(HISTORY_MAX);
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    const history = raw ? JSON.parse(raw) : [];
-    // Belt-and-suspenders local dedup — skip if txnId already present
-    if (!history.some(h => h.txnId && h.txnId === order.txnId)) {
-      history.unshift(order);
-      if (history.length > HISTORY_MAX) history.splice(HISTORY_MAX);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-    }
-    const retained = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
-      .find(entry => entry?.txnId === order.txnId);
-    if (!retained || historyContentFingerprint(retained, retained.docType)
-        !== historyContentFingerprint(order)) return false;
-  } catch(e) { return false; }
-  _currentTxnId   = order.txnId;
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    const retained = getHistory().find(entry => entry.txnId === order.txnId);
+    if (JSON.stringify(retained) !== JSON.stringify(order)) return false;
+  } catch (error) { return false; }
+  _currentTxnId = order.txnId;
   _currentTxnDate = order.date;
   _pendingTxnDate = null;
-  _historyContentBaseline = historyContentFingerprint(order);
+  _historyContentBaseline = fingerprint;
   _lastPrintedOrder = order;
-  _lastPushStatus = null;
-  // Export to Drive Transactions sheet if signed in
+  _lastPushStatus = googleSessionAvailable() ? 'pending' : 'skipped';
   if (googleSessionAvailable()) {
-    _lastPushStatus = 'pending';
     pushTransactionToSheet(order)
-      .then(() => { _lastPushStatus = 'ok';   updatePrintBanner(); })
+      .then(() => { _lastPushStatus = 'ok'; updatePrintBanner(); })
       .catch(() => { _lastPushStatus = 'fail'; updatePrintBanner(); });
-  } else {
-    _lastPushStatus = 'skipped';
   }
   return true;
 }
