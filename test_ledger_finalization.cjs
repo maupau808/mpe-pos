@@ -917,10 +917,10 @@ test('actual POS capture preserves DOM order, exact displayed facts, serials, an
   expectCode(() => sandbox.captureLedgerFinalizationDraft(actionContext), 'money_invalid');
 });
 
-test('actual POS keeps explicit tender receipt-only and restores the frozen value', () => {
-  assert.equal(entryText.split('id="tenderPanel"').length - 1, 1);
-  assert.equal(entryText.split('id="tenderType"').length - 1, 1);
-  assert.equal(entryText.split('id="tenderReference"').length - 1, 1);
+test('POS omits payment controls while retaining existing tender data compatibility', () => {
+  assert.equal(entryText.split('id="tenderPanel"').length - 1, 0);
+  assert.equal(entryText.split('id="tenderType"').length - 1, 0);
+  assert.equal(entryText.split('id="tenderReference"').length - 1, 0);
   assert.match(entryText, /const RECEIPT_TENDER_TYPES = new Set\(\['cash', 'check', 'card', 'ach', 'customer_credit'\]\)/);
 
   const clear = entryText.slice(entryText.indexOf('function clearAll'), entryText.indexOf('const REVIEW_QR_SVG'));
@@ -937,7 +937,7 @@ test('actual POS keeps explicit tender receipt-only and restores the frozen valu
   assert.match(reprint, /reference\.value = order\.tender\?\.reference \|\| ''/);
   assert.match(clover, /tenderType\.value = 'card'/);
   assert.match(clover, /Clover \$\{reference\}/);
-  assert.match(entryText, /\.cust-bar, \.tender-bar, \.file-bar/);
+  assert.doesNotMatch(entryText, /Choose payment|class="tender-/);
 });
 
 test('actual guarded seam awaits local output begin and blocks output after history/begin failure', async () => {
