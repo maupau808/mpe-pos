@@ -344,6 +344,13 @@ body.doc-internal .sum-internal { display: block; }
 .cust-state { max-width: 52px; flex: none; }
 .cust-zip { max-width: 72px; flex: none; }
 .cust-city { min-width: 100px; }
+.tender-bar { display: flex; align-items: center; gap: 8px; margin: -0.35rem 0 1rem; flex-wrap: wrap; }
+.tender-bar.hidden { display: none; }
+.tender-label { color: #66706a; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.tender-select, .tender-reference { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid #d9dfd6; border-radius: 6px; background: #fff; color: #1a1a1a; }
+.tender-select:focus, .tender-reference:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.06); }
+.tender-reference { flex: 1; min-width: 180px; }
+.tender-reference:disabled { background: #f3f5f2; color: #999; }
 .notes-wrap { margin-bottom: 1rem; }
 .warranty-btn { font-size: 10px; padding: 3px 8px; border: 1px solid #e0a000; border-radius: 5px; background: #fff8e1; color: #7a5800; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 .warranty-btn:hover { background: #fff0b0; }
@@ -565,6 +572,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 }
 .print-header { display: none; }
 .print-titlerow { display: none; }
+.print-bill-to { display: none; }
 @media screen {
   #scannerModeView { display: none; }
   body.scanner-mode-active .wrap > :not(#scannerModeView) { display: none !important; }
@@ -654,10 +662,18 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   }
 }
 @media print {
+  body.c06-print-refused > * { display: none !important; }
+  body.c06-print-refused::before {
+    content: "Printing blocked: this document does not yet have its required official number. Return to MPE POS and try Print again.";
+    display: block !important;
+    margin: 2rem;
+    color: #000;
+    font: 700 18px/1.45 Arial, sans-serif;
+  }
   #scannerModeView { display: none !important; }
   body { background: #fff; padding: 0; zoom: 1 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .wrap { border: none; border-radius: 0; padding: 1.2rem; max-width: 100%; }
-  .toolbar, .scan-panel, .cust-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, .reorder-cell, .reorder-head, #printBanner, .doc-screen-title, .bottom-actions, .discounts-trigger, .scan-command-flash { display: none !important; }
+  .toolbar, .scan-panel, .cust-bar, .tender-bar, .file-bar, #loadingMsg, .sub, h2, .actions, .clear-row, .reorder-cell, .reorder-head, #printBanner, .doc-screen-title, .bottom-actions, .discounts-trigger, .scan-command-flash { display: none !important; }
   .qty-input { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; border: none; background: transparent; font-size: 14px; padding: 0; pointer-events: none; width: auto; text-align: center; color: #000 !important; -webkit-text-fill-color: #000 !important; }
   .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .part-input { border: none; background: transparent; font-size: 14px; font-weight: 500; padding: 0; pointer-events: none; color: #000 !important; -webkit-text-fill-color: #000 !important; }
@@ -696,6 +712,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .print-docmeta .print-date { display: inline !important; text-align: left; margin: 0; font-size: 13px; }
   .print-titlerow { display: flex !important; align-items: baseline; gap: 10px; margin: 2px 0 0; border-bottom: 2px solid #000; padding-bottom: 6px; }
   .print-titlerow .print-date { display: inline-block !important; text-align: right; margin: 0 0 0 auto; font-weight: 600; }
+  .print-bill-to.active { display: block !important; margin: 10px 0 12px; padding: 8px 10px; border-left: 3px solid #000; font-size: 12px; line-height: 1.45; break-inside: avoid; page-break-inside: avoid; }
+  .print-bill-to-label { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 3px; }
+  .print-bill-to-name { font-weight: 700; }
   .print-date .due-date { display: block; font-weight: 700; }
   .print-date { display: block !important; font-size: 13px; color: #000 !important; margin-top: 4px; text-align: right; }
   /* col1:PN 18% | col2:Desc 48% | col3:Make(hide) | col4:Restock(hide) | col5:Cost(hide) | col6:Margin(hide) | col7:Ea. 12% | col8:Qty 8% | col9:Price 14% | col10:X(hide) */
@@ -933,6 +952,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <span class="print-docnum" id="printDocNum"></span>
     <span class="print-date" id="printDate"></span>
   </div>
+  <div class="print-bill-to" id="printBillTo"></div>
   <table class="search-table">
     <thead>
       <tr>
@@ -966,6 +986,19 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="dropdown cust-dd" id="custDD"></div>
   </div>
 
+  <div class="tender-bar" id="tenderPanel">
+    <label class="tender-label" for="tenderType">Payment</label>
+    <select class="tender-select" id="tenderType" aria-label="Payment method" onchange="syncTenderReference()">
+      <option value="">Choose payment</option>
+      <option value="cash">Cash</option>
+      <option value="check">Check</option>
+      <option value="card">Card</option>
+      <option value="ach">ACH</option>
+      <option value="customer_credit">Customer credit</option>
+    </select>
+    <input class="tender-reference" id="tenderReference" aria-label="Payment reference" placeholder="Reference (optional)" autocomplete="off" maxlength="200" disabled>
+  </div>
+
   <div class="license-diag" id="licenseDiag">
     <h4>License scan could not be read</h4>
     <pre id="licenseDiagText"></pre>
@@ -993,6 +1026,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="bottom-actions">
       <button class="btn-big btn-danger" onclick="clearAll()">Clear</button>
       <button class="btn-big" id="saveBtn" onclick="saveOnly()" title="Save to transaction history without printing">Save</button>
+      <button class="btn-big" id="finalizeInvoiceBtn" hidden onclick="finalizeLedgerInvoice()">Finalize Invoice</button>
       <!-- Sends the checkout total to the Clover terminal. Hidden unless this
            register is paired to one. It does not save or print: the existing
            Save and Print paths remain the only transaction seam. -->
@@ -1043,6 +1077,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       </div>
     </div>
   </div>
+  <div id="ledgerInvoiceStatus" role="status" aria-live="polite" class="no-print" style="margin-bottom:16px" hidden></div>
   <div id="reviewMsg" class="review-below" style="display:none"></div>
   <div class="signature-block" id="signatureBlock">
     <div id="sig-invoice" style="display:none;"></div>
@@ -1098,6 +1133,25 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async="" defer=""></script>
+  <script src="ledger-finalization.js" integrity="sha256-Kbpc+BnLcP6Q+TAfI5abT0A/+BDP9suYfFSxvj4pzUA="></script>
+  <script src="ledger-contact.js"></script>
+  <script>
+  // Run before scanner/global keyboard listeners. Text still types normally;
+  // commands and scanners cannot operate a sale behind customer completion.
+  if (window.mpeDesktop?.contactOnly) {
+    document.body.dataset.ledgerContactMode = '1';
+    document.querySelector('.wrap').inert = true;
+  }
+  window.addEventListener('beforeunload',event=>{
+    if(document.body.dataset.ledgerContactDirty==='1'){event.preventDefault();event.returnValue='';}
+  });
+  window.addEventListener('keydown', event => {
+    if (document.body.dataset.ledgerContactMode === '1') {
+      event.stopImmediatePropagation();
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'p') event.preventDefault();
+    }
+  }, true);
+  </script>
 <script>
 // ─── CUSTOMER LIST (generated from QBO export by Playground/Archive/scripts_archive/build_customers.py) ─
 // Do not hand-edit between the markers; re-run the script to refresh.
@@ -1106,7 +1160,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.03.2';
+const POS_RELEASE = '2026.10.03.3';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1131,6 +1185,11 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googl
 // ─── APP STATE ─────────────────────────────────────────────────────────────
 const TAX_RATE = 0.04712;
 const CARD_FEE_RATE = 0.03;
+let _ledgerOutputCoordinator = null;
+let _ledgerLineIds = new WeakMap();
+let _ledgerRecoveredSource = null;
+let _ledgerInvoiceFinalizing = false;
+let _ledgerInvoiceStatusTimer = null;
 
 function checkoutTotals(subtotal, cardFeeActive) {
   const tax = subtotal * TAX_RATE;
@@ -1276,6 +1335,15 @@ async function chargeCardOnTerminal() {
     });
     if (result?.approved) {
       const card = result.payment || {};
+      const tenderType = document.getElementById('tenderType');
+      const tenderReference = document.getElementById('tenderReference');
+      if (tenderType) tenderType.value = 'card';
+      syncTenderReference();
+      if (tenderReference) {
+        const reference = String(card.paymentId || result.externalId || '')
+          .replace(/[\u0000-\u001f\u007f]/g, '').trim();
+        tenderReference.value = reference ? `Clover ${reference}`.slice(0, 200) : '';
+      }
       flashScanCommand(`Approved ${fmtPrint(total)} · ${card.cardBrand || 'card'} ${card.last4 || ''}`.trim(), 'ok');
     } else if (result && result.outcomeKnown === false) {
       // The card may already be charged. Never invite a second swipe here.
@@ -1318,12 +1386,14 @@ function googleSessionAvailable() {
 
 function googleConnectedActions() {
   setSignedInUI();
+  if (window.mpeDesktop?.contactOnly) return;
   scheduleTokenRefresh();
   fetchFromDrive();
   syncCustomersFromSheet();
   flushPendingPartCodes();
   flushPendingReorders();
   flushPendingPriceChanges();
+  flushStockSessionQueue();
   flushUnpushedTxns();
   schedulePhoneListNotice();
   if (_pendingAction) { const fn = _pendingAction; _pendingAction = null; fn(); }
@@ -1388,6 +1458,7 @@ function initTokenClient() {
       flushPendingPartCodes();
       flushPendingReorders();
       flushPendingPriceChanges();
+      flushStockSessionQueue();
       flushUnpushedTxns();
       schedulePhoneListNotice();
     }
@@ -1725,11 +1796,12 @@ async function maybeAutoRefresh() {
     _checkingCatalog = false;
   }
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); flushStockSessionQueue(); } });
 setInterval(() => { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); }, 60 * 1000);
 setInterval(checkForPosUpdate, 5 * 60 * 1000);
 setInterval(flushPendingPriceChanges, PRICE_CHANGE_RETRY_MS);
 setInterval(flushPendingReorders, PRICE_CHANGE_RETRY_MS);
+setInterval(flushStockSessionQueue, PRICE_CHANGE_RETRY_MS);
 
 async function fetchFromDrive(options = {}) {
   if (desktopGoogleAvailable()) {
@@ -2460,6 +2532,208 @@ function flushPendingReorders() {
   return reorderFlushPromise;
 }
 
+// ─── Scanner-origin cart sessions → Unit Stock provisional review ───────────
+// A cart that is cleared without ever producing an authoritative saved
+// document (Save / Print / Auto Print / Email / PDF) still emptied real stock
+// off the shelf. One STOCK_SESSION REVIEW row per aggregated scanner-origin
+// tracked part number reaches Unit Stock exactly once; a later authoritative
+// output for the same cart session emits a FINAL row that links the session to
+// its real TxnID and supersedes the provisional review. This never changes
+// on-hand by itself and never writes Master, prices, QBO, or history — it
+// follows the same durable local-queue + exact-range read-back discipline as
+// the reorder signal above.
+const STOCK_SESSION_KEY = 'mpeStockSessionQueueV1';
+const STOCK_SESSION_REGISTER_KEY = 'mpeStockSessionRegisterV1';
+let stockSessionQueue = [];
+try { stockSessionQueue = JSON.parse(localStorage.getItem(STOCK_SESSION_KEY) || '[]') || []; }
+catch (e) { stockSessionQueue = []; }
+let stockSessionFlushPromise = null;
+// One object per cart. Created lazily the first time a scan lands in an empty
+// sale; reset only by clearAll. `completedTxnId` is set once an authoritative
+// document saves, which permanently disqualifies this cart from a REVIEW.
+let cartStockSession = null;
+// True only while acceptDecodedScan (or its queued replay) is running, so a
+// package re-group that fires as a side effect of a scan can carry provenance
+// while a programmatic re-group from history/phone-list load cannot invent it.
+let _scanLandingInFlight = false;
+
+function stockSessionRegisterId() {
+  let value = localStorage.getItem(STOCK_SESSION_REGISTER_KEY) || '';
+  if (!value) {
+    value = reorderIdentifier('stockreg');
+    try { localStorage.setItem(STOCK_SESSION_REGISTER_KEY, value); } catch (e) {}
+  }
+  return value;
+}
+
+function stockCartSessionId() {
+  if (!cartStockSession) cartStockSession = { sessionId: reorderIdentifier('cart'), completedTxnId: null };
+  return cartStockSession.sessionId;
+}
+
+function markScanOriginRow(row) {
+  if (!Number.isInteger(row) || row < 0) return;
+  const tr = tbody.querySelector(`tr[data-row="${row}"]`);
+  if (!tr) return;
+  tr.dataset.scanOrigin = '1';
+  stockCartSessionId();               // a real scan opens the cart session
+}
+
+function persistStockSessionQueue() {
+  const serialized = JSON.stringify(stockSessionQueue);
+  localStorage.setItem(STOCK_SESSION_KEY, serialized);
+  if (localStorage.getItem(STOCK_SESSION_KEY) !== serialized) {
+    throw new Error('Stock session queue could not be saved locally');
+  }
+}
+
+function stockSessionEventKey(item) {
+  return JSON.stringify([
+    String(item?.eventId || '').trim(),
+    String(item?.sessionId || '').trim(),
+    String(item?.action || '').trim().toUpperCase(),
+    normalizePN(item?.partNumber),
+  ]);
+}
+
+function stockSessionSheetEventKey(row) {
+  if (String(row?.[0] || '').trim().toUpperCase() !== 'STOCK_SESSION') return '';
+  return stockSessionEventKey({
+    eventId: row?.[1], sessionId: row?.[2], action: row?.[3], partNumber: row?.[4],
+  });
+}
+
+// Deterministic per (session, action, part) so a re-clear or a retried flush
+// re-queues the SAME identity and the exact-range reconcile drops it as a
+// duplicate instead of appending a second row.
+function stockSessionEventId(sessionId, action, pnKey) {
+  return `stockevt_${action}_${sessionId}_${pnKey}`;
+}
+
+function queueStockSessionEvent(action, sessionId, partNumber, qty, txnId) {
+  const pnKey = normalizePN(partNumber);
+  if (!sessionId || !pnKey || !(qty > 0)) return;
+  const eventId = stockSessionEventId(sessionId, action, pnKey);
+  const event = {
+    eventId, sessionId, action,
+    partNumber: String(partNumber || '').trim() || pnKey,
+    qty,
+    occurredAt: new Date().toISOString(),
+    registerId: stockSessionRegisterId(),
+    txnId: txnId || '',
+    release: POS_RELEASE,
+  };
+  const existing = stockSessionQueue.findIndex(item => item.eventId === eventId);
+  if (existing >= 0) stockSessionQueue[existing] = event;
+  else stockSessionQueue.push(event);
+  try {
+    persistStockSessionQueue();
+  } catch (error) {
+    if (existing < 0) stockSessionQueue = stockSessionQueue.filter(item => item.eventId !== eventId);
+    throw error;
+  }
+  flushStockSessionQueue();
+}
+
+// One snapshot of the cart's scanner-origin tracked rows, aggregated by
+// normalized part number using each row's CURRENT quantity exactly once.
+// Empty / removed / non-Master / note / discount / hand-"Other" rows drop out.
+// Quantity clicks, price edits, blur, and row removal emit nothing by
+// themselves — this runs only from clearAll and the authoritative-output seam.
+function snapshotScannerCartLines() {
+  const totals = new Map();
+  for (let i = 0; i < NUM_ROWS; i++) {
+    const tr = tbody.querySelector(`tr[data-row="${i}"]`);
+    if (tr?.dataset.scanOrigin !== '1') continue;
+    const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+    if (!input || input.dataset.isOther === '1') continue;
+    const pnKey = normalizePN(input.dataset.partPn);
+    if (!pnKey) continue;                       // unresolved / needs-review row
+    if (/^(note|discount)$/i.test(input.value || '')) continue;
+    const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 0;
+    if (!(qty > 0)) continue;
+    const display = (input.value || '').trim() || input.dataset.partPn || pnKey;
+    const prior = totals.get(pnKey);
+    totals.set(pnKey, { partNumber: prior?.partNumber || display, qty: (prior?.qty || 0) + qty });
+  }
+  return [...totals.values()];
+}
+
+// clearAll seam: queue one REVIEW per aggregated part number, but only when
+// this cart never completed an authoritative output. Repeated Clear reuses the
+// same session + event identities and cannot append duplicates.
+function queueStockReviewForClear() {
+  if (!cartStockSession || cartStockSession.completedTxnId) return;
+  const lines = snapshotScannerCartLines();
+  if (!lines.length) return;
+  const sessionId = cartStockSession.sessionId;
+  for (const line of lines) {
+    try { queueStockSessionEvent('REVIEW', sessionId, line.partNumber, line.qty, ''); }
+    catch (error) { console.warn('Stock review queue deferred:', error.message); }
+  }
+}
+
+// Authoritative-output seam (recordOutgoingDocument): link this cart session to
+// its real TxnID. FINAL never moves stock — it only supersedes the provisional
+// REVIEW for the same session. A later manual Clear then emits no REVIEW.
+function queueStockFinalForOutput(txnId) {
+  if (!txnId) return;
+  const lines = snapshotScannerCartLines();
+  if (!lines.length) { if (cartStockSession) cartStockSession.completedTxnId = txnId; return; }
+  const sessionId = stockCartSessionId();
+  cartStockSession.completedTxnId = txnId;
+  for (const line of lines) {
+    try { queueStockSessionEvent('FINAL', sessionId, line.partNumber, line.qty, txnId); }
+    catch (error) { console.warn('Stock final queue deferred:', error.message); }
+  }
+}
+
+function removeVerifiedStockSessionEvents(verified) {
+  const ids = new Set(verified.map(item => item.eventId));
+  stockSessionQueue = stockSessionQueue.filter(item => !ids.has(item.eventId));
+  persistStockSessionQueue();
+}
+
+async function _flushStockSessionQueue() {
+  if (!googleSessionAvailable() || !stockSessionQueue.length) return false;
+  try {
+    while (stockSessionQueue.length && googleSessionAvailable()) {
+      const batch = stockSessionQueue.slice(0, 100);
+      const existingRows = await sheetsGet('Transactions!A:J');
+      const existingKeys = new Set(existingRows.map(stockSessionSheetEventKey).filter(Boolean));
+      const alreadyThere = batch.filter(item => existingKeys.has(stockSessionEventKey(item)));
+      const missing = batch.filter(item => !existingKeys.has(stockSessionEventKey(item)));
+      const verified = [...alreadyThere];
+      if (missing.length) {
+        const rows = missing.map(item => [
+          'STOCK_SESSION', item.eventId, item.sessionId, item.action,
+          sheetText(item.partNumber), item.qty, item.occurredAt, item.registerId,
+          item.txnId || '', item.release,
+        ]);
+        const result = await sheetsAppend('Transactions!A:J', rows);
+        if (!result) return false;
+        const writtenRange = result?.updates?.updatedRange;
+        if (!writtenRange) throw new Error('Stock session append returned no range to verify');
+        const writtenKeys = new Set((await sheetsGet(writtenRange)).map(stockSessionSheetEventKey).filter(Boolean));
+        const confirmed = missing.filter(item => writtenKeys.has(stockSessionEventKey(item)));
+        if (confirmed.length !== missing.length) throw new Error('Stock session event was not found after append');
+        verified.push(...confirmed);
+      }
+      removeVerifiedStockSessionEvents(verified);
+    }
+    return true;
+  } catch (error) {
+    console.warn('Stock session sync deferred:', error.message);
+    return false;
+  }
+}
+
+function flushStockSessionQueue() {
+  if (stockSessionFlushPromise) return stockSessionFlushPromise;
+  stockSessionFlushPromise = _flushStockSessionQueue().finally(() => { stockSessionFlushPromise = null; });
+  return stockSessionFlushPromise;
+}
+
 function learnedPartNumber(value) {
   return normalizePN(value && typeof value === 'object' ? value.pn : value);
 }
@@ -3102,6 +3376,11 @@ function regroupPackageDeals(latestSerial, latestRow) {
   }
 
   const rows = tracked.map(t => t.row);
+  // Provenance follows the units: if any re-grouped source row was scanner
+  // origin, the rows this re-group writes are too — but only while a scan is
+  // actually in flight, so a history / phone-list load never invents it.
+  const carryScanOrigin = _scanLandingInFlight && tracked.some(
+    t => tbody.querySelector(`tr[data-row="${t.row}"]`)?.dataset.scanOrigin === '1');
   groups.forEach((group, n) => {
     if (n >= rows.length) rows.push(firstOpenScanRow());
     writePackageRow(rows[n], group);
@@ -3111,6 +3390,7 @@ function regroupPackageDeals(latestSerial, latestRow) {
     if (document.querySelector(`#mobileRows [data-row="${rows[n]}"]`)) clearMobileRow(rows[n]);
     else clearRow(rows[n]);
   }
+  if (carryScanOrigin) groups.forEach((group, n) => markScanOriginRow(rows[n]));
   if (Number.isInteger(pendingUnitSerialRow) && rows.includes(pendingUnitSerialRow)) {
     pendingUnitSerialRow = landedIndex >= 0 && rowNeedsUnitSerial(rows[landedIndex]) ? rows[landedIndex] : null;
   }
@@ -3224,6 +3504,7 @@ function appendSerialToMatchingUnitRow(part, serial) {
   if (!field) return null;
   field.value = value;
   rememberLatestScannedSaleRow(targetRow);
+  markScanOriginRow(targetRow);
   if (pendingUnitSerialRow === targetRow && !rowNeedsUnitSerial(targetRow)) pendingUnitSerialRow = null;
   updateSummary();
   revealScannedResult(targetRow);
@@ -3243,6 +3524,7 @@ function appendScanToMatchingPartRow(part) {
     const current = parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1;
     const qty = setRowQuantity(row, current + 1);
     rememberLatestScannedSaleRow(row);
+    markScanOriginRow(row);
     pendingUnitSerialRow = part.warranty && rowNeedsUnitSerial(row) ? row : null;
     updateSummary();
     revealScannedResult(row);
@@ -3408,6 +3690,7 @@ function fillScannedPart(part, requestedRow) {
   ensureScannerMobileRow(row);
   applyMobilePart(row, part);
   rememberLatestScannedSaleRow(row);
+  markScanOriginRow(row);
   pendingUnitSerialRow = part.warranty && rowNeedsUnitSerial(row) ? row : null;
   // Remember it for packaging now. Most package components reach the counter as
   // a plain product barcode, and their serial — if they even have one — is
@@ -3526,10 +3809,18 @@ function flushPendingCatalogScans() {
 }
 
 function acceptDecodedScan(rawValue, format, options = {}) {
+  if (document.body.dataset.ledgerContactMode === '1') return false;
+  if (_ledgerOutputCoordinator?.current()?.document_type === 'invoice' && !isScanCommand(String(rawValue || '').trim())) { flashScanCommand('Invoice finalized — Clear for a new sale', 'warn'); return false; }
+  // A package re-group triggered as a side effect of this scan may carry
+  // scanner provenance; the same re-group run from a history/phone-list load
+  // may not. The flag scopes that distinction and nests safely.
+  const outerScanLanding = _scanLandingInFlight;
+  _scanLandingInFlight = true;
   try {
     return _acceptDecodedScan(rawValue, format, options);
   } finally {
     if (loaded && !isScanCommand(String(rawValue || '').trim())) applyPackageDeals();
+    _scanLandingInFlight = outerScanLanding;
   }
 }
 
@@ -4061,6 +4352,7 @@ function syncScannerModeView(message, state) {
 }
 
 function setScannerModeActive(active, options = {}) {
+  if (document.body.dataset.ledgerContactMode === '1') return false;
   if (active && _docType !== 'receipt') return;
   _scannerModeActive = !!active;
   document.body.classList.toggle('scanner-mode-active', _scannerModeActive);
@@ -4440,6 +4732,7 @@ function runScanCommand(raw) {
   const payload = String(raw || '').trim().toUpperCase();
   const body = SCAN_COMMANDS.get(payload);
   if (!body) return;
+  if (_ledgerOutputCoordinator?.current()?.document_type === 'invoice' && !['PRINT', 'CLEAR'].includes(body)) { flashScanCommand('Invoice finalized — Clear for a new sale', 'warn'); return; }
   const now = Date.now();
   // Print, Undo, and Clear ignore an electrical double-read. ADD commands
   // deliberately stack on repeat.
@@ -6173,7 +6466,10 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
       item.pn, item.desc, item.qty,
       item.ea !== '' && item.ea != null ? '$' + parseFloat(item.ea).toFixed(2) : '',
       item.sub !== '' && item.sub != null ? '$' + parseFloat(item.sub).toFixed(2) : '',
-      (item.sn && item.sn.length) ? item.sn.join(', ') : '', '', '']);
+      (item.sn && item.sn.length) ? item.sn.join(', ') : '',
+      // Per-item discount evidence for Ledger: original Ea. and the amount off each unit.
+      parseFloat(item.discountPerUnit) > 0 && item.originalEa != null && item.originalEa !== '' ? '$' + parseFloat(item.originalEa).toFixed(2) : '',
+      parseFloat(item.discountPerUnit) > 0 ? '$' + parseFloat(item.discountPerUnit).toFixed(2) : '']);
   }
 
   return rows;
@@ -6183,7 +6479,7 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
 function transactionRowsFingerprint(rows) {
   return JSON.stringify(rows.map(row => Array.from({ length: 16 }, (_, col) => {
     let value = String(row[col] ?? '').trim().replace(/^'/, '');
-    if (col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11].includes(col))) {
+    if (col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11, 14, 15].includes(col))) {
       return value === '' ? '' : Number(value.replace(/[$,]/g, '')).toFixed(2);
     }
     if (col === 3) value = value.replace(/^0(?=\d:)/, '').toUpperCase();
@@ -6202,7 +6498,7 @@ function transactionUserEnteredRows(rows) {
 function transactionCellRows(rows) {
   return rows.map(row => ({ values: row.map((value, col) => {
     const text = String(value ?? '').replace(/^'/, '');
-    const numeric = col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11].includes(col));
+    const numeric = col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11, 14, 15].includes(col));
     return { userEnteredValue: numeric && text !== ''
       ? { numberValue: Number(text.replace(/[$,]/g, '')) }
       : { stringValue: text } };
@@ -6226,6 +6522,7 @@ function acknowledgeTransactionSnapshot(order) {
 let _transactionPushChain = Promise.resolve();
 function pushTransactionToSheet(order) {
   const attempt = _transactionPushChain.catch(() => {}).then(() => {
+    if (order?.mode === 'customer-contact') return writeTransactionToSheet(order);
     const latest = getHistory().find(entry => entry.txnId === order?.txnId);
     return writeTransactionToSheet(latest || order);
   });
@@ -6238,6 +6535,7 @@ async function writeTransactionToSheet(order) {
   // TRIGGER: Print, Auto Print, Export PDF, Email, or an explicit history push.
   // DOES NOT TOUCH: Master pricing, POS catalog data, customers, or QBO.
   if (!order) return;
+  if (order.mode === 'customer-contact') return writeTransactionContact(order);
   if (!SHEETS_ID) { alert('Set SHEETS_ID in the app config first.'); return; }
 
   // Use the stable TxnID assigned at capture time; fall back to generating one for old history entries
@@ -6262,6 +6560,9 @@ async function writeTransactionToSheet(order) {
     let writeMode = '(verified existing)';
     const existingTxnIdx = existingRows.findIndex(row =>
       String(row[0] || '').trim().toUpperCase() === 'TXN' && String(row[1] || '') === txnId);
+    if (order.historySyncPending && existingRows.some(row => row[0] === 'CUSTOMER_UPDATE' && String(row[1] || '') === txnId)) {
+      throw new Error('This transaction has saved customer updates. Open it in Ledger before changing its saved contents.');
+    }
     if (existingTxnIdx >= 0) {
       const end = transactionBlockEnd(existingRows, existingTxnIdx, txnId);
       const savedRows = existingRows.slice(existingTxnIdx, end);
@@ -6349,6 +6650,194 @@ async function writeTransactionToSheet(order) {
     console.warn('[MPE] Transaction export failed —', why, '· stays queued for the next sync');
     throw new Error(why);
   }
+}
+
+// Customer completion shares the existing transaction writer/serialization.
+// It appends an attributed-source event; original TXN/ITEM cells never change.
+async function writeTransactionContact(request) {
+  const owner = window.MPETransactionContact;
+  if (!owner || !googleSessionAvailable()) throw new Error('Sign in to Google before saving customer details.');
+  const wanted = owner.event(request.event).row;
+  const txnId = wanted[1], eventId = wanted[2];
+  let rows = await sheetsGet(TXN_SHEET, { retryThrottle: false });
+  let state = await owner.resolve(rows,txnId,wanted[3]);
+  const exact = row => JSON.stringify(owner.cells(row)) === JSON.stringify(wanted);
+  const retained = rows.filter(row => row[0] === 'CUSTOMER_UPDATE' && row[2] === eventId);
+  if (retained.some(row => !exact(row))) throw new Error('Saved customer update identity conflicts. Nothing was resent.');
+  if (!retained.length) {
+    if (state.contactHash !== wanted[4]) throw new Error('Customer details changed. Reopen this transaction before saving.');
+    // Prefix every cell as text: no phone, timestamp, JSON or user-entered
+    // formula can be interpreted by Sheets USER_ENTERED.
+    const appended = await sheetsAppend(`${TXN_SHEET}!A1`, [wanted.map(value => "'" + value)]);
+    if (!appended) throw new Error('Customer details have not been confirmed in Bridge.');
+    rows = await sheetsGet(TXN_SHEET, { retryThrottle: false });
+    const saved = rows.filter(row => row[0] === 'CUSTOMER_UPDATE' && row[2] === eventId);
+    if (!saved.length || saved.some(row => !exact(row))) throw new Error('Customer details could not be verified. Retry checks before resending.');
+    state = await owner.resolve(rows,txnId,wanted[3]);
+  }
+  _txns = await parseTransactionsWithContacts(rows);
+  _txnsLoadedAt = Date.now();
+  try { await _idbPut('txnCache', { at: _txnsLoadedAt, rows }); } catch {}
+  return { ok: true, eventId, contact: state.contact };
+}
+
+async function parseTransactionsWithContacts(rows) {
+  const owner = window.MPETransactionContact;
+  if (!owner) {
+    const parsed = _parseTxnRows(rows);
+    for (const row of parsed) row.contactConflict = rows.some(r => r[0] === 'CUSTOMER_UPDATE' && r[1] === row.txnId);
+    return parsed;
+  }
+  const display = await owner.displayRows(rows);
+  return _parseTxnRows(display.rows).map(row => {
+    const state = display.states.get(row.txnId);
+    return { ...row, completedContact: state && !state.conflict ? state.contact : null, contactConflict: !!state?.conflict };
+  });
+}
+
+const CONTACT_PENDING_KEY = 'mpeTransactionContactPendingV1';
+let _contactCompletion = null;
+function contactPendingMap() {
+  const raw = localStorage.getItem(CONTACT_PENDING_KEY);
+  if (!raw) return Object.create(null);
+  const value = JSON.parse(raw);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Saved customer review needs attention.');
+  return Object.assign(Object.create(null),value);
+}
+function retainContactPending(txnId, value) {
+  const current = contactPendingMap();
+  if (value === null) delete current[txnId]; else current[txnId] = value;
+  const serialized = JSON.stringify(current);
+  localStorage.setItem(CONTACT_PENDING_KEY,serialized);
+  if (localStorage.getItem(CONTACT_PENDING_KEY) !== serialized) throw new Error('Customer review could not be saved on this register.');
+}
+function contactMessage(message, problem = false) {
+  const node = document.getElementById('ledgerContactStatus');
+  if (node) { node.textContent = message; node.style.color = problem ? '#9b2525' : '#334f3d'; }
+}
+function contactFields() {
+  return ['name','company','address','city','state','zip','phone','email']
+    .map(key => document.getElementById('ledgerContact-'+key).value.trim());
+}
+function setContactFields(value, disabled) {
+  ['name','company','address','city','state','zip','phone','email'].forEach((key,index) => {
+    const node = document.getElementById('ledgerContact-'+key);
+    node.value = value[index]; node.disabled = disabled;
+  });
+}
+async function startLedgerContact(handoff) {
+  const owner = window.MPETransactionContact;
+  if (!owner || handoff?.schema !== owner.HANDOFF || typeof handoff.handoffId !== 'string'
+    || !/^[0-9a-f-]{36}$/.test(handoff.handoffId) || !/^[0-9a-f]{64}$/.test(handoff.sourceRowsSha256 || '')
+    || _contactCompletion || !ledgerDraftTabIsEmpty()) throw new Error('Customer completion requires a new empty POS tab.');
+  _contactCompletion = { handoff, state: null, pending: null, busy: true, phase: 'loading' };
+  document.body.dataset.ledgerContactMode = '1';
+  document.querySelector('.wrap').inert = true;
+  const panel = document.createElement('section');
+  panel.id = 'ledgerContactPanel';
+  panel.setAttribute('aria-label','Complete customer details');
+  panel.style.cssText = 'position:fixed;inset:0;z-index:100000;background:#f5f2ea;overflow:auto;padding:32px;box-sizing:border-box;color:#21352a;font:16px system-ui';
+  panel.innerHTML = '<div style="max-width:760px;margin:auto;background:#fffdfa;padding:28px;border:1px solid #b7c2b8;border-radius:8px">'
+    + '<h1 style="margin:0 0 12px;font-size:25px">Complete customer details</h1><p id="ledgerContactIdentity" style="margin:0 0 14px"></p>'
+    + '<p style="margin:0 0 18px">Enter the customer information from the warranty form. This saves contact details with the transaction in Bridge.</p>'
+    + '<div id="ledgerContactFields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">'
+    + [['name','Name',200],['company','Company',200],['address','Street address',500],['city','Town / city',100],['state','State',100],['zip','ZIP',30],['phone','Phone',100],['email','Email (optional)',254]]
+      .map(([key,label,max]) => `<label style="display:block">${label}<input id="ledgerContact-${key}" maxlength="${max}" autocomplete="off" style="display:block;width:100%;box-sizing:border-box;padding:10px;margin-top:4px;font:inherit;border:1px solid #a5b3a8;border-radius:4px" disabled></label>`).join('')
+    + '</div><pre id="ledgerContactReview" style="display:none;white-space:pre-wrap;font:inherit;padding:15px;background:#edf2eb"></pre>'
+    + '<p id="ledgerContactStatus" role="status" aria-live="polite" style="margin:16px 0">Loading the current transaction…</p>'
+    + '<div style="display:flex;gap:12px;flex-wrap:wrap"><button id="ledgerContactSave" disabled style="padding:12px 18px;font:inherit;background:#254934;color:white;border:0;border-radius:5px">Review details</button>'
+    + '<button id="ledgerContactBack" style="padding:12px 18px;font:inherit">Cancel</button></div></div>';
+  document.body.append(panel);
+  panel.querySelector('#ledgerContactFields').addEventListener('input', () => { document.body.dataset.ledgerContactDirty = '1'; });
+  document.getElementById('ledgerContactSave').onclick = saveLedgerContact;
+  document.getElementById('ledgerContactBack').onclick = closeLedgerContact;
+  try {
+    if (window.mpeDesktop?.contactOnly) {
+      const status = await window.mpeDesktop.google.getStatus();
+      desktopGoogleConnected = !!status?.connected;
+      if (!desktopGoogleConnected) throw new Error('Sign in to Google in the main POS window, then reopen these customer details.');
+    }
+    const rows = await sheetsGet(TXN_SHEET, { retryThrottle: false });
+    const state = await owner.resolve(rows,handoff.txnId,handoff.sourceRowsSha256);
+    const pending = contactPendingMap()[handoff.txnId];
+    if (pending) {
+      const checked = owner.event(pending).row;
+      if (checked[1] !== state.txnId || checked[3] !== state.sourceHash) throw new Error('A saved customer review belongs to another transaction version.');
+      _contactCompletion.pending = checked;
+      document.body.dataset.ledgerContactDirty = '1';
+    }
+    _contactCompletion.state = state;
+    const header = state.rows[0];
+    document.getElementById('ledgerContactIdentity').textContent = `${header[14] ? header[14][0].toUpperCase()+header[14].slice(1) : 'Transaction'} ${header[15] || ''} · ${header[2]} ${header[3]} · ${header[12]} · ${state.txnId}`;
+    setContactFields(pending ? owner.event(pending).contact : state.contact,!!pending);
+    _contactCompletion.phase = pending ? 'confirm' : 'edit';
+    document.getElementById('ledgerContactSave').textContent = pending ? 'Check / retry saved details' : 'Review details';
+    document.getElementById('ledgerContactSave').disabled = false;
+    contactMessage(pending ? 'A previous save needs verification. Checking uses the same saved update.' : 'Amounts, items and serial numbers stay on the original transaction.');
+    return handoff.handoffId;
+  } catch (error) {
+    contactMessage(error.message || 'Transaction could not be loaded.',true);
+    throw error;
+  } finally { _contactCompletion.busy = false; }
+}
+async function saveLedgerContact() {
+  const view = _contactCompletion, owner = window.MPETransactionContact;
+  if (!view || view.busy || !view.state || view.phase === 'saved') return;
+  const button = document.getElementById('ledgerContactSave');
+  try {
+    if (view.phase === 'edit') {
+      const contact = owner.validContact(contactFields());
+      view.pending = await owner.makeEvent(view.state,contact,crypto.randomUUID(),new Date().toISOString());
+      setContactFields(contact,true);
+      const labels = ['Name','Company','Address','Town / city','State','ZIP','Phone','Email'];
+      const review = document.getElementById('ledgerContactReview');
+      review.textContent = labels.map((label,index) => view.state.contact[index] === contact[index] ? null : `${label}: ${view.state.contact[index] || '—'} → ${contact[index] || '—'}`).filter(Boolean).join('\n');
+      review.style.display = 'block';
+      view.phase = 'confirm'; button.textContent = 'Save customer details';
+      document.getElementById('ledgerContactBack').textContent = 'Edit details';
+      contactMessage('Review the changes above, then save. Warranty registration is a separate step.');
+      return;
+    }
+    view.busy = true; button.disabled = true;
+    retainContactPending(view.state.txnId,view.pending);
+    document.body.dataset.ledgerContactDirty = '1';
+    contactMessage('Saving and checking the transaction…');
+    await pushTransactionToSheet({ mode: 'customer-contact', event: view.pending });
+    retainContactPending(view.state.txnId,null);
+    view.phase = 'saved'; document.body.dataset.ledgerContactDirty = '0';
+    button.textContent = 'Saved';
+    document.getElementById('ledgerContactBack').textContent = 'Done';
+    contactMessage('Customer details saved and verified in Bridge. Warranty registration has not been submitted.');
+  } catch (error) {
+    contactMessage(error.message || 'Customer details are not yet confirmed.',true);
+    if (view.phase === 'confirm') button.textContent = 'Check / retry saved details';
+  } finally { view.busy = false; button.disabled = view.phase === 'saved'; }
+}
+function closeLedgerContact() {
+  const view = _contactCompletion;
+  if (!view || view.busy) return;
+  if (view.phase === 'confirm') {
+    // Once a save was attempted retain its exact event. An unknown outcome
+    // cannot be edited into a second event or silently discarded.
+    if (contactPendingMap()[view.handoff.txnId]) { contactMessage('Check the saved update before starting another edit.',true); return; }
+    view.phase = 'edit'; view.pending = null; setContactFields(contactFields(),false);
+    document.getElementById('ledgerContactReview').style.display = 'none';
+    document.getElementById('ledgerContactSave').textContent = 'Review details';
+    document.getElementById('ledgerContactBack').textContent = 'Cancel';
+    return;
+  }
+  if (document.body.dataset.ledgerContactDirty === '1' && !confirm('Discard these unsaved customer details?')) return;
+  if (window.mpeDesktop?.contactOnly) {
+    document.body.dataset.ledgerContactDirty = '0';
+    window.mpeDesktop.closeContact().then(result=>{
+      if(!result?.ok)contactMessage('Close this customer details tab when finished.',true);
+    }).catch(()=>contactMessage('Close this customer details tab when finished.',true));
+    return;
+  }
+  document.getElementById('ledgerContactPanel')?.remove();
+  document.querySelector('.wrap').inert = false;
+  delete document.body.dataset.ledgerContactMode; delete document.body.dataset.ledgerContactDirty;
+  _contactCompletion = null;
 }
 
 // ─── TRANSACTION HISTORY LOOKUP ──────────────────────────────────────────────
@@ -6440,7 +6929,7 @@ async function initTxns() {
   try {
     if (!_txns) {
       const cached = await _idbGet('txnCache');
-      if (cached && cached.rows) { _txns = _parseTxnRows(cached.rows); _txnsLoadedAt = cached.at; }
+      if (cached && cached.rows) { _txns = await parseTransactionsWithContacts(cached.rows); _txnsLoadedAt = cached.at; }
     }
     if (!_txns) { await refreshTxns(); return; }   // no cache → load now (shows status)
     renderTxnResults();                            // cache present → render instantly
@@ -6456,7 +6945,7 @@ async function refreshTxns(opts) {
   if (!silent) _setTxnStatus('Loading from Drive…');
   try {
     const rows = await sheetsGet(TXN_SHEET);
-    _txns = _parseTxnRows(rows);
+    _txns = await parseTransactionsWithContacts(rows);
     _txnsLoadedAt = Date.now();
     try { await _idbPut('txnCache', { at: _txnsLoadedAt, rows }); } catch {}
     renderTxnResults();
@@ -6549,6 +7038,7 @@ function toggleTxn(i) {
 function loadTxnIntoPOS(i) {
   const t = _txnShown[i];
   if (!t) return;
+  if (t.contactConflict) { alert('Customer changes for this transaction need review in Ledger.'); return; }
   if (!confirm('Load this transaction into the order grid? This clears the current order.')) return;
   clearAll();
   // Treat as a reprint: keep the original date/time + txnId so the printed doc
@@ -6563,6 +7053,10 @@ function loadTxnIntoPOS(i) {
   const setv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
   setv('custName', name); setv('custCompany', company);
   setv('custPhone', t.phone); setv('custEmail', t.email); setv('custAddr', t.addr);
+  if (t.completedContact) {
+    ['custName','custCompany','custAddr','custCity','custState','custZip','custPhone','custEmail']
+      .forEach((id,index) => setv(id,t.completedContact[index]));
+  }
   // Pre-size both views to fit all items (+1 spare) so we never rely on auto-add.
   const items = t.items || [];
   NUM_ROWS = Math.max(3, items.length + 1);
@@ -7042,7 +7536,7 @@ function removeSNRow(i) {
 // history reprint path renders serials before the row is fully rebuilt, so it
 // passes the saved one. Without it a package would fall back to a single field
 // and quietly drop its second and third serials.
-function renderSNFields(i, qty, pn) {
+function renderSNFields(i, qty, pn, minimumSlots = 0) {
   // Remove any existing SN sub-row for this part row
   removeSNRow(i);
   const partTr = tbody.querySelector(`tr[data-row="${i}"]`);
@@ -7051,6 +7545,7 @@ function renderSNFields(i, qty, pn) {
 
   const rowPN = pn || tbody.querySelector(`[data-row="${i}"].part-input`)?.dataset.partPn || '';
   const labels = snSlotLabels(rowPN, qty);
+  while (labels.length < minimumSlots) labels.push(`Serial ${labels.length + 1}`);
   const n = labels.length;
   const snTr = document.createElement('tr');
   snTr.dataset.snFor = i;
@@ -7259,7 +7754,7 @@ function clearRowData(i) {
   const descEl = document.getElementById(`desc-${i}`);
   descEl.innerHTML = '—'; descEl.className = 'empty-cell'; descEl.contentEditable = 'false'; descEl.dataset.row = '';
   const tr = tbody.querySelector(`tr[data-row="${i}"]`);
-  if (tr) { delete tr.dataset.warranty; delete tr.dataset.pkgUnits; delete tr.dataset.pkgDeal; delete tr.dataset.pkgPrice; }
+  if (tr) { delete tr.dataset.warranty; delete tr.dataset.pkgUnits; delete tr.dataset.pkgDeal; delete tr.dataset.pkgPrice; delete tr.dataset.scanOrigin; }
   document.getElementById(`make-${i}`).textContent = '—';
   const costEl = document.getElementById(`cost-${i}`);
   if (costEl.tagName === 'INPUT') costEl.outerHTML = `<span class="cell-cost" id="cost-${i}">—</span>`;
@@ -7449,9 +7944,30 @@ function updateSummary() {
 }
 
 function clearAll() {
+  if (document.body.dataset.ledgerContactMode === '1') return false;
+  if (_ledgerOutputCoordinator) {
+    try {
+      _ledgerOutputCoordinator.reset();
+    } catch (_error) {
+      flashScanCommand('Please wait for the document number to finish saving', 'warn');
+      return false;
+    }
+  }
+  _ledgerLineIds = new WeakMap();
+  _ledgerRecoveredSource = null;
+  clearTimeout(_ledgerInvoiceStatusTimer);
+  releaseLedgerInvoiceControls();
+  setLedgerInvoiceStatus('');
+  const finalizeButton = document.getElementById('finalizeInvoiceBtn');
+  if (finalizeButton) { finalizeButton.disabled = false; finalizeButton.textContent = 'Finalize Invoice'; }
+  if (window.mpeDesktop?.numbering?.invoiceFinalization) void window.mpeDesktop.numbering.resetDraft();
   commitActiveBridgeDraft();
+  // Snapshot scanner-origin tracked rows for Unit Stock BEFORE the table is
+  // wiped. Only emits when this cart never completed an authoritative output.
+  queueStockReviewForClear();
   void flushPendingReorders();
   void flushPendingPriceChanges();
+  void flushStockSessionQueue();
   _scannerModeAwaitingClear = false;
   renderScannerModeCommandCodes();
   setDiscountControlsEnabled(false);
@@ -7460,16 +7976,24 @@ function clearAll() {
   updateScanButton();
   NUM_ROWS = 3; buildRows(); buildMobileRows(); updateSummary();
   clearCustFields();
+  resetTenderUi();
   document.getElementById('signatureBtn')?.classList.remove('active');
   toggleCardFee(false);
   _historyContentBaseline = null;
   _currentTxnId   = null;
   _currentTxnDate = null;
   _pendingTxnDate = null;
+  _reprintSource = null;
+  _ledgerDraftCustomerBinding = null;
+  _ledgerDraftAccepted = false;
+  _ledgerConversion = null;
+  _ledgerAdoptedCustomer = null;
+  cartStockSession = null;          // next scan opens a fresh cart session
   // Every cleared or loaded sale starts customer-safe. Invoice, Quote, and
   // especially Internal must never leak from the previous transaction.
   if (_docType !== 'receipt') setDocType('receipt');
   updateScreenDocTitle();
+  return true;
 }
 
 const REVIEW_QR_SVG = '<svg class=\"review-qr\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 53 53\" shape-rendering=\"crispEdges\"><rect width=\"53\" height=\"53\" fill=\"#fff\"/><path d=\"M2 2h7v1h-7zM10 2h1v1h-1zM16 2h4v1h-4zM21 2h1v1h-1zM24 2h1v1h-1zM28 2h1v1h-1zM32 2h1v1h-1zM35 2h2v1h-2zM39 2h1v1h-1zM42 2h1v1h-1zM44 2h7v1h-7zM2 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM13 3h2v1h-2zM19 3h2v1h-2zM23 3h3v1h-3zM27 3h1v1h-1zM29 3h2v1h-2zM33 3h2v1h-2zM36 3h3v1h-3zM40 3h3v1h-3zM44 3h1v1h-1zM50 3h1v1h-1zM2 4h1v1h-1zM4 4h3v1h-3zM8 4h1v1h-1zM10 4h6v1h-6zM20 4h3v1h-3zM25 4h1v1h-1zM28 4h2v1h-2zM31 4h1v1h-1zM33 4h2v1h-2zM36 4h1v1h-1zM39 4h1v1h-1zM41 4h2v1h-2zM44 4h1v1h-1zM46 4h3v1h-3zM50 4h1v1h-1zM2 5h1v1h-1zM4 5h3v1h-3zM8 5h1v1h-1zM16 5h1v1h-1zM19 5h2v1h-2zM22 5h2v1h-2zM26 5h2v1h-2zM29 5h2v1h-2zM33 5h3v1h-3zM37 5h3v1h-3zM41 5h1v1h-1zM44 5h1v1h-1zM46 5h3v1h-3zM50 5h1v1h-1zM2 6h1v1h-1zM4 6h3v1h-3zM8 6h1v1h-1zM10 6h4v1h-4zM15 6h2v1h-2zM18 6h2v1h-2zM21 6h1v1h-1zM23 6h7v1h-7zM32 6h3v1h-3zM38 6h2v1h-2zM44 6h1v1h-1zM46 6h3v1h-3zM50 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM11 7h4v1h-4zM19 7h1v1h-1zM22 7h3v1h-3zM28 7h4v1h-4zM34 7h1v1h-1zM37 7h2v1h-2zM40 7h1v1h-1zM44 7h1v1h-1zM50 7h1v1h-1zM2 8h7v1h-7zM10 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM22 8h1v1h-1zM24 8h1v1h-1zM26 8h1v1h-1zM28 8h1v1h-1zM30 8h1v1h-1zM32 8h1v1h-1zM34 8h1v1h-1zM36 8h1v1h-1zM38 8h1v1h-1zM40 8h1v1h-1zM42 8h1v1h-1zM44 8h7v1h-7zM11 9h1v1h-1zM13 9h1v1h-1zM15 9h1v1h-1zM17 9h2v1h-2zM24 9h1v1h-1zM28 9h1v1h-1zM32 9h1v1h-1zM36 9h1v1h-1zM39 9h3v1h-3zM2 10h1v1h-1zM5 10h9v1h-9zM17 10h1v1h-1zM19 10h1v1h-1zM21 10h2v1h-2zM24 10h5v1h-5zM30 10h1v1h-1zM32 10h2v1h-2zM35 10h4v1h-4zM40 10h1v1h-1zM43 10h1v1h-1zM46 10h1v1h-1zM48 10h3v1h-3zM2 11h1v1h-1zM4 11h1v1h-1zM6 11h2v1h-2zM9 11h4v1h-4zM17 11h1v1h-1zM20 11h9v1h-9zM31 11h2v1h-2zM35 11h3v1h-3zM39 11h9v1h-9zM49 11h1v1h-1zM3 12h1v1h-1zM7 12h2v1h-2zM12 12h2v1h-2zM16 12h1v1h-1zM20 12h2v1h-2zM25 12h2v1h-2zM31 12h1v1h-1zM33 12h1v1h-1zM35 12h1v1h-1zM37 12h2v1h-2zM43 12h1v1h-1zM45 12h1v1h-1zM48 12h1v1h-1zM50 12h1v1h-1zM2 13h1v1h-1zM4 13h2v1h-2zM9 13h2v1h-2zM12 13h3v1h-3zM16 13h3v1h-3zM20 13h2v1h-2zM23 13h2v1h-2zM28 13h1v1h-1zM31 13h2v1h-2zM34 13h4v1h-4zM39 13h1v1h-1zM41 13h1v1h-1zM43 13h1v1h-1zM46 13h3v1h-3zM50 13h1v1h-1zM2 14h1v1h-1zM7 14h4v1h-4zM13 14h3v1h-3zM17 14h2v1h-2zM22 14h1v1h-1zM26 14h3v1h-3zM30 14h1v1h-1zM32 14h3v1h-3zM38 14h1v1h-1zM40 14h2v1h-2zM43 14h1v1h-1zM46 14h1v1h-1zM50 14h1v1h-1zM2 15h3v1h-3zM6 15h1v1h-1zM9 15h1v1h-1zM14 15h2v1h-2zM20 15h3v1h-3zM25 15h1v1h-1zM28 15h1v1h-1zM32 15h1v1h-1zM34 15h2v1h-2zM39 15h3v1h-3zM44 15h1v1h-1zM47 15h1v1h-1zM49 15h1v1h-1zM3 16h1v1h-1zM6 16h3v1h-3zM14 16h1v1h-1zM16 16h1v1h-1zM19 16h2v1h-2zM23 16h1v1h-1zM25 16h1v1h-1zM27 16h2v1h-2zM35 16h1v1h-1zM37 16h1v1h-1zM40 16h1v1h-1zM45 16h1v1h-1zM47 16h1v1h-1zM49 16h2v1h-2zM2 17h2v1h-2zM7 17h1v1h-1zM9 17h2v1h-2zM12 17h2v1h-2zM16 17h1v1h-1zM19 17h1v1h-1zM22 17h1v1h-1zM24 17h1v1h-1zM26 17h2v1h-2zM35 17h1v1h-1zM37 17h1v1h-1zM40 17h1v1h-1zM42 17h2v1h-2zM45 17h1v1h-1zM47 17h2v1h-2zM50 17h1v1h-1zM4 18h3v1h-3zM8 18h2v1h-2zM12 18h1v1h-1zM18 18h1v1h-1zM23 18h1v1h-1zM26 18h3v1h-3zM32 18h3v1h-3zM38 18h1v1h-1zM41 18h2v1h-2zM46 18h4v1h-4zM2 19h1v1h-1zM5 19h1v1h-1zM10 19h2v1h-2zM15 19h5v1h-5zM21 19h1v1h-1zM23 19h2v1h-2zM26 19h2v1h-2zM29 19h2v1h-2zM32 19h2v1h-2zM35 19h2v1h-2zM38 19h2v1h-2zM41 19h2v1h-2zM44 19h6v1h-6zM4 20h1v1h-1zM6 20h1v1h-1zM8 20h2v1h-2zM13 20h1v1h-1zM15 20h2v1h-2zM20 20h1v1h-1zM22 20h1v1h-1zM25 20h2v1h-2zM28 20h2v1h-2zM33 20h1v1h-1zM38 20h2v1h-2zM42 20h1v1h-1zM46 20h5v1h-5zM3 21h1v1h-1zM11 21h2v1h-2zM14 21h1v1h-1zM18 21h2v1h-2zM23 21h1v1h-1zM29 21h2v1h-2zM32 21h2v1h-2zM35 21h2v1h-2zM39 21h2v1h-2zM43 21h1v1h-1zM47 21h1v1h-1zM50 21h1v1h-1zM4 22h1v1h-1zM6 22h3v1h-3zM11 22h3v1h-3zM17 22h4v1h-4zM22 22h1v1h-1zM26 22h3v1h-3zM30 22h2v1h-2zM37 22h2v1h-2zM41 22h1v1h-1zM43 22h1v1h-1zM45 22h1v1h-1zM50 22h1v1h-1zM3 23h1v1h-1zM7 23h1v1h-1zM10 23h2v1h-2zM13 23h2v1h-2zM16 23h2v1h-2zM19 23h2v1h-2zM22 23h1v1h-1zM24 23h1v1h-1zM26 23h1v1h-1zM28 23h5v1h-5zM35 23h2v1h-2zM38 23h8v1h-8zM47 23h4v1h-4zM2 24h1v1h-1zM4 24h7v1h-7zM12 24h2v1h-2zM15 24h1v1h-1zM17 24h1v1h-1zM19 24h1v1h-1zM21 24h8v1h-8zM31 24h1v1h-1zM33 24h1v1h-1zM35 24h5v1h-5zM42 24h7v1h-7zM50 24h1v1h-1zM4 25h3v1h-3zM10 25h1v1h-1zM12 25h3v1h-3zM18 25h1v1h-1zM20 25h1v1h-1zM22 25h3v1h-3zM28 25h5v1h-5zM34 25h1v1h-1zM37 25h3v1h-3zM41 25h2v1h-2zM46 25h3v1h-3zM50 25h1v1h-1zM2 26h2v1h-2zM5 26h2v1h-2zM8 26h1v1h-1zM10 26h2v1h-2zM13 26h1v1h-1zM15 26h1v1h-1zM19 26h1v1h-1zM21 26h1v1h-1zM23 26h2v1h-2zM26 26h1v1h-1zM28 26h1v1h-1zM30 26h1v1h-1zM34 26h1v1h-1zM36 26h1v1h-1zM38 26h1v1h-1zM40 26h3v1h-3zM44 26h1v1h-1zM46 26h2v1h-2zM49 26h2v1h-2zM2 27h1v1h-1zM5 27h2v1h-2zM10 27h4v1h-4zM22 27h3v1h-3zM28 27h1v1h-1zM31 27h2v1h-2zM35 27h1v1h-1zM37 27h2v1h-2zM40 27h1v1h-1zM42 27h1v1h-1zM46 27h1v1h-1zM2 28h2v1h-2zM6 28h5v1h-5zM18 28h4v1h-4zM23 28h6v1h-6zM30 28h1v1h-1zM35 28h3v1h-3zM39 28h8v1h-8zM49 28h2v1h-2zM2 29h1v1h-1zM4 29h1v1h-1zM7 29h1v1h-1zM9 29h1v1h-1zM13 29h3v1h-3zM18 29h1v1h-1zM21 29h2v1h-2zM24 29h2v1h-2zM31 29h1v1h-1zM35 29h2v1h-2zM39 29h1v1h-1zM41 29h3v1h-3zM46 29h3v1h-3zM2 30h2v1h-2zM5 30h1v1h-1zM8 30h2v1h-2zM11 30h1v1h-1zM13 30h3v1h-3zM20 30h1v1h-1zM22 30h1v1h-1zM25 30h1v1h-1zM28 30h1v1h-1zM31 30h1v1h-1zM33 30h2v1h-2zM37 30h5v1h-5zM45 30h1v1h-1zM47 30h1v1h-1zM49 30h2v1h-2zM3 31h2v1h-2zM9 31h1v1h-1zM11 31h5v1h-5zM17 31h1v1h-1zM19 31h1v1h-1zM21 31h2v1h-2zM24 31h1v1h-1zM26 31h4v1h-4zM32 31h1v1h-1zM36 31h4v1h-4zM42 31h2v1h-2zM47 31h1v1h-1zM49 31h1v1h-1zM4 32h1v1h-1zM8 32h2v1h-2zM12 32h1v1h-1zM17 32h3v1h-3zM21 32h1v1h-1zM26 32h1v1h-1zM28 32h1v1h-1zM32 32h1v1h-1zM35 32h1v1h-1zM37 32h1v1h-1zM39 32h1v1h-1zM42 32h1v1h-1zM44 32h1v1h-1zM46 32h3v1h-3zM50 32h1v1h-1zM2 33h3v1h-3zM6 33h1v1h-1zM9 33h2v1h-2zM12 33h2v1h-2zM15 33h1v1h-1zM17 33h2v1h-2zM20 33h1v1h-1zM23 33h1v1h-1zM27 33h1v1h-1zM30 33h4v1h-4zM40 33h3v1h-3zM45 33h3v1h-3zM49 33h1v1h-1zM2 34h3v1h-3zM8 34h1v1h-1zM11 34h3v1h-3zM19 34h1v1h-1zM22 34h1v1h-1zM27 34h2v1h-2zM30 34h1v1h-1zM32 34h1v1h-1zM37 34h2v1h-2zM41 34h3v1h-3zM46 34h2v1h-2zM50 34h1v1h-1zM2 35h4v1h-4zM9 35h2v1h-2zM13 35h2v1h-2zM16 35h2v1h-2zM19 35h2v1h-2zM22 35h6v1h-6zM30 35h3v1h-3zM34 35h10v1h-10zM45 35h5v1h-5zM5 36h7v1h-7zM16 36h4v1h-4zM21 36h4v1h-4zM27 36h2v1h-2zM31 36h1v1h-1zM33 36h1v1h-1zM35 36h3v1h-3zM39 36h1v1h-1zM41 36h1v1h-1zM43 36h2v1h-2zM47 36h1v1h-1zM50 36h1v1h-1zM3 37h3v1h-3zM12 37h1v1h-1zM14 37h2v1h-2zM18 37h1v1h-1zM20 37h2v1h-2zM24 37h4v1h-4zM29 37h1v1h-1zM34 37h2v1h-2zM41 37h1v1h-1zM43 37h1v1h-1zM45 37h1v1h-1zM47 37h3v1h-3zM2 38h2v1h-2zM5 38h2v1h-2zM8 38h5v1h-5zM14 38h1v1h-1zM16 38h4v1h-4zM21 38h1v1h-1zM24 38h1v1h-1zM30 38h1v1h-1zM33 38h2v1h-2zM38 38h2v1h-2zM41 38h4v1h-4zM49 38h2v1h-2zM2 39h1v1h-1zM4 39h1v1h-1zM6 39h1v1h-1zM9 39h1v1h-1zM11 39h1v1h-1zM13 39h1v1h-1zM15 39h1v1h-1zM19 39h2v1h-2zM22 39h1v1h-1zM25 39h2v1h-2zM30 39h3v1h-3zM34 39h2v1h-2zM40 39h1v1h-1zM42 39h1v1h-1zM44 39h1v1h-1zM46 39h1v1h-1zM48 39h2v1h-2zM3 40h1v1h-1zM7 40h7v1h-7zM15 40h1v1h-1zM17 40h2v1h-2zM30 40h1v1h-1zM34 40h2v1h-2zM37 40h1v1h-1zM39 40h2v1h-2zM43 40h2v1h-2zM48 40h3v1h-3zM3 41h3v1h-3zM9 41h1v1h-1zM12 41h3v1h-3zM16 41h3v1h-3zM23 41h2v1h-2zM26 41h2v1h-2zM29 41h2v1h-2zM33 41h1v1h-1zM37 41h1v1h-1zM41 41h1v1h-1zM45 41h4v1h-4zM50 41h1v1h-1zM2 42h3v1h-3zM8 42h1v1h-1zM10 42h12v1h-12zM23 42h6v1h-6zM31 42h1v1h-1zM34 42h15v1h-15zM50 42h1v1h-1zM10 43h1v1h-1zM16 43h1v1h-1zM18 43h1v1h-1zM20 43h2v1h-2zM23 43h2v1h-2zM28 43h1v1h-1zM30 43h1v1h-1zM32 43h1v1h-1zM35 43h5v1h-5zM41 43h2v1h-2zM46 43h3v1h-3zM2 44h7v1h-7zM10 44h1v1h-1zM12 44h3v1h-3zM16 44h3v1h-3zM22 44h3v1h-3zM26 44h1v1h-1zM28 44h2v1h-2zM31 44h2v1h-2zM34 44h1v1h-1zM36 44h1v1h-1zM38 44h2v1h-2zM42 44h1v1h-1zM44 44h1v1h-1zM46 44h1v1h-1zM48 44h1v1h-1zM50 44h1v1h-1zM2 45h1v1h-1zM8 45h1v1h-1zM10 45h2v1h-2zM13 45h1v1h-1zM20 45h2v1h-2zM24 45h1v1h-1zM28 45h1v1h-1zM30 45h2v1h-2zM33 45h1v1h-1zM35 45h2v1h-2zM40 45h3v1h-3zM46 45h1v1h-1zM49 45h2v1h-2zM2 46h1v1h-1zM4 46h3v1h-3zM8 46h1v1h-1zM10 46h5v1h-5zM17 46h4v1h-4zM24 46h8v1h-8zM35 46h1v1h-1zM37 46h2v1h-2zM40 46h1v1h-1zM42 46h6v1h-6zM49 46h2v1h-2zM2 47h1v1h-1zM4 47h3v1h-3zM8 47h1v1h-1zM10 47h4v1h-4zM22 47h1v1h-1zM24 47h1v1h-1zM27 47h1v1h-1zM29 47h2v1h-2zM32 47h2v1h-2zM35 47h3v1h-3zM40 47h2v1h-2zM43 47h3v1h-3zM48 47h3v1h-3zM2 48h1v1h-1zM4 48h3v1h-3zM8 48h1v1h-1zM13 48h1v1h-1zM17 48h3v1h-3zM21 48h3v1h-3zM26 48h3v1h-3zM30 48h2v1h-2zM33 48h6v1h-6zM44 48h3v1h-3zM49 48h1v1h-1zM2 49h1v1h-1zM8 49h1v1h-1zM11 49h1v1h-1zM15 49h1v1h-1zM19 49h1v1h-1zM23 49h1v1h-1zM26 49h2v1h-2zM29 49h1v1h-1zM31 49h2v1h-2zM34 49h2v1h-2zM37 49h1v1h-1zM39 49h1v1h-1zM41 49h2v1h-2zM44 49h1v1h-1zM47 49h4v1h-4zM2 50h7v1h-7zM10 50h2v1h-2zM17 50h5v1h-5zM24 50h4v1h-4zM30 50h1v1h-1zM32 50h1v1h-1zM34 50h1v1h-1zM38 50h2v1h-2zM45 50h3v1h-3zM50 50h1v1h-1z\" fill=\"#000\"/></svg>';
@@ -7576,7 +8100,7 @@ function buildCopy2HTML() {
   const cEmail = document.getElementById('custEmail')?.value.trim() || '';
   const cityLine = [cCity, cState, cZip].filter(Boolean).join(', ');
   const nameCoLine = [cName, cCo].filter(Boolean).join(' / ');
-  const hasCust = cName || cAddr || cPhone || cEmail;
+  const hasCust = cName || cCo || cAddr || cPhone || cEmail;
   const custHtml = hasCust ? `<div class="print-customer" style="margin-top:16px;font-size:13px;line-height:1.8">
     ${nameCoLine ? `<div style="font-weight:600">${esc(nameCoLine)}</div>` : ''}
     ${cAddr ? `<div>${esc(cAddr)}</div>` : ''}
@@ -7647,16 +8171,42 @@ function buildWarrantyForm() {
     + `<div class="wf-line wf-contact-line"><div class="wf-phone-group">${L('Phone')} ${fill(phone)} <span class="wf-label">Email <span class="wf-note">(optional)</span>:</span></div>${fill(email)}</div>`;
 }
 
+function buildBillTo() {
+  if (_docType !== 'invoice' && _docType !== 'quote') return '';
+  const esc = value => String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const finalized = _ledgerOutputCoordinator?.current();
+  let name, company, addressLines, phone, email;
+  if (finalized) {
+    const customer = finalized.source_facts.customer;
+    name = customer.name;
+    company = customer.company;
+    addressLines = String(customer.address || '').split('\n').filter(Boolean);
+    phone = customer.phone;
+    email = customer.email;
+  } else {
+    const value = id => document.getElementById(id)?.value.trim() || '';
+    name = value('custName');
+    company = value('custCompany');
+    const cityLine = [value('custCity'), value('custState'), value('custZip')]
+      .filter(Boolean).join(', ');
+    addressLines = [value('custAddr'), cityLine].filter(Boolean);
+    phone = value('custPhone');
+    email = value('custEmail');
+  }
+  const identity = [name, company].filter((value, index, values) => (
+    value && (index === 0 || value.toLocaleLowerCase() !== values[0].toLocaleLowerCase())
+  ));
+  return '<div class="print-bill-to-label">Bill to</div>'
+    + identity.map(value => `<div class="print-bill-to-name">${esc(value)}</div>`).join('')
+    + addressLines.map(value => `<div>${esc(value)}</div>`).join('')
+    + (phone ? `<div>${esc(phone)}</div>` : '')
+    + (email ? `<div>${esc(email)}</div>` : '');
+}
+
 function buildInvoiceSig() {
-  const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const v = id => (document.getElementById(id)?.value || '').trim();
-  const org = v('custCompany') || v('custName') || '';
-  const orgHtml = org ? `<span class="inv-org">${esc(org)}</span>` : `<span class="wf-fill" style="flex:0 0 320px"></span>`;
-  const email = v('custEmail');
-  const emailHtml = email ? `<span class="inv-org">${esc(email)}</span>` : `<span class="wf-fill" style="flex:0 0 320px"></span>`;
-  return `<div class="inv-billedto">Billed to: ${orgHtml}</div>`
-    + `<div class="inv-billedto">Send invoice to: ${emailHtml}</div>`
-    + `<div class="sig-received">Received by:</div>`
+  return '<div class="inv-billedto">Terms: Net 30</div>'
+    + '<div class="sig-received">Received by:</div>'
     + `<div class="sig-line">Print: <span class="sig-underline"></span></div>`
     + `<div class="sig-line">Sign: <span class="sig-underline"></span></div>`;
 }
@@ -7688,8 +8238,10 @@ function restoreScreenMoneyFormatting() {
 }
 
 function preparePrint() {
-  // Reserve/resolve this document's date so the printed number matches the saved txn
-  const now = reserveDocDate() || new Date();
+  // C06 completion time/number are main-owned and already durable. Legacy and
+  // retained historical documents keep their original minute-derived path.
+  const finalized = _ledgerOutputCoordinator?.current();
+  const now = finalized ? new Date(finalized.completion_at) : (reserveDocDate() || new Date());
   const dateStr = now.toLocaleDateString("en-US", {year:"numeric", month:"long", day:"numeric"});
   const timeStr = now.toLocaleTimeString("en-US", {hour:"numeric", minute:"2-digit"});
   const _reprintTag = _reprintSource ? '  ·  <span class="reprint-tag">Reprint</span>' : '';
@@ -7705,11 +8257,21 @@ function preparePrint() {
   }
   // Document title + number (Sales Receipt / Invoice / Quote)
   document.getElementById("printDocTitle").textContent = DOC_TITLES[_docType];
-  document.getElementById("printDocNum").textContent   = "No. " + formatDocNumber(now, _docType);
+  document.getElementById("printDocNum").textContent   = "No. "
+    + (finalized?.document_number || activeDocNumber() || formatDocNumber(now, _docType));
+  const billTo = document.getElementById('printBillTo');
+  if (billTo) {
+    billTo.innerHTML = buildBillTo();
+    billTo.classList.toggle('active', !!billTo.innerHTML);
+  }
   updateScreenDocTitle();
   // For discount rows: if description is default "Discount", blank it for print
   tbody.querySelectorAll('.discount-desc-input').forEach(el => {
-    if (!el.value.trim() || el.value === 'Discount') { el.dataset.printBlank = '1'; el.value = ''; }
+    if (!el.value.trim() || el.value === 'Discount') {
+      el.dataset.ledgerSourceValue = el.value;
+      el.dataset.printBlank = '1';
+      el.value = '';
+    }
   });
   let anyMulti = false;
   for (let i = 0; i < NUM_ROWS; i++) {
@@ -7798,11 +8360,32 @@ function preparePrint() {
   }
 }
 
+let _ledgerOutputUiLock = null;
+let _preparedPrintHtml = null;
+function lockLedgerOutputUi() {
+  if (_ledgerOutputUiLock) return;
+  const root = document.documentElement;
+  if (!root || typeof root.hasAttribute !== 'function') return;
+  _ledgerOutputUiLock = { root, hadInert: root.hasAttribute('inert') };
+  root.setAttribute('inert', '');
+}
+
+function releaseLedgerOutputUi() {
+  const retained = _ledgerOutputUiLock;
+  _ledgerOutputUiLock = null;
+  if (!retained) return;
+  if (!retained.hadInert) retained.root.removeAttribute('inert');
+}
+
 function cleanupPrint() {
   restoreScreenMoneyFormatting();
   // Restore any blanked discount descriptions
   tbody.querySelectorAll('.discount-desc-input').forEach(el => {
-    if (el.dataset.printBlank === '1') { el.value = 'Discount'; delete el.dataset.printBlank; }
+    if (el.dataset.printBlank === '1') {
+      el.value = el.dataset.ledgerSourceValue ?? 'Discount';
+      delete el.dataset.ledgerSourceValue;
+      delete el.dataset.printBlank;
+    }
   });
   tbody.querySelectorAll('tr').forEach(tr => { tr.classList.remove('print-hide'); tr.classList.remove('print-qty1'); });
   const hdr = document.getElementById('hdr-unitprice');
@@ -7820,18 +8403,389 @@ function cleanupPrint() {
   if (rc) rc.style.display = '';
   const rv = document.getElementById('reviewMsg');
   if (rv) rv.style.display = 'none';
+  const billTo = document.getElementById('printBillTo');
+  if (billTo) { billTo.innerHTML = ''; billTo.classList.remove('active'); }
+  _preparedPrintHtml = null;
+  releaseLedgerOutputUi();
+  releasePhysicalOutput();
   // Quote / Invoice / Internal are one-off modes. Once that document has printed,
   // fall back to Sales Receipt so the next sale at the counter can't inherit the
   // wrong document type from the last one.
-  if (_docType !== 'receipt') setDocType('receipt');
+  if (_docType !== 'receipt' && !_ledgerOutputCoordinator?.current()) setDocType('receipt');
 }
+
+function ledgerMoneyText(value) {
+  const raw = String(value == null ? '' : value).trim()
+    .replace(/\$/g, '').replace(/,/g, '').replace(/^-\s+/, '-');
+  const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(raw);
+  if (!match) throw new window.MPELedgerFinalization.LedgerFinalizationError('money_invalid');
+  const whole = match[2].replace(/^0+(?=\d)/, '') || '0';
+  const fraction = (match[3] || '').padEnd(2, '0');
+  const sign = match[1] && (whole !== '0' || fraction !== '00') ? '-' : '';
+  return `${sign}${whole}.${fraction}`;
+}
+
+function ledgerLineId(row) {
+  let lineId = _ledgerLineIds.get(row);
+  if (lineId) return lineId;
+  if (!globalThis.crypto || typeof globalThis.crypto.randomUUID !== 'function') {
+    throw new window.MPELedgerFinalization.LedgerFinalizationError('identity_invalid');
+  }
+  lineId = globalThis.crypto.randomUUID();
+  _ledgerLineIds.set(row, lineId);
+  return lineId;
+}
+
+function ledgerInvoiceDueDate(completionAt) {
+  if (_docType !== 'invoice') return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T/.exec(completionAt);
+  if (!match) throw new window.MPELedgerFinalization.LedgerFinalizationError('time_invalid');
+  const day = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  day.setUTCDate(day.getUTCDate() + 30);
+  return day.toISOString().slice(0, 10);
+}
+
+// True only while an accepted conversion is still the invoice on screen.
+function _conversionInvoice() {
+  return !!(_ledgerConversion && _docType === 'invoice' && _ledgerConversion.linkedQuoteEventId);
+}
+
+const RECEIPT_TENDER_TYPES = new Set(['cash', 'check', 'card', 'ach', 'customer_credit']);
+
+function readTenderSelection() {
+  if (_docType !== 'receipt') return { type: 'none', reference: null };
+  const type = String(document.getElementById('tenderType')?.value || '').trim();
+  const reference = String(document.getElementById('tenderReference')?.value || '').trim();
+  return { type, reference: reference || null };
+}
+
+function historyTenderSelection() {
+  const tender = readTenderSelection();
+  return RECEIPT_TENDER_TYPES.has(tender.type)
+    ? tender
+    : { type: 'none', reference: null };
+}
+
+function syncTenderReference() {
+  const type = String(document.getElementById('tenderType')?.value || '').trim();
+  const reference = document.getElementById('tenderReference');
+  if (!reference) return;
+  const enabled = RECEIPT_TENDER_TYPES.has(type);
+  reference.disabled = !enabled;
+  if (!enabled) reference.value = '';
+}
+
+function resetTenderUi() {
+  const type = document.getElementById('tenderType');
+  const reference = document.getElementById('tenderReference');
+  if (type) type.value = '';
+  if (reference) reference.value = '';
+  syncTenderReference();
+}
+
+function syncTenderUi() {
+  const receipt = _docType === 'receipt';
+  document.getElementById('tenderPanel')?.classList.toggle('hidden', !receipt);
+  if (!receipt) resetTenderUi();
+  else syncTenderReference();
+}
+
+function captureLedgerFinalizationDraft(actionContext) {
+  const api = window.MPELedgerFinalization;
+  if (!api) throw new Error('Ledger finalization helper is unavailable');
+  const refusal = code => { throw new api.LedgerFinalizationError(code); };
+  const lines = [];
+  for (const row of Array.from(tbody.children)) {
+    if (row.hasAttribute('data-sn-for')) continue;
+    if (row.hasAttribute('data-note-row')) {
+      const id = row.dataset.noteRow;
+      const price = document.getElementById(`${id}-price`);
+      if (String(price?.value || '').trim() || String(price?.dataset.subtotal || '').trim()) {
+        refusal('money_invalid');
+      }
+      lines.push({
+        line_id: ledgerLineId(row), kind: 'note', part_number: '',
+        description: String(document.getElementById(`${id}-desc`)?.value || '').trim(),
+        quantity: null, original_unit_amount: null, discount_amount: null,
+        unit_amount: null, line_rounding: null, line_total: null, serials: [],
+      });
+      continue;
+    }
+    if (!row.hasAttribute('data-row')) continue;
+    const index = row.dataset.row;
+    const partInput = row.querySelector('.part-input');
+    const partNumber = String(partInput?.value || '').trim();
+    if (!partNumber) continue;
+    const descriptionCell = document.getElementById(`desc-${index}`);
+    const noteInput = descriptionCell?.querySelector('.note-desc-input');
+    const discountInput = descriptionCell?.querySelector('.discount-desc-input');
+    const discountDescription = discountInput?.dataset?.ledgerSourceValue
+      ?? discountInput?.value;
+    const description = String(
+      noteInput?.value ?? discountDescription ?? descriptionCell?.textContent ?? '',
+    ).trim();
+    const isNote = partNumber.toLowerCase() === 'note';
+    const priceCell = document.getElementById(`price-${index}`);
+    const priceInput = priceCell?.querySelector('.price-edit');
+    if (isNote) {
+      if (String(priceInput?.value || '').trim() || String(priceCell?.dataset.price || '').trim()) {
+        refusal('money_invalid');
+      }
+      lines.push({
+        line_id: ledgerLineId(row), kind: 'note', part_number: '', description,
+        quantity: null, original_unit_amount: null, discount_amount: null,
+        unit_amount: null, line_rounding: null, line_total: null, serials: [],
+      });
+      continue;
+    }
+    const unitRaw = String(priceInput?.value ?? priceCell?.dataset.price ?? '').trim();
+    const discountRaw = String(priceCell?.dataset.discountPerUnit || '').trim();
+    const originalRaw = discountRaw
+      ? String(priceCell?.dataset.originalEa || '').trim() : unitRaw;
+    const quantity = String(document.getElementById(`qty-${index}`)?.value || '').trim();
+    const subtotalCell = document.getElementById(`sub-${index}`);
+    const lineTotalRaw = String(
+      subtotalCell?.tagName === 'INPUT' ? subtotalCell.value : subtotalCell?.textContent || '',
+    ).trim();
+    const serialRow = tbody.querySelector(`tr[data-sn-for="${index}"]`);
+    const serials = serialRow
+      ? Array.from(serialRow.querySelectorAll('.sn-input'))
+        .map(input => String(input.value || '').trim()).filter(Boolean)
+      : [];
+    lines.push({
+      line_id: ledgerLineId(row), kind: 'item', part_number: partNumber, description,
+      quantity,
+      original_unit_amount: ledgerMoneyText(originalRaw),
+      discount_amount: discountRaw ? ledgerMoneyText(priceCell?._bulkPart ? Number(discountRaw).toFixed(2) : discountRaw) : '0.00',
+      unit_amount: ledgerMoneyText(unitRaw),
+      line_rounding: priceCell?._bulkPart ? (Number(ledgerMoneyText(lineTotalRaw)) - Number(ledgerMoneyText(unitRaw)) * Number(quantity)).toFixed(2) : '0.00',
+      line_total: ledgerMoneyText(lineTotalRaw), serials,
+    });
+  }
+  if (!lines.length) refusal('shape_invalid');
+
+  const value = id => String(document.getElementById(id)?.value || '').trim();
+  const name = value('custName');
+  const company = value('custCompany');
+  const phone = value('custPhone');
+  const email = value('custEmail');
+  const cityLine = [value('custCity'), value('custState'), value('custZip')]
+    .filter(Boolean).join(', ');
+  const address = [value('custAddr'), cityLine].filter(Boolean).join('\n');
+  const anonymous = _docType === 'receipt'
+    && [name, company, phone, email, address].every(item => item === '');
+  const imported = _ledgerDraftCustomerBinding;
+  const subtotal = ledgerMoneyText(document.getElementById('sumSubtotal')?.textContent);
+  const cardFee = ledgerMoneyText(document.getElementById('sumCardFee')?.textContent);
+  const tax = ledgerMoneyText(document.getElementById('sumTax')?.textContent);
+  const total = ledgerMoneyText(document.getElementById('sumTotal')?.textContent);
+  const tender = readTenderSelection();
+  if (_docType === 'receipt' && !RECEIPT_TENDER_TYPES.has(tender.type)) {
+    refusal('tender_invalid');
+  }
+
+  return {
+    schema: 'mpe-pos-c06-captured-draft-v1', schema_version: 1,
+    source_client: { system: 'mpe-pos', app_version: POS_RELEASE },
+    document: {
+      type: _docType,
+      due_date: _conversionInvoice()
+        ? _ledgerConversion.dueDate : ledgerInvoiceDueDate(actionContext.completion_at),
+      // C01 allows this link on an invoice only and never to its own event.
+      linked_quote_event_id: _conversionInvoice() ? _ledgerConversion.linkedQuoteEventId : null,
+      original_source_display_number: null,
+    },
+    customer: _ledgerAdoptedCustomer && !anonymous ? {
+      customer_id: _ledgerAdoptedCustomer.customerId,
+      identity_kind: _ledgerAdoptedCustomer.identityKind || 'adopted',
+      adoption_proof: _ledgerAdoptedCustomer.proof,
+      anonymous, name, company, phone, email, address,
+    } : {
+      customer_id: imported ? imported.ledgerCustomerId : null,
+      identity_kind: anonymous ? 'anonymous' : imported ? 'imported_read_only' : 'native',
+      adoption_proof: null, anonymous, name, company, phone, email, address,
+    },
+    lines,
+    totals: {
+      currency: 'USD', subtotal, card_fee: cardFee, tax, rounding: '0.00', total,
+    },
+    tender,
+  };
+}
+
+function captureRecoveredLedgerFinalizationDraft(actionContext) {
+  const source = _ledgerRecoveredSource;
+  if (!source) throw ledgerRefusalError('finalized_source_missing');
+  const visible = captureLedgerFinalizationDraft(actionContext);
+  const visibleProjection = draft => ({
+    document: draft.document,
+    customer: {
+      anonymous: draft.customer.anonymous,
+      name: draft.customer.name,
+      company: draft.customer.company,
+      phone: draft.customer.phone,
+      email: draft.customer.email,
+      address: draft.customer.address,
+    },
+    lines: draft.lines,
+    totals: draft.totals,
+    tender: draft.tender,
+  });
+  const exact = {
+    schema: 'mpe-pos-c06-captured-draft-v1',
+    schema_version: 1,
+    source_client: source.source_client,
+    document: source.document,
+    customer: source.customer,
+    lines: source.lines,
+    totals: source.totals,
+    tender: source.tender,
+  };
+  if (JSON.stringify(visibleProjection(visible)) !== JSON.stringify(visibleProjection(exact))) {
+    throw ledgerRefusalError('source_binding');
+  }
+  return exact;
+}
+
+function ledgerActionProposal(completionAction) {
+  return {
+    document_type: _docType,
+    completion_action: completionAction,
+    parent_source_event_id: null,
+    parent_source_facts_sha256: null,
+  };
+}
+
+function ledgerErrorCode(error) {
+  try {
+    const descriptor = error && Object.getOwnPropertyDescriptor(error, 'code');
+    return descriptor && typeof descriptor.value === 'string'
+      ? descriptor.value : 'integrity_conflict';
+  } catch (_error) {
+    return 'integrity_conflict';
+  }
+}
+
+function isLedgerRefusal(error) {
+  try {
+    const descriptor = error && Object.getOwnPropertyDescriptor(error, 'code');
+    return !!descriptor && typeof descriptor.value === 'string';
+  } catch (_error) {
+    return false;
+  }
+}
+
+function ledgerRefusalError(code) {
+  const ErrorType = window.MPELedgerFinalization?.LedgerFinalizationError;
+  if (typeof ErrorType === 'function') return new ErrorType(code);
+  const error = new Error('Ledger finalization is unavailable');
+  Object.defineProperty(error, 'code', { value: code });
+  return error;
+}
+
+function showLedgerRefusal(label, error) {
+  const code = ledgerErrorCode(error);
+  const messages = {
+    not_configured: 'Official numbering is not configured. Nothing was printed or saved.',
+    action_unrepresentable: 'That document action is not supported. Nothing was printed or saved.',
+    identity_invalid: 'This customer does not yet have an actionable Ledger identity.',
+    tender_invalid: 'Choose a payment method before completing this receipt.',
+    source_binding: 'This document changed after its number was assigned. Start a new version before output.',
+    finalized_source_missing: 'This numbered document must be reopened from its verified Ledger source.',
+    ledger_unavailable: 'Email is locked until QBO confirms this exact document.',
+    local_integrity_uncertain: 'The number may have saved, but confirmation was interrupted. Try the same action again.',
+    release_unattested: 'The verified numbering code did not load. Nothing was printed or saved.',
+  };
+  const message = messages[code] || 'Official numbering could not be verified. Nothing was printed or saved.';
+  flashScanCommand(message, 'warn');
+  noteToolFailure(label, new Error(message));
+}
+
+async function preflightLedgerOutput(completionAction) {
+  // Invoice activation does not change existing receipt/quote or draft outputs.
+  if (window.mpeDesktop?.numbering?.invoiceFinalization
+      && completionAction !== 'finalize_invoice' && !_ledgerOutputCoordinator?.current()) {
+    return Object.freeze({ mode: 'legacy', reused: false });
+  }
+  if (_docType === 'internal') {
+    return Object.freeze({ mode: 'legacy', reused: false });
+  }
+  if (!_ledgerOutputCoordinator) {
+    if (window.mpeDesktop?.numbering) throw ledgerRefusalError('release_unattested');
+    return Object.freeze({ mode: 'legacy', reused: false });
+  }
+  if (_reprintSource) {
+    if (!_reprintSource.ledgerFinalization) {
+      return Object.freeze({ mode: 'legacy', reused: true });
+    }
+    if (!_ledgerOutputCoordinator.current()?.recovered) {
+      throw ledgerRefusalError('finalized_source_missing');
+    }
+  }
+  const current = _ledgerOutputCoordinator.current();
+  const action = current?.recovered ? 'reprint_snapshot' : completionAction;
+  return _ledgerOutputCoordinator.preflight(
+    ledgerActionProposal(action),
+    _ledgerOutputCoordinator.current()?.recovered
+      ? captureRecoveredLedgerFinalizationDraft
+      : captureLedgerFinalizationDraft,
+  );
+}
+
+(() => {
+  const api = window.MPELedgerFinalization;
+  const numbering = window.mpeDesktop?.numbering;
+  if (!api || !numbering
+      || typeof numbering.beginOutput !== 'function'
+      || typeof numbering.finishOutput !== 'function'
+      || typeof numbering.getFinalizedSource !== 'function'
+      || typeof numbering.getStatus !== 'function'
+      || typeof numbering.prepareContext !== 'function'
+      || typeof numbering.finalize !== 'function') return;
+  try {
+    _ledgerOutputCoordinator = api.createOutputCoordinator({
+      beginOutput: request => numbering.beginOutput(request),
+      finishOutput: request => numbering.finishOutput(request),
+      getFinalizedSource: request => numbering.getFinalizedSource(request),
+      getStatus: () => numbering.getStatus(),
+      prepareContext: request => numbering.prepareContext(request),
+      finalize: request => numbering.finalize(request),
+    });
+    // Warm only the local Desktop status path; this allocates no number and
+    // performs no network or provider work.
+    void _ledgerOutputCoordinator.probe().catch(() => {});
+  } catch (_error) {
+    _ledgerOutputCoordinator = null;
+  }
+})();
 
 // Finalize the order before opening the native print sheet.  The browser also
 // emits beforeprint (including for ⌘P), so this guard keeps one sale from being
 // saved/pushed twice when both paths run for the same print job.
 let _printPrepared = false;
 let _directPrintInFlight = false;
+let _manualPrintInFlight = false;
+let _physicalOutputInFlight = null;
+let _browserPrintLifecycle = null;
+let _printPreparationPromise = null;
+let _printPreparationKey = null;
+let _browserPrintAuditReason = null;
+let _afterPrintCompletion = null;
+function claimPhysicalOutput() {
+  if (_physicalOutputInFlight) return null;
+  const owner = Object.freeze({});
+  _physicalOutputInFlight = owner;
+  return owner;
+}
+
+function releasePhysicalOutput(owner) {
+  if (!owner || _physicalOutputInFlight !== owner) return false;
+  _physicalOutputInFlight = null;
+  return true;
+}
+
 function recordOutgoingDocument() {
+  if (document.body.dataset.ledgerContactMode === '1') return false;
   commitActiveBridgeDraft();
   // Renew before the flush so this proposal and any older local entries can
   // leave together even after a quiet hour at the register.
@@ -7839,11 +8793,108 @@ function recordOutgoingDocument() {
   void flushPendingPriceChanges();
   const saved = saveToHistory();
   updatePriceChangesBadge();
+  if (saved && _currentTxnId) {
+    // Authoritative document saved: link this cart session to its real TxnID
+    // so any provisional cart-clear review for the session is superseded.
+    queueStockFinalForOutput(_currentTxnId);
+    void flushStockSessionQueue();
+  }
   return saved;
 }
 
+let _ledgerFrozenControls = [];
+function freezeLedgerInvoiceControls() {
+  if (_ledgerFrozenControls.length) return;
+  for (const node of document.querySelectorAll('#searchRows, #mobileRows, #custPanel, #docTypeSel, #discountsBtn, #phoneListBtn, #togglesMenu, #saveBtn, #chargeCardBtn')) {
+    _ledgerFrozenControls.push([node, node.hasAttribute('inert')]);
+    node.setAttribute('inert', '');
+  }
+}
+function releaseLedgerInvoiceControls() {
+  for (const [node, retained] of _ledgerFrozenControls) if (!retained) node.removeAttribute('inert');
+  _ledgerFrozenControls = [];
+}
+
+function setLedgerInvoiceStatus(message) {
+  const node = document.getElementById('ledgerInvoiceStatus');
+  if (node) { node.hidden = !message; node.textContent = message; }
+}
+
+async function refreshLedgerInvoiceStatus() {
+  clearTimeout(_ledgerInvoiceStatusTimer);
+  const current = _ledgerOutputCoordinator?.current();
+  if (!current || current.document_type !== 'invoice') return;
+  const number = current.document_number;
+  try {
+    await preflightLedgerOutput('finalize_invoice');
+    const reply = await window.mpeDesktop.numbering.documentStatus({ source_event_id: current.source_event_id, source_facts_sha256: current.source_facts_sha256 });
+    if (_ledgerOutputCoordinator?.current()?.source_event_id !== current.source_event_id) return;
+    if (!reply.ok) throw ledgerRefusalError(reply.error_code);
+    const status = reply.result;
+    if (status.source_event_id !== current.source_event_id) throw ledgerRefusalError('source_binding');
+    if (status.state === 'succeeded') {
+      setLedgerInvoiceStatus('Invoice ' + number + ' saved to QuickBooks.');
+      return;
+    }
+    if (['failed', 'ambiguous'].includes(status.state)) {
+      setLedgerInvoiceStatus('Invoice ' + number + ' saved locally. QuickBooks needs review; do not create another invoice.');
+      return;
+    }
+    setLedgerInvoiceStatus('Invoice ' + number + ' saved locally and queued for QuickBooks.');
+  } catch (error) {
+    if (ledgerErrorCode(error) === 'source_binding') { setLedgerInvoiceStatus('The visible edits are not part of finalized invoice ' + number + '. Clear to start a new invoice.'); return; }
+    const authentication = ledgerErrorCode(error) === 'authentication_required';
+    setLedgerInvoiceStatus('Invoice ' + number + ' saved locally. ' + (authentication
+      ? 'Sign in to Ledger in Desktop Settings to sync.' : 'Waiting for the Ledger connection; the invoice is retained.'));
+  }
+  _ledgerInvoiceStatusTimer = setTimeout(refreshLedgerInvoiceStatus, 5000);
+}
+
+async function finalizeLedgerInvoice() {
+  if (_docType !== 'invoice' || _ledgerInvoiceFinalizing) return;
+  if ((_reprintSource && !_reprintSource.ledgerFinalization) || (_currentTxnId && !_ledgerOutputCoordinator?.current())) { setLedgerInvoiceStatus('Open a new invoice to finalize. Historical documents need Ledger review.'); return; }
+  if (_ledgerOutputCoordinator?.current()) { await refreshLedgerInvoiceStatus(); return; }
+  const numbering = window.mpeDesktop?.numbering;
+  if (!numbering?.invoiceFinalization || !_ledgerOutputCoordinator) return;
+  if (!captureOrder()) { setLedgerInvoiceStatus('Add an item before finalizing the invoice.'); return; }
+  _ledgerInvoiceFinalizing = true;
+  const button = document.getElementById('finalizeInvoiceBtn');
+  button.disabled = true;
+  lockLedgerOutputUi();
+  try {
+    const value = id => String(document.getElementById(id)?.value || '').trim();
+    const customer = { name: value('custName'), company: value('custCompany'), phone: value('custPhone'), email: value('custEmail'),
+      address: [value('custAddr'), [value('custCity'), value('custState'), value('custZip')].filter(Boolean).join(', ')].filter(Boolean).join('\n') };
+    const reply = await numbering.resolveCustomer({ customer, provider_id: _ledgerAdoptedCustomer?.proof?.provider_id || null });
+    if (!reply.ok) throw ledgerRefusalError(reply.error_code);
+    _ledgerAdoptedCustomer = { customerId: reply.result.customer_id, identityKind: reply.result.identity_kind, proof: reply.result.adoption_proof };
+    const committed = await prepareAndSaveForPrint('finalize_invoice', { prepareOutput: false });
+    if (committed.mode !== 'c06') throw ledgerRefusalError('not_configured');
+    updateScreenDocTitle();
+    button.textContent = 'Invoice finalized';
+    freezeLedgerInvoiceControls();
+    await refreshLedgerInvoiceStatus();
+  } catch (error) {
+    const code = ledgerErrorCode(error);
+    const messages = {
+      pos_context_unavailable: 'Customer check unavailable; the draft is retained. Retry when Ledger and QuickBooks reconnect.',
+      authentication_required: 'Sign in to Ledger in Desktop Settings, then finalize this invoice.',
+      not_configured: 'Invoice sync is not configured on this register. The draft is still here.',
+      customer_not_found: 'This customer is not yet linked to Ledger. Complete the customer in Ledger, then try again.',
+      customer_ambiguous: 'More than one customer matches. Select the correct customer in Ledger first.',
+      identity_invalid: 'Check the customer name, address, and phone before finalizing.',
+      formal_ineligible: 'Complete the customer name, address, and phone before finalizing.',
+    };
+    setLedgerInvoiceStatus(messages[code] || 'The invoice was not confirmed. Keep this draft and retry Finalize Invoice; do not make another copy.');
+    button.disabled = false;
+  } finally {
+    _ledgerInvoiceFinalizing = false;
+    releaseLedgerOutputUi();
+  }
+}
+
 let _saveFeedbackTimer = null;
-function saveOnly() {
+async function saveOnly() {
   if (_docType === 'internal') {
     alert('Internal copies cannot be saved to transaction history because they contain private cost and margin information. Switch to Receipt, Invoice, or Quote first.');
     return;
@@ -7853,10 +8904,14 @@ function saveOnly() {
     return;
   }
 
-  reserveDocDate();
-  if (!recordOutgoingDocument()) return;
-  updateScreenDocTitle();
-  showPrintBanner();
+  try {
+    await prepareAndSaveForPrint('save_snapshot', { prepareOutput: false });
+    updateScreenDocTitle();
+    showPrintBanner();
+  } catch (error) {
+    showLedgerRefusal('Save', error);
+    return;
+  }
 
   const btn = document.getElementById('saveBtn');
   if (!btn) return;
@@ -7868,15 +8923,116 @@ function saveOnly() {
     btn.disabled = false;
   }, 2200);
 }
-function prepareAndSaveForPrint() {
-  if (_printPrepared) return;
-  _printPrepared = true;
-  preparePrint();
-  recordOutgoingDocument();
+async function prepareAndSaveForPrint(
+  completionAction = 'print_snapshot',
+  { prepareOutput = true, outputKind = null } = {},
+) {
+  if (document.body.dataset.ledgerContactMode === '1') throw new Error('Finish customer details before returning to the register.');
+  if (prepareOutput && _printPrepared) return _ledgerOutputCoordinator?.current()
+    || Object.freeze({ mode: 'legacy', reused: true });
+  const preparationKey = JSON.stringify([completionAction, prepareOutput, outputKind]);
+  if (_printPreparationPromise) {
+    if (_printPreparationKey !== preparationKey) {
+      throw ledgerRefusalError('replay_collision');
+    }
+    return _printPreparationPromise;
+  }
+  const attempt = (async () => {
+    let finalized = null;
+    let auditKind = null;
+    const lockForLedger = _docType !== 'internal' && !!_ledgerOutputCoordinator;
+    if (lockForLedger) lockLedgerOutputUi();
+    try {
+      // Commit the active editor synchronously before freezing any source facts.
+      // The second call inside recordOutgoingDocument is then a harmless no-op.
+      commitActiveBridgeDraft();
+      finalized = await preflightLedgerOutput(completionAction);
+      auditKind = finalized.mode === 'c06' && outputKind
+        ? (finalized.recovered ? 'reprint' : outputKind)
+        : null;
+      if (prepareOutput) preparePrint();
+      else if (finalized.mode === 'legacy') reserveDocDate();
+      if (!recordOutgoingDocument()) {
+        throw new window.MPELedgerFinalization.LedgerFinalizationError('output_failed');
+      }
+      // This is a local atomic append only. It performs no network, Ledger, or
+      // QBO call and completes before any printer/PDF output can start.
+      if (auditKind) {
+        await _ledgerOutputCoordinator.beginOutput(auditKind);
+        // beginOutput may wait on a local disk flush. Re-capture after it
+        // returns so a changed customer, line, serial, or total cannot reach
+        // output under the already-committed number.
+        await preflightLedgerOutput(completionAction);
+      }
+      // Set this only after local finalization, output preparation, and history
+      // have all succeeded, so a failed commit never strands the retry.
+      if (prepareOutput) {
+        _printPrepared = true;
+        if (auditKind) _preparedPrintHtml = serializedPrintDocument();
+      }
+      updateScreenDocTitle();
+      if (!auditKind) releaseLedgerOutputUi();
+      return finalized;
+    } catch (error) {
+      if (prepareOutput) cleanupPrint();
+      else releaseLedgerOutputUi();
+      _printPrepared = false;
+      throw error;
+    }
+  })();
+  _printPreparationPromise = attempt;
+  _printPreparationKey = preparationKey;
+  try {
+    return await attempt;
+  } finally {
+    if (_printPreparationPromise === attempt) {
+      _printPreparationPromise = null;
+      _printPreparationKey = null;
+    }
+  }
+}
+
+async function finishLedgerOutput(outcome, reasonCode) {
+  if (!_ledgerOutputCoordinator?.outputPending()) return true;
+  let lastError = null;
+  // An exact second call is safe and lets a lost IPC response replay the same
+  // retained terminal observation without producing output a second time.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await _ledgerOutputCoordinator.finishOutput(outcome, reasonCode);
+      return true;
+    } catch (error) {
+      lastError = error;
+      if (ledgerErrorCode(error) !== 'local_integrity_uncertain') break;
+    }
+  }
+  const message = 'The document output finished, but its local audit confirmation is uncertain. The official number is still reserved; restart POS before clearing this sale.';
+  flashScanCommand(message, 'warn');
+  noteToolFailure('Output confirmation', lastError || new Error(message));
+  return false;
+}
+
+function prepareLegacyBeforePrint() {
+  if (_printPrepared) return true;
+  try {
+    preparePrint();
+    if (!recordOutgoingDocument()) {
+      cleanupPrint();
+      return false;
+    }
+    _printPrepared = true;
+    return true;
+  } catch (error) {
+    cleanupPrint();
+    _printPrepared = false;
+    noteToolFailure('Print preparation', error);
+    return false;
+  }
 }
 
 function serializedPrintDocument() {
   const copy = document.documentElement.cloneNode(true);
+  copy.removeAttribute('inert');
   const originals = document.querySelectorAll('input, textarea, select');
   const copies = copy.querySelectorAll('input, textarea, select');
   originals.forEach((original, index) => {
@@ -7902,11 +9058,40 @@ function serializedPrintDocument() {
   return '<!doctype html>\n' + copy.outerHTML;
 }
 
-function manualPrint() {
+async function manualPrint() {
+  if (_manualPrintInFlight) return;
+  const physicalOutputOwner = claimPhysicalOutput();
+  if (!physicalOutputOwner) return;
+  _manualPrintInFlight = true;
+  let browserLifecycle = null;
   // Manual always means manual, including inside MPE POS Desktop. Auto Print is
   // the separate path that pins the configured Brother, simplex, and one copy.
-  prepareAndSaveForPrint();
-  window.print();
+  try {
+    await prepareAndSaveForPrint('print_snapshot', { outputKind: 'print' });
+    _browserPrintAuditReason = 'output_cancelled';
+    browserLifecycle = Object.freeze({ physicalOutputOwner });
+    _browserPrintLifecycle = browserLifecycle;
+    try {
+      window.print();
+    } catch (error) {
+      if (_browserPrintLifecycle === browserLifecycle) _browserPrintLifecycle = null;
+      _browserPrintAuditReason = null;
+      await finishLedgerOutput('failed', 'output_failed');
+      cleanupPrint();
+      _printPrepared = false;
+      throw error;
+    }
+  } catch (error) {
+    showLedgerRefusal('Print', error);
+  } finally {
+    _manualPrintInFlight = false;
+    // A successful browser handoff owns this token until afterprint finishes
+    // the durable terminal audit and cleanup.  A stale route cannot release a
+    // newer route's ownership because releasePhysicalOutput is token-checked.
+    if (!browserLifecycle || _browserPrintLifecycle !== browserLifecycle) {
+      releasePhysicalOutput(physicalOutputOwner);
+    }
+  }
 }
 
 const AUTO_PRINT_REPEAT_GUARD_MS = 5000;
@@ -7914,7 +9099,7 @@ let _lastDirectPrintTxnId = '';
 let _lastDirectPrintFingerprint = '';
 let _lastDirectPrintAt = 0;
 async function autoPrint() {
-  if (_directPrintInFlight) return;
+  if (_directPrintInFlight || _physicalOutputInFlight) return;
   if (_currentTxnId && _currentTxnId === _lastDirectPrintTxnId
       && historyContentFingerprint(captureOrder()) === _lastDirectPrintFingerprint && Date.now() - _lastDirectPrintAt < AUTO_PRINT_REPEAT_GUARD_MS) {
     const repeatBtn = document.getElementById('autoPrintBtn');
@@ -7925,6 +9110,8 @@ async function autoPrint() {
     flashScanCommand('Already sent once — duplicate blocked', 'warn');
     return;
   }
+  const physicalOutputOwner = claimPhysicalOutput();
+  if (!physicalOutputOwner) return;
   _directPrintInFlight = true;
   const printStartedAt = performance.now();
   const btn = document.getElementById('autoPrintBtn');
@@ -7932,7 +9119,16 @@ async function autoPrint() {
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
   clearToolFailure();
   setBtn('⏳', true);
-  prepareAndSaveForPrint();
+  let preparedResult = null;
+  try {
+    preparedResult = await prepareAndSaveForPrint('print_snapshot', { outputKind: 'print' });
+  } catch (error) {
+    showLedgerRefusal('Auto Print', error);
+    setBtn(idleLabel, false);
+    _directPrintInFlight = false;
+    releasePhysicalOutput(physicalOutputOwner);
+    return;
+  }
   const preparedAt = performance.now();
   let printedByService = false;
   try {
@@ -7948,7 +9144,7 @@ async function autoPrint() {
       const timer = setTimeout(() => ctl.abort(), 30000);
       let response;
       try {
-        const html = serializedPrintDocument();
+        const html = _preparedPrintHtml || serializedPrintDocument();
         const snapshotAt = performance.now();
         response = await fetch(POS_PRINT_URL, {
           method: 'POST',
@@ -7974,6 +9170,7 @@ async function autoPrint() {
       agent: result.timings || null,
     });
     printedByService = true;
+    await finishLedgerOutput('succeeded', null);
     _lastDirectPrintTxnId = _currentTxnId || '';
     _lastDirectPrintFingerprint = _currentTxnId ? historyContentFingerprint(captureOrder()) : '';
     _lastDirectPrintAt = Date.now();
@@ -7984,40 +9181,82 @@ async function autoPrint() {
     noteToolFailure('Auto Print', error);
   }
   if (!printedByService) {
-    // No print service on this till, or it failed. Fall back to the browser's own
-    // print rather than leaving the receipt unprinted: the till still prints, it
-    // just costs one keypress. The sale itself is already saved either way, and
-    // _printPrepared stops the beforeprint handler saving it a second time.
-    // cleanup is left to afterprint, which fires whether or not they hit Cancel.
+    if (preparedResult?.mode !== 'c06') {
+      // Preserve the existing unconfigured/legacy till behavior exactly.
+      setBtn(idleLabel, false);
+      const browserLifecycle = Object.freeze({ physicalOutputOwner });
+      _browserPrintLifecycle = browserLifecycle;
+      try {
+        window.print();
+      } catch (error) {
+        if (_browserPrintLifecycle === browserLifecycle) _browserPrintLifecycle = null;
+        noteToolFailure('Print dialog', error);
+        cleanupPrint();
+        _printPrepared = false;
+      }
+      _directPrintInFlight = false;
+      if (_browserPrintLifecycle !== browserLifecycle) {
+        releasePhysicalOutput(physicalOutputOwner);
+      }
+      return;
+    }
+    // A failed/timed-out direct-print response cannot prove whether the printer
+    // received the job. Record that uncertainty and do not open a second print
+    // path automatically, which could create a duplicate customer copy.
+    await finishLedgerOutput('ambiguous', 'output_failed');
     setBtn(idleLabel, false);
     _directPrintInFlight = false;
-    try {
-      window.print();
-    } catch (error) {
-      noteToolFailure('Print dialog', error);
-      cleanupPrint();
-      _printPrepared = false;
-    }
+    cleanupPrint();
+    _printPrepared = false;
+    releasePhysicalOutput(physicalOutputOwner);
+    flashScanCommand('Auto Print was uncertain. Check the printer before choosing Manual Print.', 'warn');
     return;
   }
   cleanupPrint();
   _printPrepared = false;
   _directPrintInFlight = false;
+  releasePhysicalOutput(physicalOutputOwner);
   if (_scannerModeActive || _scannerModeDefault) {
     _scannerModeAwaitingClear = true;
     setScannerModeActive(true, { message: 'Printed — sale kept. Scan Next Transaction for the next sale.', state: 'warn' });
   }
 }
 
-window.addEventListener('beforeprint', prepareAndSaveForPrint);
-window.addEventListener('afterprint', () => {
-  cleanupPrint();
-  showPrintBanner();
-  _printPrepared = false;
-  if (_scannerModeActive || _scannerModeDefault) {
-    _scannerModeAwaitingClear = true;
-    setScannerModeActive(true, { message: 'Print window closed — sale kept. Scan Next Transaction for the next sale.', state: 'warn' });
+window.addEventListener('beforeprint', () => {
+  if (_printPrepared) return;
+  if (!_ledgerOutputCoordinator || _ledgerOutputCoordinator.mode() === 'legacy') {
+    prepareLegacyBeforePrint();
+    return;
   }
+  // beforeprint cannot await trusted IPC. Explicit buttons and Ctrl/Cmd+P
+  // preflight first; an un-intercepted browser/menu print receives only this
+  // visible refusal sheet and creates no history/provider effect.
+  document.body.classList.add('c06-print-refused');
+  showLedgerRefusal('Print', new window.MPELedgerFinalization.LedgerFinalizationError('not_configured'));
+});
+window.addEventListener('afterprint', () => {
+  if (_afterPrintCompletion) return;
+  const browserLifecycle = _browserPrintLifecycle;
+  const auditReason = _browserPrintAuditReason;
+  const refused = document.body.classList.contains('c06-print-refused');
+  _browserPrintAuditReason = null;
+  const completion = (async () => {
+    if (auditReason) await finishLedgerOutput('ambiguous', auditReason);
+    document.body.classList.remove('c06-print-refused');
+    cleanupPrint();
+    _printPrepared = false;
+    if (!refused) showPrintBanner();
+    if (!refused && (_scannerModeActive || _scannerModeDefault)) {
+      _scannerModeAwaitingClear = true;
+      setScannerModeActive(true, { message: 'Print window closed — sale kept. Scan Next Transaction for the next sale.', state: 'warn' });
+    }
+  })();
+  _afterPrintCompletion = completion;
+  void completion.finally(() => {
+    if (_afterPrintCompletion === completion) _afterPrintCompletion = null;
+    if (_browserPrintLifecycle === browserLifecycle) _browserPrintLifecycle = null;
+    if (browserLifecycle) releasePhysicalOutput(browserLifecycle.physicalOutputOwner);
+  });
 });
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'p') { e.preventDefault(); manualPrint(); }
@@ -8096,8 +9335,14 @@ function buildEmailBody(order, title, number, dateStr, signature = '') {
   const esc = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const money = value => '$' + Number(value).toFixed(2);
   const items = order.items || [];
-  const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.sub) || 0), 0);
-  const { tax, cardFee, total } = checkoutTotals(subtotal, !!order.toggles?.cardFee);
+  const frozenTotals = order.ledgerTotals;
+  const subtotal = frozenTotals
+    ? Number(frozenTotals.subtotal)
+    : items.reduce((sum, item) => sum + (parseFloat(item.sub) || 0), 0);
+  const calculated = checkoutTotals(subtotal, !!order.toggles?.cardFee);
+  const tax = frozenTotals ? Number(frozenTotals.tax) : calculated.tax;
+  const cardFee = frozenTotals ? Number(frozenTotals.card_fee) : calculated.cardFee;
+  const total = frozenTotals ? Number(frozenTotals.total) : calculated.total;
   const greeting = 'Aloha' + (order.customer?.name ? ' ' + order.customer.name : '') + ',';
   const intro = `Please find your ${title.toLowerCase()} (No. ${number}) attached. A summary is included below.`;
   const cell = 'padding:8px 6px;border-bottom:1px solid #d7d7d7;text-align:left;vertical-align:top';
@@ -8173,9 +9418,15 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const logoSrc = _pdfLogoSrc();
   const items = order.items || [];
-  const subtotal = items.reduce((s, it) => s + (parseFloat(it.sub) || 0), 0);
+  const frozenTotals = order.ledgerTotals;
+  const subtotal = frozenTotals
+    ? Number(frozenTotals.subtotal)
+    : items.reduce((s, it) => s + (parseFloat(it.sub) || 0), 0);
   const cardFeeActive = !!order.toggles?.cardFee;
-  const { tax, cardFee, total } = checkoutTotals(subtotal, cardFeeActive);
+  const calculated = checkoutTotals(subtotal, cardFeeActive);
+  const tax = frozenTotals ? Number(frozenTotals.tax) : calculated.tax;
+  const cardFee = frozenTotals ? Number(frozenTotals.card_fee) : calculated.cardFee;
+  const total = frozenTotals ? Number(frozenTotals.total) : calculated.total;
   const anyMulti = items.some(it => (parseFloat(it.qty) || 1) !== 1);
 
   const rows = items.map(it => {
@@ -8199,8 +9450,10 @@ function buildEmailDocHTML(order, title, number, dateStr) {
   const c = order.customer || {};
   const cityLine = [c.city, c.state, c.zip].filter(Boolean).join(', ');
   const nameCo = [c.name, c.company].filter(Boolean).join(' / ');
-  const hasCust = c.name || c.addr || c.phone || c.email;
-  const custHtml = hasCust ? `<div style="margin-top:18px;font-size:13px;line-height:1.7;color:${PDF_INK};border-left:3px solid ${PDF_LINE};padding-left:10px;text-transform:uppercase">
+  const hasCust = c.name || c.company || c.addr || c.phone || c.email;
+  const billToDocument = _docType === 'invoice' || _docType === 'quote';
+  const custHtml = hasCust ? `<div style="margin-top:18px;font-size:13px;line-height:1.7;color:${PDF_INK};border-left:3px solid ${PDF_LINE};padding-left:10px;${billToDocument ? '' : 'text-transform:uppercase'}">
+    ${billToDocument ? `<div style="font-size:10px;font-weight:800;letter-spacing:.06em;margin-bottom:3px">BILL TO</div>` : ''}
     ${nameCo ? `<div style="font-weight:600;color:${PDF_INK}">${esc(nameCo)}</div>` : ''}
     ${c.addr ? `<div>${esc(c.addr)}</div>` : ''}
     ${cityLine ? `<div>${esc(cityLine)}</div>` : ''}
@@ -8243,6 +9496,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       <span style="font-size:13px;font-weight:600;color:${PDF_INK}">No. ${esc(number)}</span>
       <span style="font-size:13px;font-weight:600;margin-left:auto;color:${PDF_INK}">${esc(dateStr)}</span>
     </div>
+    ${billToDocument ? custHtml : ''}
     <table style="width:100%;border-collapse:collapse;margin-top:16px">
       <colgroup><col style="width:24%"><col style="width:42%"><col style="width:19%"><col style="width:15%"></colgroup>
       <thead><tr>
@@ -8260,7 +9514,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:2px solid ${PDF_INK};font-weight:700;font-size:16px;color:${PDF_INK}"><span>Total</span><span>$${total.toFixed(2)}</span></div>
     </div>
     ${internalHtml}
-    ${custHtml}
+    ${billToDocument ? '' : custHtml}
     <div style="text-align:center;font-style:italic;color:${PDF_INK};margin-top:22px;font-size:13px">Mahalo for your business!</div>
   </div>`;
 }
@@ -8331,7 +9585,7 @@ async function _renderPdf(el, filename, mode) {
 // the sheets that come off the shop printer. Needs no Google sign-in.
 async function exportPdf() {
   const btn = document.getElementById('exportPdfBtn');
-  const order = captureOrder();
+  let order = captureOrder();
   if (!order || !order.items.length) { alert('Add at least one item before exporting.'); return; }
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
   if (typeof html2pdf === 'undefined') {
@@ -8343,25 +9597,41 @@ async function exportPdf() {
   setBtn('⏳', true);
   const holder = document.getElementById('emailPdfHolder');
   try {
-    const now    = reserveDocDate() || new Date();
-    const number = formatDocNumber(now, _docType);
+    const completionAction = _docType === 'receipt' ? 'print_snapshot' : 'export_snapshot';
+    await prepareAndSaveForPrint(completionAction, { prepareOutput: false, outputKind: 'pdf' });
+    order = captureOrder();
+    if (!order) throw new window.MPELedgerFinalization.LedgerFinalizationError('source_binding');
+    const finalized = _ledgerOutputCoordinator?.current();
+    if (finalized) {
+      order = ledgerOrderFromFinalizedSource(
+        finalized.source_facts,
+        order,
+        finalized.document_number,
+      );
+    }
+    const now = finalized ? new Date(finalized.completion_at) : (reserveDocDate() || new Date());
+    const number = finalized?.document_number || activeDocNumber() || formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
-    // Record before handing control to the browser download. Desktop Chromium
-    // does not reliably settle the save promise, while Print records before its
-    // native output step. The shared transaction ID prevents retry duplicates.
-    recordOutgoingDocument();
     holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
     await _renderPdf(holder.firstElementChild, `MPE_${title}_${number}.pdf`, 'save');
+    await finishLedgerOutput('succeeded', null);
     holder.innerHTML = '';
     setBtn('✓', false);
     showPrintBanner();
     setTimeout(() => setBtn('⬇', false), 4000);
   } catch (e) {
+    await finishLedgerOutput('failed', 'output_failed');
     holder.innerHTML = '';
-    noteToolFailure('PDF export', e);
+    if (isLedgerRefusal(e)) {
+      showLedgerRefusal('PDF export', e);
+    } else {
+      noteToolFailure('PDF export', e);
+    }
     setBtn('✕', false);
     setTimeout(() => setBtn('⬇', false), 4000);
+  } finally {
+    releaseLedgerOutputUi();
   }
 }
 
@@ -8373,6 +9643,18 @@ async function emailDoc() {
   if (typeof html2pdf === 'undefined') {
     noteToolFailure('Email draft', new Error('html2pdf library did not load'));
     setBtn('✕', false); setTimeout(() => setBtn('✉', false), 4000);
+    return;
+  }
+
+  if (_ledgerOutputCoordinator) {
+    try {
+      await _ledgerOutputCoordinator.guardArtifact();
+    } catch (error) {
+      showLedgerRefusal('Email draft', error);
+      return;
+    }
+  } else if (window.mpeDesktop?.numbering) {
+    showLedgerRefusal('Email draft', ledgerRefusalError('release_unattested'));
     return;
   }
 
@@ -8511,6 +9793,7 @@ function captureOrder() {
     zip: upperText(document.getElementById('custZip')?.value || ''),
     phone: upperText(document.getElementById('custPhone')?.value || ''),
     email: upperText(document.getElementById('custEmail')?.value || ''),
+    ledgerBinding: _ledgerDraftCustomerBinding ? { ..._ledgerDraftCustomerBinding } : undefined,
   };
   const toggles = {
     warranty:  document.getElementById('warrantyBtn')?.classList.contains('active') || false,
@@ -8519,12 +9802,15 @@ function captureOrder() {
     salesView: document.getElementById('salesViewBtn')?.classList.contains('active') || false,
     cardFee:   document.getElementById('cardFeeBtn')?.classList.contains('active') || false,
   };
-  return { date: new Date().toISOString(), customer, items, total, toggles };
+  return {
+    date: new Date().toISOString(), customer, items, total, toggles,
+    tender: historyTenderSelection(),
+  };
 }
 
 let _lastPrintedOrder = null;
 let _lastPushStatus = null;  // null | 'pending' | 'ok' | 'fail' | 'skipped'
-let _reprintSource  = null;  // set by reprintOrder; cleared after saveToHistory processes it
+let _reprintSource  = null;  // set by reprintOrder; retained until the loaded copy is cleared
 let _currentTxnId   = null;  // txnId for current unsaved POS state — reused on multi-print
 let _currentTxnDate = null;  // ISO date string matching _currentTxnId
 
@@ -8580,6 +9866,12 @@ function historyDocTypeTag(type) {
     } else if (t === 'internal') {
       document.getElementById('custPanel')?.classList.add('hidden');
     }
+    syncTenderUi();
+    const finalizeButton = document.getElementById('finalizeInvoiceBtn');
+    const invoiceActivation = t === 'invoice' && !!window.mpeDesktop?.numbering?.invoiceFinalization;
+    if (finalizeButton) finalizeButton.hidden = !invoiceActivation;
+    const saveButton = document.getElementById('saveBtn');
+    if (saveButton) saveButton.hidden = invoiceActivation;
     updateScreenDocTitle();
     resetScannerModeIdleTimer();
     return true;
@@ -8602,11 +9894,16 @@ function docDateOrNull() {
   return null;
 }
 function activeDocNumber() {
+  const finalized = _ledgerOutputCoordinator?.current();
+  if (finalized) return finalized.document_number;
+  if (_reprintSource?.docNumber) return _reprintSource.docNumber;
   const d = docDateOrNull();
   return d ? formatDocNumber(d, _docType) : null;
 }
 // Reserve a date for a brand-new document so its number is stable through print/email
 function reserveDocDate() {
+  const finalized = _ledgerOutputCoordinator?.current();
+  if (finalized) return new Date(finalized.completion_at);
   if (!_reprintSource && !_currentTxnDate && !_pendingTxnDate) _pendingTxnDate = new Date();
   return docDateOrNull();
 }
@@ -8614,7 +9911,10 @@ function updateScreenDocTitle() {
   const el = document.getElementById('docScreenTitle');
   if (!el) return;
   const num = activeDocNumber();
-  el.textContent = DOC_TITLES[_docType] + (num ? '   ·   No. ' + num : '') + (_reprintSource ? '   ·   Reprint' : '');
+  const converted = _conversionInvoice() && _ledgerConversion.quoteDisplayNumber
+    ? '   ·   Converted from ' + _ledgerConversion.quoteDisplayNumber : '';
+  el.textContent = DOC_TITLES[_docType] + (num ? '   ·   No. ' + num : '')
+    + converted + (_reprintSource ? '   ·   Reprint' : '');
 }
 
 // A document keeps its identity; saving edits replaces its existing history entry.
@@ -8640,25 +9940,40 @@ function saveToHistory() {
   if (_docType === 'internal') return false;
   const order = captureOrder();
   if (!order) return false;
+  const finalized = typeof _ledgerOutputCoordinator !== 'undefined' ? _ledgerOutputCoordinator?.current() : null;
   maybeSaveNewCustomer();
   const history = getHistory();
   const identity = _reprintSource || (_currentTxnId ? { txnId: _currentTxnId, date: _currentTxnDate } : null);
   const previous = identity && history.find(entry => entry.txnId === identity.txnId);
-  const now = _pendingTxnDate || new Date();
+  const now = finalized ? new Date(finalized.completion_at) : (_pendingTxnDate || new Date());
   if (identity) {
     order.txnId = identity.txnId;
     order.date = identity.date;
     order.docType = _docType;
     order.docNumber = identity.docNumber || previous?.docNumber || formatDocNumber(new Date(identity.date), _docType);
+    if (identity.ledgerFinalization || previous?.ledgerFinalization) {
+      order.ledgerFinalization = { ...(identity.ledgerFinalization || previous.ledgerFinalization) };
+    }
   } else {
     const pad = n => String(n).padStart(2, '0');
     const base = 'TX-' + pad(now.getMonth()+1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + '-' + pad(now.getSeconds());
-    order.txnId = base;
-    const ids = new Set(history.map(entry => entry.txnId));
-    for (let n = 2; ids.has(order.txnId); n++) order.txnId = base + '-' + n;
+    order.txnId = finalized ? finalized.source_transaction_id : base;
+    if (!finalized) {
+      const ids = new Set(history.map(entry => entry.txnId));
+      for (let n = 2; ids.has(order.txnId); n++) order.txnId = base + '-' + n;
+    }
     order.date = now.toISOString();
-    order.docType = _docType;
-    order.docNumber = formatDocNumber(now, _docType);
+    order.docType = finalized ? finalized.document_type : _docType;
+    order.docNumber = finalized ? finalized.document_number : formatDocNumber(now, _docType);
+  }
+  if (finalized) {
+    order.docType = finalized.document_type;
+    order.docNumber = finalized.document_number;
+    order.ledgerFinalization = {
+      schema: 'mpe-pos-history-c06-binding-v1',
+      sourceEventId: finalized.source_event_id,
+      sourceFactsSha256: finalized.source_facts_sha256,
+    };
   }
   const fingerprint = historyContentFingerprint(order, order.docType);
   const baseline = _historyContentBaseline
@@ -8831,15 +10146,104 @@ function findPartByPn(pn) {
   return partsArray.find(p => norm(p.pn) === key || norm(p.og) === key) || null;
 }
 
-function reprintOrder(idx) {
+function ledgerOrderFromFinalizedSource(source, prior = {}, documentNumber = null) {
+  const addressLines = String(source.customer.address || '').split('\n');
+  if (addressLines.length > 2) throw ledgerRefusalError('source_binding');
+  const items = source.lines.map(line => ({
+    kind: line.kind,
+    lineId: line.line_id,
+    pn: line.kind === 'note' ? 'Note' : line.part_number,
+    desc: line.description,
+    qty: line.quantity,
+    ea: line.unit_amount,
+    sub: line.line_total,
+    sn: line.serials.length ? [...line.serials] : undefined,
+    originalEa: line.discount_amount !== '0.00' ? line.original_unit_amount : undefined,
+    discountPerUnit: line.discount_amount !== '0.00' ? line.discount_amount : undefined,
+  }));
+  return {
+    date: source.completion.at,
+    txnId: source.source_transaction_id,
+    docType: source.document.type,
+    docNumber: documentNumber,
+    customer: {
+      name: source.customer.name,
+      company: source.customer.company,
+      addr: addressLines[0] || '',
+      city: addressLines[1] || '',
+      state: '', zip: '',
+      phone: source.customer.phone,
+      email: source.customer.email,
+    },
+    items,
+    total: source.totals.total,
+    ledgerTotals: { ...source.totals },
+    tender: { ...source.tender },
+    toggles: {
+      warranty: items.some(item => item.sn?.length),
+      signature: !!prior.toggles?.signature,
+      review: !!prior.toggles?.review,
+      salesView: false,
+      cardFee: source.totals.card_fee !== '0.00',
+    },
+    ledgerFinalization: prior.ledgerFinalization
+      ? { ...prior.ledgerFinalization }
+      : undefined,
+  };
+}
+
+async function reprintOrder(idx) {
   const history = getHistory();
-  const order = history[idx];
+  let order = history[idx];
   if (!order) return;
-  // Preserve original txnId and date so preparePrint shows them and saveToHistory doesn't create a duplicate
-  _reprintSource = { txnId: order.txnId, date: order.date };
+  const historyBinding = order.ledgerFinalization
+    ? { ...order.ledgerFinalization }
+    : null;
   closeHistory();
-  clearAll();
+  if (!clearAll()) return;
+  if (historyBinding) {
+    try {
+      if (!_ledgerOutputCoordinator) throw ledgerRefusalError('release_unattested');
+      const recovered = await _ledgerOutputCoordinator.recover({
+        source_event_id: historyBinding.sourceEventId,
+        source_facts_sha256: historyBinding.sourceFactsSha256,
+      });
+      _ledgerRecoveredSource = recovered.source_facts;
+      order = ledgerOrderFromFinalizedSource(
+        recovered.source_facts,
+        { ...order, ledgerFinalization: historyBinding },
+        recovered.document_number,
+      );
+    } catch (error) {
+      _ledgerRecoveredSource = null;
+  clearTimeout(_ledgerInvoiceStatusTimer);
+  releaseLedgerInvoiceControls();
+  setLedgerInvoiceStatus('');
+  const finalizeButton = document.getElementById('finalizeInvoiceBtn');
+  if (finalizeButton) { finalizeButton.disabled = false; finalizeButton.textContent = 'Finalize Invoice'; }
+  if (window.mpeDesktop?.numbering?.invoiceFinalization) void window.mpeDesktop.numbering.resetDraft();
+      showLedgerRefusal('Reprint', error);
+      updateScreenDocTitle();
+      return;
+    }
+  }
+  // Preserve original identity until this loaded copy is explicitly cleared;
+  // retries must remain reprints and must never create another history entry.
+  _reprintSource = {
+    txnId: order.txnId,
+    date: order.date,
+    docType: order.docType || 'receipt',
+    docNumber: order.docNumber || null,
+    ledgerFinalization: historyBinding,
+  };
   setDocType(order.docType || 'receipt');   // restore original document type + number
+  if ((order.docType || 'receipt') === 'receipt') {
+    const type = document.getElementById('tenderType');
+    const reference = document.getElementById('tenderReference');
+    if (type) type.value = RECEIPT_TENDER_TYPES.has(order.tender?.type) ? order.tender.type : '';
+    syncTenderReference();
+    if (reference && !reference.disabled) reference.value = order.tender?.reference || '';
+  }
   // Restore customer fields
   if (order.customer) {
     const map = { name: 'custName', company: 'custCompany', addr: 'custAddr', city: 'custCity', state: 'custState', zip: 'custZip', phone: 'custPhone', email: 'custEmail' };
@@ -8873,6 +10277,14 @@ function reprintOrder(idx) {
   order.items.forEach((item, i) => {
     const input = tbody.querySelector(`[data-row="${i}"].part-input`);
     if (!input) return;
+    const row = tbody.querySelector(`tr[data-row="${i}"]`);
+    if (item.kind === 'note') {
+      applyNoteToRow(i);
+      const noteInput = document.getElementById(`desc-${i}`)?.querySelector('.note-desc-input');
+      if (noteInput) noteInput.value = item.desc || '';
+      if (row && item.lineId) _ledgerLineIds.set(row, item.lineId);
+      return;
+    }
     const ea = Number.isFinite(Number(item.sub)) && Number(item.qty) > 0 ? Number(item.sub) / Number(item.qty) : parseFloat(item.ea) || 0;
     const part = item.isOther ? null : findPartByPn(item.pn);
     if (part) {
@@ -8924,6 +10336,13 @@ function reprintOrder(idx) {
       renderLineDiscount(i);
     }
     updateSubtotal(i);
+    if (item.sub != null) {
+      const subEl = document.getElementById(`sub-${i}`);
+      if (subEl) {
+        subEl.dataset.val = String(item.sub);
+        subEl.textContent = String(item.sub);
+      }
+    }
     // Local-history reprints must populate the mobile view too.
     const mobileInput = document.querySelector(`#mobileRows [data-row="${i}"].part-input`);
     if (mobileInput) {
@@ -8942,12 +10361,21 @@ function reprintOrder(idx) {
     renderMobileDiscountState(i);
     // Restore serial numbers (applyPart clears SN rows, so this runs after either branch)
     if (item.sn && item.sn.length) {
-      renderSNFields(i, item.qty, item.pn);
+      renderSNFields(i, item.qty, item.pn, item.sn.length);
       const snInputs = tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);
       item.sn.forEach((val, j) => { if (snInputs[j]) snInputs[j].value = val; });
     }
+    if (row && item.lineId) _ledgerLineIds.set(row, item.lineId);
   });
   updateSummary();
+  if (_ledgerRecoveredSource) {
+    const totals = _ledgerRecoveredSource.totals;
+    document.getElementById('sumSubtotal').textContent = totals.subtotal;
+    document.getElementById('sumCardFee').textContent = totals.card_fee;
+    document.getElementById('sumTax').textContent = totals.tax;
+    document.getElementById('sumTotal').textContent = totals.total;
+  }
+  updateScreenDocTitle();
   _historyContentBaseline = historyContentFingerprint(captureOrder());
 }
 
@@ -9298,6 +10726,161 @@ function deleteHistoryEntry(idx) {
 
 // ─── CUSTOMER FIELDS ───────────────────────────────────────────────────────
 const custFields = ['custName','custCompany','custAddr','custCity','custState','custZip','custPhone','custEmail'];
+let _ledgerDraftCustomerBinding = null;
+let _ledgerDraftAccepted = false;
+// A Ledger quote → invoice conversion (roadmap A3.3, decision D23). It holds
+// only the accepted quote's stable event id and its display number; the quote
+// itself is never modified, and every price and total is still recomputed by
+// the ordinary POS line logic below.
+let _ledgerConversion = null;
+// A3.4a. An adopted customer identity handed over by Ledger: the deterministic
+// UUIDv5 and the exact retained adoption proof, copied verbatim. POS never
+// derives either one; it only carries them back out in the source facts.
+let _ledgerAdoptedCustomer = null;
+
+function ledgerDraftText(value, label, max) {
+  if (value == null) return '';
+  if (typeof value !== 'string' || value !== value.trim() || value.length > max || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new Error(label + ' is invalid');
+  }
+  return value;
+}
+
+function ledgerDraftTabIsEmpty() {
+  if (_currentTxnId || _reprintSource || _ledgerDraftAccepted) return false;
+  const hasPart = [...document.querySelectorAll('#searchRows .part-input')]
+    .some(input => String(input.value || '').trim() || input.dataset.partPn || input.dataset.isOther === '1');
+  const hasNote = [...document.querySelectorAll('#searchRows tr[data-note-row]')]
+    .some(row => [...row.querySelectorAll('.note-desc-input, .note-price-input')]
+      .some(input => String(input.value || '').trim()));
+  const hasCustomer = custFields.some(id => String(document.getElementById(id)?.value || '').trim());
+  return !(hasPart || hasNote || hasCustomer);
+}
+
+// A Ledger quote → invoice conversion. Only the quote's stable event id, its
+// due date and the line content it started from cross over; the amounts are
+// prefill the counter can edit, and nothing here decides money.
+function ledgerDraftConversion(draft) {
+  const value = draft.conversion;
+  if (value == null) return null;
+  if (typeof value !== 'object' || Array.isArray(value) || value.kind !== 'quote_to_invoice') {
+    throw new Error('The Ledger conversion is invalid');
+  }
+  if (draft.documentType !== 'invoice') throw new Error('A quote converts only to an invoice');
+  if (value.sourceDocumentType !== 'quote') throw new Error('Only a quote can be converted');
+  const linkedQuoteEventId = ledgerDraftText(value.linkedQuoteEventId, 'Linked quote identity', 36);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(linkedQuoteEventId)) {
+    throw new Error('The linked quote identity is invalid');
+  }
+  const dueDate = ledgerDraftText(value.dueDate, 'Invoice due date', 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw new Error('The invoice due date is invalid');
+  if (!Array.isArray(value.lines) || !value.lines.length || value.lines.length > 200) {
+    throw new Error('The Ledger conversion lines are invalid');
+  }
+  // Mapped onto the existing phone-list/history line shape. POS assigns its own
+  // line ids and re-prices from Master, exactly as any loaded list does.
+  const saleLines = value.lines.map(line => {
+    if (!line || typeof line !== 'object' || Array.isArray(line)) throw new Error('A conversion line is invalid');
+    const item = line.kind === 'item';
+    if (!item && line.kind !== 'note') throw new Error('A conversion line kind is invalid');
+    const serials = Array.isArray(line.serials) ? line.serials : [];
+    const quantity = item ? Number(line.quantity) : 1;
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('A conversion quantity is invalid');
+    return {
+      pn: item ? ledgerDraftText(line.part_number, 'Conversion part number', 120) : '',
+      desc: ledgerDraftText(line.description, 'Conversion description', 500),
+      qty: quantity,
+      serials: serials.map((sn, index) => ledgerDraftText(sn, `Conversion serial ${index + 1}`, 120)),
+    };
+  });
+  return {
+    linkedQuoteEventId,
+    quoteDisplayNumber: ledgerDraftText(value.quoteDisplayNumber, 'Quote number', 21),
+    dueDate,
+    saleLines,
+  };
+}
+
+function applyLedgerDraft(draft) {
+  if (!ledgerDraftTabIsEmpty()) throw new Error('This POS tab is not empty');
+  if (!draft || draft.schema !== 'mpe-ledger-pos-draft-v1' || !['invoice','quote','receipt'].includes(draft.documentType)) {
+    throw new Error('The Ledger draft type is invalid');
+  }
+  const handoffId = ledgerDraftText(draft.handoffId, 'Ledger handoff', 36);
+  if (!handoffId) throw new Error('The Ledger handoff is missing');
+  const customer = draft.customer;
+  let values = null, exactBinding = null, adopted = null;
+  if (customer != null) {
+    if (!customer || typeof customer !== 'object' || !customer.binding || typeof customer.binding !== 'object') {
+      throw new Error('The Ledger customer snapshot is invalid');
+    }
+    const b = customer.binding;
+    exactBinding = {
+      ledgerCustomerId: ledgerDraftText(b.ledgerCustomerId, 'Ledger customer identity', 36),
+      snapshotId: ledgerDraftText(b.snapshotId, 'Ledger snapshot identity', 64),
+      providerRevision: ledgerDraftText(b.providerRevision, 'QBO customer revision', 40),
+      sourcePayloadSha256: ledgerDraftText(b.sourcePayloadSha256, 'QBO customer digest', 64),
+    };
+    if (!/^[0-9a-f-]{36}$/.test(exactBinding.ledgerCustomerId)
+        || !/^[0-9a-f]{64}$/.test(exactBinding.snapshotId)
+        || !/^\d+$/.test(exactBinding.providerRevision)
+        || !/^[0-9a-f]{64}$/.test(exactBinding.sourcePayloadSha256)) {
+      throw new Error('The Ledger customer binding is invalid');
+    }
+    if (customer.identityKind === 'adopted') {
+      const proof = customer.adoptionProof;
+      if (!proof || typeof proof !== 'object' || Array.isArray(proof)
+          || proof.schema !== 'mpe-ledger-imported-customer-adoption-proof-v1'
+          || !/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(String(proof.customer_id || ''))) {
+        throw new Error('The Ledger adoption proof is invalid');
+      }
+      // Verbatim: never rebuilt, never reordered, never re-signed here.
+      adopted = { customerId: proof.customer_id, proof };
+    } else if (customer.adoptionProof != null) {
+      throw new Error('Only an adopted customer carries an adoption proof');
+    }
+    const billing = customer.billingAddress || {};
+    if (!Array.isArray(billing.lines) || billing.lines.length > 5) throw new Error('The Ledger billing address is invalid');
+    const name = ledgerDraftText(customer.name, 'Customer name', 200);
+    const company = ledgerDraftText(customer.company, 'Customer company', 200);
+    if (!name && !company) throw new Error('The Ledger customer has no name or company');
+    values = {
+      custName: name && name.toLowerCase() !== company.toLowerCase() ? name : '',
+      custCompany: company || name,
+      custAddr: billing.lines.map((part, index) => ledgerDraftText(part, `Address line ${index + 1}`, 200)).filter(Boolean).join(', '),
+      custCity: ledgerDraftText(billing.city, 'Customer city', 100),
+      custState: ledgerDraftText(billing.region, 'Customer state', 100),
+      custZip: ledgerDraftText(billing.postalCode, 'Customer zip', 30),
+      custPhone: ledgerDraftText(customer.phone, 'Customer phone', 100),
+      custEmail: ledgerDraftText(customer.email, 'Customer email', 254),
+    };
+    for (const id of custFields) if (!document.getElementById(id)) throw new Error('A POS customer field is unavailable');
+  } else if (draft.documentType !== 'receipt') {
+    throw new Error('Invoices and quotes require a Ledger customer');
+  }
+  const conversion = ledgerDraftConversion(draft);
+  // Prefill runs first because loadSaleLines() clears the sheet, and it uses
+  // the ordinary list-loading path: lines price from today's Master and every
+  // total is recomputed by the existing POS logic, never copied from Ledger.
+  if (conversion) loadSaleLines(conversion.saleLines);
+  if (setDocType(draft.documentType) !== true) throw new Error('The requested document type was not accepted');
+  if (values) {
+    for (const [id, value] of Object.entries(values)) document.getElementById(id).value = value;
+    document.getElementById('custPanel')?.classList.remove('hidden');
+  }
+  _ledgerAdoptedCustomer = adopted;
+  _ledgerDraftCustomerBinding = exactBinding;
+  _ledgerDraftAccepted = true;
+  if (conversion) {
+    _ledgerConversion = {
+      linkedQuoteEventId: conversion.linkedQuoteEventId,
+      quoteDisplayNumber: conversion.quoteDisplayNumber,
+      dueDate: conversion.dueDate,
+    };
+    updateScreenDocTitle();
+  }
+  return handoffId;
+}
 
 function toggleSignature() {
   const btn = document.getElementById('signatureBtn');
@@ -9666,12 +11249,40 @@ function clearCustFields() {
   document.getElementById('warrantyBtn')?.classList.remove('active');
 }
 
+if (window.mpeDesktop?.onLedgerContact && window.mpeDesktop?.acknowledgeLedgerDraft) {
+  window.mpeDesktop.onLedgerContact(async handoff => {
+    let accepted = false;
+    try { await startLedgerContact(handoff); accepted = true; }
+    catch (error) { contactMessage(error.message || 'Customer completion could not open.',true); }
+    window.mpeDesktop.acknowledgeLedgerDraft({ handoffId: handoff.handoffId, accepted }).catch(() => {
+      contactMessage('This tab opened, but Ledger did not receive confirmation. Continue here rather than opening it twice.',true);
+    });
+  });
+}
+
+if (window.mpeDesktop?.onLedgerDraft && window.mpeDesktop?.acknowledgeLedgerDraft) {
+  window.mpeDesktop.onLedgerDraft(draft => {
+    let handoffId = typeof draft?.handoffId === 'string' ? draft.handoffId : '';
+    let accepted = false;
+    try {
+      handoffId = applyLedgerDraft(draft);
+      accepted = true;
+    } catch (error) {
+      alert('Ledger could not start this transaction. ' + (error?.message || 'The customer handoff was rejected.'));
+    }
+    window.mpeDesktop.acknowledgeLedgerDraft({ handoffId, accepted }).catch(() => {
+      alert('The customer was loaded, but Ledger did not receive confirmation. Do not launch the same transaction again.');
+    });
+  });
+}
+
 buildRows();
 buildMobileRows();
 renderScannerModeCommandCodes();
 _scannerModeDefault = localStorage.getItem(SCANNER_DEFAULT_KEY) === '1';
 document.getElementById('scannerModeDefault').checked = _scannerModeDefault;
 setScannerModeActive(_scannerModeDefault);
+syncTenderUi();
 updateScreenDocTitle();
 
 // ─── MOBILE ROWS ────────────────────────────────────────────────────────────

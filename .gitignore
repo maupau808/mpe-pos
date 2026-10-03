@@ -7,6 +7,9 @@
 !apps-script/appsscript.json
 !apps-script/bridge_security_test.js
 !version.json
+!ledger-finalization.js
+!ledger-contact.js
+!test_ledger_finalization.cjs
 !.gitignore
 !.githooks/
 !.githooks/pre-commit
