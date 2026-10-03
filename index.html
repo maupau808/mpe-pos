@@ -1141,7 +1141,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.03.6';
+const POS_RELEASE = '2026.10.03.7';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -4759,7 +4759,7 @@ function captureSaleLines() {
     const serial = serials[0] || '';
     out.push({
       pn,
-      desc: document.getElementById(`desc-${i}`)?.textContent.trim() || typed,
+      freeEntry: input.dataset.freeEntry === '1' || undefined, ea: document.getElementById(`price-${i}`)?.dataset.price, desc: document.getElementById(`desc-${i}`)?.textContent.trim() || typed,
       qty: parseInt(document.getElementById(`qty-${i}`)?.value, 10) || 1,
       serial, serials,
     });
@@ -5423,6 +5423,7 @@ document.addEventListener('input', e => {
 
 function isOtherPart(part) {
   if (!part) return false;
+  if (part._freeEntry) return true;
   return ['make', 'pn', 'og', 'desc'].some(k => String(part[k] || '').trim().toLowerCase() === 'other');
 }
 
@@ -6009,9 +6010,7 @@ function priceChangeIsMeaningful(value) {
   const desc = priceChangeCell(row[2], 2).replace(/\s+/g, ' ');
   const cost = priceChangeCell(row[5], 5);
   if (priceChangeCell(row[3], 3).toUpperCase() === '@NEW') {
-    const sameAsPn = desc.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
-      === pn.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    return !!desc && !sameAsPn && !/^other$|^—$/i.test(desc);
+    return !!desc && !/^other$|^—$/i.test(desc);
   }
   return !!(list || desc || cost);
 }
@@ -6165,7 +6164,7 @@ function clearDescChange(rowIdx) {
   savePriceChanges(changes);
 }
 
-// "Other" stays a sale line until Trevor explicitly promotes it in Bridge Pull.
+// Custom items stay sale lines until Trevor explicitly promotes them in Bridge Pull.
 // The @NEW marker travels only in the Bridge queue; it is never a Master make.
 function logOtherSuggestion(rowIdx) {
   const inp = tbody.querySelector(`[data-row="${rowIdx}"].part-input`);
@@ -6178,7 +6177,7 @@ function logOtherSuggestion(rowIdx) {
   const description = (!descRaw || /^other$|^—$/i.test(descRaw)) ? '' : descRaw;
   const sameAsPn = description.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
     === typed.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  if (!typed || /^other$/i.test(typed) || !description || sameAsPn) {
+  if (!typed || /^other$/i.test(typed) || !description || (sameAsPn && inp.dataset.freeEntry !== '1')) {
     if (idx >= 0) { changes.splice(idx, 1); savePriceChanges(changes); }
     return false;
   }
@@ -7227,7 +7226,7 @@ function onInput(e) {
   const i = parseInt(row);
   if (e.target.classList.contains('part-input')) {
     if (e.target.dataset.isOther === '1') {
-      e.target.dataset.partPn = e.target.value;
+      updateCustomProduct(i, e.target);
       return;
     }
     handleSearch(i);
@@ -7238,8 +7237,39 @@ function onInput(e) {
   }
 }
 
+// Search remains a search while typing. Leaving a zero-match Product field
+// commits the text through the existing custom-item sale and Bridge path.
+function commitFreeItem(i, mobile = false) {
+  const input = mobile
+    ? document.querySelector(`#mobileRows [data-row="${i}"].part-input`)
+    : tbody.querySelector(`[data-row="${i}"].part-input`);
+  if (!loaded || !input?.classList.contains('no-match') || !input.value.trim()) return false;
+  const typed = input.value.trim();
+  const part = { pn: typed, desc: typed, make: '', list: '', cost: '', _freeEntry: true };
+  if (document.querySelector(`#mobileRows [data-row="${i}"].part-input`)) {
+    applyMobilePart(i, part, { skipFocus: true });
+  } else applyPart(i, part, { skipFocus: true });
+  if (mobile) closeMobileDropdowns(); else closeAllDropdowns();
+  logOtherSuggestion(i);
+  return true;
+}
+
+function updateCustomProduct(i, input) {
+  const desktop = tbody.querySelector(`[data-row="${i}"].part-input`);
+  const desc = document.getElementById(`desc-${i}`);
+  if (desktop?.dataset.freeEntry === '1' && desc?.textContent === desktop.dataset.partPn) {
+    desc.textContent = input.value.trim();
+    const mobileDesc = document.getElementById(`mdesc-${i}`);
+    if (mobileDesc) mobileDesc.textContent = desc.textContent;
+  }
+  if (desktop) { desktop.value = input.value; desktop.dataset.partPn = input.value.trim(); }
+  const mobile = document.querySelector(`#mobileRows [data-row="${i}"].part-input`);
+  if (mobile && mobile !== input) mobile.value = input.value;
+}
+
 function onBridgeDraftFocusOut(e) {
   const target = e.target;
+  if (target.classList.contains('part-input') && commitFreeItem(parseInt(target.dataset.row))) return;
   if (target.classList.contains('part-input') && target.dataset.isOther === '1') {
     const i = parseInt(target.dataset.row);
     if (!isNaN(i)) { target.dataset.partPn = target.value; logOtherSuggestion(i); }
@@ -7267,7 +7297,7 @@ function onKeydown(e) {
   // Backspace/Delete on a matched row. A matched part is readOnly, so a plain
   // Backspace peels one character off to unlock it. Select-all first (⌘A / drag)
   // and either key wipes the whole line in one shot.
-  if ((e.key === 'Backspace' || e.key === 'Delete') && input.classList.contains('matched')) {
+  if ((e.key === 'Backspace' || e.key === 'Delete') && input.classList.contains('matched') && input.dataset.isOther !== '1') {
     e.preventDefault();
     const allSelected = input.value.length > 0 &&
       input.selectionStart === 0 && input.selectionEnd === input.value.length;
@@ -7281,6 +7311,13 @@ function onKeydown(e) {
     clearRowData(i);
     updateSummary();
     handleSearch(i);
+    return;
+  }
+
+  if ((e.key === 'Enter' || e.key === 'Tab') && commitFreeItem(i, false)) {
+    e.preventDefault();
+    if (e.key === 'Enter') focusNextProductRow(i, false);
+    else selectEditableText(document.getElementById(`desc-${i}`));
     return;
   }
 
@@ -7350,7 +7387,8 @@ function handleSearch(i) {
   const results = searchParts(val);
   if (results.length === 0) {
     input.className = 'part-input no-match'; clearRowData(i);
-    dd.innerHTML = '<div class="dd-more">No results found</div>'; dd.classList.add('open');
+    dd._results = [];
+    dd.innerHTML = '<div class="dd-more">0 matches — use this text as an item</div>'; dd.classList.add('open');
     updateSummary(); return;
   }
   input.className = 'part-input'; clearRowData(i);
@@ -7647,6 +7685,7 @@ function applyPart(i, part, options) {
   input.title = part._supersededFrom ? `Current part selected because it replaces ${part._supersededFrom}` : '';
   input.readOnly = !other;
   input.dataset.isOther = other ? '1' : '';
+  input.dataset.freeEntry = part._freeEntry ? '1' : '';
   input.dataset.list = part.list || '';
   input.dataset.partPn = part.pn || '';
   input.dataset.partDesc = part.desc || '';
@@ -7722,7 +7761,7 @@ function applyPart(i, part, options) {
       onSubEdit(i);
     }
   });
-  if (/labor/i.test(part.desc || '') || /labor/i.test(part.pn || '')) {
+  if (!part._freeEntry && (/labor/i.test(part.desc || '') || /labor/i.test(part.pn || ''))) {
     document.getElementById(`qty-${i}`).value = 30;
   }
   if (part.warranty) {
@@ -7797,7 +7836,7 @@ function clearRowData(i) {
   const partInput = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (partInput) {
     partInput.title = '';
-    ['isOther', 'partPn', 'partMake', 'partDesc', 'list', 'newItemKey', 'bindingCode', 'bindingFormat'].forEach(key => delete partInput.dataset[key]);
+    ['isOther', 'freeEntry', 'partPn', 'partMake', 'partDesc', 'list', 'newItemKey', 'bindingCode', 'bindingFormat'].forEach(key => delete partInput.dataset[key]);
   }
   const supMark = document.getElementById(`supmark-${i}`);
   if (supMark) { supMark.classList.remove('visible'); supMark.title = ''; }
@@ -9839,6 +9878,7 @@ function captureOrder() {
     const sn = snTr ? Array.from(snTr.querySelectorAll('.sn-input')).map(inp => inp.value.trim()).filter(Boolean) : [];
     items.push({ pn, desc, qty, ea, sub, sn: sn.length ? sn : undefined,
       isOther: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.isOther === '1' || undefined,
+      freeEntry: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.freeEntry === '1' || undefined,
       originalEa: discountPerUnit > 0 ? originalEa : undefined,
       discountPerUnit: discountPerUnit > 0 ? discountPerUnit : undefined });
   }
@@ -10363,6 +10403,7 @@ async function reprintOrder(idx) {
       input.className = 'part-input matched';
       input.dataset.partPn = item.pn || '';
       input.dataset.isOther = item.isOther ? '1' : '';
+      input.dataset.freeEntry = item.freeEntry ? '1' : '';
       input.readOnly = false;
       const descEl = document.getElementById(`desc-${i}`);
       descEl.textContent = item.desc;
@@ -10700,6 +10741,17 @@ function loadSaleLines(lines) {
   for (let i = 0; i < NUM_ROWS; i++) clearRow(i);
 
   lines.forEach((item, i) => {
+    // Undo preserves the operator's custom item and its entered price.
+    // Phone list prices still never override Master.
+    if (item.freeEntry) {
+      ensureScannerMobileRow(i);
+      applyMobilePart(i, { pn: item.pn, desc: item.desc, list: item.ea,
+        make: '', cost: '', _freeEntry: true }, { skipFocus: true });
+      document.getElementById(`qty-${i}`).value = item.qty;
+      document.getElementById(`mqty-${i}`).value = item.qty;
+      updateSubtotal(i); updateMobileSubtotal(i);
+      return;
+    }
     const part = item.pn ? findPartByPn(item.pn) : null;
     if (!part) {
       // The list could not match this one, or the part has left Master since.
@@ -11395,7 +11447,7 @@ function onMobileInput(e) {
   }
   else if (e.target.classList.contains('part-input')) {
     if (e.target.dataset.isOther === '1') {
-      const desktop = tbody.querySelector(`[data-row="${i}"].part-input`); if (desktop) { desktop.value = e.target.value; desktop.dataset.partPn = e.target.value; }
+      updateCustomProduct(i, e.target);
       return;
     }
     if (e.target.classList.contains('matched')) {
@@ -11416,6 +11468,7 @@ function onMobileInput(e) {
 
 function onMobileBridgeDraftFocusOut(e) {
   const target = e.target;
+  if (target.classList.contains('part-input') && commitFreeItem(parseInt(target.dataset.row), true)) return;
   if (target.dataset.isOther !== '1') return;
   const i = parseInt(target.dataset.row);
   if (isNaN(i)) return;
@@ -11470,7 +11523,7 @@ function onMobileKeydown(e) {
   const input = e.target;
   const dd = document.getElementById(`mdd-${i}`);
 
-  if ((e.key === 'Backspace' || e.key === 'Delete') && input.classList.contains('matched')) {
+  if ((e.key === 'Backspace' || e.key === 'Delete') && input.classList.contains('matched') && input.dataset.isOther !== '1') {
     e.preventDefault();
     if (e.key === 'Backspace' && input.value.length > 0) {
       input.value = input.value.slice(0, -1);
@@ -11482,6 +11535,13 @@ function onMobileKeydown(e) {
     clearMobileRowData(i);
     updateSummary();
     handleMobileSearch(i);
+    return;
+  }
+
+  if ((e.key === 'Enter' || e.key === 'Tab') && commitFreeItem(i, true)) {
+    e.preventDefault();
+    if (e.key === 'Enter') focusNextProductRow(i, true);
+    else selectEditableText(document.getElementById(`mdesc-${i}`));
     return;
   }
 
@@ -11529,16 +11589,18 @@ function handleMobileSearch(i) {
     dd.innerHTML = `<div class="dd-item active" data-note-trigger="1" style="color:#2d7a3a;font-style:italic;">Show discount controls</div>`;
     dd.classList.add('open'); dd._noteMode = 'discount'; return;
   }
+  dd._noteMode = false;
   if (!loaded) { document.getElementById(`mdesc-${i}`).textContent = 'Load a file first'; return; }
   const results = searchParts(val);
   if (results.length === 0) {
     input.className = 'mobile-part-input part-input no-match';
-    clearMobileRowData(i);
-    dd.innerHTML = '<div class="dd-more">No results found</div>'; dd.classList.add('open');
+    clearRowData(i); clearMobileRowData(i);
+    dd._results = [];
+    dd.innerHTML = '<div class="dd-more">0 matches — use this text as an item</div>'; dd.classList.add('open');
     updateSummary(); return;
   }
   input.className = 'mobile-part-input part-input';
-  clearMobileRowData(i);
+  clearRowData(i); clearMobileRowData(i);
   const shown = results.slice(0, MAX_RESULTS);
   dd.innerHTML = shown.map((p,idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.og || p.pn}${p._supersededFrom ? `<span class="dd-supersede">* replaces ${p._supersededFrom}</span>` : ''}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? (+p.list).toFixed(2) : ''}</span></div></div>`).join('')
     + (results.length > MAX_RESULTS ? `<div class="dd-more">${results.length} results — type more to narrow</div>` : '');
@@ -11574,6 +11636,7 @@ function applyMobilePart(i, part, options) {
   }
   input.title = part._supersededFrom ? `Current part selected because it replaces ${part._supersededFrom}` : '';
   input.dataset.isOther = other ? '1' : '';
+  input.dataset.freeEntry = part._freeEntry ? '1' : '';
   if (part.og && part.og.trim()) input.value = part.og.trim();
   const descEl = document.getElementById(`mdesc-${i}`);
   descEl.textContent = part.desc || '—'; descEl.className = 'mobile-desc';
@@ -11584,12 +11647,12 @@ function applyMobilePart(i, part, options) {
   const priceEl = document.getElementById(`mprice-${i}`);
   priceEl.textContent = price > 0 ? fmt(price) : ''; priceEl.dataset.price = price || '';
   divDiscountButton(i, discountControlsEnabled);
-  if (/labor/i.test(part.desc || '') || /labor/i.test(part.pn || '')) {
+  if (!part._freeEntry && (/labor/i.test(part.desc || '') || /labor/i.test(part.pn || ''))) {
     document.getElementById(`mqty-${i}`).value = 30;
     const desktopQty = document.getElementById(`qty-${i}`); if (desktopQty) desktopQty.value = 30;
   }
   renderMobileDiscountState(i); updateSummary();
-  if (other) setTimeout(() => { input.focus(); input.select(); }, 0);
+  if (other && !options?.skipFocus) setTimeout(() => { input.focus(); input.select(); }, 0);
 }
 
 function updateMobileSubtotal(i) {
@@ -11679,7 +11742,7 @@ function openMobileDiscountShortcut(sourceRow) {
 
 function clearMobileRowData(i) {
   const partInput = document.querySelector(`#mobileRows [data-row="${i}"].part-input`);
-  if (partInput) { partInput.title = ''; delete partInput.dataset.isOther; partInput.readOnly = false; }
+  if (partInput) { partInput.title = ''; delete partInput.dataset.isOther; delete partInput.dataset.freeEntry; partInput.readOnly = false; }
   const supMark = document.getElementById(`msupmark-${i}`);
   if (supMark) { supMark.classList.remove('visible'); supMark.title = ''; }
   const descEl = document.getElementById(`mdesc-${i}`);
