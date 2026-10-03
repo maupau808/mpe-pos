@@ -754,7 +754,6 @@ const LISTS_HEADER = ['Sent', 'List', 'Line', 'Part Number', 'Description', 'Mak
 // Pull reads. It is deliberately HEADERLESS — Bridge Pull treats every non-empty
 // row as data — so this tab must never go through ensureTab.
 const PRICES_SHEET = 'Prices';
-const PRICES_COLS  = 'Part Number, New List, New Description, Make, Date, New Cost';
 // Shelf finds that Master does not have yet. Deliberately its OWN tab and not
 // the counter POS's `@NEW` suggestion path: that path carries one-off custom
 // lines typed at the till (notes, specials, labour) which must never turn into
@@ -779,7 +778,6 @@ const STRUCTURED_SCAN_DELIMITERS = /[;|\t\x1D]/;
 const SCAN_REPEAT_LOCKOUT_MS       = 2250;
 const FALLBACK_SCAN_ANGLES         = [8, -8, 15, -15];
 const FALLBACK_TILT_AFTER_MISSES   = 6;
-const FALLBACK_RELEASE_AFTER_MISSES = 5;
 const FALLBACK_RETRY_MS            = 12;
 const SCAN_FORMATS = ['code_128','code_39','codabar','data_matrix','ean_13','ean_8','itf','qr_code','upc_a','upc_e'];
 

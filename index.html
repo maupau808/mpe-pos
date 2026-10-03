@@ -1106,7 +1106,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.09.19.2';
+const POS_RELEASE = '2026.10.03.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1521,24 +1521,6 @@ function openAdminMenu(event) {
 function scheduleTokenRefresh() {
   _reconnectAt = 0;
   _reconnecting = false;
-}
-
-async function handleSignOut() {
-  if (desktopGoogleAvailable()) {
-    try { await window.mpeDesktop.google.signOut(); } catch (error) { noteToolFailure('Google sign-out', error); }
-    desktopGoogleConnected = false;
-    localStorage.removeItem('gSignedIn');
-    if (_phoneListPollTimer) { clearTimeout(_phoneListPollTimer); _phoneListPollTimer = null; }
-    setSignedOutUI();
-    return;
-  }
-  if (accessToken) google.accounts.oauth2.revoke(accessToken);
-  accessToken = null;
-  localStorage.removeItem('gSignedIn');
-  localStorage.removeItem('gToken');
-  localStorage.removeItem('gTokenAt');
-  if (_phoneListPollTimer) { clearTimeout(_phoneListPollTimer); _phoneListPollTimer = null; }
-  setSignedOutUI();
 }
 
 // ─── STATUS INDICATORS ──────────────────────────────────────────────────────
@@ -5480,41 +5462,6 @@ function addRow() {
   });
 }
 
-let NOTE_COUNT = 0;
-function addNoteRow() {
-  const id = 'note-' + (NOTE_COUNT++);
-  const tr = document.createElement('tr');
-  tr.dataset.noteRow = id;
-  tr.innerHTML = `
-    <td colspan="7">
-      <textarea class="note-desc-input" id="${id}-desc" placeholder="Note description…" autocomplete="off" spellcheck="false" rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
-    </td>
-    <td style="text-align:center;"><input class="qty-input" type="number" value="1" min="1" step="1" id="${id}-qty" onchange="updateNoteSubtotal('${id}')"></td>
-      <td style="text-align:right;"><input class="note-price-input" id="${id}-price" type="text" placeholder="0.00" autocomplete="off" onchange="updateNoteSubtotal('${id}')"></td>
-    <td class="clear-row" title="Remove note" onclick="this.closest('tr').remove(); updateSummary();">×</td>
-  `;
-  tbody.appendChild(tr);
-  // Wire qty input enter key to advance
-  tr.querySelector(`#${id}-qty`).addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { e.preventDefault(); tr.querySelector(`#${id}-price`).focus(); }
-  });
-  tr.querySelector(`#${id}-price`).addEventListener('input', () => updateNoteSubtotal(id));
-  tr.querySelector(`#${id}-qty`).addEventListener('input', () => updateNoteSubtotal(id));
-  // Ensure summary is recalculated
-  updateSummary();
-  tr.querySelector(`#${id}-desc`).focus();
-}
-
-function updateNoteSubtotal(id) {
-  const priceRaw = (document.getElementById(`${id}-price`)?.value || '').replace(/[$,]/g, '').trim();
-  const price = parseFloat(priceRaw) || 0;
-  const qty = parseFloat(document.getElementById(`${id}-qty`)?.value) || 1;
-  // Store on the price input as data attribute so updateSummary can find it
-  const priceEl = document.getElementById(`${id}-price`);
-  if (priceEl) priceEl.dataset.subtotal = price !== 0 ? (price * qty) : '';
-  updateSummary();
-}
-
 function applyNoteToRow(i) {
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
   if (!input) return;
@@ -6013,104 +5960,6 @@ async function getSheetNumericId(tabName) {
   const sheet = (j.sheets || []).find(s => s.properties.title === tabName);
   if (!sheet) throw new Error(`Sheet tab "${tabName}" not found`);
   return sheet.properties.sheetId;
-}
-
-async function cleanTransactionDuplicates() {
-  const btn = document.getElementById('cleanDupesBtn');
-  const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = '⏳ Reading…';
-
-  try {
-    if (!googleSessionAvailable()) { alert('Sign in to Drive first.'); return; }
-
-    const [rows, sheetId] = await Promise.all([
-      sheetsGet(TXN_SHEET),
-      getSheetNumericId(TXN_SHEET)
-    ]);
-
-    if (!rows.length) { alert('Transactions sheet is empty.'); return; }
-
-    // Parse into blocks: each block = { txnId, rowStart (0-based), rowCount, fingerprint, dateVal }
-    // Only identical complete blocks with the same transaction ID are duplicates.
-    const blocks = [];
-    let i = 0;
-    while (i < rows.length) {
-      const row = rows[i];
-      if ((row[0] || '').trim().toUpperCase() === 'TXN') {
-        const txnId   = row[1] || '';
-        const dateStr = row[2] || '';
-        const timeStr = row[3] || '';
-        // Collect item rows that follow (same txnId in col B, type = 'item')
-        let j = i + 1;
-        while (j < rows.length && (rows[j][0] || '').trim().toLowerCase() === 'item' && (rows[j][1] || '') === txnId) {
-          j++;
-        }
-        const fingerprint = JSON.stringify(rows.slice(i, j).map(cells => {
-          const values = Array.from(cells, value => String(value ?? '').trim());
-          while (values.length && values[values.length - 1] === '') values.pop();
-          return values;
-        }));
-        // Parse date+time for "earliest" comparison
-        let dateVal = 0;
-        try { dateVal = new Date(dateStr + ' ' + timeStr).getTime() || 0; } catch {}
-        blocks.push({ txnId, rowStart: i, rowCount: j - i, fingerprint, dateVal });
-        i = j;
-      } else {
-        i++; // skip orphaned rows
-      }
-    }
-
-    // Group blocks by fingerprint
-    const byFP = {};
-    for (const b of blocks) {
-      if (!byFP[b.fingerprint]) byFP[b.fingerprint] = [];
-      byFP[b.fingerprint].push(b);
-    }
-
-    // Find duplicate groups — keep earliest, delete the rest
-    const toDelete = []; // {rowStart, rowCount}
-    let dupeCount = 0;
-    for (const fp of Object.keys(byFP)) {
-      const group = byFP[fp];
-      if (group.length < 2) continue;
-      // Sort by date ascending — keep first (earliest), delete others
-      group.sort((a, b) => a.dateVal - b.dateVal);
-      for (let k = 1; k < group.length; k++) {
-        toDelete.push({ rowStart: group[k].rowStart, rowCount: group[k].rowCount });
-        dupeCount++;
-      }
-    }
-
-    if (!toDelete.length) { alert('No duplicates found — sheet is clean!'); return; }
-
-    const confirmMsg = `Found ${dupeCount} duplicate transaction block(s) to remove.\n\nEarliest copy of each transaction will be kept.\n\nProceed?`;
-    if (!confirm(confirmMsg)) return;
-
-    btn.textContent = '⏳ Deleting…';
-
-    // Sort descending by rowStart so deleting from bottom up keeps indices valid
-    toDelete.sort((a, b) => b.rowStart - a.rowStart);
-
-    // Build deleteDimension requests (1-based for Sheets API: rowStart+1 to rowStart+rowCount)
-    const requests = toDelete.map(d => ({
-      deleteDimension: {
-        range: {
-          sheetId,
-          dimension: 'ROWS',
-          startIndex: d.rowStart,       // 0-based inclusive
-          endIndex:   d.rowStart + d.rowCount  // 0-based exclusive
-        }
-      }
-    }));
-
-    await sheetsBatchUpdate(requests);
-    alert(`Done! Removed ${dupeCount} duplicate block(s). Earliest records kept.`);
-
-  } catch(e) {
-    alert('Clean dupes failed: ' + e.message);
-  } finally {
-    btn.disabled = false; btn.textContent = orig;
-  }
 }
 
 async function sheetsAppend(range, rows) {
@@ -7498,10 +7347,6 @@ function currentSubtotal() {
     const v = parseFloat(raw);
     if (raw !== undefined && raw !== '' && !isNaN(v)) { subtotal += v; hasAny = true; }
   }
-  // Add note rows
-  tbody.querySelectorAll('[data-note-row] .note-price-input').forEach(el => {
-    const v = parseFloat(el.dataset.subtotal); if (v) { subtotal += v; hasAny = true; }
-  });
   return { subtotal, hasAny };
 }
 
@@ -7579,11 +7424,9 @@ function clearAll() {
   _scannerModeAwaitingClear = false;
   renderScannerModeCommandCodes();
   setDiscountControlsEnabled(false);
-  NOTE_COUNT = 0;
   scanIssues.clear();
   clearScanChoices();
   updateScanButton();
-  tbody.querySelectorAll('[data-note-row]').forEach(tr => tr.remove());
   NUM_ROWS = 3; buildRows(); buildMobileRows(); updateSummary();
   clearCustFields();
   document.getElementById('signatureBtn')?.classList.remove('active');
@@ -7871,14 +7714,7 @@ function preparePrint() {
   // filled in (or the Warranty toggle is manually on). Quotes and invoices never get
   // the duplicate copy — invoices carry their own "our copy" format via the invoice sig block.
   const _warrantyActive = document.getElementById('warrantyBtn')?.classList.contains('active');
-  const _hasSNItem = !!tbody.querySelector('tr[data-warranty="1"]');
   const _hasSNEntered = Array.from(tbody.querySelectorAll('.sn-input')).some(inp => inp.value.trim());
-  const _hasCustInfo = !!(
-    document.getElementById('custName')?.value.trim() ||
-    document.getElementById('custPhone')?.value.trim() ||
-    document.getElementById('custEmail')?.value.trim() ||
-    document.getElementById('custAddr')?.value.trim()
-  );
   const copy2 = document.getElementById('printCopy2');
   const copy2On = _docType === 'receipt' && (_hasSNEntered || _warrantyActive);
   if (copy2) {
@@ -8632,16 +8468,6 @@ function captureOrder() {
       originalEa: discountPerUnit > 0 ? originalEa : undefined,
       discountPerUnit: discountPerUnit > 0 ? discountPerUnit : undefined });
   }
-  // Capture legacy separate note rows (from + Note button)
-  tbody.querySelectorAll('[data-note-row]').forEach(tr => {
-    const id = tr.dataset.noteRow;
-    const desc = document.getElementById(`${id}-desc`)?.value.trim() || '(note)';
-    const priceRaw = (document.getElementById(`${id}-price`)?.value || '').replace(/[$,]/g, '').trim();
-    const ea = parseFloat(priceRaw) || 0;
-    const qty = parseFloat(document.getElementById(`${id}-qty`)?.value) || 1;
-    const sub = ea * qty;
-    if (ea > 0 || desc) items.push({ pn: '—', desc, qty, ea, sub });
-  });
   if (!items.length) return null;
   const totalEl = document.getElementById('sumTotal');
   const total = totalEl ? totalEl.textContent : '—';
@@ -9429,30 +9255,6 @@ function applyPhoneList(idx) {
   } catch (e) {
     alert('Could not load the phone list: ' + e.message);
   }
-}
-
-function exportHistory() {
-  const history = getHistory();
-  if (!history.length) { alert('No history to export.'); return; }
-  const dates = history.map(o => new Date(o.date));
-  const newest = dates[0];
-  const oldest = dates[dates.length - 1];
-  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const filename = `MPE_History_${fmt(oldest)}_to_${fmt(newest)}.json`;
-  const blob = new Blob([JSON.stringify(history, null, 2)], {type: 'application/json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-function clearHistory() {
-  const history = getHistory();
-  if (!history.length) { alert('History is already empty.'); return; }
-  if (!confirm(`Delete all ${history.length} history entries? This cannot be undone.`)) return;
-  localStorage.removeItem(HISTORY_KEY);
-  renderHistory();
 }
 
 function deleteHistoryEntry(idx) {
