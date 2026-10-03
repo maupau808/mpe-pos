@@ -1160,7 +1160,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.03.3';
+const POS_RELEASE = '2026.10.03.4';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1189,6 +1189,7 @@ let _ledgerOutputCoordinator = null;
 let _ledgerLineIds = new WeakMap();
 let _ledgerRecoveredSource = null;
 let _ledgerInvoiceFinalizing = false;
+let _ledgerInvoiceEnabled = false;
 let _ledgerInvoiceStatusTimer = null;
 
 function checkoutTotals(subtotal, cardFeeActive) {
@@ -8753,7 +8754,10 @@ async function preflightLedgerOutput(completionAction) {
     });
     // Warm only the local Desktop status path; this allocates no number and
     // performs no network or provider work.
-    void _ledgerOutputCoordinator.probe().catch(() => {});
+    void _ledgerOutputCoordinator.probe().then(status => {
+      _ledgerInvoiceEnabled = status.enabled === true && status.available === true;
+      syncLedgerInvoiceButtons();
+    }).catch(() => { _ledgerInvoiceEnabled = false; syncLedgerInvoiceButtons(); });
   } catch (_error) {
     _ledgerOutputCoordinator = null;
   }
@@ -8813,6 +8817,14 @@ function freezeLedgerInvoiceControls() {
 function releaseLedgerInvoiceControls() {
   for (const [node, retained] of _ledgerFrozenControls) if (!retained) node.removeAttribute('inert');
   _ledgerFrozenControls = [];
+}
+
+function syncLedgerInvoiceButtons() {
+  const enabled = _docType === 'invoice' && _ledgerInvoiceEnabled && !!window.mpeDesktop?.numbering?.invoiceFinalization;
+  const finalizeButton = document.getElementById('finalizeInvoiceBtn');
+  const saveButton = document.getElementById('saveBtn');
+  if (finalizeButton) finalizeButton.hidden = !enabled;
+  if (saveButton) saveButton.hidden = enabled;
 }
 
 function setLedgerInvoiceStatus(message) {
@@ -9867,11 +9879,7 @@ function historyDocTypeTag(type) {
       document.getElementById('custPanel')?.classList.add('hidden');
     }
     syncTenderUi();
-    const finalizeButton = document.getElementById('finalizeInvoiceBtn');
-    const invoiceActivation = t === 'invoice' && !!window.mpeDesktop?.numbering?.invoiceFinalization;
-    if (finalizeButton) finalizeButton.hidden = !invoiceActivation;
-    const saveButton = document.getElementById('saveBtn');
-    if (saveButton) saveButton.hidden = invoiceActivation;
+    syncLedgerInvoiceButtons();
     updateScreenDocTitle();
     resetScannerModeIdleTimer();
     return true;
