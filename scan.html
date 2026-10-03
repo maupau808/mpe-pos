@@ -863,6 +863,59 @@ function sheetText(value) {
   const s = String(value ?? '');
   return /^\d/.test(s) ? "'" + s : s;
 }
+// Shared with the other scanner page; regression tests require identical behavior.
+function reconcileLearnedProductCodes(learned, pending) {
+  const queued = new Map(pending.filter(row => !String(row.code).startsWith('@UNIT-'))
+    .map(row => [canonicalScannedCode(row.code), row]));
+  for (const [rawCode, value] of Object.entries(learned)) {
+    const code = canonicalScannedCode(rawCode);
+    const pn = normalizePN(value && typeof value === 'object' ? value.pn : value);
+    if (!code || code.startsWith('@UNIT-') || !pn) continue;
+    // A published correction wins over an old device cache. A deliberate,
+    // still-unsent correction remains local until its ordinary queue syncs.
+    if (partCodeMap[code] && !queued.has(code)) {
+      if (partCodeMap[code] !== pn) learned[rawCode] = partCodeMap[code];
+    } else partCodeMap[code] = pn;
+  }
+  for (const [code, row] of queued) {
+    if (row.remove || row.source === 'scan-phone-unbind') {
+      delete partCodeMap[code];
+      delete learned[code];
+    } else if (row.pn) partCodeMap[code] = normalizePN(row.pn);
+  }
+}
+
+function maruyamaSerialNumber(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  if (/^[A-Z][0-9]{6}$/.test(raw)) return raw;
+  if (!/^[A-Z][0-9]{6}[0-9A-Z. $/+%\-]$/.test(raw)) return '';
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-. $/+%';
+  const base = raw.slice(0, -1);
+  const check = alphabet[[...base].reduce((sum, char) => sum + alphabet.indexOf(char), 0) % 43];
+  return raw.endsWith(check) ? base : '';
+}
+
+function serialForPart(value, part) {
+  const raw = String(value || '').trim();
+  return String(part?.make || '').trim().toUpperCase() === 'MARUYAMA'
+    ? maruyamaSerialNumber(raw) || raw : raw;
+}
+
+function maruyamaSerialScan(rawValue) {
+  const serial = maruyamaSerialNumber(rawValue);
+  if (!serial) return null;
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-. $/+%';
+  const check = alphabet[[...serial].reduce((sum, char) => sum + alphabet.indexOf(char), 0) % 43];
+  const keys = [serial, serial + check, canonicalSerialNumber(serial + check)];
+  // Keep old suffixed manual records and the two legacy serial-as-UPC records
+  // readable without rewriting shared data or treating a serial as a product.
+  const pns = keys.flatMap(key => [serialNumberMap[key], partCodeMap[key]]).filter(Boolean);
+  const candidates = uniqueScanParts(pns.flatMap(exactScanParts))
+    .filter(part => part.warranty && String(part.make || '').trim().toUpperCase() === 'MARUYAMA');
+  return candidates.length ? { code: canonicalScannedCode(rawValue), mappedPN: '',
+    candidates, via: 'maruyama-serial', serial, model: 'Maruyama', bindCode: '' } : null;
+}
+
 function canonicalSerialNumber(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
@@ -1330,10 +1383,8 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   saleRules = normalizeSaleRules(feed.sales);
   serialNumberMap = feed.serials && typeof feed.serials === 'object' ? feed.serials : {};
   loadUnitSerialRules(feed.codes && typeof feed.codes === 'object' ? feed.codes : {});
-  for (const [code, pn] of Object.entries(learnedCodes)) {
-    const key = canonicalScannedCode(code);
-    if (key && pn) partCodeMap[key] = normalizePN(pn);
-  }
+  reconcileLearnedProductCodes(learnedCodes, pendingCodes);
+  save(K_LEARNED, learnedCodes);
   overlayPendingSerialMatches();
   partsArray = parts;
   scanExactIndex = null;
@@ -1694,6 +1745,8 @@ function distributorPartCandidates(value) {
 }
 
 function unitSerialCandidates(rawValue) {
+  const maruyama = maruyamaSerialScan(rawValue);
+  if (maruyama) return maruyama.candidates;
   const serial = canonicalSerialNumber(rawValue);
   if (!serial) return [];
   const exactPN = serialNumberMap[serial];
@@ -1723,7 +1776,7 @@ function ignorableScanCode(rawValue) {
 // barcode would be wrong forever. Detect the shape and refuse to offer it.
 function looksLikeSerial(rawValue) {
   const v = String(rawValue || '').trim();
-  return v.length >= 6 && v.length <= 30 && /[A-Z]/i.test(v) && /\d/.test(v) && /^[A-Z0-9 -]+$/i.test(v);
+  return !!maruyamaSerialNumber(v) || v.length >= 6 && v.length <= 30 && /[A-Z]/i.test(v) && /\d/.test(v) && /^[A-Z0-9 -]+$/i.test(v);
 }
 
 // `via` reports HOW a scan matched, which the caller needs: a match through the
@@ -1731,6 +1784,8 @@ function looksLikeSerial(rawValue) {
 // that serial has to reach the counter with the line or the whole floor-scanning
 // trip has to be repeated at the register.
 function resolveScannedValue(rawValue) {
+  const maruyama = maruyamaSerialScan(rawValue);
+  if (maruyama) return maruyama;
   const unit = stihlUnitDataMatrix(rawValue);
   if (unit) return {
     code: canonicalScannedCode(unit.productCode), mappedPN: unit.mappedPN,
@@ -2579,7 +2634,7 @@ function acceptScan(rawValue, format) {
   // immediately treated as a mystery barcode.
   const awaiting = list.find(e => e.warranty && !e.serial);
   if (awaiting && looksLikeSerial(raw)) {
-    awaiting.serial = raw.trim();
+    awaiting.serial = serialForPart(raw, awaiting);
     persistList();
     showHero({
       make: awaiting.make, desc: awaiting.desc, price: awaiting.price, was: awaiting.was,
@@ -2615,7 +2670,7 @@ function entryFromPart(part, {
     list: Number(part.list) || 0,
     cost: Number(part.cost) || 0, qty: 1, code, format,
     scanRaw: String(rawCode || ''), matchedCode: canonicalScannedCode(matchedCode),
-    warranty: !!part.warranty, serial: String(serial || '').trim(),
+    warranty: !!part.warranty, serial: serialForPart(serial, part),
     unresolved: false, at: Date.now()
   };
 }
@@ -2626,11 +2681,15 @@ function addToList(part, meta) {
   // is harmless when you are only checking a price. A warranty unit is the
   // exception: each one is a distinct machine with its own serial, so merging
   // two of them would silently destroy one of the serials.
+  const waiting = entry.warranty && entry.serial ? list.find(e => e.warranty && !e.serial
+    && !e.unresolved && normalizePN(e.pn) === normalizePN(entry.pn)
+    && String(e.make).toUpperCase() === String(entry.make).toUpperCase()) : null;
+  if (waiting) waiting.serial = entry.serial;
   const twin = entry.warranty ? null : list.find(e => !e.unresolved && !e.warranty
     && normalizePN(e.pn) === normalizePN(entry.pn)
     && String(e.make).toUpperCase() === String(entry.make).toUpperCase());
   if (twin) twin.qty += 1;
-  else list.unshift(entry);
+  else if (!waiting) list.unshift(entry);
   persistList();
   showHero({
     make: entry.make, desc: entry.desc, price: entry.price, was: entry.was, onSale: entry.onSale,
@@ -3164,7 +3223,7 @@ function chooseHit(part) {
     if (learnedMatch) queueCodeBinding(entry.code, entry.format, part);
     // For a serial-shaped row the raw scan (still in desc at this point) IS the
     // machine's serial, so matching the unit captures it rather than losing it.
-    const capturedSerial = entry.serialish ? String(entry.desc || '').trim().toUpperCase() : '';
+    const capturedSerial = entry.serialish ? serialForPart(String(entry.desc || '').trim().toUpperCase(), part) : '';
     Object.assign(entry, {
       pn: String(part.pn || ''), og: String(part.og || ''), make: String(part.make || ''),
       desc: String(part.desc || ''), price: p.price, was: p.was, onSale: p.onSale,
@@ -3301,11 +3360,11 @@ function scanSerialMatch(raw, format) {
     else openSearch({ pick: result.candidates.length ? result.candidates : null, title: 'Choose the model to match serials' });
     return;
   }
-  const value = result.serial || raw;
+  const value = serialForPart(result.serial || raw, model);
   const serial = canonicalSerialNumber(value);
   const pn = normalizePN(model.pn);
   const known = unitSerialCandidates(serial);
-  if (serialNumberMap[serial]) {
+  if (serialNumberMap[serial] || maruyamaSerialScan(serial)) {
     serialNote(known.every(part => normalizePN(part.pn) === pn)
       ? `${serial} is already matched to this model.`
       : `${serial} belongs to ${known.map(part => part.desc || part.pn).join(' / ')}. Nothing changed.`, true);
@@ -3349,15 +3408,16 @@ function saveSerialMatches() {
   if (!model || !serialDraft.scans.length) return;
   const next = [...pendingCodes];
   for (const item of serialDraft.scans) {
-    const existing = unitSerialCandidates(item.serial);
-    if (serialNumberMap[item.serial] && normalizePN(serialNumberMap[item.serial]) !== normalizePN(model.pn)) {
+    const existing = maruyamaSerialScan(item.serial)?.candidates
+      || (serialNumberMap[item.serial] ? exactScanParts(serialNumberMap[item.serial]) : []);
+    if (existing.some(part => normalizePN(part.pn) !== normalizePN(model.pn))) {
       serialNote(`${item.serial} now matches another model. Remove it before saving this batch.`, true); return;
     }
     const code = '@UNIT-MANUAL:' + item.serial;
     if (next.some(row => row.code === code && normalizePN(row.pn) !== normalizePN(model.pn))) {
       serialNote(`${item.serial} is queued for another model. Nothing changed.`, true); return;
     }
-    if (!serialNumberMap[item.serial] && !next.some(row => row.code === code)) next.push({ code, pn: model.pn,
+    if (!existing.length && !next.some(row => row.code === code)) next.push({ code, pn: model.pn,
       format: item.format, source: 'scan-phone-serial', added: new Date().toISOString() });
   }
   try {

@@ -16,3 +16,4 @@
 !.github/
 !.github/workflows/
 !.github/workflows/pages.yml
+!test_maruyama_scans.mjs

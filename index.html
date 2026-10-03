@@ -1141,7 +1141,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.03.5';
+const POS_RELEASE = '2026.10.03.6';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1966,11 +1966,8 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   saleRules = normalizeSaleRules(feed.sales);
   serialNumberMap = feed.serials && typeof feed.serials === 'object' ? feed.serials : {};
   loadUnitSerialRules(feed.codes && typeof feed.codes === 'object' ? feed.codes : {});
-  for (const [code, pn] of Object.entries(partCodeLearned)) {
-    const key = canonicalScannedCode(code);
-    const learnedPN = learnedPartNumber(pn);
-    if (key && learnedPN) partCodeMap[key] = learnedPN;
-  }
+  reconcileLearnedProductCodes(partCodeLearned, partCodePending);
+  persistLearnedPartCodes();
   rebuildCustomCodeMap();
   partsArray = parts;
   buildWarrantyModelMap();
@@ -2751,6 +2748,8 @@ function queuePartCodeBinding(issue, part, custom) {
   const code = canonicalScannedCode(sourceCode);
   const pn = String(part?.pn || part?.og || '').trim();
   if (!code || !pn) return;
+  if (part?.warranty && String(part.make || '').trim().toUpperCase() === 'MARUYAMA'
+      && maruyamaSerialNumber(sourceCode)) return;
   // Nothing that failed the packaging test may become a binding, even if it
   // somehow reached a review row — this is the write that would outlive the sale.
   if (ignorableScanCode(sourceCode)) return;
@@ -2817,6 +2816,59 @@ function canonicalScannedCode(value) {
   return s.toUpperCase();
 }
 
+// Shared with the other scanner page; regression tests require identical behavior.
+function reconcileLearnedProductCodes(learned, pending) {
+  const queued = new Map(pending.filter(row => !String(row.code).startsWith('@UNIT-'))
+    .map(row => [canonicalScannedCode(row.code), row]));
+  for (const [rawCode, value] of Object.entries(learned)) {
+    const code = canonicalScannedCode(rawCode);
+    const pn = normalizePN(value && typeof value === 'object' ? value.pn : value);
+    if (!code || code.startsWith('@UNIT-') || !pn) continue;
+    // A published correction wins over an old device cache. A deliberate,
+    // still-unsent correction remains local until its ordinary queue syncs.
+    if (partCodeMap[code] && !queued.has(code)) {
+      if (partCodeMap[code] !== pn) learned[rawCode] = partCodeMap[code];
+    } else partCodeMap[code] = pn;
+  }
+  for (const [code, row] of queued) {
+    if (row.remove || row.source === 'scan-phone-unbind') {
+      delete partCodeMap[code];
+      delete learned[code];
+    } else if (row.pn) partCodeMap[code] = normalizePN(row.pn);
+  }
+}
+
+function maruyamaSerialNumber(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  if (/^[A-Z][0-9]{6}$/.test(raw)) return raw;
+  if (!/^[A-Z][0-9]{6}[0-9A-Z. $/+%\-]$/.test(raw)) return '';
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-. $/+%';
+  const base = raw.slice(0, -1);
+  const check = alphabet[[...base].reduce((sum, char) => sum + alphabet.indexOf(char), 0) % 43];
+  return raw.endsWith(check) ? base : '';
+}
+
+function serialForPart(value, part) {
+  const raw = String(value || '').trim();
+  return String(part?.make || '').trim().toUpperCase() === 'MARUYAMA'
+    ? maruyamaSerialNumber(raw) || raw : raw;
+}
+
+function maruyamaSerialScan(rawValue) {
+  const serial = maruyamaSerialNumber(rawValue);
+  if (!serial) return null;
+  const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-. $/+%';
+  const check = alphabet[[...serial].reduce((sum, char) => sum + alphabet.indexOf(char), 0) % 43];
+  const keys = [serial, serial + check, canonicalSerialNumber(serial + check)];
+  // Keep old suffixed manual records and the two legacy serial-as-UPC records
+  // readable without rewriting shared data or treating a serial as a product.
+  const pns = keys.flatMap(key => [serialNumberMap[key], partCodeMap[key]]).filter(Boolean);
+  const candidates = uniqueScanParts(pns.flatMap(exactScanParts))
+    .filter(part => part.warranty && String(part.make || '').trim().toUpperCase() === 'MARUYAMA');
+  return candidates.length ? { code: canonicalScannedCode(rawValue), mappedPN: '',
+    candidates, via: 'maruyama-serial', serial, model: 'Maruyama', bindCode: '' } : null;
+}
+
 function canonicalSerialNumber(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
@@ -2856,6 +2908,8 @@ function loadUnitSerialRules(codes) {
 }
 
 function unitSerialCandidates(rawValue) {
+  const maruyama = maruyamaSerialScan(rawValue);
+  if (maruyama) return maruyama.candidates;
   const serial = canonicalSerialNumber(rawValue);
   if (!serial) return [];
   const exactPN = serialNumberMap[serial];
@@ -2870,7 +2924,7 @@ function unitSerialCandidates(rawValue) {
 
 function likelySecondUnitSerial(rawValue) {
   const value = String(rawValue || '').trim();
-  return value.length >= 6 && value.length <= 30 && /[A-Z]/i.test(value) && /^[A-Z0-9 -]+$/i.test(value);
+  return !!maruyamaSerialNumber(value) || value.length >= 6 && value.length <= 30 && /[A-Z]/i.test(value) && /^[A-Z0-9 -]+$/i.test(value);
 }
 
 function rowNeedsUnitSerial(row) {
@@ -3382,6 +3436,8 @@ function regroupPackageDeals(latestSerial, latestRow) {
 }
 
 function resolveScannedValue(rawValue) {
+  const maruyama = maruyamaSerialScan(rawValue);
+  if (maruyama) return maruyama;
   const unit = stihlUnitDataMatrix(rawValue);
   if (unit) return {
     code: canonicalScannedCode(unit.productCode), mappedPN: unit.mappedPN,
@@ -3431,7 +3487,8 @@ function stihlModelFromDescription(description) {
 function fillRowSerial(row, serial) {
   const input = tbody.querySelector(`tr[data-sn-for="${row}"] .sn-input`);
   if (!input) return false;
-  input.value = String(serial || '').trim();
+  const pn = tbody.querySelector(`[data-row="${row}"].part-input`)?.dataset.partPn;
+  input.value = serialForPart(serial, findPartByPn(pn));
   if (pendingUnitSerialRow === row) pendingUnitSerialRow = null;
   // Remember the unit, but do not re-group here — the callers announce the
   // result, and they need the deal name before they set the scan status.
@@ -3457,7 +3514,7 @@ function latestScannedItemRow() {
 // needs one tracked row per battery, charger, or other component.
 function appendSerialToMatchingUnitRow(part, serial) {
   const pn = normalizePN(part?.pn);
-  const value = String(serial || '').trim();
+  const value = serialForPart(serial, part);
   const serialKey = canonicalSerialNumber(value);
   if (!part?.warranty || !pn || !serialKey || packageComponentPNs().has(pn)) return null;
 
@@ -3467,7 +3524,7 @@ function appendSerialToMatchingUnitRow(part, serial) {
     const tr = tbody.querySelector(`tr[data-row="${row}"]`);
     if (normalizePN(input?.dataset.partPn) !== pn || tr?.dataset.pkgUnits) continue;
     const serialInputs = Array.from(tbody.querySelectorAll(`tr[data-sn-for="${row}"] .sn-input`));
-    if (serialInputs.some(field => canonicalSerialNumber(field.value) === serialKey)) {
+    if (serialInputs.some(field => canonicalSerialNumber(serialForPart(field.value, part)) === serialKey)) {
       rememberLatestScannedSaleRow(row);
       return { row, qty: parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1, duplicate: true };
     }
@@ -3848,7 +3905,7 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
       return;
     }
   }
-  if (result.via === 'stihl-unit' || result.via === 'toro-unit') {
+  if (result.via === 'stihl-unit' || result.via === 'toro-unit' || result.via === 'maruyama-serial') {
     if (result.candidates.length === 1) {
       playScanBeep(false);
       const merged = appendSerialToMatchingUnitRow(result.candidates[0], result.serial);
@@ -6341,15 +6398,22 @@ async function _flushPendingPartCodes() {
     // Pull custom "Other" details as well as the ordinary code→PN mapping so
     // a binding made at one register behaves identically at another register.
     const savedRows = await sheetsGet(`${PART_CODES_SHEET}!A2:H`);
+    const queuedCodes = new Set(partCodePending.map(row => canonicalScannedCode(row.code)));
     for (const row of savedRows) {
       const code = canonicalScannedCode(row?.[0]);
       const pn = normalizePN(row?.[1]);
       const desc = String(row?.[5] || '').trim();
-      if (!code || !pn) continue;
+      if (!code || code.startsWith('@UNIT-') || queuedCodes.has(code)) continue;
+      if (row?.[3] === 'scan-phone-unbind') {
+        delete partCodeMap[code];
+        delete partCodeLearned[code];
+        continue;
+      }
+      if (!pn) continue;
       partCodeMap[code] = pn;
       partCodeLearned[code] = desc
         ? { pn, desc, price: row?.[6] ?? '', cost: row?.[7] ?? '' }
-        : (partCodeLearned[code] || pn);
+        : pn;
     }
     persistLearnedPartCodes();
     rebuildCustomCodeMap();
@@ -7691,6 +7755,10 @@ function applyPart(i, part, options) {
   if (i === NUM_ROWS - 1 && !options?.skipAddRow) addRow();
   if (other && !options?.skipFocus) setTimeout(() => { input.focus(); input.select(); }, 0);
   if (correctedScanIssue) {
+    if (!correctedScanIssue.bindCode && part.warranty
+        && String(part.make || '').trim().toUpperCase() === 'MARUYAMA') {
+      correctedScanIssue.serial ||= maruyamaSerialNumber(correctedScanIssue.rawValue);
+    }
     if (correctedScanIssue.serial && part.warranty) {
       fillRowSerial(i, correctedScanIssue.serial);
       if (correctedScanIssue.bindCode) queuePartCodeBinding(correctedScanIssue, part);
