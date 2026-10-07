@@ -34,7 +34,8 @@
   function visibleContact(contact) {
     return [[contact[0],contact[1]].filter(Boolean).join(' / '),contact[6],contact[7],contact.slice(2,6).filter(Boolean).join(', ')];
   }
-  function baseContact(header) {
+  function baseContact(header, customer = []) {
+    if (customer.some(Boolean)) return [...customer, header[5], header[6]];
     const name = header[4].split(' / ');
     return [name[0],name.slice(1).join(' / '),header[7],'','','',header[5],header[6]];
   }
@@ -46,9 +47,13 @@
     const start = starts[0]; let end = start + 1;
     while (end < rows.length && String(rows[end][0] || '').trim().toUpperCase() === 'ITEM' && String(rows[end][1] || '') === txnId) end++;
     if (end - start > 501) fail('Transaction is too large for customer completion.');
-    const raw = rows.slice(start,end).map(cells);
+    // Q–V repeat the customer unjoined. Ledger hashes A:P only, so they stay outside the hash.
+    const head = rows[start];
+    if (!Array.isArray(head) || head.slice(22).some(v => v != null && v !== '')) fail('Unsupported transaction columns.');
+    const raw = [cells(head.slice(0,16)), ...rows.slice(start + 1,end).map(cells)];
     if (!['receipt','invoice','quote'].includes(raw[0][14].toLowerCase())) fail('This transaction type needs review.');
-    return { start, end, rows: raw };
+    const customer = Array.from({ length: 6 }, (_, i) => String(head[16 + i] ?? '').trim());
+    return { start, end, rows: raw, customer };
   }
   function event(row) {
     const r = cells(row);
@@ -62,7 +67,7 @@
   async function resolve(rows, txnId, expectedHash = null) {
     const found = group(rows,txnId), sourceHash = await hash(found.rows);
     if (expectedHash !== null && expectedHash !== sourceHash) fail('Transaction changed. Refresh Ledger and open it again.');
-    let contact = baseContact(found.rows[0]);
+    let contact = baseContact(found.rows[0], found.customer);
     let contactHash = await hash(found.rows[0].slice(4,8));
     const updates = rows.filter(r => r[0] === 'CUSTOMER_UPDATE' && String(r[1] || '') === txnId).map(event);
     if (updates.length > 1000) fail('Customer update history needs review.');

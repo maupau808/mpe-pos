@@ -27,7 +27,7 @@ function setup() {
     getSheetNumericId: async () => 7,
     sheetsGet: async range => {
       if(range === 'Transactions') return clone(sheet);
-      const match=range.match(/A(\d+):P(\d+)/);assert.ok(match,range);
+      const match=range.match(/A(\d+):[PV](\d+)/);assert.ok(match,range);
       const result=clone(sheet.slice(Number(match[1])-1, Number(match[2])));
       if(corruptRead && result[1]) result[1][10]='999';
       return result;
@@ -70,6 +70,13 @@ test('second FS 131 updates one quote with same number, date and transaction ID 
  assert.equal(c.sheet()[1][10],2);assert.equal(c.sheet()[1][8],'0000131');
  assert.equal(c.s.getHistory()[0].historySyncPending,false);
  const writes=c.batches();c.save();await c.sync();assert.equal(c.batches(),writes);
+});
+test('summary row keeps joined E/H and adds unjoined customer Q-V',async()=>{
+ const c=setup();c.s.draft.customer={name:'Jo Kai',company:'TEST LANDFILL',addr:'12 Main St',city:'Kula',state:'HI',zip:'96790'};
+ c.save();await c.sync();const txn=c.sheet()[0];
+ assert.equal(txn[4],'Jo Kai / TEST LANDFILL');assert.equal(txn[7],'12 Main St, Kula, HI, 96790');
+ assert.deepEqual(txn.slice(16),['Jo Kai','TEST LANDFILL','12 Main St','Kula','HI','96790']);
+ assert.equal(c.s.getHistory()[0].historySyncPending,false);
 });
 test('adding then removing lines resizes the existing block and preserves neighboring transactions',async()=>{
  const c=setup();c.save();await c.sync();

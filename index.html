@@ -1142,7 +1142,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.06.1';
+const POS_RELEASE = '2026.10.07.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -6497,14 +6497,17 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
   const rows = [];
 
   // Summary row: Type | TxnID | Date | Time | Name | Phone | Email | Address |
-  // — | — | — | — | Total | — | Document Type | Document Number
+  // — | — | — | — | Total | — | Document Type | Document Number |
+  // Name | Company | Street | City | State | Zip  (Q–V: the same customer, unjoined.
+  // E and H stay joined for older readers; Ledger reads only A:P.)
   const savedDocType = DOC_TITLES[order.docType] ? order.docType : '';
   const savedDocNumber = order.docNumber ? String(order.docNumber) : '';
   rows.push(['TXN', txnId, dateStr, timeStr,
     [c.name, c.company].filter(Boolean).join(' / ') || '',
     c.phone || '', c.email || '', addr,
     '', '', '', '', order.total, '', savedDocType,
-    savedDocNumber]);
+    savedDocNumber,
+    ...[c.name, c.company, c.addr, c.city, c.state, c.zip].map(v => v || '')]);
 
   // Item rows
   for (const item of order.items) {
@@ -6523,7 +6526,7 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
 
 // Compare all saved fields, tolerating only Sheets' number/date display formatting.
 function transactionRowsFingerprint(rows) {
-  return JSON.stringify(rows.map(row => Array.from({ length: 16 }, (_, col) => {
+  return JSON.stringify(rows.map(row => Array.from({ length: 22 }, (_, col) => {
     let value = String(row[col] ?? '').trim().replace(/^'/, '');
     if (col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11, 14, 15].includes(col))) {
       return value === '' ? '' : Number(value.replace(/[$,]/g, '')).toFixed(2);
@@ -6539,7 +6542,7 @@ function transactionBlockEnd(rows, start, id) {
   return end;
 }
 function transactionUserEnteredRows(rows) {
-  return rows.map(row => row.map((value, col) => [8, 13, 15].includes(col) ? sheetText(value) : value));
+  return rows.map(row => row.map((value, col) => [8, 13, 15].includes(col) || col >= 16 ? sheetText(value) : value));
 }
 function transactionCellRows(rows) {
   return rows.map(row => ({ values: row.map((value, col) => {
@@ -6623,7 +6626,7 @@ async function writeTransactionToSheet(order) {
         } });
         requests.push({ updateCells: {
           range: { sheetId, startRowIndex: existingTxnIdx, endRowIndex: existingTxnIdx + rows.length,
-            startColumnIndex: 0, endColumnIndex: 16 },
+            startColumnIndex: 0, endColumnIndex: 22 },
           rows: transactionCellRows(rows), fields: 'userEnteredValue',
         } });
         if (delta < 0) requests.push({ deleteDimension: {
@@ -6633,7 +6636,7 @@ async function writeTransactionToSheet(order) {
         writeMode = '(updated existing)';
       }
       // Old already-synced local copies never overwrite a newer copy from another register.
-      writtenRange = `${TXN_SHEET}!A${existingTxnIdx + 1}:P${existingTxnIdx + (order.historySyncPending ? rows.length : savedRows.length)}`;
+      writtenRange = `${TXN_SHEET}!A${existingTxnIdx + 1}:V${existingTxnIdx + (order.historySyncPending ? rows.length : savedRows.length)}`;
     } else {
       const txnTs = txnDate.getTime();
       // Find the first TXN row that is older than this transaction → insert before it.
@@ -6661,7 +6664,7 @@ async function writeTransactionToSheet(order) {
           }
         }]);
         await sheetsUpdate(`${TXN_SHEET}!A${insertIdx + 1}`, transactionUserEnteredRows(rows));
-        writtenRange = `${TXN_SHEET}!A${insertIdx + 1}:P${insertIdx + rows.length}`;
+        writtenRange = `${TXN_SHEET}!A${insertIdx + 1}:V${insertIdx + rows.length}`;
         writeMode = `(inserted at row ${insertIdx + 1})`;
       }
     }
@@ -6918,7 +6921,8 @@ function _parseTxnRows(rows) {
       if (cur) txns.push(cur);
       cur = { txnId: r[1]||'', date: r[2]||'', time: r[3]||'', name: r[4]||'',
               phone: r[5]||'', email: r[6]||'', addr: r[7]||'', total: r[12]||'',
-              docType: r[14]||'', docNumber: r[15]||'', items: [] };
+              docType: r[14]||'', docNumber: r[15]||'',
+              customer: (r.slice(16, 22).some(Boolean) ? r.slice(16, 22) : null), items: [] };
     } else if (type === 'item' && cur) {
       cur.items.push({ pn: r[8]||'', desc: r[9]||'', qty: r[10]||'', ea: r[11]||'', sub: r[12]||'', sn: r[13]||'' });
     }
@@ -7093,12 +7097,16 @@ function loadTxnIntoPOS(i) {
   const _od = new Date(((t.date || '') + ' ' + (t.time || '')).trim());
   _reprintSource = { txnId: t.txnId || '', date: isNaN(_od.getTime()) ? new Date().toISOString() : _od.toISOString(), docType: t.docType || 'receipt', docNumber: t.docNumber || null };
   setDocType(DOC_TITLES[t.docType] ? t.docType : 'receipt');
-  // Customer — name field was saved as "name / company"; split it back.
+  // Customer — newer rows carry the fields unjoined (Q–V); older rows saved "name / company".
   let name = t.name || '', company = '';
   if (name.includes(' / ')) { const p = name.split(' / '); name = p[0].trim(); company = p.slice(1).join(' / ').trim(); }
   const setv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
   setv('custName', name); setv('custCompany', company);
   setv('custPhone', t.phone); setv('custEmail', t.email); setv('custAddr', t.addr);
+  if (t.customer) {
+    ['custName','custCompany','custAddr','custCity','custState','custZip']
+      .forEach((id,index) => setv(id,t.customer[index]));
+  }
   if (t.completedContact) {
     ['custName','custCompany','custAddr','custCity','custState','custZip','custPhone','custEmail']
       .forEach((id,index) => setv(id,t.completedContact[index]));
