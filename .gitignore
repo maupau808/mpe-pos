@@ -17,3 +17,5 @@
 !.github/workflows/
 !.github/workflows/pages.yml
 !test_maruyama_scans.mjs
+!print-relay.js
+!test_print_relay.cjs

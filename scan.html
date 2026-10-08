@@ -952,9 +952,21 @@ function cachedToken() {
 function desktopGoogleAvailable() {
   return !!(window.mpeDesktop?.google && typeof window.mpeDesktop.google.getStatus === 'function');
 }
+// MPE Mobile serves this same page behind its pairing cookie and hands over the
+// device key from /api/scan-key, so a paired phone never types it.
+const MOBILE_ORIGINS = ['https://mpe-mobile-539388267026.us-central1.run.app', 'https://app.mauipowerequipment.com'];
+function onMobileOrigin() { return MOBILE_ORIGINS.includes(location.origin); }
 function phoneBridgeAvailable() {
-  return location.origin === 'https://maupau808.github.io' &&
+  return (location.origin === 'https://maupau808.github.io' || onMobileOrigin()) &&
     /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(PHONE_BRIDGE_URL);
+}
+async function mobileScanKey() {
+  const resp = await fetch('/api/scan-key', { credentials: 'same-origin', cache: 'no-store', headers: { 'X-MPE': '1' } });
+  if (resp.status === 401) { location.href = '/'; throw new Error('Pair this phone with MPE Mobile first'); }
+  if (!resp.ok) throw new Error('Scanner key unavailable from MPE Mobile');
+  const key = String((await resp.json())?.key || '').trim();
+  if (!/^mpe1_[A-Za-z0-9_-]{40,80}$/.test(key)) throw new Error('Scanner key unavailable from MPE Mobile');
+  return key;
 }
 function phoneBridgeKey() { return localStorage.getItem(K_BRIDGE) || ''; }
 
@@ -1167,12 +1179,15 @@ function initTokenClient() {
   });
   renderAuth();
 }
-async function initBridgeGoogle() {
+async function initBridgeGoogle(retried = false) {
   accessToken = null;
   localStorage.removeItem(K_TOKEN);
   localStorage.removeItem(K_TOKEN_AT);
   if (!desktopGoogleAvailable() && phoneBridgeAvailable() && !phoneBridgeClient) {
     phoneBridgeClient = new PhoneBridgeClient(PHONE_BRIDGE_URL);
+  }
+  if (!desktopGoogleAvailable() && onMobileOrigin() && !phoneBridgeKey()) {
+    try { await connectPhoneBridge(); } catch (error) { /* stays in the not-connected state below */ }
   }
   if (!desktopGoogleAvailable() && !phoneBridgeKey()) {
     bridgeGoogleConnected = false;
@@ -1193,6 +1208,10 @@ async function initBridgeGoogle() {
       schedulePendingCodesFlush();
     } else if (!loaded) setFeedState('err', 'Sign in to load prices');
   } catch (error) {
+    // On MPE Mobile a stored key that stopped working is replaced silently, once.
+    if (!retried && !desktopGoogleAvailable() && onMobileOrigin()) {
+      try { if (await connectPhoneBridge()) return initBridgeGoogle(true); } catch (e) { /* not connected below */ }
+    }
     bridgeGoogleConnected = false;
     renderAuth();
     if (!loaded) setFeedState('err', desktopGoogleAvailable() ? 'Desktop Google sign-in unavailable' : 'Scanner connection unavailable');
@@ -1202,7 +1221,8 @@ async function initBridgeGoogle() {
 async function connectPhoneBridge() {
   if (!phoneBridgeAvailable()) throw new Error('Scanner connection is not configured');
   if (!phoneBridgeClient) phoneBridgeClient = new PhoneBridgeClient(PHONE_BRIDGE_URL);
-  const entered = prompt('Paste the MPE scanner device key:', localStorage.getItem(K_BRIDGE_DRAFT) || phoneBridgeKey());
+  const entered = onMobileOrigin() ? await mobileScanKey()
+    : prompt('Paste the MPE scanner device key:', localStorage.getItem(K_BRIDGE_DRAFT) || phoneBridgeKey());
   if (entered === null) return null;
   const key = entered.trim();
   if (!key) throw new Error('No device key was entered');
@@ -1284,7 +1304,7 @@ function renderAuth() {
     $('signLabel').textContent = signed ? 'Phone connected' : 'Scanner connection';
     $('signHelp').textContent = signed
       ? 'MPE shop · stays connected on this phone'
-      : 'Paste the device key once to load prices and send lists.';
+      : (onMobileOrigin() ? 'Connects through MPE Mobile to load prices and send lists.' : 'Paste the device key once to load prices and send lists.');
   } else {
     $('signBtn').textContent = signed ? 'Refresh' : 'Sign in';
     $('signLabel').textContent = signed ? 'Signed in' : 'Google account';
