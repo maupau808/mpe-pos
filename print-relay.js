@@ -33,7 +33,7 @@
   const doneRequest = (token, machine, job, ok, error) =>
     jsonRequest(token, '/relay/done', { machine, job, ok: !!ok, error: String(error || '').slice(0, 200) });
   const pageRequest = (token, machine, job, n) =>
-    [BASE + '/relay/page?job=' + encodeURIComponent(job) + '&n=' + n, { headers: { Authorization: 'Bearer ' + token, 'X-Machine': machine } }];
+    [BASE + '/relay/page?job=' + encodeURIComponent(job) + '&n=' + n, { headers: { Authorization: 'Bearer ' + token, 'X-Machine': machine }, signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(30000) : undefined }];
 
   // Stops page print handlers from running only while a relay job is printing.
   function installPrintGuard(win, state) {
@@ -57,12 +57,7 @@
     const urls = [];
     const host = doc.getElementById('remotePrint');
     try {
-      if (typeof win.claimPhysicalOutput === 'function') {
-        let owner = win.claimPhysicalOutput(), waited = 0;
-        while (!owner && waited < BUSY_MAX_MS) { await sleep(BUSY_MS); waited += BUSY_MS; owner = win.claimPhysicalOutput(); }
-        if (!owner) throw new Error('register busy');
-        state.owner = owner;
-      }
+      // Fetch and decode every page BEFORE taking the register's output lock, so a slow network never blocks a sale print.
       const imgs = [];
       for (let n = 1; n <= job.pages; n++) {
         const res = await env.fetch(...pageRequest(token, machine, job.id, n));
@@ -75,10 +70,16 @@
         host.appendChild(img);
       }
       await Promise.all(imgs.map(i => i.decode()));
+      if (typeof win.claimPhysicalOutput === 'function') {
+        let owner = win.claimPhysicalOutput(), waited = 0;
+        while (!owner && waited < BUSY_MAX_MS) { await sleep(BUSY_MS); waited += BUSY_MS; owner = win.claimPhysicalOutput(); }
+        if (!owner) throw new Error('register busy');
+        state.owner = owner;
+      }
       state.active = true;
       doc.body.classList.add('remote-printing');
       // Keep the guard up until afterprint has fired (it can land after printReceipt resolves).
-      const after = new Promise(r => { state.afterPrint = r; setTimeout(r, 5000); });
+      const after = new Promise(r => { state.afterPrint = r; setTimeout(r, 60000); });
       await win.mpeDesktop.printReceipt({});
       await after;
     } finally {
