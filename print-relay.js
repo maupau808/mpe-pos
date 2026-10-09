@@ -29,7 +29,7 @@
   function jsonRequest(token, path, body) {
     return [BASE + path, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }];
   }
-  const nextRequest = (token, machine, printerOk) => jsonRequest(token, '/relay/next', { machine, printer_ok: !!printerOk });
+  const nextRequest = (token, machine, printerOk, label) => jsonRequest(token, '/relay/next', { machine, printer_ok: !!printerOk, label: String(label || '').slice(0, 100) });
   const doneRequest = (token, machine, job, ok, error) =>
     jsonRequest(token, '/relay/done', { machine, job, ok: !!ok, error: String(error || '').slice(0, 200) });
   const pageRequest = (token, machine, job, n) =>
@@ -100,9 +100,9 @@
       try { state.token = tokenFromRows(await win.mpeDesktop.google.sheetsGet('Lists!Z1')); } catch (e) { state.token = ''; }
       if (!state.token) return TOKEN_MS;
     }
-    let ok = false;
-    try { ok = !!(await win.mpeDesktop.getPrintStatus()).ready; } catch (e) { ok = false; }
-    const res = await env.fetch(...nextRequest(state.token, state.machine, ok));
+    let ok = false, label = { win32: 'Windows', darwin: 'Mac' }[win.mpeDesktop.platform] || String(win.mpeDesktop.platform || '');
+    try { const st = await win.mpeDesktop.getPrintStatus(); ok = !!st.ready; if (st.printer) label += ' · ' + st.printer; } catch (e) { ok = false; }
+    const res = await env.fetch(...nextRequest(state.token, state.machine, ok, label));
     if (res.status === 401) { state.token = ''; return TOKEN_MS; }
     if (res.status === 204) return POLL_MS;
     if (!res.ok) return BACKOFF_MS;

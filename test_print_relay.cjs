@@ -10,7 +10,7 @@ const [u1, o1] = R.nextRequest('T', 'pos-abcdef12', true);
 assert.strictEqual(u1, R.BASE + '/relay/next');
 assert.strictEqual(o1.method, 'POST');
 assert.strictEqual(o1.headers.Authorization, 'Bearer T');
-assert.deepStrictEqual(JSON.parse(o1.body), { machine: 'pos-abcdef12', printer_ok: true });
+assert.deepStrictEqual(JSON.parse(o1.body), { machine: 'pos-abcdef12', printer_ok: true, label: '' });
 const d = JSON.parse(R.doneRequest('T', 'm', 'J', false, 'x'.repeat(500))[1].body);
 assert.strictEqual(d.ok, false); assert.strictEqual(d.error.length, 200); assert.strictEqual(d.job, 'J');
 const [u2, o2] = R.pageRequest('T', 'pos-abcdef12', '20260101T000000-abcdef', 3);
