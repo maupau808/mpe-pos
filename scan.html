@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#12140f">
+<meta name="theme-color" content="#0d1118">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>MPE Scan</title>
@@ -12,35 +12,40 @@
 /* ── MPE Scan — shop lookup tool ───────────────────────────────────────────
    Dark shell on purpose: this is used outdoors and in the yard with the
    camera live, where a white page fights the sun and washes out the preview.
-   The accent green and type treatment are the POS's, so it still reads MPE.
+   Colors are the MPE Mobile / Dashboard dark tokens (navy panels, amber
+   accent, green for done) so Scan reads as part of the phone app.
    Light mode is a toggle for anyone who wants it. */
 :root {
-  --bg: #12140f;
-  --panel: #1c1f19;
-  --panel-2: #24281f;
-  --line: #333a2c;
-  --text: #f2f4ee;
-  --muted: #9aa48d;
-  --dim: #6d7562;
-  --accent: #7dc98a;
-  --accent-ink: #12140f;
-  --warn: #e0a53c;
-  --err: #e8705f;
+  --bg: #0d1118;
+  --panel: #141b25;
+  --panel-2: #19222e;
+  --line: #2a3544;
+  --text: #e8edf4;
+  --muted: #8793a3;
+  --dim: #5d6878;
+  --accent: #e4a84c;
+  --accent-ink: #0d1118;
+  --ok: #4fd28a;
+  --warn: #f08c4a;
+  --err: #e5484d;
+  --focus: #8ab4f8;
   --scan-beam: #ff3b30;
   --shadow: 0 6px 24px rgba(0,0,0,.45);
 }
 html[data-theme="light"] {
-  --bg: #f4f6f1;
+  --bg: #f8fafc;
   --panel: #ffffff;
-  --panel-2: #f7faf5;
-  --line: #e1e7de;
-  --text: #1a1a1a;
-  --muted: #6f7a67;
-  --dim: #a4ac9c;
-  --accent: #2d7a3a;
+  --panel-2: #f3f6f9;
+  --line: #c6d0da;
+  --text: #17212b;
+  --muted: #5c6b79;
+  --dim: #a9b7c5;
+  --accent: #9a5b0b;
   --accent-ink: #ffffff;
-  --warn: #a9701a;
-  --err: #c2382a;
+  --ok: #167443;
+  --warn: #c2410c;
+  --err: #b42318;
+  --focus: #1d5fbf;
   --scan-beam: #d9251b;
   --shadow: 0 6px 24px rgba(0,0,0,.10);
 }
@@ -65,7 +70,7 @@ button { cursor: pointer; border: none; background: none; }
 /* ── header ─────────────────────────────────────────────────────────────── */
 .top-spacer { flex: 1; }
 .feed-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); flex: none; }
-.feed-dot.ok { background: var(--accent); }
+.feed-dot.ok { background: var(--ok); }
 .feed-dot.warn { background: var(--warn); }
 .feed-dot.err { background: var(--err); }
 
@@ -79,8 +84,8 @@ button { cursor: pointer; border: none; background: none; }
   border-bottom: 1px solid var(--line); width: 100%;
 }
 .authbar.show { display: flex; }
-.authbar.soon { background: rgba(224,165,60,.14); color: var(--warn); }
-.authbar.out  { background: rgba(232,112,95,.16); color: var(--err); }
+.authbar.soon { background: rgba(240,140,74,.14); color: var(--warn); }
+.authbar.out  { background: rgba(229,72,77,.16); color: var(--err); }
 .authbar b { display: block; font-size: 13px; }
 .authbar span { display: block; font-size: 11.5px; opacity: .85; margin-top: 1px; }
 .authbar .authbar-main { flex: 1; min-width: 0; }
@@ -229,7 +234,7 @@ body.show-cost .hero-cost { display: block; }
 .row.has-sn .row-main { flex: 1 1 60%; }
 .sn-line { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; margin-top: 9px; }
 .sn-line label { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--warn); flex: none; }
-.sn-line.done label { color: var(--accent); }
+.sn-line.done label { color: var(--ok); }
 .sn-input {
   flex: 1; min-width: 0; font-size: 16px;  /* 16px or iOS zooms on focus */
   padding: 7px 9px; border-radius: 8px; background: var(--panel-2); color: var(--text);
@@ -371,7 +376,7 @@ body.bind .bind-wrap { display: flex; }
   flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
   text-transform: uppercase; color: var(--dim);
 }
-.pool.bound .pool-mark { color: var(--accent); }
+.pool.bound .pool-mark { color: var(--ok); }
 
 .toast {
   position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom));
@@ -429,11 +434,14 @@ body[data-mode="serial"] .serial-work { display:block; }
 .serial-item { display:flex; align-items:center; justify-content:space-between; gap:8px; border-bottom:1px solid var(--line); padding:9px 0; }
 .serial-item code { overflow-wrap:anywhere; }
 .serial-sync { color:var(--muted); font-size:12px; margin-top:12px; }
-button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+button:focus-visible, a:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.back-app { display:inline-flex; align-items:center; min-height:44px; flex:none; text-decoration:none; color:var(--text); font-size:15px; }
+.back-app[hidden] { display:none; }
 </style>
 </head>
 <body data-mode="home">
 <header class="mode-header">
+  <a class="mini back-app" id="backApp" href="/" hidden aria-label="Back to MPE">‹ MPE</a>
   <div><div class="mode-brand">MPE Scan</div><h1 id="modeTitle">Choose a mode</h1><p id="modeHint">What are you working on?</p></div>
   <button class="mini" id="leaveMode" hidden>Leave mode</button>
   <button class="mini" id="homeReload">Reload</button>
@@ -956,6 +964,7 @@ function desktopGoogleAvailable() {
 // device key from /api/scan-key, so a paired phone never types it.
 const MOBILE_ORIGINS = ['https://mpe-mobile-539388267026.us-central1.run.app', 'https://app.mauipowerequipment.com'];
 function onMobileOrigin() { return MOBILE_ORIGINS.includes(location.origin); }
+if (onMobileOrigin()) document.getElementById('backApp').hidden = false;
 function phoneBridgeAvailable() {
   return (location.origin === 'https://maupau808.github.io' || onMobileOrigin()) &&
     /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(PHONE_BRIDGE_URL);
