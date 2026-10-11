@@ -865,6 +865,12 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span></div>
             <div id="dataStatus" class="data-status"></div>
             <div class="admin-control-grid">
+              <select class="scan-camera-select" id="registerDigitSelect" aria-label="This register" title="Which register this is — keeps sale numbers from matching another counter's" onchange="setRegisterDigit(this.value)">
+                <option value="" disabled>Register: not set</option>
+                <option value="1">Register 1 · Mac</option>
+                <option value="2">Register 2 · PC Left</option>
+                <option value="3">Register 3 · PC Right</option>
+              </select>
               <label class="menu-check"><input type="checkbox" id="scannerModeDefault" onchange="setScannerModeDefault(this.checked)"> Scanner on startup</label>
               <button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button>
               <select class="scan-camera-select" id="scanCameraSelect" aria-label="Scanner camera" title="Scanner camera" onchange="changeScanCamera()">
@@ -1143,7 +1149,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.10.1';
+const POS_RELEASE = '2026.10.11.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1212,6 +1218,7 @@ const tbody = document.getElementById('searchRows');
 
 // ─── GOOGLE AUTH ───────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
+  renderRegisterDigit();
   // Local scanner testing uses the current server feed directly. GitHub Pages
   // keeps the existing instant-cache + Drive refresh path.
   if (isLocalPos() && new URLSearchParams(location.search).has('scannerFixture')) {
@@ -1651,8 +1658,12 @@ function clearToolFailure() {}
 // A failed Drive push is not red: the sale stays local and retries later.
 function adminAlertLevel() {
   if (!(typeof loaded !== 'undefined' && loaded && partsArray && partsArray.length)) return 'err';
-  if (_posUpdateRelease || authState() !== 'in') return 'warn';
+  if (_posUpdateRelease || authState() !== 'in' || registerDigitMissing()) return 'warn';
   return '';
+}
+// Only the counter app asks; a phone or browser tab keeps plain numbers.
+function registerDigitMissing() {
+  return !!window.mpeDesktop && !registerDigit();
 }
 function updateAdminDot() {
   const dot = document.getElementById('adminDot');
@@ -1663,6 +1674,7 @@ function updateAdminDot() {
   dot.title = level === 'err'
     ? 'No parts loaded — open Admin'
     : _posUpdateRelease ? 'POS update ready — open Admin after the current sale'
+    : registerDigitMissing() ? 'Choose which register this is — open Admin'
     : 'Not signed in to Google — open Admin';
 }
 
@@ -8094,7 +8106,9 @@ function clearAll() {
   _historyContentBaseline = null;
   _currentTxnId   = null;
   _currentTxnDate = null;
+  _currentDocNumber = null;
   _pendingTxnDate = null;
+  _pendingDocNumber = null;
   _reprintSource = null;
   _ledgerDraftCustomerBinding = null;
   _ledgerDraftAccepted = false;
@@ -9807,7 +9821,7 @@ async function emailDoc() {
   setBtn('⏳', true);
   try {
     const now    = reserveDocDate() || new Date();
-    const number = formatDocNumber(now, _docType);
+    const number = activeDocNumber() || formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
 
@@ -9962,6 +9976,8 @@ const DOC_PREFIX = { receipt: 'R',       invoice: 'INV',     quote: 'Q',     int
 const DOC_EPOCH  = Date.UTC(2025, 0, 1);   // numbering epoch — numbers count seconds from here
 let _docType        = 'receipt';
 let _pendingTxnDate = null;   // date reserved at print/email start, consumed by saveToHistory
+let _pendingDocNumber = null; // number reserved with it
+let _currentDocNumber = null; // number saved with _currentTxnId
 
 function historyDocTypeTag(type) {
   const title = DOC_TITLES[type];
@@ -10020,9 +10036,57 @@ function pad2(n) { return String(n).padStart(2, '0'); }
 // Pure digits, derived from date/time, ~7 digits until ~2044. The document TYPE
 // is shown in the title (Receipt/Invoice/Quote), so the number carries no prefix.
 // Uniqueness is per-minute; the internal txnId stays per-second for records.
+// Documents saved before register numbering (and registers with no digit yet) keep it.
 function formatDocNumber(d, type) {
   const mins = Math.max(0, Math.floor((d.getTime() - DOC_EPOCH) / 60000));
   return String(mins).padStart(7, '0');
+}
+// Ledger's numbering plan: 7 plain digits, first digit = register (1 Mac, 2 PC Left,
+// 3 PC Right). Ledger leases count up from D000001; numbers this register issues on its
+// own count up from D500001, so the two can never meet. Gaps are allowed, reuse is not.
+const LOCAL_DOC_NUMBER_KEY = 'mpeLocalDocNumberV1';
+const LOCAL_DOC_NUMBER_BASE = 500000;
+function nextRegisterDocNumber(d) {
+  const digit = registerDigit();
+  if (!digit) return formatDocNumber(d, _docType);
+  const band = new RegExp('^' + digit + '([5-9]\\d{5})$');
+  let last = LOCAL_DOC_NUMBER_BASE;
+  try {
+    const saved = JSON.parse(localStorage.getItem(LOCAL_DOC_NUMBER_KEY) || 'null');
+    if (saved?.digit === digit && Number.isInteger(saved.last)) last = Math.max(last, saved.last);
+  } catch (e) {}
+  try {
+    for (const entry of getHistory()) {
+      const match = band.exec(String(entry?.docNumber || ''));
+      if (match) last = Math.max(last, Number(match[1]));
+    }
+  } catch (e) {}
+  if (last >= 999999) return formatDocNumber(d, _docType);
+  const next = last + 1;
+  try { localStorage.setItem(LOCAL_DOC_NUMBER_KEY, JSON.stringify({ digit, last: next })); } catch (e) {}
+  return digit + String(next);
+}
+// This register's digit, chosen once in Admin and kept in this register's storage.
+// The desktop Mac needs no setup.
+const REGISTER_DIGIT_KEY = 'mpeRegisterDigitV1';
+function registerDigit() {
+  let value = '';
+  try { value = String(localStorage.getItem(REGISTER_DIGIT_KEY) || ''); } catch (e) {}
+  if (/^[123]$/.test(value)) return value;
+  const desktopMac = typeof window !== 'undefined' && !!window.mpeDesktop
+    && /Macintosh/.test(navigator.userAgent || '');
+  return desktopMac ? '1' : '';
+}
+function setRegisterDigit(value) {
+  if (!/^[123]$/.test(value)) return;
+  try { localStorage.setItem(REGISTER_DIGIT_KEY, value); } catch (e) {}
+  renderRegisterDigit();
+  updateAdminDot();
+  updateScreenDocTitle();
+}
+function renderRegisterDigit() {
+  const select = document.getElementById('registerDigitSelect');
+  if (select) select.value = registerDigit();
 }
 // The date this document's number is based on (reprint date > committed txn date > reserved date)
 function docDateOrNull() {
@@ -10034,7 +10098,9 @@ function docDateOrNull() {
 function activeDocNumber() {
   const finalized = _ledgerOutputCoordinator?.current();
   if (finalized) return finalized.document_number;
-  if (_reprintSource?.docNumber) return _reprintSource.docNumber;
+  if (_reprintSource) return _reprintSource.docNumber || formatDocNumber(new Date(_reprintSource.date), _docType);
+  if (_currentTxnDate && _currentDocNumber) return _currentDocNumber;
+  if (_pendingTxnDate && _pendingDocNumber) return _pendingDocNumber;
   const d = docDateOrNull();
   return d ? formatDocNumber(d, _docType) : null;
 }
@@ -10042,7 +10108,10 @@ function activeDocNumber() {
 function reserveDocDate() {
   const finalized = _ledgerOutputCoordinator?.current();
   if (finalized) return new Date(finalized.completion_at);
-  if (!_reprintSource && !_currentTxnDate && !_pendingTxnDate) _pendingTxnDate = new Date();
+  if (!_reprintSource && !_currentTxnDate && !_pendingTxnDate) {
+    _pendingTxnDate = new Date();
+    _pendingDocNumber = nextRegisterDocNumber(_pendingTxnDate);
+  }
   return docDateOrNull();
 }
 function updateScreenDocTitle() {
@@ -10094,7 +10163,8 @@ function saveToHistory() {
     }
   } else {
     const pad = n => String(n).padStart(2, '0');
-    const base = 'TX-' + pad(now.getMonth()+1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + '-' + pad(now.getSeconds());
+    const base = 'TX-' + pad(now.getMonth()+1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + '-' + pad(now.getSeconds())
+      + (registerDigit() ? '-' + registerDigit() : '');
     order.txnId = finalized ? finalized.source_transaction_id : base;
     if (!finalized) {
       const ids = new Set(history.map(entry => entry.txnId));
@@ -10102,7 +10172,8 @@ function saveToHistory() {
     }
     order.date = now.toISOString();
     order.docType = finalized ? finalized.document_type : _docType;
-    order.docNumber = finalized ? finalized.document_number : formatDocNumber(now, _docType);
+    order.docNumber = finalized ? finalized.document_number
+      : (_pendingTxnDate && _pendingDocNumber) || nextRegisterDocNumber(now);
   }
   if (finalized) {
     order.docType = finalized.document_type;
@@ -10129,7 +10200,9 @@ function saveToHistory() {
   } catch (error) { return false; }
   _currentTxnId = order.txnId;
   _currentTxnDate = order.date;
+  _currentDocNumber = order.docNumber;
   _pendingTxnDate = null;
+  _pendingDocNumber = null;
   _historyContentBaseline = fingerprint;
   _lastPrintedOrder = order;
   _lastPushStatus = googleSessionAvailable() ? 'pending' : 'skipped';
