@@ -28,6 +28,11 @@
     'customer_id', 'identity_kind', 'adoption_proof', 'anonymous', 'name',
     'company', 'phone', 'email', 'address',
   ];
+  // Structured billing address: `billing_address` replaces `address` (Desktop emits C01 v3).
+  const CUSTOMER_KEYS_STRUCTURED = CUSTOMER_KEYS.map(key => (
+    key === 'address' ? 'billing_address' : key
+  ));
+  const BILLING_ADDRESS_KEYS = ['lines', 'city', 'region', 'postal_code', 'country'];
   const LINE_KEYS = [
     'line_id', 'kind', 'part_number', 'description', 'quantity',
     'original_unit_amount', 'discount_amount', 'unit_amount', 'line_rounding',
@@ -132,6 +137,24 @@
 
   function refuse(code) {
     throw new LedgerFinalizationError(code);
+  }
+
+  function customerKeysFor(value) {
+    return value && typeof value === 'object' && Object.hasOwn(value, 'billing_address')
+      ? CUSTOMER_KEYS_STRUCTURED : CUSTOMER_KEYS;
+  }
+
+  function billingAddress(value, code = 'shape_invalid') {
+    const values = dataValues(value, BILLING_ADDRESS_KEYS, code);
+    const lines = arrayValues(values.lines.value, code);
+    if (lines.length > 5) refuse(code);
+    return {
+      lines: lines.map(line => unicodeScalars(line, code)),
+      city: unicodeScalars(values.city.value, code),
+      region: unicodeScalars(values.region.value, code),
+      postal_code: unicodeScalars(values.postal_code.value, code),
+      country: unicodeScalars(values.country.value, code),
+    };
   }
 
   function dataValues(value, keys, code = 'shape_invalid') {
@@ -287,7 +310,7 @@
     };
     if (!Object.hasOwn(ACTIONS, documentValue.type)) refuse('shape_invalid');
 
-    const customerValues = dataValues(capture.customer.value, CUSTOMER_KEYS);
+    const customerValues = dataValues(capture.customer.value, customerKeysFor(capture.customer.value));
     const customer = {
       customer_id: nullableText(customerValues.customer_id.value),
       identity_kind: unicodeScalars(customerValues.identity_kind.value),
@@ -297,7 +320,9 @@
       company: unicodeScalars(customerValues.company.value),
       phone: unicodeScalars(customerValues.phone.value),
       email: unicodeScalars(customerValues.email.value),
-      address: unicodeScalars(customerValues.address.value),
+      ...(customerValues.billing_address
+        ? { billing_address: billingAddress(customerValues.billing_address.value) }
+        : { address: unicodeScalars(customerValues.address.value) }),
     };
     if (typeof customer.anonymous !== 'boolean') refuse('shape_invalid');
 
@@ -598,7 +623,7 @@
       'integrity_conflict',
     );
     dataValues(sourceValues.source_client.value, SOURCE_CLIENT_KEYS, 'integrity_conflict');
-    dataValues(sourceValues.customer.value, CUSTOMER_KEYS, 'integrity_conflict');
+    dataValues(sourceValues.customer.value, customerKeysFor(sourceValues.customer.value), 'integrity_conflict');
     dataValues(sourceValues.totals.value, TOTAL_KEYS, 'integrity_conflict');
     dataValues(sourceValues.tender.value, TENDER_KEYS, 'integrity_conflict');
     dataValues(sourceValues.lineage.value, LINEAGE_KEYS, 'integrity_conflict');

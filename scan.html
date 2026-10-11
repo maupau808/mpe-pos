@@ -815,6 +815,9 @@ const K_ACCOUNT  = 'gAccount';
 let accessToken = null;
 let tokenClient = null;
 let bridgeGoogleConnected = false;
+// True while the page's first connection check runs, so a phone that is already
+// connected never flashes the red not-connected bar during the round trip.
+let bridgeChecking = false;
 let bridgeGoogleAccount = '';
 let phoneBridgeClient = null;
 let pendingAfterAuth = null;
@@ -1334,6 +1337,7 @@ function renderAuthBar() {
   const state = authState();
   bar.className = 'authbar' + (state === 'ok' ? '' : ' show ' + state);
   if (state === 'ok') return;
+  if (state === 'out' && bridgeChecking) { bar.className = 'authbar'; return; }
   const held = scannerMode === 'pos' && list.length ? `${list.length} line${list.length === 1 ? '' : 's'} saved on this phone.` : '';
   if (state === 'out') {
     $('authBarTitle').textContent = phoneBridgeAvailable()
@@ -4017,6 +4021,7 @@ enterScannerMode('home');
 // ── BOOT ──────────────────────────────────────────────────────────────────
 renderList();
 renderPending();
+bridgeChecking = googleBridgeAvailable();
 renderAuth();          // the bar must be right before GIS loads, and if it never does
 setFeedState('', 'Loading…');
 showHero({});
@@ -4026,7 +4031,8 @@ showHero({});
   const cached = await cacheGet('feed');
   if (cached) { try { await loadPosJsonBytes(cached, 'cache'); } catch (e) {} }
   if (googleBridgeAvailable()) {
-    await initBridgeGoogle();
+    try { await initBridgeGoogle(); }
+    finally { bridgeChecking = false; renderAuth(); }
   } else {
     const waitForGis = setInterval(() => {
       if (window.google?.accounts?.oauth2) { clearInterval(waitForGis); initTokenClient(); }
