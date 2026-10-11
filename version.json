@@ -1,61 +1,61 @@
 {
   "posRelease": "2026.10.10.1",
-  "desktopRelease": "0.3.20",
-  "publishedAt": "2026-10-11T05:32:10Z",
+  "desktopRelease": "0.3.22",
+  "publishedAt": "2026-10-11T08:21:42Z",
   "desktop": {
     "windows": {
-      "version": "0.3.20",
-      "archiveSize": 145586739,
-      "archiveSha256": "d594f264ae499c3bac6a8eb47360d0600eb4d68fbb05c2c8b5c083099c0b9b09",
+      "version": "0.3.22",
+      "archiveSize": 145680778,
+      "archiveSha256": "ac956a5ba2b0757548523d2c4291eac6335f90ce94aaba6f1276a0edc93a1c58",
       "parts": [
         {
-          "fileId": "14dD7Udju7iupNF0HlH87lftIZjOzazdt",
-          "name": "MPE-POS-Windows-0.3.20.zip.part-000",
+          "fileId": "1WxR-wz6_eOAkFxqcB8lHw0JRjCXIbbB7",
+          "name": "MPE-POS-Windows-0.3.22.zip.part-000",
           "size": 41943040,
-          "sha256": "fe952df81b18c368fdd4f4ec570ac1e6dc86dc5a3a7d3882472c784446df85a0"
+          "sha256": "0af944e6e19d0c79d6c8db2197e28307eb644074f7a586389ce82a131a80bfa0"
         },
         {
-          "fileId": "13rdrHa0bw5csyjC7cLAaz3qOxBxnpTrx",
-          "name": "MPE-POS-Windows-0.3.20.zip.part-001",
+          "fileId": "18S0iFMYAnB9IsPjMQYnzMZMfgwzfiiU6",
+          "name": "MPE-POS-Windows-0.3.22.zip.part-001",
           "size": 41943040,
-          "sha256": "a307e4cb6d78fc4babd3991a25989a658062327019e4bf258757e8b4b251c2b6"
+          "sha256": "d111b9ae4da5bcdd7a1a3cb21dee3129cc7d55b7de07d2fbb19725bb6d149817"
         },
         {
-          "fileId": "1cbfldOjVqY3lZ2Y2RvtbqGvChFV5CyJD",
-          "name": "MPE-POS-Windows-0.3.20.zip.part-002",
+          "fileId": "1WbpeaxGv-ahY1GGz_oEFw0i0fknYmW1n",
+          "name": "MPE-POS-Windows-0.3.22.zip.part-002",
           "size": 41943040,
-          "sha256": "ab03a825a747cc687ad3ecf083b759bc6ca7f95284dbffd6754999ddefd9bb7b"
+          "sha256": "6514c7d1aca073f8ff648d73624d54e5ce952dda78582f6f53fe228ae7146589"
         },
         {
-          "fileId": "1J4LeQmk8S8VtF2rCXrvv1bzRsOlVPjQ9",
-          "name": "MPE-POS-Windows-0.3.20.zip.part-003",
-          "size": 19757619,
-          "sha256": "fa2b76daba3ae34b04a7dd1e5703592dc8238f03f1bf85e9d5b1534e9f0156a5"
+          "fileId": "1kzEmPxQMDKyIfV5RI5ModYkAkF2Hbyym",
+          "name": "MPE-POS-Windows-0.3.22.zip.part-003",
+          "size": 19851658,
+          "sha256": "d105710dad69cfb3d8429da194dbe1ab7ae49c72984ef4aeea9c5445d3fbf819"
         }
       ]
     },
     "mac": {
-      "version": "0.3.20",
-      "archiveSize": 119972332,
-      "archiveSha256": "1adf5d24597b38dacf86e61031bc51e783dc3f509fd5ca083ea01389ff9f00a0",
+      "version": "0.3.22",
+      "archiveSize": 120066366,
+      "archiveSha256": "84039b198fe1096682265bce0967ca4f64d24ff22b183349a9a57294d651c33f",
       "parts": [
         {
-          "fileId": "1siT-RxwjsBXGkyaCRNXWX6tOvycvvz0M",
-          "name": "MPE-POS-mac-arm64-0.3.20.zip.part-000",
+          "fileId": "1a8-mrq5HAiHhTQTzHnVxIfcDi8rCBMfh",
+          "name": "MPE-POS-mac-arm64-0.3.22.zip.part-000",
           "size": 41943040,
-          "sha256": "40f625059a5b09bca9fd675131360250b7fcc76b6565980b7b69521069c8c1d4"
+          "sha256": "50851438c500173d654e17e5a03a633dac80a62bf242b3f8d135107fbc659f7b"
         },
         {
-          "fileId": "10CawOMpOMwmgQZirY579K1CwUodrAx03",
-          "name": "MPE-POS-mac-arm64-0.3.20.zip.part-001",
+          "fileId": "1cm-3Pu2mpAuK59uFbZuBK17d7MLSnuhq",
+          "name": "MPE-POS-mac-arm64-0.3.22.zip.part-001",
           "size": 41943040,
-          "sha256": "ffa5a67fb2c3bbda803da710498ae01854d42a7cfc137d35c88fbabd895499f2"
+          "sha256": "30f5f5b4ba7125397d7739155c6f8beceadf24a0a95748372fc66e1d2600d5c0"
         },
         {
-          "fileId": "14xSkx2tUOPKM9tlSB4iCwyTwYe_aqUOW",
-          "name": "MPE-POS-mac-arm64-0.3.20.zip.part-002",
-          "size": 36086252,
-          "sha256": "0dceb9eb34958cfa11de2a33143494b65f190e629201f173ed0092e3f82c4c95"
+          "fileId": "1TUR0v6I6dX3oNDLpIbXymPgUZ5akLERp",
+          "name": "MPE-POS-mac-arm64-0.3.22.zip.part-002",
+          "size": 36180286,
+          "sha256": "e5ed65bc2a8d7e2ebe1a811d1752839ff9391272ab05fe011ad3d063d4b64fd4"
         }
       ]
     }
