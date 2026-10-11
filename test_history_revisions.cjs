@@ -10,6 +10,7 @@ function setup() {
   const s = {
     console: {log() {}, warn() {}}, _docType: 'quote', _reprintSource: null,
     _currentTxnId: null, _currentTxnDate: null, _pendingTxnDate: null,
+    _pendingDocNumber: null, _currentDocNumber: null,
     _lastPrintedOrder: null, _lastPushStatus: null, _ledgerOutputCoordinator: null,
     HISTORY_KEY: 'history', HISTORY_MAX: 1000, PUSHED_TXNIDS_KEY: 'pushed',
     SHEETS_ID: 'test', TXN_SHEET: 'Transactions', DOC_TITLES: {quote:'Quote',receipt:'Receipt',invoice:'Invoice'},
@@ -21,7 +22,7 @@ function setup() {
     localStorage: {getItem: key => storage.get(key) || null, setItem: (key,value) => storage.set(key,value)},
     getHistory: () => JSON.parse(storage.get('history') || '[]'),
     countUnpushedTxns: () => s.getHistory().filter(o=>!vm.runInContext('getPushedTxnIds()',s).has(o.txnId)).length,
-    formatDocNumber: d => String(Math.floor(d.getTime()/60000)),
+    DOC_EPOCH: Date.UTC(2025, 0, 1),
     docDateOrNull: () => s._reprintSource ? new Date(s._reprintSource.date)
       : s._currentTxnDate ? new Date(s._currentTxnDate) : s._pendingTxnDate,
     getSheetNumericId: async () => 7,
@@ -53,6 +54,10 @@ function setup() {
   vm.runInContext(html.slice(pushed,html.indexOf('function upperText',pushed)),s);
   const sync=html.indexOf('const AUTO_TXN_PUSH_LIMIT');
   vm.runInContext(html.slice(sync,html.indexOf('// ─── TRANSACTION HISTORY LOOKUP',sync)),s);
+  const number=html.indexOf('function formatDocNumber(');
+  vm.runInContext(html.slice(number,html.indexOf('// The date this document',number)),s);
+  const active=html.indexOf('function activeDocNumber()');
+  vm.runInContext(html.slice(active,html.indexOf('// Reserve a date',active)),s);
   const reserve=html.indexOf('function reserveDocDate()');
   vm.runInContext(html.slice(reserve,html.indexOf('function updateScreenDocTitle()',reserve)),s);
   return {s,storage,save(){vm.runInContext('reserveDocDate()',s);return vm.runInContext('saveToHistory()',s);},
@@ -130,6 +135,27 @@ test('failed local persistence leaves existing quote and identity intact for ret
 test('stale legacy history during sign-in does not overwrite corrected Drive quote',async()=>{
  const c=setup();c.save();await c.sync();const sheet=c.sheet();sheet[1][10]=2;c.setSheet(sheet);
  c.storage.set('pushed','[]');c.connect();await c.flush();assert.equal(c.sheet()[1][10],2);assert.equal(c.batches(),0);
+});
+test('register numbers are 7 plain digits starting with the register digit and never repeat',()=>{
+ const unset=setup();unset.save();const plain=unset.s.getHistory()[0];
+ assert.match(plain.txnId,/^TX-\d{4}-\d{4}-\d{2}$/);assert.match(plain.docNumber,/^\d{7}$/);
+ const c=setup();c.storage.set('mpeRegisterDigitV1','2');
+ assert.equal(vm.runInContext('reserveDocDate(), activeDocNumber()',c.s),'2500001');
+ c.save();const first=c.s.getHistory()[0];
+ assert.equal(first.docNumber,'2500001');assert.match(first.txnId,/^TX-\d{4}-\d{4}-\d{2}-2$/);
+ assert.equal(vm.runInContext('activeDocNumber()',c.s),'2500001');
+ c.s.draft.items[0].qty=2;c.save();assert.equal(c.s.getHistory()[0].docNumber,'2500001');
+ vm.runInContext('_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_historyContentBaseline=null',c.s);
+ c.save();assert.equal(c.s.getHistory()[0].docNumber,'2500002');
+ c.storage.delete('mpeLocalDocNumberV1');
+ vm.runInContext('_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_historyContentBaseline=null',c.s);
+ c.save();assert.equal(c.s.getHistory()[0].docNumber,'2500003','history guards against a lost counter');
+ const other=setup();other.storage.set('mpeRegisterDigitV1','3');other.save();
+ assert.equal(other.s.getHistory()[0].docNumber,'3500001');
+ const old=setup();old.storage.set('mpeRegisterDigitV1','2');
+ old.s._reprintSource={txnId:'TX-0101-0900-00',date:'2026-01-01T19:00:00.000Z',docNumber:null};
+ assert.match(vm.runInContext('activeDocNumber()',old.s),/^0\d{6}$/);
+ old.save();assert.equal(old.s.getHistory()[0].txnId,'TX-0101-0900-00');assert.match(old.s.getHistory()[0].docNumber,/^0\d{6}$/);
 });
 test('all application scripts parse',()=>{for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))if(m[1].trim())new vm.Script(m[1]);});
 test('history view replaces cached original with pending edited contents, without a second entry',async()=>{
