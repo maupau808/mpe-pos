@@ -35,6 +35,21 @@
   const pageRequest = (token, machine, job, n) =>
     [BASE + '/relay/page?job=' + encodeURIComponent(job) + '&n=' + n, { headers: { Authorization: 'Bearer ' + token, 'X-Machine': machine }, signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(30000) : undefined }];
 
+  // Electron's default user agent carries the app version just before "Chrome/…".
+  function desktopVersion(userAgent) {
+    const m = /\/(\d+\.\d+\.\d+)\s+Chrome\/[\d.]+\s+Electron\//.exec(String(userAgent || ''));
+    return m ? m[1] : '';
+  }
+  // Versions lead so the 100-character cap trims the printer name, never the versions.
+  function machineLabel(platform, posRelease, userAgent, printer) {
+    const parts = [{ win32: 'Windows', darwin: 'Mac' }[platform] || String(platform || '')];
+    if (posRelease) parts.push('POS ' + posRelease);
+    const app = desktopVersion(userAgent);
+    if (app) parts.push('App ' + app);
+    if (printer) parts.push(printer);
+    return parts.filter(Boolean).join(' · ').slice(0, 100);
+  }
+
   // Stops page print handlers from running only while a relay job is printing.
   function installPrintGuard(win, state) {
     const stop = e => {
@@ -100,8 +115,9 @@
       try { state.token = tokenFromRows(await win.mpeDesktop.google.sheetsGet('Lists!Z1')); } catch (e) { state.token = ''; }
       if (!state.token) return TOKEN_MS;
     }
-    let ok = false, label = { win32: 'Windows', darwin: 'Mac' }[win.mpeDesktop.platform] || String(win.mpeDesktop.platform || '');
-    try { const st = await win.mpeDesktop.getPrintStatus(); ok = !!st.ready; if (st.printer) label += ' · ' + st.printer; } catch (e) { ok = false; }
+    let ok = false, printer = '';
+    try { const st = await win.mpeDesktop.getPrintStatus(); ok = !!st.ready; printer = st.printer || ''; } catch (e) { ok = false; }
+    const label = machineLabel(win.mpeDesktop.platform, win.MPE_POS_RELEASE, win.navigator && win.navigator.userAgent, printer);
     const res = await env.fetch(...nextRequest(state.token, state.machine, ok, label));
     if (res.status === 401) { state.token = ''; return TOKEN_MS; }
     if (res.status === 204) return POLL_MS;
@@ -148,5 +164,5 @@
     if (win.navigator && win.navigator.locks) win.navigator.locks.request('mpe-print-relay', loop);
   }
 
-  return Object.freeze({ BASE, MACHINE_RE, PRINT_CSS, newMachineId, nextRequest, doneRequest, pageRequest, installPrintGuard, tokenFromRows, start });
+  return Object.freeze({ BASE, MACHINE_RE, PRINT_CSS, newMachineId, nextRequest, doneRequest, pageRequest, installPrintGuard, tokenFromRows, desktopVersion, machineLabel, start });
 });
