@@ -19,6 +19,15 @@ assert.strictEqual(o2.headers['X-Machine'], 'pos-abcdef12');
 assert.strictEqual(R.tokenFromRows([[' tok ']]), 'tok');
 assert.strictEqual(R.tokenFromRows([]), '');
 
+// heartbeat label
+const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) MPE POS/0.3.22 Chrome/140.0.7339.80 Electron/43.4.0 Safari/537.36';
+assert.strictEqual(R.desktopVersion(ua), '0.3.22');
+assert.strictEqual(R.desktopVersion('Mozilla/5.0 Chrome/140.0 Safari/537.36'), '');
+assert.strictEqual(R.machineLabel('win32', '2026.10.11.1', ua, 'Brother HL'), 'Windows · POS 2026.10.11.1 · App 0.3.22 · Brother HL');
+assert.strictEqual(R.machineLabel('darwin', '', '', ''), 'Mac');
+assert.strictEqual(R.machineLabel('win32', '2026.10.11.1', ua, 'x'.repeat(200)).length, 100);
+assert(R.machineLabel('win32', '2026.10.11.1', ua, 'x'.repeat(200)).startsWith('Windows · POS 2026.10.11.1 · App 0.3.22 · '));
+
 // print CSS
 assert(R.PRINT_CSS.includes('body.remote-printing > :not(#remotePrint)') && R.PRINT_CSS.includes('width:8.5in;height:11in'));
 
