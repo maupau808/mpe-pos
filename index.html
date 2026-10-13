@@ -837,7 +837,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
            never moves a button or a row. -->
       <span class="scan-slot" id="scanSlot"></span>
       <span style="display:none">
-        <button id="warrantyBtn"></button><button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="cardFeeBtn"></button>
+        <button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="cardFeeBtn"></button>
       </span>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
     </div>
@@ -846,7 +846,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <div class="menu-wrap">
           <button class="menu-btn" id="togglesBtn" onclick="toggleMenu(event,'togglesMenu')">Toggles <span class="caret">▾</span></button>
           <div class="menu-panel right" id="togglesMenu" onclick="event.stopPropagation()">
-            <label class="menu-check"><input type="checkbox" id="tgWarranty" onchange="toggleCustPanel()"> 🔧 Warranty</label>
             <label class="menu-check"><input type="checkbox" id="tgSignature" onchange="toggleSignature()"> ✍ Signature</label>
             <label class="menu-check"><input type="checkbox" id="tgReview" onchange="toggleReview()"> ⭐ Review</label>
             <label class="menu-check"><input type="checkbox" id="tgSalesView" onchange="toggleSalesView()"> 👁 Sales View</label>
@@ -977,7 +976,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   <div class="mobile-rows" id="mobileRows"></div>
 
   <!-- Customer Fields (collapsed by default) -->
-  <div class="cust-bar hidden" id="custPanel">
+  <div class="cust-bar" id="custPanel">
     <input class="cust-input" id="custName" placeholder="Customer name" autocomplete="off" oninput="custSuggest('name')" onkeydown="custDDKey(event)">
     <input class="cust-input" id="custCompany" placeholder="Company" autocomplete="off" oninput="custSuggest('co')" onkeydown="custDDKey(event)">
     <input class="cust-input cust-street" id="custAddr" placeholder="Street address" autocomplete="off">
@@ -1069,6 +1068,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     </div>
   </div>
   <div id="ledgerInvoiceStatus" role="status" aria-live="polite" class="no-print" style="margin-bottom:16px" hidden></div>
+  <div id="printCustomer" style="display:none"></div>
   <div id="reviewMsg" class="review-below" style="display:none"></div>
   <div class="signature-block" id="signatureBlock">
     <div id="sig-invoice" style="display:none;"></div>
@@ -1152,7 +1152,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.13.3';
+const POS_RELEASE = '2026.10.13.4';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -7806,13 +7806,6 @@ function applyPart(i, part, options) {
     document.getElementById(`qty-${i}`).value = 30;
   }
   if (part.warranty) {
-    // Auto-open warranty panel
-    const panel = document.getElementById('custPanel');
-    const btn = document.getElementById('warrantyBtn');
-    if (panel && panel.classList.contains('hidden')) {
-      panel.classList.remove('hidden');
-      if (btn) { btn.classList.add('active'); }
-    }
     const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
     renderSNFields(i, qty);
   } else {
@@ -8150,6 +8143,29 @@ function buildReviewBlock() {
     + '</div>';
 }
 
+// Filled customer fields as they print on the customer copy; '' when all are empty.
+function buildPrintCustomer() {
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  const cName  = document.getElementById('custName')?.value.trim() || '';
+  const cCo    = document.getElementById('custCompany')?.value.trim() || '';
+  const cAddr  = document.getElementById('custAddr')?.value.trim() || '';
+  const cCity  = document.getElementById('custCity')?.value.trim() || '';
+  const cState = document.getElementById('custState')?.value.trim() || '';
+  const cZip   = document.getElementById('custZip')?.value.trim() || '';
+  const cPhone = document.getElementById('custPhone')?.value.trim() || '';
+  const cEmail = document.getElementById('custEmail')?.value.trim() || '';
+  const cityLine = [cCity, cState, cZip].filter(Boolean).join(', ');
+  const nameCoLine = [cName, cCo].filter(Boolean).join(' / ');
+  const hasCust = cName || cCo || cAddr || cPhone || cEmail;
+  return hasCust ? `<div class="print-customer" style="margin-top:16px;font-size:13px;line-height:1.8">
+    ${nameCoLine ? `<div style="font-weight:600">${esc(nameCoLine)}</div>` : ''}
+    ${cAddr ? `<div>${esc(cAddr)}</div>` : ''}
+    ${cityLine ? `<div>${esc(cityLine)}</div>` : ''}
+    ${cPhone ? `<div>${esc(cPhone)}</div>` : ''}
+    ${cEmail ? `<div>${esc(cEmail)}</div>` : ''}
+  </div>` : '';
+}
+
 function buildCopy2HTML() {
   function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   const logoSrc = document.querySelector('.wrap .print-header img')?.src || '';
@@ -8236,24 +8252,7 @@ function buildCopy2HTML() {
   }
 
   const eaHdrStyle = anyMulti ? '' : ' style="visibility:hidden"';
-  const cName  = document.getElementById('custName')?.value.trim() || '';
-  const cCo    = document.getElementById('custCompany')?.value.trim() || '';
-  const cAddr  = document.getElementById('custAddr')?.value.trim() || '';
-  const cCity  = document.getElementById('custCity')?.value.trim() || '';
-  const cState = document.getElementById('custState')?.value.trim() || '';
-  const cZip   = document.getElementById('custZip')?.value.trim() || '';
-  const cPhone = document.getElementById('custPhone')?.value.trim() || '';
-  const cEmail = document.getElementById('custEmail')?.value.trim() || '';
-  const cityLine = [cCity, cState, cZip].filter(Boolean).join(', ');
-  const nameCoLine = [cName, cCo].filter(Boolean).join(' / ');
-  const hasCust = cName || cCo || cAddr || cPhone || cEmail;
-  const custHtml = hasCust ? `<div class="print-customer" style="margin-top:16px;font-size:13px;line-height:1.8">
-    ${nameCoLine ? `<div style="font-weight:600">${esc(nameCoLine)}</div>` : ''}
-    ${cAddr ? `<div>${esc(cAddr)}</div>` : ''}
-    ${cityLine ? `<div>${esc(cityLine)}</div>` : ''}
-    ${cPhone ? `<div>${esc(cPhone)}</div>` : ''}
-    ${cEmail ? `<div>${esc(cEmail)}</div>` : ''}
-  </div>` : '';
+  const custHtml = buildPrintCustomer();
 
   return `<div class="wrap">
     <div class="print-header">
@@ -8452,13 +8451,20 @@ function preparePrint() {
     tbody.querySelectorAll('tr[data-sn-for]').forEach(tr => tr.classList.add('print-hide'));
   }
   applyPrintMoneyFormatting();
-  // Two-copy logic: RECEIPTS ONLY, and only when a serial number field is actually
-  // filled in (or the Warranty toggle is manually on). Quotes and invoices never get
-  // the duplicate copy — invoices carry their own "our copy" format via the invoice sig block.
-  const _warrantyActive = document.getElementById('warrantyBtn')?.classList.contains('active');
+  // Two-copy logic: RECEIPTS ONLY, and only when the sale carries a serialized unit
+  // (a warranty row or a filled serial field). Every other receipt is the single
+  // customer copy. Quotes and invoices never get the duplicate copy — invoices carry
+  // their own "our copy" format via the invoice sig block.
+  const _warrantyActive = !!tbody.querySelector('tr[data-warranty="1"]');
   const _hasSNEntered = Array.from(tbody.querySelectorAll('.sn-input')).some(inp => inp.value.trim());
   const copy2 = document.getElementById('printCopy2');
   const copy2On = _docType === 'receipt' && (_hasSNEntered || _warrantyActive);
+  // A single-page receipt is the customer copy, so it carries any filled customer fields.
+  const custEl = document.getElementById('printCustomer');
+  if (custEl) {
+    custEl.innerHTML = _docType === 'receipt' && !copy2On ? buildPrintCustomer() : '';
+    custEl.style.display = custEl.innerHTML ? 'block' : 'none';
+  }
   if (copy2) {
     if (copy2On) {
       copy2.innerHTML = buildCopy2HTML();
@@ -8486,7 +8492,7 @@ function preparePrint() {
   const invoiceEl = document.getElementById('sig-invoice');
   const isInvoice = _docType === 'invoice';
   // Warranty form (the "lines/info" copy) prints on RECEIPTS only, when a serial number
-  // was entered OR the Warranty toggle is on. Never on quotes/invoices/internal.
+  // was entered OR a warranty unit is on the sale. Never on quotes/invoices/internal.
   const showWarranty = _docType === 'receipt' && (warrantyActive || _hasSNEntered);
   if (!isInternal && (showWarranty || sigActive || isInvoice)) {
     if (block) block.classList.add('active');
@@ -8552,6 +8558,8 @@ function cleanupPrint() {
   if (rc) rc.style.display = '';
   const rv = document.getElementById('reviewMsg');
   if (rv) rv.style.display = 'none';
+  const pc = document.getElementById('printCustomer');
+  if (pc) { pc.innerHTML = ''; pc.style.display = 'none'; }
   const billTo = document.getElementById('printBillTo');
   if (billTo) { billTo.innerHTML = ''; billTo.classList.remove('active'); }
   _preparedPrintHtml = null;
@@ -9971,7 +9979,6 @@ function captureOrder() {
     ledgerBinding: _ledgerDraftCustomerBinding ? { ..._ledgerDraftCustomerBinding } : undefined,
   };
   const toggles = {
-    warranty:  document.getElementById('warrantyBtn')?.classList.contains('active') || false,
     signature: document.getElementById('signatureBtn')?.classList.contains('active') || false,
     review:    document.getElementById('reviewBtn')?.classList.contains('active') || false,
     salesView: document.getElementById('salesViewBtn')?.classList.contains('active') || false,
@@ -10040,8 +10047,6 @@ function historyDocTypeTag(type) {
     //  print the warranty form.)
     if (t === 'invoice' || t === 'quote') {
       document.getElementById('custPanel')?.classList.remove('hidden');
-    } else if (t === 'internal') {
-      document.getElementById('custPanel')?.classList.add('hidden');
     }
     syncTenderUi();
     syncLedgerInvoiceButtons();
@@ -10486,10 +10491,6 @@ async function reprintOrder(idx) {
     });
     // Expand panel if any field has data
     const hasCust = Object.values(order.customer).some(v => v);
-    if (hasCust) {
-      document.getElementById('custPanel')?.classList.remove('hidden');
-      document.getElementById('warrantyBtn')?.classList.add('active');
-    }
   }
   // Restore toggle states (signature, review, salesView)
   if (order.toggles) {
@@ -10500,10 +10501,6 @@ async function reprintOrder(idx) {
     if (order.toggles.cardFee) toggleCardFee(true);
   }
   const hasSNItems = order.items.some(item => item.sn && item.sn.length);
-  if (hasSNItems) {
-    document.getElementById('custPanel')?.classList.remove('hidden');
-    document.getElementById('warrantyBtn')?.classList.add('active');
-  }
   while (NUM_ROWS < order.items.length + 1) addRow();
   buildMobileRows();
   for (let i = 0; i < NUM_ROWS; i++) clearRow(i);
@@ -11174,7 +11171,7 @@ function toggleSalesView() {
 }
 
 function syncToggles() {
-  const map = { tgWarranty:'warrantyBtn', tgSignature:'signatureBtn', tgReview:'reviewBtn', tgSalesView:'salesViewBtn', tgCardFee:'cardFeeBtn' };
+  const map = { tgSignature:'signatureBtn', tgReview:'reviewBtn', tgSalesView:'salesViewBtn', tgCardFee:'cardFeeBtn' };
   for (const cb in map) { const c = document.getElementById(cb), b = document.getElementById(map[cb]); if (c && b) c.checked = b.classList.contains('active'); }
 }
 function toggleMenu(ev, id) {
@@ -11186,12 +11183,6 @@ function toggleMenu(ev, id) {
 }
 document.addEventListener('click', () => document.querySelectorAll('.menu-panel.open').forEach(p => p.classList.remove('open')));
 
-function toggleCustPanel() {
-  const panel = document.getElementById('custPanel');
-  const btn = document.getElementById('warrantyBtn');
-  const hidden = panel.classList.toggle('hidden');
-  btn.classList.toggle('active', !hidden);
-}
 
 
 function formatPhone(raw) {
@@ -11489,9 +11480,6 @@ async function syncCustomersFromSheet(){
 }
 function clearCustFields() {
   custFields.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  // Collapse panel
-  document.getElementById('custPanel')?.classList.add('hidden');
-  document.getElementById('warrantyBtn')?.classList.remove('active');
 }
 
 if (window.mpeDesktop?.onLedgerContact && window.mpeDesktop?.acknowledgeLedgerDraft) {
