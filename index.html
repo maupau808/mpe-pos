@@ -724,7 +724,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   .search-table th { font-size: 10px; color: #000; border-bottom: 1px solid #999; padding: 4px 3px; }
   .search-table td { border-bottom: 1px solid #ddd; padding: 4px 3px; font-size: 13px; }
   .search-table td:nth-child(2) { overflow: hidden; }
-  .cell-desc[data-make]::before { content: attr(data-make) " "; }
+  .search-wrap[data-make] { margin: -3px 0 -2px; }
+  .search-wrap[data-make]::before { content: attr(data-make); display: block; font-size: 13px; font-weight: 500; line-height: 13px; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-wrap[data-make] .part-input { display: block; height: 9px; font-size: 8.5px; font-weight: 400; line-height: 9px; }
   .cell-r.sub-total { font-size: 13px !important; font-weight: 700 !important; }
   .price-edit { font-size: 12px !important; }
   .sub-edit { font-size: 13px !important; font-weight: 700 !important; }
@@ -1150,7 +1152,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.13.1';
+const POS_RELEASE = '2026.10.13.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -5881,7 +5883,7 @@ function applyNoteToRow(i) {
   descEl.className = 'cell-desc';
   descEl.contentEditable = 'false';
   // Clear make/cost/margin
-  delete descEl.dataset.make;
+  setPrintMake(i, '');
   document.getElementById(`make-${i}`).textContent = '';
   const costEl = document.getElementById(`cost-${i}`); if (costEl.tagName === 'INPUT') costEl.value = ''; else costEl.textContent = ''; costEl.dataset.cost = '';
   document.getElementById(`margin-${i}`).textContent = '';
@@ -5943,7 +5945,7 @@ function applyDiscountToRow(i) {
   descEl.className = 'cell-desc';
   descEl.contentEditable = 'false';
   // Clear make/cost/margin
-  delete descEl.dataset.make;
+  setPrintMake(i, '');
   document.getElementById(`make-${i}`).textContent = '';
   const costEl = document.getElementById(`cost-${i}`); if (costEl.tagName === 'INPUT') costEl.value = ''; else costEl.textContent = ''; costEl.dataset.cost = '';
   document.getElementById(`margin-${i}`).textContent = '';
@@ -7744,7 +7746,7 @@ function applyPart(i, part, options) {
   descEl.dataset.origDesc = part.desc || '';
   descEl.addEventListener('blur', function() { onDescEdit(i); }, { once: false });
   document.getElementById(`make-${i}`).textContent = part.make || '—';
-  setPrintMake(descEl, part.make, part.desc);
+  setPrintMake(i, part.make);
   const cost = parseFloat(part.cost) || 0;
   const costSpan = document.getElementById(`cost-${i}`);
   costSpan.outerHTML = `<input class="cost-edit cell-cost" id="cost-${i}" data-cost="${cost}" data-orig-cost="${cost}" value="${cost > 0 ? fmt(cost) : ''}" placeholder="—">`;
@@ -7870,12 +7872,16 @@ function applyPart(i, part, options) {
   }
 }
 
-// Customer copies print the make ahead of the description (print CSS ::before, second
-// copy, PDF) so the row stays one line. Skipped when the description already names it.
-function setPrintMake(descEl, make, desc) {
+// Customer copies print the make over a small part number in the Product column
+// (print CSS, second copy, PDF) without growing the row.
+function printMake(i) {
+  return tbody.querySelector(`[data-row="${i}"].part-input`)?.closest('.search-wrap')?.dataset.make || '';
+}
+function setPrintMake(i, make) {
+  const wrap = tbody.querySelector(`[data-row="${i}"].part-input`)?.closest('.search-wrap');
+  if (!wrap) return;
   const m = String(make || '').trim();
-  if (m && !String(desc || '').toUpperCase().includes(m.toUpperCase())) descEl.dataset.make = m;
-  else delete descEl.dataset.make;
+  if (m) wrap.dataset.make = m; else delete wrap.dataset.make;
 }
 
 function clearRowData(i) {
@@ -7889,7 +7895,7 @@ function clearRowData(i) {
   if (supMark) { supMark.classList.remove('visible'); supMark.title = ''; }
   const descEl = document.getElementById(`desc-${i}`);
   descEl.innerHTML = '—'; descEl.className = 'empty-cell'; descEl.contentEditable = 'false'; descEl.dataset.row = '';
-  delete descEl.dataset.make;
+  setPrintMake(i, '');
   const tr = tbody.querySelector(`tr[data-row="${i}"]`);
   if (tr) { delete tr.dataset.warranty; delete tr.dataset.pkgUnits; delete tr.dataset.pkgDeal; delete tr.dataset.pkgPrice; delete tr.dataset.scanOrigin; }
   document.getElementById(`make-${i}`).textContent = '—';
@@ -8204,8 +8210,8 @@ function buildCopy2HTML() {
     // 10 columns to match the live table and print CSS nth-child selectors:
     // 1:PN 2:Desc 3-6(hide) 7:Ea 8:Qty 9:Price 10(hide)
     rowsHtml += `<tr>
-      <td>${esc(pn)}</td>
-      <td>${esc([descEl?.dataset.make, desc].filter(Boolean).join(' '))}</td>
+      <td>${printMake(i) ? `<div class="search-wrap" data-make="${esc(printMake(i)).replace(/"/g, '&quot;')}"><span class="part-input">${esc(pn)}</span></div>` : esc(pn)}</td>
+      <td>${esc(desc)}</td>
       <td></td><td></td><td></td><td></td>
       <td style="text-align:right">${eaHtml}</td>
       <td style="text-align:center">${esc(qty)}</td>
@@ -9608,8 +9614,8 @@ function buildEmailDocHTML(order, title, number, dateStr) {
     if (it.sn && it.sn.length) snHtml = `<tr><td></td><td colspan="3" style="padding:2px 8px 8px;font-size:12px;color:${PDF_INK}">${it.sn.map(esc).join(' &nbsp; ')}</td></tr>`;
     const cell = `padding:6px 8px;border-bottom:1px solid ${PDF_LINE};font-size:13px;color:${PDF_INK}`;
     return `<tr>
-      <td style="${cell};white-space:nowrap">${esc(it.pn)}</td>
-      <td style="${cell}">${esc([it.make, it.desc].filter(Boolean).join(' '))}</td>
+      <td style="${cell};white-space:nowrap${it.make ? ';padding-top:2px;padding-bottom:3px' : ''}">${it.make ? `<div style="line-height:13px">${esc(it.make)}</div><div style="font-size:8.5px;line-height:9px">${esc(it.pn)}</div>` : esc(it.pn)}</td>
+      <td style="${cell}">${esc(it.desc)}</td>
       <td style="${cell};text-align:center;white-space:nowrap">${esc(qty)}${offEach > 0 || (anyMulti && qty !== 1) ? ` <span style="color:${PDF_INK}">@ ${eaHtml}</span>` : ''}</td>
       <td style="${cell};text-align:right;white-space:nowrap">${lineOff > 0 ? `<div style="font-size:11px;font-weight:600;color:${PDF_INK}">($${lineOff.toFixed(2)} off)</div>` : ''}$${sub.toFixed(2)}</td>
     </tr>${snHtml}`;
@@ -9944,7 +9950,7 @@ function captureOrder() {
     const sub = parseFloat(document.getElementById(`sub-${i}`)?.dataset.val) || (ea * qty);
     const snTr = tbody.querySelector(`tr[data-sn-for="${i}"]`);
     const sn = snTr ? Array.from(snTr.querySelectorAll('.sn-input')).map(inp => inp.value.trim()).filter(Boolean) : [];
-    items.push({ pn, desc, make: descEl?.dataset.make || undefined, qty, ea, sub, sn: sn.length ? sn : undefined,
+    items.push({ pn, desc, make: printMake(i) || undefined, qty, ea, sub, sn: sn.length ? sn : undefined,
       isOther: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.isOther === '1' || undefined,
       freeEntry: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.freeEntry === '1' || undefined,
       originalEa: discountPerUnit > 0 ? originalEa : undefined,
