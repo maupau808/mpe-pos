@@ -177,3 +177,13 @@ test('Auto repeat protection checks document contents so an immediate correction
  const source=html.slice(html.indexOf('async function autoPrint()'),html.indexOf('async function autoPrint()')+1000);
  assert.match(source,/historyContentFingerprint\(captureOrder\(\)\) === _lastDirectPrintFingerprint/);
 });
+test('a sale converted from a quote saves as a new transaction naming the quote in column N',async()=>{
+ const c=setup();c.connect();c.s._docType='receipt';c.s._quoteSource={txnId:'TX-1013-0925-49-3',docNumber:'3500020'};
+ assert.equal(c.save(),true);await c.sync();
+ const saved=c.s.getHistory()[0];assert.notEqual(saved.txnId,'TX-1013-0925-49-3');
+ assert.deepEqual(saved.fromQuote,{txnId:'TX-1013-0925-49-3',docNumber:'3500020'});
+ const txn=c.sheet().find(r=>r[0]==='TXN');assert.equal(txn[13],'TX-1013-0925-49-3');assert.equal(txn[14],'receipt');
+ // Re-saving the printed sale keeps the link; a quote never carries one.
+ c.s._quoteSource=null;c.save();assert.equal(c.s.getHistory()[0].fromQuote.txnId,'TX-1013-0925-49-3');
+ const q=setup();q.s._quoteSource={txnId:'TX-X',docNumber:'1'};q.save();assert.equal(q.s.getHistory()[0].fromQuote,undefined);
+});

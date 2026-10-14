@@ -1152,7 +1152,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.13.5';
+const POS_RELEASE = '2026.10.13.6';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -6524,7 +6524,7 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
   const rows = [];
 
   // Summary row: Type | TxnID | Date | Time | Name | Phone | Email | Address |
-  // — | — | — | — | Total | — | Document Type | Document Number |
+  // — | — | — | — | Total | From quote TxnID | Document Type | Document Number |
   // Name | Company | Street | City | State | Zip  (Q–V: the same customer, unjoined.
   // E and H stay joined for older readers; Ledger reads only A:P.)
   const savedDocType = DOC_TITLES[order.docType] ? order.docType : '';
@@ -6532,7 +6532,7 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
   rows.push(['TXN', txnId, dateStr, timeStr,
     [c.name, c.company].filter(Boolean).join(' / ') || '',
     c.phone || '', c.email || '', addr,
-    '', '', '', '', order.total, '', savedDocType,
+    '', '', '', '', order.total, order.fromQuote?.txnId || '', savedDocType,
     savedDocNumber,
     ...[c.name, c.company, c.addr, c.city, c.state, c.zip].map(v => v || '')]);
 
@@ -6948,7 +6948,7 @@ function _parseTxnRows(rows) {
       if (cur) txns.push(cur);
       cur = { txnId: r[1]||'', date: r[2]||'', time: r[3]||'', name: r[4]||'',
               phone: r[5]||'', email: r[6]||'', addr: r[7]||'', total: r[12]||'',
-              docType: r[14]||'', docNumber: r[15]||'',
+              docType: r[14]||'', docNumber: r[15]||'', fromQuote: r[13]||'',
               customer: (r.slice(16, 22).some(Boolean) ? r.slice(16, 22) : null), items: [] };
     } else if (type === 'item' && cur) {
       cur.items.push({ pn: r[8]||'', desc: r[9]||'', qty: r[10]||'', ea: r[11]||'', sub: r[12]||'', sn: r[13]||'' });
@@ -7097,7 +7097,7 @@ function _txnDetailHtml(t, idx) {
       <th>Part #</th><th>Description</th><th>Qty</th><th>Ea</th><th>Sub</th><th>Serial #</th>
     </tr></thead><tbody>${items || '<tr><td colspan="6" style="color:#999;">No line items</td></tr>'}</tbody></table>
     <div style="text-align:right;margin-top:10px;">
-      <button class="drive-btn refresh" onclick="loadTxnIntoPOS(${idx})">↩ Load into POS</button>
+      ${quoteConvertControl(t, idx)}<button class="drive-btn refresh" onclick="loadTxnIntoPOS(${idx})">↩ Load into POS</button>
     </div>`;
 }
 function toggleTxn(i) {
@@ -7118,12 +7118,40 @@ function loadTxnIntoPOS(i) {
   if (t.contactConflict) { alert('Customer changes for this transaction need review in Ledger.'); return; }
   if (!confirm('Load this transaction into the order grid? This clears the current order.')) return;
   clearAll();
-  // Treat as a reprint: keep the original date/time + txnId so the printed doc
-  // shows the original timestamp with a "Reprint" marker, and dedup blocks a
-  // duplicate Drive push.
-  const _od = new Date(((t.date || '') + ' ' + (t.time || '')).trim());
-  _reprintSource = { txnId: t.txnId || '', date: isNaN(_od.getTime()) ? new Date().toISOString() : _od.toISOString(), docType: t.docType || 'receipt', docNumber: t.docNumber || null };
-  setDocType(DOC_TITLES[t.docType] ? t.docType : 'receipt');
+  fillTxnIntoPOS(t);
+  closeTxnHistory();
+}
+
+// A saved quote becomes a NEW sale: fresh number and today's date, the quoted
+// lines and prices, and a link back to the quote (TXN column N) so Ledger marks
+// the quote converted. The quote itself is never changed.
+function quoteConvertControl(t, idx) {
+  if (t.docType !== 'quote') return '';
+  const done = (_txns || []).find(other => other.fromQuote && other.fromQuote === t.txnId);
+  if (done) return `<span style="margin-right:10px;color:#666;">Converted to ${_esch(DOC_TITLES[done.docType] || 'sale')} No. ${_esch(done.docNumber || done.txnId)}</span>`;
+  return `<button class="drive-btn refresh" style="margin-right:8px;" onclick="convertQuoteFromHistory(${idx})">Convert to sale</button>`;
+}
+function convertQuoteFromHistory(i) {
+  const t = _txnShown[i];
+  if (!t || t.docType !== 'quote') return;
+  if (t.contactConflict) { alert('Customer changes for this quote need review in Ledger.'); return; }
+  if (!confirm('Start a new receipt from this quote? This clears the current order. Switch to Invoice before printing if needed.')) return;
+  clearAll();
+  fillTxnIntoPOS(t, 'receipt');
+  closeTxnHistory();
+}
+function fillTxnIntoPOS(t, convertTo = null) {
+  if (convertTo) {
+    _quoteSource = { txnId: t.txnId, docNumber: t.docNumber || t.txnId };
+    setDocType(convertTo);
+  } else {
+    // Treat as a reprint: keep the original date/time + txnId so the printed doc
+    // shows the original timestamp with a "Reprint" marker, and dedup blocks a
+    // duplicate Drive push.
+    const _od = new Date(((t.date || '') + ' ' + (t.time || '')).trim());
+    _reprintSource = { txnId: t.txnId || '', date: isNaN(_od.getTime()) ? new Date().toISOString() : _od.toISOString(), docType: t.docType || 'receipt', docNumber: t.docNumber || null };
+    setDocType(DOC_TITLES[t.docType] ? t.docType : 'receipt');
+  }
   // Customer — newer rows carry the fields unjoined (Q–V); older rows saved "name / company".
   let name = t.name || '', company = '';
   if (name.includes(' / ')) { const p = name.split(' / '); name = p[0].trim(); company = p.slice(1).join(' / ').trim(); }
@@ -7179,9 +7207,9 @@ function loadTxnIntoPOS(i) {
     }
   }
   updateSummary();
-  _historyContentBaseline = historyContentFingerprint(captureOrder());
+  // A conversion is a new, unsaved sale; only a reprint starts from a saved baseline.
+  if (!convertTo) _historyContentBaseline = historyContentFingerprint(captureOrder());
   updateScreenDocTitle();   // reflect original date/number + Reprint marker on screen
-  closeTxnHistory();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -8122,6 +8150,7 @@ function clearAll() {
   _pendingTxnDate = null;
   _pendingDocNumber = null;
   _reprintSource = null;
+  _quoteSource = null;
   _ledgerDraftCustomerBinding = null;
   _ledgerDraftAccepted = false;
   _ledgerConversion = null;
@@ -10153,7 +10182,8 @@ function updateScreenDocTitle() {
   if (!el) return;
   const num = activeDocNumber();
   const converted = _conversionInvoice() && _ledgerConversion.quoteDisplayNumber
-    ? '   ·   Converted from ' + _ledgerConversion.quoteDisplayNumber : '';
+    ? '   ·   Converted from ' + _ledgerConversion.quoteDisplayNumber
+    : _quoteSource && _docType !== 'quote' ? '   ·   From quote ' + _quoteSource.docNumber : '';
   el.textContent = DOC_TITLES[_docType] + (num ? '   ·   No. ' + num : '')
     + converted + (_reprintSource ? '   ·   Reprint' : '');
 }
@@ -10218,6 +10248,9 @@ function saveToHistory() {
       sourceFactsSha256: finalized.source_facts_sha256,
     };
   }
+  const quoteSource = typeof _quoteSource !== 'undefined' ? _quoteSource : null;
+  const fromQuote = quoteSource && ['receipt', 'invoice'].includes(order.docType) ? quoteSource : previous?.fromQuote;
+  if (fromQuote) order.fromQuote = { txnId: fromQuote.txnId, docNumber: fromQuote.docNumber };
   const fingerprint = historyContentFingerprint(order, order.docType);
   const baseline = _historyContentBaseline
     || (previous && historyContentFingerprint(previous, previous.docType || 'receipt'));
@@ -10985,6 +11018,8 @@ let _ledgerDraftAccepted = false;
 // itself is never modified, and every price and total is still recomputed by
 // the ordinary POS line logic below.
 let _ledgerConversion = null;
+// A POS quote being turned into a new receipt/invoice: { txnId, docNumber }.
+let _quoteSource = null;
 // A3.4a. An adopted customer identity handed over by Ledger: the deterministic
 // UUIDv5 and the exact retained adoption proof, copied verbatim. POS never
 // derives either one; it only carries them back out in the source facts.
@@ -11053,6 +11088,30 @@ function ledgerDraftConversion(draft) {
   };
 }
 
+// A register quote (POS Bridge) converted from Ledger into a new receipt or
+// invoice. Mapped onto the saved-transaction shape that History loads, so the
+// quoted prices and customer carry over exactly as a reprint would.
+function ledgerQuoteSale(draft) {
+  const value = draft.conversion;
+  if (!['receipt', 'invoice'].includes(draft.documentType)) throw new Error('A quote converts only to a receipt or invoice');
+  const txnId = ledgerDraftText(value.quoteTxnId, 'Quote transaction', 200);
+  if (!txnId) throw new Error('The quote transaction is missing');
+  const c = value.contact && typeof value.contact === 'object' && !Array.isArray(value.contact) ? value.contact : {};
+  const f = (key, max) => ledgerDraftText(c[key] == null ? '' : c[key], 'Customer ' + key, max);
+  if (!Array.isArray(value.lines) || !value.lines.length || value.lines.length > 200) throw new Error('The quote lines are invalid');
+  const items = value.lines.map(line => {
+    if (!line || typeof line !== 'object' || Array.isArray(line)) throw new Error('A quote line is invalid');
+    const qty = Number(line.quantity), sub = Number(line.line_total), ea = Number(line.unit_amount);
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(sub) || !Number.isFinite(ea)) throw new Error('A quote line amount is invalid');
+    const serials = Array.isArray(line.serials) ? line.serials.map((sn, i) => ledgerDraftText(sn, 'Quote serial ' + (i + 1), 120)) : [];
+    return { pn: ledgerDraftText(line.part_number, 'Quote part number', 120), desc: ledgerDraftText(line.description, 'Quote description', 500),
+      qty: String(qty), ea: String(ea), sub: String(sub), sn: serials.join(', ') };
+  });
+  const customer = [f('name', 200), f('company', 200), f('street', 500), f('city', 100), f('state', 100), f('zip', 30)];
+  return { txnId, docType: 'quote', docNumber: ledgerDraftText(value.quoteDisplayNumber, 'Quote number', 21) || txnId,
+    customer: customer.some(Boolean) ? customer : null, phone: f('phone', 100), email: f('email', 254), items };
+}
+
 function applyLedgerDraft(draft) {
   if (!ledgerDraftTabIsEmpty()) throw new Error('This POS tab is not empty');
   if (!draft || draft.schema !== 'mpe-ledger-pos-draft-v1' || !['invoice','quote','receipt'].includes(draft.documentType)) {
@@ -11060,6 +11119,11 @@ function applyLedgerDraft(draft) {
   }
   const handoffId = ledgerDraftText(draft.handoffId, 'Ledger handoff', 36);
   if (!handoffId) throw new Error('The Ledger handoff is missing');
+  if (draft.conversion?.kind === 'quote_to_sale') {
+    fillTxnIntoPOS(ledgerQuoteSale(draft), draft.documentType);
+    _ledgerDraftAccepted = true;
+    return handoffId;
+  }
   const customer = draft.customer;
   let values = null, exactBinding = null, adopted = null;
   if (customer != null) {
