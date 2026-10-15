@@ -409,7 +409,7 @@ body.doc-internal .sum-internal { display: block; }
 .admin-control-grid > .drive-btn,
 .admin-control-grid > .scan-btn,
 .admin-control-grid > .scan-camera-select,
-.admin-control-grid > .menu-check {
+.admin-control-grid .menu-check {
   box-sizing: border-box;
   width: 100%;
   height: 32px;
@@ -424,14 +424,16 @@ body.doc-internal .sum-internal { display: block; }
   line-height: 20px;
   text-align: left;
 }
-.admin-control-grid > .menu-check { gap: 6px; background: #fff; }
-.admin-control-grid > .menu-check input { flex: 0 0 auto; width: 14px; height: 14px; margin: 0; }
+.admin-control-grid .menu-check { gap: 6px; background: #fff; }
+.admin-control-grid .menu-check input { flex: 0 0 auto; width: 14px; height: 14px; margin: 0; }
 .admin-control-grid > .scan-camera-select { padding-right: 24px; color: #555; }
 .admin-control-grid > .drive-btn:hover,
 .admin-control-grid > .scan-btn:hover,
-.admin-control-grid > .menu-check:hover { background: #eef5ef; }
+.admin-control-grid .menu-check:hover { background: #eef5ef; }
 .admin-menu #dataStatus { margin: 0 2px 6px; line-height: 1.35; }
 .menu-check { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 13px; color: #333; cursor: pointer; border-radius: 6px; white-space: nowrap; }
+.presell-check[hidden] { display: none; }
+@media print { .presell-check { display: none !important; } }
 .menu-check:hover { background: #eef1ec; }
 .menu-check input { width: 15px; height: 15px; cursor: pointer; }
 .pc-badge { display: inline-block; min-width: 16px; text-align: center; background: #e67e22; color: #fff; font-size: 11px; font-weight: 700; border-radius: 9px; padding: 1px 5px; margin-left: 4px; }
@@ -832,6 +834,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="quote" onclick="setDocType('quote')">Quote</button>
         <button class="doc-type-btn" data-doc="internal" onclick="requestInternalDoc(event)" title="Internal only — shows cost and profit">Internal</button>
       </div>
+      <label class="menu-check presell-check" id="presellWrap" hidden title="Unit Stock takes these items off now; converting this quote to a sale later subtracts only what changed"><input type="checkbox" id="presellChk"> Subtract from inventory count</label>
       <!-- The button itself lives in Admin; this empty slot is the toolbar
            anchor the live preview still takes over, so opening the camera
            never moves a button or a row. -->
@@ -843,19 +846,10 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     </div>
     <div class="toolbar-right">
       <div class="tr-row">
-        <div class="menu-wrap">
-          <button class="menu-btn" id="togglesBtn" onclick="toggleMenu(event,'togglesMenu')">Toggles <span class="caret">▾</span></button>
-          <div class="menu-panel right" id="togglesMenu" onclick="event.stopPropagation()">
-            <label class="menu-check"><input type="checkbox" id="tgSignature" onchange="toggleSignature()"> ✍ Signature</label>
-            <label class="menu-check"><input type="checkbox" id="tgReview" onchange="toggleReview()"> ⭐ Review</label>
-            <label class="menu-check"><input type="checkbox" id="tgSalesView" onchange="toggleSalesView()"> 👁 Sales View</label>
-            <label class="menu-check"><input type="checkbox" id="tgCardFee" onchange="toggleCardFee(this.checked)"> 💳 Card fee (3%)</label>
-          </div>
-        </div>
+        <button class="menu-btn" id="txnHistoryBtn" type="button" onclick="openTxnHistory()" title="Look up past sales, invoices and quotes">History</button>
         <button class="icon-btn" id="phoneListBtn" type="button" onclick="openPhoneLists()" aria-label="Phone list" title="Phone list — pick a list sent from MPE Scan on the phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><line x1="10.6" y1="5.4" x2="13.4" y2="5.4" stroke-width="1.4" stroke-linecap="round"/><line x1="10.4" y1="18.6" x2="13.6" y2="18.6" stroke-width="1.4" stroke-linecap="round"/></svg><span class="admin-dot phone-list-dot" id="phoneListDot" style="display:none" aria-hidden="true"></span></button>
         <button class="icon-btn" id="emailDocBtn" onclick="emailDoc()" title="Email — attach the colour PDF to a Gmail draft">✉</button>
         <button class="icon-btn" id="exportPdfBtn" onclick="exportPdf()" title="Export PDF — download the colour copy">⬇</button>
-        <button class="menu-btn" id="scannerModeBtn" type="button" onclick="setScannerModeActive(true)">Scanner Mode</button>
         <div class="menu-wrap">
           <button class="menu-btn" id="adminMenuBtn" onclick="openAdminMenu(event)" title="Reconnect and refresh">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
           <div class="menu-panel right admin-menu" id="adminMenu" onclick="event.stopPropagation()">
@@ -867,6 +861,13 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span></div>
             <div id="dataStatus" class="data-status"></div>
             <div class="admin-control-grid">
+              <button class="drive-btn hist-btn" id="scannerModeBtn" type="button" onclick="setScannerModeActive(true)">Scanner Mode</button>
+              <div id="togglesMenu" style="display:contents">
+                <label class="menu-check"><input type="checkbox" id="tgSignature" onchange="toggleSignature()"> ✍ Signature</label>
+                <label class="menu-check"><input type="checkbox" id="tgReview" onchange="toggleReview()"> ⭐ Review</label>
+                <label class="menu-check"><input type="checkbox" id="tgSalesView" onchange="toggleSalesView()"> 👁 Sales View</label>
+                <label class="menu-check"><input type="checkbox" id="tgCardFee" onchange="toggleCardFee(this.checked)"> 💳 Card fee (3%)</label>
+              </div>
               <select class="scan-camera-select" id="registerDigitSelect" aria-label="This register" title="Which register this is — keeps sale numbers from matching another counter's" onchange="setRegisterDigit(this.value)">
                 <option value="" disabled>Register: not set</option>
                 <option value="1">Register 1 · Mac</option>
@@ -881,7 +882,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
               <button class="drive-btn signin" id="driveSignInBtn" onclick="handleSignIn()">Sign in</button>
               <button class="drive-btn refresh hidden" id="driveRefreshBtn" onclick="fetchFromDrive()">↻ Refresh</button>
               <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
-              <button class="drive-btn hist-btn" id="txnHistoryBtn" onclick="openTxnHistory()" title="Look up past transactions">📒 History</button>
               <!-- Read-only parts catalog lookup. Separate page on purpose: it has no sale,
                    customer, price, or transaction path and never touches a line item. -->
               <a class="drive-btn hist-btn" id="partsLookupBtn" href="parts.html" target="_blank" rel="noopener" title="STIHL parts catalog lookup — read only">🔎 Parts Lookup</a>
@@ -1152,7 +1152,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.14.1';
+const POS_RELEASE = '2026.10.15.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -6525,7 +6525,7 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
 
   // Summary row: Type | TxnID | Date | Time | Name | Phone | Email | Address |
   // — | — | — | — | Total | From quote TxnID | Document Type | Document Number |
-  // Name | Company | Street | City | State | Zip  (Q–V: the same customer, unjoined.
+  // Name | Company | Street | City | State | Zip | Presell  (Q–V: the same customer, unjoined.
   // E and H stay joined for older readers; Ledger reads only A:P.)
   const savedDocType = DOC_TITLES[order.docType] ? order.docType : '';
   const savedDocNumber = order.docNumber ? String(order.docNumber) : '';
@@ -6534,7 +6534,9 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
     c.phone || '', c.email || '', addr,
     '', '', '', '', order.total, order.fromQuote?.txnId || '', savedDocType,
     savedDocNumber,
-    ...[c.name, c.company, c.addr, c.city, c.state, c.zip].map(v => v || '')]);
+    ...[c.name, c.company, c.addr, c.city, c.state, c.zip].map(v => v || ''),
+    // W: a quote marked "Subtract from inventory count" (Unit Stock presale).
+    savedDocType === 'quote' && order.presell ? 'PRESELL' : '']);
 
   // Item rows
   for (const item of order.items) {
@@ -6553,7 +6555,7 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
 
 // Compare all saved fields, tolerating only Sheets' number/date display formatting.
 function transactionRowsFingerprint(rows) {
-  return JSON.stringify(rows.map(row => Array.from({ length: 22 }, (_, col) => {
+  return JSON.stringify(rows.map(row => Array.from({ length: 23 }, (_, col) => {
     let value = String(row[col] ?? '').trim().replace(/^'/, '');
     if (col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11, 14, 15].includes(col))) {
       return value === '' ? '' : Number(value.replace(/[$,]/g, '')).toFixed(2);
@@ -6653,7 +6655,7 @@ async function writeTransactionToSheet(order) {
         } });
         requests.push({ updateCells: {
           range: { sheetId, startRowIndex: existingTxnIdx, endRowIndex: existingTxnIdx + rows.length,
-            startColumnIndex: 0, endColumnIndex: 22 },
+            startColumnIndex: 0, endColumnIndex: 23 },
           rows: transactionCellRows(rows), fields: 'userEnteredValue',
         } });
         if (delta < 0) requests.push({ deleteDimension: {
@@ -6663,7 +6665,7 @@ async function writeTransactionToSheet(order) {
         writeMode = '(updated existing)';
       }
       // Old already-synced local copies never overwrite a newer copy from another register.
-      writtenRange = `${TXN_SHEET}!A${existingTxnIdx + 1}:V${existingTxnIdx + (order.historySyncPending ? rows.length : savedRows.length)}`;
+      writtenRange = `${TXN_SHEET}!A${existingTxnIdx + 1}:W${existingTxnIdx + (order.historySyncPending ? rows.length : savedRows.length)}`;
     } else {
       const txnTs = txnDate.getTime();
       // Find the first TXN row that is older than this transaction → insert before it.
@@ -6691,7 +6693,7 @@ async function writeTransactionToSheet(order) {
           }
         }]);
         await sheetsUpdate(`${TXN_SHEET}!A${insertIdx + 1}`, transactionUserEnteredRows(rows));
-        writtenRange = `${TXN_SHEET}!A${insertIdx + 1}:V${insertIdx + rows.length}`;
+        writtenRange = `${TXN_SHEET}!A${insertIdx + 1}:W${insertIdx + rows.length}`;
         writeMode = `(inserted at row ${insertIdx + 1})`;
       }
     }
@@ -6949,7 +6951,8 @@ function _parseTxnRows(rows) {
       cur = { txnId: r[1]||'', date: r[2]||'', time: r[3]||'', name: r[4]||'',
               phone: r[5]||'', email: r[6]||'', addr: r[7]||'', total: r[12]||'',
               docType: r[14]||'', docNumber: r[15]||'', fromQuote: r[13]||'',
-              customer: (r.slice(16, 22).some(Boolean) ? r.slice(16, 22) : null), items: [] };
+              customer: (r.slice(16, 22).some(Boolean) ? r.slice(16, 22) : null),
+              presell: String(r[22] || '').trim().toUpperCase() === 'PRESELL', items: [] };
     } else if (type === 'item' && cur) {
       cur.items.push({ pn: r[8]||'', desc: r[9]||'', qty: r[10]||'', ea: r[11]||'', sub: r[12]||'', sn: r[13]||'' });
     }
@@ -7128,8 +7131,9 @@ function loadTxnIntoPOS(i) {
 function quoteConvertControl(t, idx) {
   if (t.docType !== 'quote') return '';
   const done = (_txns || []).find(other => other.fromQuote && other.fromQuote === t.txnId);
-  if (done) return `<span style="margin-right:10px;color:#666;">Converted to ${_esch(DOC_TITLES[done.docType] || 'sale')} No. ${_esch(done.docNumber || done.txnId)}</span>`;
-  return `<button class="drive-btn refresh" style="margin-right:8px;" onclick="convertQuoteFromHistory(${idx})">Convert to sale</button>`;
+  const held = t.presell ? '<span style="margin-right:10px;color:#666;">Subtracted from stock</span>' : '';
+  if (done) return held + `<span style="margin-right:10px;color:#666;">Converted to ${_esch(DOC_TITLES[done.docType] || 'sale')} No. ${_esch(done.docNumber || done.txnId)}</span>`;
+  return held + `<button class="drive-btn refresh" style="margin-right:8px;" onclick="convertQuoteFromHistory(${idx})">Convert to sale</button>`;
 }
 function convertQuoteFromHistory(i) {
   const t = _txnShown[i];
@@ -7151,6 +7155,8 @@ function fillTxnIntoPOS(t, convertTo = null) {
     const _od = new Date(((t.date || '') + ' ' + (t.time || '')).trim());
     _reprintSource = { txnId: t.txnId || '', date: isNaN(_od.getTime()) ? new Date().toISOString() : _od.toISOString(), docType: t.docType || 'receipt', docNumber: t.docNumber || null };
     setDocType(DOC_TITLES[t.docType] ? t.docType : 'receipt');
+    const presellChk = document.getElementById('presellChk');
+    if (presellChk) presellChk.checked = t.docType === 'quote' && !!t.presell;
   }
   // Customer — newer rows carry the fields unjoined (Q–V); older rows saved "name / company".
   let name = t.name || '', company = '';
@@ -8153,6 +8159,7 @@ function clearAll() {
   _pendingDocNumber = null;
   _reprintSource = null;
   _quoteSource = null;
+  const presellChk = document.getElementById('presellChk'); if (presellChk) presellChk.checked = false;
   _ledgerDraftCustomerBinding = null;
   _ledgerDraftAccepted = false;
   _ledgerConversion = null;
@@ -10028,6 +10035,7 @@ function captureOrder() {
   return {
     date: new Date().toISOString(), customer, items, total, toggles,
     tender: historyTenderSelection(),
+    presell: (_docType === 'quote' && document.getElementById('presellChk')?.checked) || undefined,
   };
 }
 
@@ -10079,6 +10087,8 @@ function historyDocTypeTag(type) {
     if (t !== 'receipt') setScannerModeActive(false);
     _docType = t;
     document.querySelectorAll('#docTypeSel .doc-type-btn').forEach(b => b.classList.toggle('active', b.dataset.doc === t));
+    const presellWrap = document.getElementById('presellWrap');
+    if (presellWrap) presellWrap.hidden = t !== 'quote';
     // Drives the on-screen Cost / Gross Profit / Margin block. Kept separate from
     // the print-only `internal-print` class so switching back to Receipt/Invoice/
     // Quote takes those figures off the screen too.
@@ -10207,6 +10217,7 @@ function historyContentFingerprint(order, docType = _docType) {
     ]),
     total: number(order.total), cardFee: !!order.toggles?.cardFee,
     tender: order.tender || null,
+    ...(order.presell ? { presell: true } : {}),
   });
 }
 function saveToHistory() {
@@ -11255,7 +11266,7 @@ function toggleMenu(ev, id) {
   const panel = document.getElementById(id);
   const wasOpen = panel.classList.contains('open');
   document.querySelectorAll('.menu-panel').forEach(p => p.classList.remove('open'));
-  if (!wasOpen) { if (id === 'togglesMenu') syncToggles(); if (id === 'adminMenu') { refreshStatusUI(); updatePriceChangesBadge(); } panel.classList.add('open'); }
+  if (!wasOpen) { if (id === 'togglesMenu') syncToggles(); if (id === 'adminMenu') { syncToggles(); refreshStatusUI(); updatePriceChangesBadge(); } panel.classList.add('open'); }
 }
 document.addEventListener('click', () => document.querySelectorAll('.menu-panel.open').forEach(p => p.classList.remove('open')));
 
