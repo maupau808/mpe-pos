@@ -234,6 +234,7 @@ body.doc-internal .sum-internal { display: block; }
 .print-choice-label { color: #333; font-size: 12px; font-weight: 650; line-height: 1; text-align: center; }
 .print-choice-buttons { display: flex; gap: 5px; }
 .print-choice-option { display: grid; gap: 4px; }
+.print-auto-note { font-size: 10px; font-weight: 500; color: #888; }
 .print-choice-buttons .btn-big { min-width: 70px; padding-left: 12px; padding-right: 12px; }
 .btn-filled { background: #2f4339; color: #fff; border-color: #2f4339; }
 .btn-filled:hover { background: #202d27; border-color: #202d27; }
@@ -861,6 +862,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span></div>
             <div id="dataStatus" class="data-status"></div>
             <div class="admin-control-grid">
+              <button class="drive-btn hist-btn" id="printBtn" type="button" onclick="manualPrint()" title="Open the system print dialog">Manual print</button>
               <button class="drive-btn hist-btn" id="scannerModeBtn" type="button" onclick="setScannerModeActive(true)">Scanner Mode</button>
               <div id="togglesMenu" style="display:contents">
                 <label class="menu-check"><input type="checkbox" id="tgSignature" onchange="toggleSignature()"> ✍ Signature</label>
@@ -1023,8 +1025,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <button class="btn-big" id="chargeCardBtn" style="display:none" onclick="chargeCardOnTerminal()" title="Send this total to the card terminal">Charge card</button>
       <div class="print-choice" role="group" aria-label="Print">
         <div class="print-choice-buttons">
-          <div class="print-choice-option"><div class="print-choice-label">Print</div><button class="btn-big" id="printBtn" onclick="manualPrint()" title="Open the system print dialog">Manual</button></div>
-          <div class="print-choice-option"><div class="print-choice-label">Print</div><button class="btn-big btn-filled" id="autoPrintBtn" onclick="autoPrint()" title="Send one single-sided copy directly to the Brother counter printer">Auto</button></div>
+          <div class="print-choice-option"><div class="print-choice-label print-auto-note">(Auto)</div><button class="btn-big btn-filled" id="autoPrintBtn" onclick="autoPrint()" title="Send one single-sided copy directly to the Brother counter printer">Print</button></div>
         </div>
       </div>
       <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
@@ -1152,7 +1153,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.15.1';
+const POS_RELEASE = '2026.10.15.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -9335,7 +9336,7 @@ async function autoPrint() {
     const repeatBtn = document.getElementById('autoPrintBtn');
     if (repeatBtn) {
       repeatBtn.textContent = '✓ Sent';
-      setTimeout(() => { repeatBtn.textContent = 'Auto'; repeatBtn.disabled = false; }, 1800);
+      setTimeout(() => { repeatBtn.textContent = 'Print'; repeatBtn.disabled = false; }, 1800);
     }
     flashScanCommand('Already sent once — duplicate blocked', 'warn');
     return;
@@ -9345,7 +9346,7 @@ async function autoPrint() {
   _directPrintInFlight = true;
   const printStartedAt = performance.now();
   const btn = document.getElementById('autoPrintBtn');
-  const idleLabel = 'Auto';
+  const idleLabel = 'Print';
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
   clearToolFailure();
   setBtn('⏳', true);
@@ -9439,7 +9440,7 @@ async function autoPrint() {
     cleanupPrint();
     _printPrepared = false;
     releasePhysicalOutput(physicalOutputOwner);
-    flashScanCommand('Auto Print was uncertain. Check the printer before choosing Manual Print.', 'warn');
+    flashScanCommand('Auto Print was uncertain. Check the printer before using Manual print in Admin.', 'warn');
     return;
   }
   cleanupPrint();
