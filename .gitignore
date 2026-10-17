@@ -19,3 +19,5 @@
 !test_maruyama_scans.mjs
 !print-relay.js
 !test_print_relay.cjs
+!test_ledger_customer_chooser_and_date.cjs
+!test_ledger_refusal_messages.cjs

@@ -313,7 +313,9 @@ textarea.new-item-input { min-height: 72px; resize: vertical; }
 .back-main { flex: 1; min-width: 0; }
 .back-name { font-size: 14px; font-weight: 600; }
 .back-meta { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+.new-item-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .new-item-actions { display: grid; grid-template-columns: 1fr 1.35fr; gap: 8px; padding-top: 2px; }
+.new-item-actions button[hidden] + button { grid-column: 1 / -1; }
 .new-item-actions button { min-height: 44px; border-radius: 10px; font-size: 14px; font-weight: 700; }
 .new-item-back { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); }
 .new-item-save { background: var(--accent); color: var(--accent-ink); }
@@ -331,52 +333,6 @@ textarea.new-item-input { min-height: 72px; resize: vertical; }
 .danger { color: var(--err); }
 
 /* ── bind mode ──────────────────────────────────────────────────────────── */
-/* Binding still gives most of the screen to the part pool, but leaves enough
-   camera context to separate neighbouring labels. */
-body.bind .cam-wrap { height: 150px; }
-body.bind .reticle i { width: 56%; height: 46%; border-radius: 8px; }
-body.bind .hero,
-body.bind .list-wrap { display: none; }
-body.bind #searchBtn,
-body.bind #reloadBtn { display: none; }
-body.bind .bind-wrap { display: flex; }
-
-.bind-wrap { flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; }
-.bind-bar {
-  flex: none; display: flex; align-items: center; gap: 10px;
-  padding: 11px 14px; background: var(--panel); border-bottom: 1px solid var(--line);
-}
-.bind-bar-main { flex: 1; min-width: 0; }
-.bind-code { font-size: 16px; font-weight: 600; line-height: 1.25; word-break: break-all; color: var(--muted); }
-.bind-say { font-size: 11.5px; color: var(--dim); margin-top: 3px; }
-/* A code waiting to be matched is real signal — it is the one thing on screen
-   that will not resolve itself — so it is the one thing allowed to shout. */
-.bind-bar.armed .bind-code { color: var(--warn); font-size: 19px; font-weight: 700; }
-.bind-bar.armed .bind-say { color: var(--text); }
-.bind-bar.said .bind-code { color: var(--text); }
-.bind-filterbar {
-  flex: none; display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px; border-bottom: 1px solid var(--line);
-}
-.bind-filterbar .search-input { flex: 1; }
-.bind-head {
-  flex: none; padding: 8px 14px; font-size: 11.5px; color: var(--muted);
-  background: var(--bg); border-bottom: 1px solid var(--line); min-height: 30px;
-}
-.bind-list { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.pool {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 14px; border-bottom: 1px solid var(--line);
-}
-.pool:active { background: var(--panel-2); }
-.pool-main { flex: 1; min-width: 0; }
-.pool-desc { font-size: 14px; line-height: 1.3; word-break: break-word; }
-.pool-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-.pool-mark {
-  flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
-  text-transform: uppercase; color: var(--dim);
-}
-.pool.bound .pool-mark { color: var(--ok); }
 
 .toast {
   position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom));
@@ -395,19 +351,19 @@ body.bind .bind-wrap { display: flex; }
 .mode-header h1 { font-size:20px; line-height:1.2; margin:3px 0; }
 .mode-header p { color:var(--muted); font-size:12px; margin:4px 0 0; }
 .mode-header .mini { min-height:44px; flex:none; }
-.mode-home { flex:1; overflow-y:auto; padding:18px 14px; }
-.mode-choice { display:block; width:100%; text-align:left; padding:18px 14px; margin-bottom:12px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; font:inherit; }
-.mode-choice strong { display:block; font-size:18px; margin-bottom:5px; }
-.mode-choice span,.mode-footnote { color:var(--muted); font-size:13px; }
-body:not([data-mode="home"]) #modeHome, body:not([data-mode="home"]) #homeSettings, body:not([data-mode="home"]) #homeReload { display:none; }
-body[data-mode="home"] .cam-wrap,body[data-mode="home"] .hero,body[data-mode="home"] .acts,body[data-mode="home"] .list-wrap { display:none; }
-body:not([data-mode="pos"]) .list-wrap { display:none; }
+/* One scan screen; matching serials is the only separate job. */
+body[data-mode="serial"] .list-wrap,body[data-mode="serial"] .panes,body[data-mode="serial"] .card-acts,body[data-mode="serial"] .mode-header p { display:none; }
+body[data-pane="labels"] .list-wrap { display:none; }
+.card-acts { flex:none; gap:6px; padding:8px; border-bottom:1px solid var(--line); }
+.card-acts:not([hidden]) { display:flex; }
+.card-acts button { flex:1; min-height:44px; font-size:14px; font-weight:700; }
+.panes { flex:none; display:flex; gap:6px; padding:7px 8px; border-bottom:1px solid var(--line); }
+.panes button { flex:1; min-height:40px; border:1px solid var(--line); border-radius:9px; background:transparent; color:var(--muted); font:inherit; font-size:13px; font-weight:700; }
+.panes button[aria-selected="true"] { color:var(--text); border-color:var(--muted); background:var(--panel); }
 body[data-mode="serial"] .hero,body[data-mode="serial"] #searchBtn,body[data-mode="serial"] #reloadBtn { display:none; }
 body[data-mode="serial"] .cam-wrap { height:150px; }
-body[data-mode="labels"] .hero { display:none; }
-body[data-mode="labels"] .cam-wrap { height:150px; }
 .label-work { display:none; flex:1; overflow-y:auto; padding:14px; }
-body[data-mode="labels"] .label-work { display:block; }
+body[data-mode="scan"][data-pane="labels"] .label-work { display:block; }
 .label-status { padding:4px 0 12px; font-size:14px; }
 .label-status.warn { color:var(--warn); }
 .label-actions { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 14px; }
@@ -439,15 +395,12 @@ button:focus-visible, a:focus-visible { outline:2px solid var(--focus); outline-
 .back-app[hidden] { display:none; }
 </style>
 </head>
-<body data-mode="home">
+<body data-mode="scan" data-pane="list">
 <header class="mode-header">
   <a class="mini back-app" id="backApp" href="/" hidden aria-label="Back to MPE">‹ MPE</a>
-  <div><div class="mode-brand">MPE Scan</div><h1 id="modeTitle">Choose a mode</h1><p id="modeHint">What are you working on?</p></div>
-  <button class="mini" id="leaveMode" hidden>Leave mode</button>
-  <button class="mini" id="homeReload">Reload</button>
-  <button class="mini" id="homeSettings">Settings</button>
+  <div><h1 id="modeTitle">MPE Scan</h1><p id="modeHint"></p></div>
+  <button class="mini" id="leaveMode">Serials</button>
 </header>
-<main id="modeHome" class="mode-home"><div id="modeChoices"></div><p class="mode-footnote" id="modeDraftNote">Your POS list and unsent matches stay saved on this phone.</p></main>
 
 
 <div class="authbar" id="authBar">
@@ -480,11 +433,22 @@ button:focus-visible, a:focus-visible { outline:2px solid var(--focus); outline-
   <div class="hero-cost" id="heroCost"></div>
 </div>
 
+<div class="card-acts" id="cardActs" hidden>
+  <button class="mini go" id="cardAdd">Add to list</button>
+  <button class="mini" id="cardLabel">Label</button>
+  <button class="mini" id="cardEdit">Edit</button>
+</div>
+
 <div class="acts">
   <button class="act" id="againBtn">Scan</button>
   <button class="act" id="searchBtn">Search</button>
   <button class="act" id="reloadBtn">Reload</button>
   <button class="act" id="setBtn"><span class="feed-dot" id="feedDot"></span>Settings</button>
+</div>
+
+<div class="panes" role="tablist">
+  <button id="paneList" role="tab" aria-selected="true">List</button>
+  <button id="paneLabels" role="tab" aria-selected="false">Labels</button>
 </div>
 
 <div class="list-wrap">
@@ -499,23 +463,6 @@ button:focus-visible, a:focus-visible { outline:2px solid var(--focus); outline-
   <div id="rows"></div>
 </div>
 
-<!-- bind mode: scan a package, tap the part it belongs to -->
-<div class="bind-wrap" id="bindWrap">
-  <div class="bind-bar" id="bindBar">
-    <div class="bind-bar-main">
-      <div class="bind-code" id="bindCode">Scan a barcode</div>
-      <div class="bind-say" id="bindSay">Filter the pool below first, then scan the package.</div>
-    </div>
-    <button class="mini" id="bindUndoBtn" hidden>Undo</button>
-  </div>
-  <div class="bind-filterbar">
-    <input class="search-input" id="bindFilter" type="search" placeholder="Filter — blade, Corona, hedge shear"
-           autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
-  </div>
-  <div class="bind-head" id="bindHead"></div>
-  <div class="bind-list" id="bindList"></div>
-</div>
-
 <section class="serial-work" aria-label="Match serial numbers">
  <div class="serial-target"><span>Selected model</span><b id="serialModel">Choose a model first</b><p id="serialModelDetail">Scan its product barcode or search for the exact model. Then scan each serial label.</p><button class="mini go" id="serialChoose">Choose model</button></div>
  <div class="serial-status" id="serialStatus" role="status" aria-live="polite">No serials scanned yet.</div>
@@ -525,7 +472,7 @@ button:focus-visible, a:focus-visible { outline:2px solid var(--focus); outline-
 </section>
 <!-- label mode: a scanned run of parts, copied to the Mac for Label Studio -->
 <section class="label-work" aria-label="Make bag labels">
- <div class="label-status" id="labelStatus" role="status" aria-live="polite">Scan each part you are bagging.</div>
+ <div class="label-status" id="labelStatus" role="status" aria-live="polite">Tap Label on an item to add it here.</div>
  <div class="label-actions"><button class="mini go" id="labelCopy" disabled>Copy list</button><button class="mini" id="labelShare" disabled hidden>Share</button><button class="mini" id="labelClear" disabled>Clear list</button></div>
  <div id="labelRows"></div>
  <textarea id="labelFallback" class="search-input" rows="4" readonly hidden aria-label="Scanned list to copy"></textarea>
@@ -543,24 +490,24 @@ button:focus-visible, a:focus-visible { outline:2px solid var(--focus); outline-
     <div class="sheet-pad">
       <input class="search-input" id="searchInput" type="search" placeholder="Part number or description"
              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-      <button class="new-item-start" id="newItemStart">Not in Master — add details</button>
+      <button class="new-item-start" id="newItemStart">Not in Master — add it</button>
     </div>
     <div class="sheet-body" id="searchResults"></div>
   </div>
 </div>
 
-<!-- Unknown UPC details stay a Bridge note until a person creates the Master item. -->
+<!-- With a description, part number and List price this becomes a Master item (the Mac files it and pairs the barcode); without a List price it stays a Bridge note. -->
 <div class="sheet" id="newItemSheet">
   <div class="sheet-panel">
     <div class="sheet-top">
-      <div class="sheet-title">New item details</div>
+      <div class="sheet-title">New item</div>
       <button class="mini" id="newItemClose">Close</button>
     </div>
-    <div class="new-item-code">UPC <b id="newItemCode"></b></div>
+    <div class="new-item-code">Barcode <b id="newItemCode"></b></div>
     <div class="sheet-body">
       <div class="new-item-form">
         <div class="new-item-field">
-          <label for="newItemName">What is it? <span>optional</span></label>
+          <label for="newItemName">Description</label>
           <input class="new-item-input" id="newItemName" type="text" placeholder="e.g. 8 in. pruning shear"
                  autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true">
         </div>
@@ -570,19 +517,32 @@ button:focus-visible, a:focus-visible { outline:2px solid var(--focus); outline-
                  autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
         </div>
         <div class="new-item-field">
-          <label for="newItemPrice">Price note <span>optional</span></label>
-          <input class="new-item-input" id="newItemPrice" type="text" placeholder="e.g. $29.99 shelf or $18 cost"
-                 autocomplete="off" autocorrect="off" inputmode="decimal" spellcheck="false">
-          <div class="new-item-help">A note for setup only — it will not become a POS or Master price.</div>
+          <label for="newItemPn">Part number</label>
+          <input class="new-item-input" id="newItemPn" type="text"
+                 autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+          <div class="new-item-help">Starts as the barcode. Change it if the item has a real part number.</div>
+        </div>
+        <div class="new-item-pair">
+          <div class="new-item-field">
+            <label for="newItemPrice">List price</label>
+            <input class="new-item-input" id="newItemPrice" type="text" placeholder="29.99"
+                   autocomplete="off" autocorrect="off" inputmode="decimal" spellcheck="false">
+          </div>
+          <div class="new-item-field">
+            <label for="newItemCost">Cost <span>optional</span></label>
+            <input class="new-item-input" id="newItemCost" type="text" placeholder="18.00"
+                   autocomplete="off" autocorrect="off" inputmode="decimal" spellcheck="false">
+          </div>
         </div>
         <div class="new-item-field">
-          <label for="newItemNote">Other note <span>optional</span></label>
+          <label for="newItemNote">Note <span>optional</span></label>
           <textarea class="new-item-input" id="newItemNote" placeholder="size, color, source, package count…"
                     autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true"></textarea>
         </div>
+        <div class="new-item-help" id="newItemState" role="status" aria-live="polite"></div>
         <div class="new-item-actions">
           <button class="new-item-back" id="newItemBack">Match instead</button>
-          <button class="new-item-save" id="newItemSave">Save for Bridge</button>
+          <button class="new-item-save" id="newItemSave">Add to Master</button>
         </div>
       </div>
     </div>
@@ -659,10 +619,10 @@ button:focus-visible, a:focus-visible { outline:2px solid var(--focus); outline-
       </div>
       <div class="set-row">
         <div class="set-main">
-          <div class="set-label">Bind barcodes to parts</div>
-          <div class="set-help">Use for a shelf pass when a package barcode is not known yet.</div>
+          <div class="set-label">Add every scan to the list</div>
+          <div class="set-help">For picking a big order. Off: a scan shows the item and you tap Add to list.</div>
         </div>
-        <button class="mini" id="bindBtn">Start</button>
+        <div class="sw" id="autoAddSw"><i></i></div>
       </div>
       <div class="set-row" id="costRow">
         <div class="set-main">
@@ -837,6 +797,7 @@ let warrantyModelMap = new Map();
 let list = [];
 let feedStamp = '';
 let bindTarget = null;         // list entry awaiting a manual part match
+let card = null;                // { part, meta, entry? } behind the Add to list / Label / Edit buttons
 let newItemTarget = null;      // unresolved UPC being described for later Master setup
 let editTarget = null;         // matched row whose List/Description is being corrected
 let backlogTarget = null;      // backlog record being re-opened from the backlog sheet
@@ -1338,7 +1299,7 @@ function renderAuthBar() {
   bar.className = 'authbar' + (state === 'ok' ? '' : ' show ' + state);
   if (state === 'ok') return;
   if (state === 'out' && bridgeChecking) { bar.className = 'authbar'; return; }
-  const held = scannerMode === 'pos' && list.length ? `${list.length} line${list.length === 1 ? '' : 's'} saved on this phone.` : '';
+  const held = list.length ? `${list.length} line${list.length === 1 ? '' : 's'} saved on this phone.` : '';
   if (state === 'out') {
     $('authBarTitle').textContent = phoneBridgeAvailable()
       ? 'Phone not connected — sending is unavailable'
@@ -1426,9 +1387,6 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   feedStamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   setFeedState(sourceLabel === 'cache' ? 'warn' : 'ok',
     `${feed.parts.length.toLocaleString()} parts · ${sourceLabel === 'cache' ? 'cached copy' : 'updated ' + feedStamp}`);
-  // A fresh feed brings new bindings with it, so the shelf pool's "coded" marks
-  // are stale the moment it lands.
-  if (bindMode) renderBindPool();
   return feed;
 }
 
@@ -1887,12 +1845,14 @@ function preferredScanSymbol(items, frameWidth = 0, frameHeight = 0) {
 }
 
 // ── BARCODE BINDING QUEUE (Codes tab) ─────────────────────────────────────
-function queueCodeBinding(rawCode, format, part) {
+function queueCodeBinding(rawCode, format, part, allowSerialShape) {
   const code = canonicalScannedCode(rawCode);
   const pn = String(part?.pn || part?.og || '').trim();
   if (!code || !pn) return;
   if (ignorableScanCode(rawCode)) return;   // must never outlive the moment
-  if (looksLikeSerial(rawCode) && !partCodeMap[code]) return;
+  // Match product barcodes passes allowSerialShape: a person chose the part on purpose
+  // there, and retailer codes (Amazon X00.../B0...) mix letters and digits like a serial.
+  if (!partCodeMap[code] && (allowSerialShape ? maruyamaSerialNumber(rawCode) : looksLikeSerial(rawCode))) return;
   const record = { code, pn, format: String(format || ''), source: 'scan-phone', added: new Date().toISOString() };
   const at = pendingCodes.findIndex(i => canonicalScannedCode(i.code) === code);
   if (at >= 0) pendingCodes[at] = record; else pendingCodes.push(record);
@@ -2001,7 +1961,7 @@ function clearItemChange(pn) {
 // on the Bridge tab — and is NOT cleared by Clear or by Send.
 function backlogKeyFor(code) { return canonicalScannedCode(code) || ''; }
 
-function upsertBacklog({ code, item, make, priceNote, note }) {
+function upsertBacklog({ code, item, make, priceNote, note, pn, cost, add }) {
   const key = backlogKeyFor(code);
   if (!key) return null;
   const at = backlog.findIndex(b => backlogKeyFor(b.code) === key);
@@ -2010,6 +1970,7 @@ function upsertBacklog({ code, item, make, priceNote, note }) {
     id: previous?.id || ('n' + Date.now().toString(36) + Math.floor(performance.now() % 1000)),
     code: String(code || ''), item: String(item || ''), make: String(make || ''),
     priceNote: String(priceNote || ''), note: String(note || ''),
+    pn: String(pn || ''), cost: String(cost || ''), add: !!add,
     at: previous?.at || new Date().toISOString(),
     // Re-describing an item that already reached the sheet has to go again, or
     // the correction would live only on this phone.
@@ -2036,7 +1997,9 @@ async function _flushBacklog() {
       const batch = backlog.filter(b => !b.sent);
       if (!batch.length) break;
       const result = await sheetsAppend(`${NEWITEMS_SHEET}!A1`, batch.map(b => [
-        b.at, sheetText(b.code), b.item, b.make, b.priceNote, b.note, 'scan-phone', ''
+        b.at, sheetText(b.code), b.item, b.make, b.priceNote, b.note,
+        // Server/new_items_bridge.py files only rows carrying this marker into Master.
+        b.add ? JSON.stringify({ add: true, pn: b.pn, cost: b.cost }) : 'scan-phone', ''
       ]));
       const range = result?.updates?.updatedRange;
       if (!range) throw new Error('append returned no range to verify');
@@ -2274,6 +2237,9 @@ function schedulePendingCodesFlush() {
   }, 15000);
 }
 function renderPending() {
+  // An item this phone asked Master to add is done once the feed resolves its barcode.
+  const stillWaiting = backlog.filter(b => !(b.add && b.sent && partCodeMap[backlogKeyFor(b.code)]));
+  if (stillWaiting.length !== backlog.length) { backlog = stillWaiting; save(K_BACKLOG, backlog); }
   $('pendHelp').textContent = pendingCodes.length
     ? `${pendingCodes.length} saved locally — waiting to sync`
     : 'All synced.';
@@ -2480,7 +2446,6 @@ function claimScannedValue(value, now = Date.now()) {
 }
 
 async function startCamera() {
-  if (scannerMode === 'home') return;
   const version = ++startVersion;
   scanLoopVersion++;
   scanPausedForVisibility = false;
@@ -2619,12 +2584,11 @@ document.addEventListener('visibilitychange', () => {
 // ── ACCEPTING A SCAN ──────────────────────────────────────────────────────
 function acceptScan(rawValue, format) {
   const raw = String(rawValue || '').trim();
-  if (scannerMode === 'home' || !raw || !claimScannedValue(raw)) return;
+  if (!raw || !claimScannedValue(raw)) return;
 
   if (!loaded) { showHero({ bad: true, desc: 'Prices are not loaded yet', meta: raw }); beep('unknown'); return; }
 
-  // Bind mode is a different job with the same scanner: the code arms itself
-  // and waits for a part instead of becoming a price or a list row.
+  // Matching serials is a different job with the same scanner.
   const mode = SCANNER_MODES[scannerMode];
   if (!mode) return;
   if (mode.scan) { mode.scan(raw, format); return; }
@@ -2636,7 +2600,7 @@ function acceptScan(rawValue, format) {
   const { code, candidates, via, serial = '', model = '', bindCode = '' } = resolveScannedValue(raw);
   if (candidates.length === 1) {
     // A serial-rule match means the scanned value is this machine's serial.
-    addToList(candidates[0], {
+    landScan(candidates[0], {
       code, format, rawCode: raw, matchedCode: via === 'code' ? code : '',
       serial: via === 'serial' ? raw : serial
     });
@@ -2750,19 +2714,22 @@ function addUnknown(raw, code, format) {
     qty: 1, code, format, unresolved: true, serialish, newItem: false,
     priceNote: '', note: '', at: Date.now()
   };
-  const twin = list.find(e => e.unresolved && e.code === code);
-  if (twin) twin.qty += 1; else list.unshift(entry);
+  const waiting = backlog.find(b => b.add && backlogKeyFor(b.code) === canonicalScannedCode(raw));
+  if (waiting) {
+    showHero({ flag: true, desc: waiting.item || raw, meta: waiting.sent ? 'Already sent — being added to Master' : 'Saved — waiting to sync' });
+    return;
+  }
+  // Only "Add every scan" puts an unknown on the list; otherwise it is matched
+  // or added as a new item right here and never becomes a row.
+  const twin = autoAdd ? list.find(e => e.unresolved && e.code === code) : null;
+  if (twin) twin.qty += 1; else if (autoAdd) list.unshift(entry); else entry.detached = true;
   const target = twin || entry;
   persistList();
-  showHero({
-    flag: true,
-    desc: serialish ? 'Not a known serial number' : 'Not in the catalog',
-    meta: raw + (serialish ? ' — serial numbers are never saved as barcodes' : ' — tap it in the list to match it to a part'),
-  });
+  showHero({ flag: true, desc: 'Not in the catalog', meta: raw + ' — match it to a part, or add it as new' });
   openSearch({ bind: target });
 }
 
-function persistList() { save(K_LIST, list); renderList(); renderAuthBar(); }
+function persistList() { save(K_LIST, list); renderList(); renderPaneTabs(); renderAuthBar(); }
 
 function renderList() {
   // Requote bulk entries from today's catalog on every quantity edit or reload.
@@ -2912,6 +2879,7 @@ function unmatchEntry(entry) {
 const HERO_IDLE = { desc: 'Nothing scanned yet', meta: 'Same prices the counter charges, sale rules included.' };
 function showHero({ make = '', desc = '', price = null, was = 0, onSale = false, meta = '', cost = 0, flag = false, bad = false } = {}) {
   if (!desc && price == null) { desc = HERO_IDLE.desc; meta = meta || HERO_IDLE.meta; }
+  card = null; $('cardActs').hidden = true;      // only setCard() offers actions
   const hero = $('hero');
   hero.className = 'hero' + (flag ? ' flag' : '') + (bad ? ' bad' : '') + (price == null ? ' empty' : '');
   $('heroMake').textContent = make;
@@ -2957,34 +2925,64 @@ function openSearch({ bind = null, pick = null, code = '', format = '', serial =
   const banner = $('bindBanner');
   if (bind) {
     banner.hidden = false;
-    banner.innerHTML = bind.serialish
-      ? `Looking up <b>${escapeHTML(bind.desc)}</b>. Choosing a part shows its price. A serial number is never saved as a barcode.`
-      : `Pick the part for <b>${escapeHTML(bind.desc)}</b>. This saves the code for every terminal in the shop.`;
+    banner.innerHTML = `Pick the part for <b>${escapeHTML(bind.desc)}</b>. This saves the code for every terminal in the shop.`
+      + (bind.serialish ? ' On a warranty unit it is kept as that machine\u2019s serial instead.' : '');
   } else if (pick) {
     banner.hidden = false;
     banner.innerHTML = `<b>${escapeHTML(code)}</b> matches more than one part. Pick the right one.`;
   } else {
     banner.hidden = true;
   }
-  $('newItemStart').classList.toggle('show', !!bind && !bind.serialish);
+  $('newItemStart').classList.toggle('show', !!bind && !maruyamaSerialNumber(bind.code));
   openSheet('searchSheet');
   const input = $('searchInput');
-  input.value = '';
+  // Matching a shelf of unknown barcodes reuses the last words typed ("blade", "Corona").
+  input.value = bind ? (localStorage.getItem(K_BINDQ) || '') : '';
   if (pick) renderHits(pick);
   else {
-    renderHits([]);
-    setTimeout(() => input.focus(), 120);
+    renderHits(searchParts(input.value));
+    setTimeout(() => { input.focus(); input.select(); }, 120);
   }
 }
 
+// One form for every "this is not in Master" moment. A plain List price makes it a
+// Master item (add); without one it is a note for later, as before.
+const plainMoney = v => /^\$?\s*[\d,]+(\.\d+)?$/.test(String(v).trim()) ? String(Number(String(v).replace(/[$,\s]/g, ''))) : '';
+function fillNewItemForm(code, rec) {
+  $('newItemCode').textContent = code || '';
+  $('newItemName').value = String(rec.item || '');
+  $('newItemMake').value = String(rec.make || '');
+  $('newItemPn').value = String(rec.pn || code || '');
+  $('newItemPrice').value = String(rec.priceNote || '');
+  $('newItemCost').value = String(rec.cost || '');
+  $('newItemNote').value = String(rec.note || '');
+  $('newItemState').textContent = '';
+  renderNewItemSave();
+}
+function renderNewItemSave() {
+  $('newItemSave').textContent = $('newItemPrice').value.trim() ? 'Add to Master' : 'Save note for later';
+}
+// Returns the record fields, or null after saying what is missing.
+function readNewItemForm() {
+  const say = t => { $('newItemState').textContent = t; return null; };
+  const item = $('newItemName').value.trim(), pn = $('newItemPn').value.trim();
+  const price = $('newItemPrice').value.trim(), cost = $('newItemCost').value.trim();
+  const fields = { item, make: $('newItemMake').value.trim(), pn, priceNote: price, cost, note: $('newItemNote').value.trim(), add: false };
+  if (!price) return fields;
+  const list = plainMoney(price), costNum = cost ? plainMoney(cost) : '';
+  if (!item) return say('Add a description.');
+  if (!pn) return say('Add a part number.');
+  if (!list || Number(list) <= 0) return say('List price must be a plain number, like 29.99.');
+  if (cost && !costNum) return say('Cost must be a plain number, like 18.00.');
+  if (partsArray.some(p => (p._nPN !== undefined ? p._nPN : (p._nPN = normalizePN(p.pn))) === normalizePN(pn))) return say('Master already has that part number. Use Match instead.');
+  return { ...fields, priceNote: list, cost: costNum, add: true };
+}
+
 function openNewItemDetails(entry) {
-  if (!entry || !entry.unresolved || entry.serialish) return;
+  if (!entry || !entry.unresolved || maruyamaSerialNumber(entry.code)) return;
+  if (entry.detached) { closeSheet('searchSheet'); bindTarget = null; openBacklogRecord({ code: entry.code, fromScan: true }); return; }
   newItemTarget = entry;
-  $('newItemCode').textContent = entry.code || entry.desc || '';
-  $('newItemName').value = entry.newItem ? String(entry.desc || '') : '';
-  $('newItemMake').value = String(entry.make || '');
-  $('newItemPrice').value = String(entry.priceNote || '');
-  $('newItemNote').value = String(entry.note || '');
+  fillNewItemForm(entry.code || entry.desc, { ...entry, item: entry.newItem ? entry.desc : '', pn: entry.newPn, cost: entry.newCost });
   closeSheet('searchSheet');
   openSheet('newItemSheet');
   setTimeout(() => $('newItemName').focus(), 120);
@@ -2994,16 +2992,18 @@ function saveNewItemDetails() {
   if (backlogTarget) { saveBacklogRecord(); return; }
   const entry = newItemTarget;
   if (!entry || !list.some(e => e.id === entry.id)) { closeSheet('newItemSheet'); return; }
-  const itemName = $('newItemName').value.trim();
+  const fields = readNewItemForm();
+  if (!fields) return;
   entry.newItem = true;
-  entry.desc = itemName || entry.code || entry.desc;
-  entry.make = $('newItemMake').value.trim();
-  entry.priceNote = $('newItemPrice').value.trim();
-  entry.note = $('newItemNote').value.trim();
+  entry.desc = fields.item || entry.code || entry.desc;
+  entry.make = fields.make;
+  entry.priceNote = fields.priceNote;
+  entry.note = fields.note;
+  entry.newPn = fields.pn; entry.newCost = fields.cost;
   // The list row is for this trip to the counter; the backlog is the durable
   // record of a product the shop needs to create.
-  upsertBacklog({ code: entry.code, item: entry.desc, make: entry.make,
-                  priceNote: entry.priceNote, note: entry.note });
+  upsertBacklog({ ...fields, code: entry.code, item: entry.desc });
+  if (fields.add) schedulePendingCodesFlush();
   persistList();
   closeSheet('newItemSheet');
   bindTarget = null;
@@ -3073,7 +3073,7 @@ function parseMoneyInput(value) {
 
 function saveItemEdit() {
   const entry = editTarget;
-  if (!entry || !list.some(e => e.id === entry.id)) { closeSheet('editItemSheet'); return; }
+  if (!entry || !(entry.detached || list.some(e => e.id === entry.id))) { closeSheet('editItemSheet'); return; }
   const masterList = Number(entry.masterList) || masterListOf(entry);
   const masterDesc = String(entry.masterDesc || entry.desc || '');
   const typedDesc = $('editItemName').value.trim();
@@ -3171,11 +3171,7 @@ function openBacklogRecord(rec) {
   if (!rec) return;
   backlogTarget = rec;
   newItemTarget = null;
-  $('newItemCode').textContent = rec.code || '';
-  $('newItemName').value = String(rec.item || '');
-  $('newItemMake').value = String(rec.make || '');
-  $('newItemPrice').value = String(rec.priceNote || '');
-  $('newItemNote').value = String(rec.note || '');
+  fillNewItemForm(rec.code, rec);
   $('newItemBack').hidden = true;          // nothing to go back to; this is not a scan
   closeSheet('backlogSheet');
   openSheet('newItemSheet');
@@ -3184,17 +3180,19 @@ function openBacklogRecord(rec) {
 
 function saveBacklogRecord() {
   const rec = backlogTarget;
+  if (!rec) return;
+  const fields = readNewItemForm();
+  if (!fields) return;
   backlogTarget = null;
   $('newItemBack').hidden = false;
-  if (!rec) return;
-  upsertBacklog({
-    code: rec.code,
-    item: $('newItemName').value.trim(),
-    make: $('newItemMake').value.trim(),
-    priceNote: $('newItemPrice').value.trim(),
-    note: $('newItemNote').value.trim()
-  });
+  upsertBacklog({ ...fields, code: rec.code });
+  schedulePendingCodesFlush();
   closeSheet('newItemSheet');
+  if (rec.fromScan) {                       // an unknown scan: straight back to scanning
+    showHero({ flag: true, desc: fields.item || rec.code, meta: fields.add ? 'Saved — adding to Master' : 'Saved as a note for later' });
+    beep('ok'); buzz(35);
+    return;
+  }
   renderBacklog();
   openSheet('backlogSheet');
   toast('Saved');
@@ -3243,20 +3241,19 @@ function renderHits(parts) {
 
 function chooseHit(part) {
   if (scannerMode === 'serial') { closeSheet('searchSheet'); bindTarget = null; selectSerialModel(part); return; }
-  if (scannerMode === 'labels') { closeSheet('searchSheet'); bindTarget = null; addLabelPart(part); return; }
-  if (scannerMode === 'price') { closeSheet('searchSheet'); bindTarget = null; showPricePart(part); return; }
   const target = bindTarget;
   closeSheet('searchSheet');
   if (target?.entry) {
     const entry = target.entry;
     const p = pricing(part);
-    // A serial-shaped code identifies one machine, so it resolves the row but
-    // is never written to the Codes sheet as a product barcode.
-    const learnedMatch = !!(entry.code && !entry.serialish);
-    if (learnedMatch) queueCodeBinding(entry.code, entry.format, part);
-    // For a serial-shaped row the raw scan (still in desc at this point) IS the
-    // machine's serial, so matching the unit captures it rather than losing it.
-    const capturedSerial = entry.serialish ? serialForPart(String(entry.desc || '').trim().toUpperCase(), part) : '';
+    // A person picked this part on purpose, so any code is saved as its barcode
+    // (Amazon and other retailer codes mix letters and digits). The exception is
+    // a serial-shaped code matched to a warranty unit: that IS one machine's
+    // serial, so it is captured on the row and never written to Codes.
+    const unitSerial = !!(entry.serialish && part.warranty);
+    if (entry.code && !unitSerial) queueCodeBinding(entry.code, entry.format, part, true);
+    const learnedMatch = !!entry.code && partCodeMap[canonicalScannedCode(entry.code)] === normalizePN(part.pn);
+    const capturedSerial = unitSerial ? serialForPart(String(entry.desc || '').trim().toUpperCase(), part) : '';
     Object.assign(entry, {
       pn: String(part.pn || ''), og: String(part.og || ''), make: String(part.make || ''),
       desc: String(part.desc || ''), price: p.price, was: p.was, onSale: p.onSale,
@@ -3267,12 +3264,14 @@ function chooseHit(part) {
       matchedCode: learnedMatch ? canonicalScannedCode(entry.code) : ''
     });
     persistList();
-    toast(entry.serialish ? 'Matched — serial not saved as a barcode' : 'Saved locally — syncs after Send');
+    if (learnedMatch) schedulePendingCodesFlush();
+    toast(unitSerial ? 'Matched — kept as this unit\u2019s serial' : learnedMatch ? 'Barcode saved' : 'Matched — that code cannot be saved as a barcode');
+    if (entry.detached) { bindTarget = null; showPricePart(part, entry.serial); setCard(part, { code: entry.code, format: entry.format, rawCode: entry.scanRaw, matchedCode: entry.matchedCode, serial: entry.serial }); return; }
   } else if (target?.code) {
     // Choosing between real candidates settles what that code means, so it is
     // worth saving — unless it is serial-shaped, which belongs to one machine.
     if (!looksLikeSerial(target.code)) queueCodeBinding(target.code, target.format, part);
-    addToList(part, {
+    landScan(part, {
       code: target.code, format: target.format, rawCode: target.code,
       matchedCode: looksLikeSerial(target.code) ? '' : target.code,
       serial: target.serial || ''
@@ -3280,7 +3279,7 @@ function chooseHit(part) {
     bindTarget = null;
     return;
   } else {
-    addToList(part, {});
+    landScan(part, {});
     return;
   }
   bindTarget = null;
@@ -3293,18 +3292,12 @@ function chooseHit(part) {
 // ── SCANNER MODES ─────────────────────────────────────────────────────────
 // Add a mode here; navigation, camera lifetime and the catalog stay shared.
 const SCANNER_MODES = {
-  price: { title: 'Check prices', hint: 'Scan or search for a price. Your POS list stays separate.', scan: scanPrice,
-    description: 'Look up an item without building a list.' },
-  pos: { title: 'Build POS list', hint: 'Scan items, then send this list to the counter.',
-    description: 'Collect items and serials for a sale at the counter.' },
-  barcode: { title: 'Match product barcodes', hint: 'Filter the products, scan a barcode, then pick its match.', scan: bindScan,
-    description: 'Teach the shop which product a UPC or package barcode belongs to.' },
-  serial: { title: 'Match serial numbers', hint: 'Choose one model, scan its serial labels, then save the batch.', scan: scanSerialMatch,
-    description: 'Match a batch of AL301 chargers, Maruyama units, or other serialized items.' },
-  labels: { title: 'Make bag labels', hint: 'Scan each part, then copy the list and paste it into Label Studio.', scan: scanLabelPart,
-    description: 'Collect the parts you are bagging and print their labels on the Mac.' }
+  scan: { title: 'MPE Scan', hint: '' },
+  serial: { title: 'Match serial numbers', hint: 'Choose one model, scan its serial labels, then save the batch.', scan: scanSerialMatch }
 };
-let scannerMode = 'home';
+let scannerMode = 'scan';
+const K_AUTOADD = 'mpeScanAutoAdd';
+let autoAdd = false;            // Settings: add every scan to the list (the old Build POS list)
 const K_LABEL_RUN = 'mpeScanLabelRunV1';
 let labelRun = [];
 try {
@@ -3321,39 +3314,43 @@ try {
 } catch (e) {}
 
 function enterScannerMode(id) {
-  if (id !== 'home' && !SCANNER_MODES[id]) return;
+  if (!SCANNER_MODES[id]) return;
   stopCamera();
   recentValues.clear();
   document.querySelectorAll('.sheet.open').forEach(sheet => closeSheet(sheet.id));
   bindTarget = null;
   scannerMode = id;
   document.body.dataset.mode = id;
-  setBindMode(id === 'barcode');
-  $('leaveMode').hidden = id === 'home';
-  $('modeTitle').textContent = SCANNER_MODES[id]?.title || 'Choose a mode';
-  $('modeHint').textContent = SCANNER_MODES[id]?.hint || 'What are you working on?';
-  if (id === 'home') {
-    $('modeDraftNote').textContent = `${list.length ? `${list.length} item${list.length === 1 ? '' : 's'} in your saved POS list. ` : ''}${labelRun.length ? `${labelRun.length} part${labelRun.length === 1 ? '' : 's'} in your bag-label list. ` : ''}Your list and unsent matches stay on this phone when you leave a mode.`;
-  }
-  if (id === 'price') showHero({ desc: 'Scan or search for an item', meta: 'Price lookup only' });
-  if (id === 'serial') renderSerialWork();
-  if (id === 'labels') renderLabelRun();
+  $('leaveMode').textContent = id === 'serial' ? '\u2039 Scan' : 'Serials';
+  $('modeTitle').textContent = SCANNER_MODES[id].title;
+  $('modeHint').textContent = SCANNER_MODES[id].hint;
+  if (id === 'serial') renderSerialWork(); else showHero();
   renderAuthBar();
+}
+// The item on the card, and what Add to list will carry (scanned code, serial).
+function setCard(part, meta = {}) { card = { part, meta }; $('cardActs').hidden = false; }
+// Where a recognised item lands: on the card, or straight onto the list when
+// "Add every scan" is on or the scan fills a list row waiting for this unit's serial.
+function landScan(part, meta = {}) {
+  const fillsWaiting = meta.serial && list.some(e => e.warranty && !e.serial && !e.unresolved
+    && normalizePN(e.pn) === normalizePN(part.pn));
+  if (autoAdd || fillsWaiting) addToList(part, meta); else showPricePart(part, meta.serial);
+  setCard(part, meta);
+}
+function setPane(pane) {
+  document.body.dataset.pane = pane;
+  $('paneList').setAttribute('aria-selected', String(pane === 'list'));
+  $('paneLabels').setAttribute('aria-selected', String(pane === 'labels'));
+}
+function renderPaneTabs() {
+  const labels = labelRun.reduce((total, row) => total + row.qty, 0);
+  $('paneList').textContent = list.length ? `List (${list.length})` : 'List';
+  $('paneLabels').textContent = labels ? `Labels (${labels})` : 'Labels';
 }
 function showPricePart(part, serial = '') {
   const value = pricing(part);
   showHero({ make: part.make, desc: part.desc, price: value.price, was: value.was,
     onSale: value.onSale, meta: [part.pn, serial && `Serial ${serial}`].filter(Boolean).join(' · '), cost: Number(part.cost) || 0 });
-}
-function scanPrice(raw, format) {
-  const result = resolveScannedValue(raw);
-  if (result.candidates.length === 1) {
-    showPricePart(result.candidates[0], result.serial || (result.via === 'serial' ? raw : ''));
-    beep('ok'); return;
-  }
-  if (ignorableScanCode(raw)) { setCamStatus('Packaging label — scan the product barcode', 'warn'); return; }
-  showHero({ bad: true, desc: result.candidates.length ? 'Choose the matching item' : 'Not recognized', meta: raw });
-  openSearch({ pick: result.candidates.length ? result.candidates : null, title: 'Find an item to check its price' });
 }
 function serialModel() { return partsArray.find(part => !part._supersedeAlias && normalizePN(part.pn) === normalizePN(serialDraft.pn) && part.warranty); }
 function saveSerialDraft(next) {
@@ -3516,7 +3513,8 @@ function renderLabelRun() {
   if ($('labelFallback').hidden === false) $('labelFallback').value = labelListText();
   labelNote(labelRun.length
     ? `${labelRun.length} part${labelRun.length === 1 ? '' : 's'} · ${labels} label${labels === 1 ? '' : 's'}. Copy the list, then paste it in Label Studio.`
-    : 'Scan each part you are bagging.');
+    : 'Tap Label on an item to add it here.');
+  renderPaneTabs();
 }
 function changeLabelQty(index, delta) {
   const next = labelRun.map(row => ({ ...row }));
@@ -3539,19 +3537,6 @@ function addLabelPart(part) {
   renderLabelRun();
   const row = next[at >= 0 ? at : 0];
   labelNote(`${row.desc || pn} — ${row.qty} label${row.qty === 1 ? '' : 's'}.`);
-}
-function scanLabelPart(raw) {
-  const result = resolveScannedValue(raw);
-  if (result.candidates.length === 1) { addLabelPart(result.candidates[0]); beep('ok'); buzz(35); return; }
-  if (result.candidates.length > 1) {
-    openSearch({ pick: result.candidates, title: 'Which one gets the label?' });
-    beep('unknown'); buzz([25, 60, 25]); return;
-  }
-  // Same order as every other mode: resolve first, only then call it packaging noise.
-  if (ignorableScanCode(raw)) { setCamStatus('Packaging label — scan the product barcode', 'warn'); return; }
-  labelNote(`Not recognized: ${raw}. Search for the part instead.`, true);
-  openSearch({ title: 'Find the part to label' });
-  beep('unknown'); buzz([25, 60, 25]);
 }
 async function copyLabelList() {
   const text = labelListText();
@@ -3582,14 +3567,27 @@ $('labelClear').addEventListener('click', () => {
 if (navigator.share) $('labelShare').hidden = false;
 renderLabelRun();
 
-$('modeChoices').replaceChildren(...Object.entries(SCANNER_MODES).map(([id, mode]) => {
-  const button = document.createElement('button'); button.className = 'mode-choice';
-  const title = document.createElement('strong'); title.textContent = mode.title;
-  const detail = document.createElement('span'); detail.textContent = mode.description;
-  button.append(title, detail); button.addEventListener('click', () => enterScannerMode(id)); return button;
-}));
-$('leaveMode').addEventListener('click', () => enterScannerMode('home'));
-$('homeSettings').addEventListener('click', () => openSheet('setSheet'));
+$('leaveMode').addEventListener('click', () => enterScannerMode(scannerMode === 'serial' ? 'scan' : 'serial'));
+$('paneList').addEventListener('click', () => setPane('list'));
+$('paneLabels').addEventListener('click', () => setPane('labels'));
+$('cardAdd').addEventListener('click', () => {
+  if (!card) return;
+  const kept = card;
+  addToList(kept.part, kept.meta);
+  card = kept; $('cardActs').hidden = false;      // addToList repaints the card
+  setPane('list'); toast('Added to list');
+});
+$('cardLabel').addEventListener('click', () => {
+  if (!card) return;
+  addLabelPart(card.part);
+  toast($('labelStatus').textContent);
+});
+$('cardEdit').addEventListener('click', () => {
+  if (!card) return;
+  const kept = card;
+  kept.entry = kept.entry || { ...entryFromPart(kept.part), detached: true };
+  openItemEdit(kept.entry);
+});
 $('serialChoose').addEventListener('click', () => openSearch({ title: 'Choose the model to match serials' }));
 $('serialSave').addEventListener('click', saveSerialMatches);
 $('serialClear').addEventListener('click', () => {
@@ -3600,220 +3598,13 @@ function addTypedSerial() { const input = $('serialInput'); if (input.value.trim
 $('serialAdd').addEventListener('click', addTypedSerial);
 $('serialInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); addTypedSerial(); } });
 
-// ── BIND MODE ─────────────────────────────────────────────────────────────
-// Scan the package, then tap the part it belongs to. Deliberately scan-first:
-// the code is the thing in your hand that the shop does not know yet, and
-// arming it before the pool is touched keeps a stray tap from binding nothing.
-//
-// The pool is filtered BEFORE any of this — one shelf at a time ("blade",
-// "Corona") — because tapping the right row out of forty is fast and tapping it
-// out of twenty thousand is not.
-//
-// This writes through queueCodeBinding, the same verified `Codes` queue the
-// lookup path uses. It never touches the pick list, never writes a price, and
-// applies resolve-first, then never-bind-a-serial, then the packaging filter in
-// exactly the order acceptScan applies them.
-const K_BINDON = 'mpeScanBindMode';
 const K_BINDQ  = 'mpeScanBindFilter';
-let bindMode = false;
-let bindPending = null;        // { raw, code, format } armed, waiting for its part
-let bindLast = null;           // last binding made here, for a single undo
-let bindPool = [];
-let bindCount = 0;
-
-// Every part number that already has at least one product barcode. Unit-serial
-// rules never reach partCodeMap, so this is genuinely "has a UPC", which is the
-// only thing the shelf pass is trying to change.
-function boundPartNumbers() {
-  const seen = new Set();
-  for (const pn of Object.values(partCodeMap)) if (pn) seen.add(pn);
-  return seen;
-}
-
-function setBindMode(on) {
-  bindMode = !!on;
-  document.body.classList.toggle('bind', bindMode);
-  localStorage.removeItem(K_BINDON);
-  $('bindBtn').className = 'mini' + (bindMode ? ' go' : '');
-  $('bindBtn').textContent = bindMode ? 'Exit Bind' : 'Start';
-  bindPending = null;
-  renderBindBar();
-  if (!bindMode) return;
-  renderBindPool();
-  if (!$('bindFilter').value.trim()) setTimeout(() => $('bindFilter').focus(), 150);
-}
-
-function renderBindBar() {
-  const bar = $('bindBar');
-  $('bindUndoBtn').hidden = !bindLast;
-  if (bindPending) {
-    bar.className = 'bind-bar armed';
-    $('bindCode').textContent = bindPending.raw;
-    $('bindSay').textContent = 'Tap the part this belongs to';
-    return;
-  }
-  bar.className = 'bind-bar';
-  $('bindCode').textContent = 'Scan a barcode';
-  $('bindSay').textContent = bindLast
-    ? `Last saved: ${bindLast.desc}`
-    : 'Filter the pool below first, then scan the package.';
-}
-
-// Says something about the scan that is not an armed code — already known,
-// a serial, a refusal. Cleared by the next scan or the next binding.
-function bindNote(code, say) {
-  $('bindBar').className = 'bind-bar said';
-  $('bindCode').textContent = code;
-  $('bindSay').textContent = say;
-  $('bindUndoBtn').hidden = !bindLast;
-}
-
-function bindScan(raw, format) {
-  // Resolve FIRST, exactly as the lookup path does. A code that already
-  // resolves needs no binding, and the packaging-noise filter must only ever
-  // see codes that have already failed to resolve.
-  const { candidates } = resolveScannedValue(raw);
-  // Any scan that gets this far answers the previous one, so a stale "ignored a
-  // packaging barcode" warning must not sit on the preview looking current.
-  if (scanActive) setCamStatus('');
-  if (candidates.length) {
-    bindPending = null;
-    bindNote(candidates[0].desc || candidates[0].pn,
-      candidates.length > 1 ? 'Already known — matches more than one part' : 'Already known — nothing to save');
-    beep('ok'); buzz(20);
-    return;
-  }
-  // A serial belongs to one machine. Binding it as a product barcode would be
-  // wrong on every terminal, forever, so bind mode will not even offer it.
-  if (looksLikeSerial(raw)) {
-    bindPending = null;
-    bindNote(raw, 'Serial number — never saved as a barcode');
-    beep('unknown');
-    return;
-  }
-  if (ignorableScanCode(raw)) {
-    setCamStatus('Ignored a packaging barcode — aim at the UPC', 'warn');
-    beep('ignore');
-    return;
-  }
-  bindPending = { raw, code: canonicalScannedCode(raw), format };
-  renderBindBar();
-  beep('unknown'); buzz([25, 60, 25]);
-}
-
-function renderBindPool() {
-  const box = $('bindList');
-  const head = $('bindHead');
-  const tally = bindCount ? ` · ${bindCount} saved` : '';
-  if (!loaded) {
-    bindPool = [];
-    box.innerHTML = '<div class="empty-note">Prices are not loaded yet.</div>';
-    head.textContent = '';
-    return;
-  }
-  const q = $('bindFilter').value.trim();
-  if (q.length < 2) {
-    bindPool = [];
-    box.innerHTML = '<div class="empty-note">Name the shelf you are working —'
-      + ' <b>blade</b>, <b>Corona</b>, <b>hedge shear</b>.<br>The pool stays that narrow until you change it.</div>';
-    head.textContent = tally.replace(/^ · /, '');
-    return;
-  }
-  const bound = boundPartNumbers();
-  const all = searchParts(q, 400).map(p => ({ p, bound: bound.has(normalizePN(p.pn)) }));
-  bindPool = all;
-  head.textContent = all.length
-    ? `${all.length} match${all.length === 1 ? '' : 'es'}${tally}`
-    : `Nothing matches "${q}"${tally}`;
-  if (!bindPool.length) {
-    box.innerHTML = '<div class="empty-note">Try fewer words, or the brand name.</div>';
-    return;
-  }
-  box.replaceChildren(...bindPool.map((row, i) => {
-    const div = document.createElement('div');
-    div.className = 'pool' + (row.bound ? ' bound' : '');
-    div.dataset.i = String(i);
-    div.innerHTML = `
-      <div class="pool-main">
-        <div class="pool-desc">${escapeHTML(row.p.desc || row.p.pn)}</div>
-        <div class="pool-sub">${escapeHTML([row.p.make, row.p.pn].filter(Boolean).join(' · '))}</div>
-      </div>
-      <div class="pool-mark">${row.bound ? 'coded' : ''}</div>`;
-    return div;
-  }));
-}
-
-function bindChoose(part) {
-  if (!bindPending) { toast('Scan the barcode first'); return; }
-  const { raw, code, format } = bindPending;
-  const hadLearned = Object.prototype.hasOwnProperty.call(learnedCodes, code);
-  const before = partCodeMap[code] || '';
-  queueCodeBinding(raw, format, part);
-  // queueCodeBinding is the gatekeeper and can refuse; say so rather than
-  // reporting a save that did not happen.
-  if (partCodeMap[code] !== normalizePN(part.pn)) {
-    bindNote(raw, 'That code cannot be saved as a barcode');
-    beep('unknown');
-    return;
-  }
-  bindLast = { code, before, hadLearned, desc: part.desc || part.pn };
-  schedulePendingCodesFlush();
-  bindCount += 1;
-  bindPending = null;
-  beep('ok'); buzz(35);
-  renderBindBar();
-  renderBindPool();
-  toast(`Saved — ${part.desc || part.pn}`);
-}
-
-// A mis-tap here would teach every terminal in the shop the wrong part, so the
-// last binding stays reversible for as long as it is still sitting in the local
-// queue. Once it has synced to `Codes` it belongs to the shop and this refuses.
-function bindUndo() {
-  if (!bindLast) return;
-  const { code, before, hadLearned, desc } = bindLast;
-  const at = pendingCodes.findIndex(i => canonicalScannedCode(i.code) === code);
-  if (at < 0) {
-    toast('Already sent to the shop — fix it in Tools');
-    bindLast = null; renderBindBar();
-    return;
-  }
-  pendingCodes.splice(at, 1);
-  save(K_PENDING, pendingCodes);
-  if (hadLearned) learnedCodes[code] = before; else delete learnedCodes[code];
-  save(K_LEARNED, learnedCodes);
-  if (before) partCodeMap[code] = before; else delete partCodeMap[code];
-  renderPending();
-  bindCount = Math.max(0, bindCount - 1);
-  bindLast = null;
-  renderBindBar();
-  renderBindPool();
-  toast(`Undone — ${desc}`);
-}
-
-$('bindBtn').addEventListener('click', () => {
-  enterScannerMode('barcode');
-  closeSheet('setSheet');
-});
-$('bindUndoBtn').addEventListener('click', bindUndo);
-$('bindList').addEventListener('click', ev => {
-  const el = ev.target.closest('.pool'); if (!el) return;
-  const row = bindPool[Number(el.dataset.i)]; if (!row) return;
-  bindChoose(row.p);
-});
-let bindFilterTimer = null;
-$('bindFilter').addEventListener('input', ev => {
-  clearTimeout(bindFilterTimer);
-  localStorage.setItem(K_BINDQ, ev.target.value);
-  bindFilterTimer = setTimeout(renderBindPool, 130);
-});
-$('bindFilter').value = localStorage.getItem(K_BINDQ) || '';
-setBindMode(false);
-
+$('newItemSheet').addEventListener('input', () => { $('newItemState').textContent = ''; renderNewItemSave(); });
 let searchTimer = null;
 $('searchInput').addEventListener('input', ev => {
   clearTimeout(searchTimer);
   const q = ev.target.value;
+  if (bindTarget?.entry) localStorage.setItem(K_BINDQ, q);
   searchTimer = setTimeout(() => renderHits(searchParts(q)), 130);
 });
 
@@ -3952,11 +3743,11 @@ $('backlogList').addEventListener('click', ev => {
 $('searchClose').addEventListener('click', () => { bindTarget = null; closeSheet('searchSheet'); });
 $('newItemStart').addEventListener('click', () => openNewItemDetails(bindTarget?.entry));
 $('newItemClose').addEventListener('click', () => {
-  const wasBacklog = !!backlogTarget;
+  const wasBacklog = backlogTarget;
   newItemTarget = null; bindTarget = null; backlogTarget = null;
   $('newItemBack').hidden = false;
   closeSheet('newItemSheet');
-  if (wasBacklog) { renderBacklog(); openSheet('backlogSheet'); }
+  if (wasBacklog && !wasBacklog.fromScan) { renderBacklog(); openSheet('backlogSheet'); }
 });
 $('newItemBack').addEventListener('click', () => {
   const entry = newItemTarget;
@@ -3972,7 +3763,6 @@ $('setClose').addEventListener('click', () => closeSheet('setSheet'));
 $('searchBtn').addEventListener('click', () => openSearch({}));
 $('setBtn').addEventListener('click', () => { renderAuth(); renderPending(); openSheet('setSheet'); });
 $('reloadBtn').addEventListener('click', () => reloadApp());
-$('homeReload').addEventListener('click', () => reloadApp());
 
 $('startBtn').addEventListener('click', startCamera);
 $('camStop').addEventListener('click', stopCamera);
@@ -4015,8 +3805,9 @@ function bindSwitch(el, key, def, onChange) {
 bindSwitch($('costSw'), K_COST, false, on => document.body.classList.toggle('show-cost', on));
 bindSwitch($('themeSw'), K_THEME, false, on => document.documentElement.dataset.theme = on ? 'light' : 'dark');
 bindSwitch($('beepSw'), K_BEEP, true, () => {});
+bindSwitch($('autoAddSw'), K_AUTOADD, false, on => { autoAdd = on; });
 
-enterScannerMode('home');
+enterScannerMode('scan');
 
 // ── BOOT ──────────────────────────────────────────────────────────────────
 renderList();

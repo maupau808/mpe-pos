@@ -138,6 +138,8 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .dd-make { font-size: 12px; color: #aaa; }
 .dd-price { font-size: 12px; color: #aaa; text-align: right; flex: 1; }
 .dd-more { padding: 6px 10px; font-size: 12px; color: #aaa; font-style: italic; }
+.dd-expand { cursor: pointer; color: #2d7a3a; font-style: normal; }
+.dd-expand:hover { background: #f3f6f2; }
 .qty-input { width: 44px; max-width: 44px; box-sizing: border-box; font-size: 14px; padding: 6px 2px; border: 1px solid #d9dfd6; border-radius: 7px; background: #fff; text-align: center; display: block; margin: 0 auto; }
 .qty-input:focus { outline: none; border-color: #999; }
 .cell-desc { font-size: 14px; color: #1a1a1a; }
@@ -1068,6 +1070,11 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       </div>
     </div>
   </div>
+  <div id="saleDateRow" class="no-print" style="margin-bottom:8px" hidden>
+    <label for="saleDate">Sale date</label>
+    <input type="date" id="saleDate" title="Blank means today"> <span style="opacity:.7">Blank is today. Pick the date on a paper receipt (up to 90 days back).</span>
+  </div>
+  <div id="ledgerCustomerChooser" class="no-print" style="margin-bottom:16px" hidden></div>
   <div id="ledgerInvoiceStatus" role="status" aria-live="polite" class="no-print" style="margin-bottom:16px" hidden></div>
   <div id="printCustomer" style="display:none"></div>
   <div id="reviewMsg" class="review-below" style="display:none"></div>
@@ -1153,7 +1160,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.15.2';
+const POS_RELEASE = '2026.10.16.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -7277,6 +7284,8 @@ function onTableClick(e) {
     if (!isNaN(i)) { const _dd = document.getElementById(`dd-${i}`); closeAllDropdowns(); _dd?._noteMode === 'discount' ? activateDiscountShortcut(i) : applyNoteToRow(i); }
     return;
   }
+  const expand = e.target.closest('.dd-expand');
+  if (expand) { expandVariants(expand.parentElement); return; }
   if (e.target.closest('.dd-item') && !e.target.closest('.dd-item[data-note-trigger]')) {
     const item = e.target.closest('.dd-item'); selectPart(parseInt(item.dataset.row), parseInt(item.dataset.idx));
   }
@@ -7541,7 +7550,29 @@ function warmUpSearch() {
 function hideStihlSawFromTextSearch(p) {
   if (String(p.make || '').trim().toUpperCase() !== 'STIHL') return false;
   if (!/^(MS|MSA|MSE)\s/i.test(String(p.desc || ''))) return false;
+  // `f` is stamped by the server (quick_rank): 2 per sale or supplier confirmation
+  // line, 3 if on hand, but only 1 for merely being tracked in Unit Stock. So f >= 2
+  // means a saw Trevor actually sold, ordered, or has on the floor; it stays visible.
+  if (p.f >= 2) return false;
   return !STIHL_SAW_TEXT_PNS.has(p._nPN !== undefined ? p._nPN : normalizePN(p.pn));
+}
+
+// Hidden saw variants ride along as results._more and render as one collapsed
+// "Show N other variants" line under the dropdown; clicking it appends them.
+function ddItemsHtml(i, shown) {
+  return shown.map((p, idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.og || p.pn}${p._supersededFrom ? `<span class="dd-supersede">* replaces ${p._supersededFrom}</span>` : ''}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? (+p.list).toFixed(2) : ''}</span></div></div>`).join('');
+}
+function ddMoreHtml(results) {
+  const more = results._more || [];
+  return (results.length > MAX_RESULTS ? `<div class="dd-more">${results.length} results — type more to narrow down</div>` : '')
+    + (more.length ? `<div class="dd-more dd-expand">Show ${more.length} other variant${more.length === 1 ? '' : 's'}</div>` : '');
+}
+function expandVariants(dd) {
+  const i = parseInt(dd.dataset.row);
+  const all = [...(dd._results || []), ...(dd._more || [])];
+  dd._results = all; dd._more = [];
+  dd.innerHTML = ddItemsHtml(i, all);
+  if (typeof sizeDropdown === 'function' && dd.id.startsWith('dd-')) sizeDropdown(dd);
 }
 
 function searchParts(val) {
@@ -7561,7 +7592,7 @@ function searchParts(val) {
   const qCollapsed = lowerVal.replace(/[\s\-\.\/,]/g, '');
   const useCollapsed = qCollapsed.length >= 4 && /[a-z]\d|\d[a-z]/.test(qCollapsed);
 
-  const exact = [], startsWith = [], wordMatch = [];
+  const exact = [], startsWith = [], wordMatch = [], more = [];
   for (let p of partsArray) {
     // Normalizing both numbers for every row was two regex passes per part per
     // keystroke. Cached once with the catalog (see buildScanExactIndex).
@@ -7596,7 +7627,7 @@ function searchParts(val) {
       exact.push(p); continue;
     }
     if (normVal && (normPN.startsWith(normVal) || normOG.startsWith(normVal))) { startsWith.push(p); continue; }
-    if (hideStihlSawFromTextSearch(p)) continue;
+    const hiddenSaw = hideStihlSawFromTextSearch(p);
 
     // 2) Multi-word text search across description + make + part numbers, with
     //    synonym tags appended. Cache per part so repeat keystrokes stay fast.
@@ -7617,7 +7648,7 @@ function searchParts(val) {
         descCollapsed = p._descCollapsed = (p.desc||'').toLowerCase().replace(/[\s\-\.\/,]/g, '');
     }
     if (tokens.every(t => hay.includes(t)) ||
-        (useCollapsed && descCollapsed.includes(qCollapsed))) wordMatch.push(p);
+        (useCollapsed && descCollapsed.includes(qCollapsed))) (hiddenSaw ? more : wordMatch).push(p);
   }
 
   const byPrice = (a, b) => (parseFloat(b.list) || 0) - (parseFloat(a.list) || 0);
@@ -7644,7 +7675,9 @@ function searchParts(val) {
     return byPrice(a, b);
   });
   const strict = [...exact, ...startsWith, ...wordMatch];
-  if (strict.length) return strict;   // strict found something → never run fuzzy
+  more.sort(byPrice);
+  if (strict.length) { strict._more = more; return strict; }   // strict found something → never run fuzzy
+  if (more.length) return more;        // only hidden saws matched → show them outright
 
   // 3) FALLBACK fuzzy — only when strict returned LITERALLY zero results.
   //    Rescues typos like "kholer maintenance kit". Each word of length ≥4 must
@@ -7672,9 +7705,9 @@ function searchParts(val) {
 function renderDropdown(i, results) {
   const dd = document.getElementById(`dd-${i}`);
   const shown = results.slice(0, MAX_RESULTS);
-  dd.innerHTML = shown.map((p, idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.og || p.pn}${p._supersededFrom ? `<span class="dd-supersede">* replaces ${p._supersededFrom}</span>` : ''}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? (+p.list).toFixed(2) : ''}</span></div></div>`).join('')
-    + (results.length > MAX_RESULTS ? `<div class="dd-more">${results.length} results — type more to narrow down</div>` : '');
-  dd._results = shown; dd.classList.add('open'); sizeDropdown(dd);
+  dd.dataset.row = i;
+  dd.innerHTML = ddItemsHtml(i, shown) + ddMoreHtml(results);
+  dd._results = shown; dd._more = results._more || []; dd.classList.add('open'); sizeDropdown(dd);
 }
 
 function selectPart(i, idx) {
@@ -8131,6 +8164,8 @@ function clearAll() {
   clearTimeout(_ledgerInvoiceStatusTimer);
   releaseLedgerInvoiceControls();
   setLedgerInvoiceStatus('');
+  hideLedgerCustomerChooser();
+  resetSaleDate();
   const finalizeButton = document.getElementById('finalizeInvoiceBtn');
   if (finalizeButton) { finalizeButton.disabled = false; finalizeButton.textContent = 'Finalize Invoice'; }
   if (window.mpeDesktop?.numbering?.invoiceFinalization) void window.mpeDesktop.numbering.resetDraft();
@@ -8428,7 +8463,7 @@ function preparePrint() {
   // C06 completion time/number are main-owned and already durable. Legacy and
   // retained historical documents keep their original minute-derived path.
   const finalized = _ledgerOutputCoordinator?.current();
-  const now = finalized ? new Date(finalized.completion_at) : (reserveDocDate() || new Date());
+  const now = finalized ? new Date(finalized.completion_at) : shownDocDate(reserveDocDate() || new Date());
   const dateStr = now.toLocaleDateString("en-US", {year:"numeric", month:"long", day:"numeric"});
   const timeStr = now.toLocaleTimeString("en-US", {hour:"numeric", minute:"2-digit"});
   const _reprintTag = _reprintSource ? '  ·  <span class="reprint-tag">Reprint</span>' : '';
@@ -8914,6 +8949,8 @@ function showLedgerRefusal(label, error) {
     ledger_unavailable: 'Email is locked until QBO confirms this exact document.',
     local_integrity_uncertain: 'The number may have saved, but confirmation was interrupted. Try the same action again.',
     release_unattested: 'The verified numbering code did not load. Nothing was printed or saved.',
+    sale_date_invalid: 'The sale date is not a valid date. Nothing was printed or saved.',
+    sale_date_out_of_range: 'The sale date must be today or up to 90 days back. Nothing was printed or saved.',
   };
   const message = messages[code] || 'Official numbering could not be verified. Nothing was printed or saved.';
   flashScanCommand(message, 'warn');
@@ -9027,7 +9064,7 @@ function recordOutgoingDocument() {
 let _ledgerFrozenControls = [];
 function freezeLedgerInvoiceControls() {
   if (_ledgerFrozenControls.length) return;
-  for (const node of document.querySelectorAll('#searchRows, #mobileRows, #custPanel, #docTypeSel, #discountsBtn, #phoneListBtn, #togglesMenu, #saveBtn, #chargeCardBtn')) {
+  for (const node of document.querySelectorAll('#searchRows, #mobileRows, #custPanel, #docTypeSel, #discountsBtn, #phoneListBtn, #togglesMenu, #saveBtn, #chargeCardBtn, #saleDateRow')) {
     _ledgerFrozenControls.push([node, node.hasAttribute('inert')]);
     node.setAttribute('inert', '');
   }
@@ -9043,6 +9080,9 @@ function syncLedgerInvoiceButtons() {
   const saveButton = document.getElementById('saveBtn');
   if (finalizeButton) finalizeButton.hidden = !enabled;
   if (saveButton) saveButton.hidden = enabled;
+  const dateRow = document.getElementById('saleDateRow');
+  const dateWanted = _docType === 'receipt' || (_docType === 'invoice' && (!enabled || ledgerDesktopHas('saleDate')));
+  if (dateRow) { if (dateRow.hidden && dateWanted) resetSaleDate(); dateRow.hidden = !dateWanted; }
 }
 
 function setLedgerInvoiceStatus(message) {
@@ -9080,7 +9120,79 @@ async function refreshLedgerInvoiceStatus() {
   _ledgerInvoiceStatusTimer = setTimeout(refreshLedgerInvoiceStatus, 5000);
 }
 
-async function finalizeLedgerInvoice() {
+// Sale date for a paper receipt: today or up to 90 days back, Hawaii time (Desktop enforces the same bound).
+const LEDGER_SALE_DATE_MAX_DAYS_BACK = 90;
+function ledgerSaleDateBounds(nowMs = Date.now()) {
+  const day = ms => new Date(ms - 10 * 3600000).toISOString().slice(0, 10);
+  return { min: day(nowMs - LEDGER_SALE_DATE_MAX_DAYS_BACK * 86400000), max: day(nowMs) };
+}
+// '' when the date may be used (blank means today), else the refusal code.
+function ledgerSaleDateProblem(value, bounds = ledgerSaleDateBounds()) {
+  if (value === '') return '';
+  const real = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(value + 'T00:00:00Z') : null;
+  if (!real || Number.isNaN(real.getTime()) || real.toISOString().slice(0, 10) !== value) return 'sale_date_invalid';
+  return value < bounds.min || value > bounds.max ? 'sale_date_out_of_range' : '';
+}
+// Receipts (and invoices not finalized through Ledger): the picked past day at the real time of day.
+// The document number and TxnId keep the real clock.
+function ledgerBackdated(real, value, bounds = ledgerSaleDateBounds()) {
+  if (!value || ledgerSaleDateProblem(value, bounds) || value >= bounds.max) return real;
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(y, m - 1, d, real.getHours(), real.getMinutes(), real.getSeconds());
+}
+function shownDocDate(real) {
+  if ((typeof _ledgerOutputCoordinator !== 'undefined' && _ledgerOutputCoordinator?.current()) || _reprintSource || _currentTxnDate) return real;
+  const row = document.getElementById('saleDateRow');
+  return row && !row.hidden ? ledgerBackdated(real, document.getElementById('saleDate').value) : real;
+}
+// Desktop builds that predate sale_date / new_customer do not advertise these; the page then behaves as before.
+const ledgerDesktopHas = key => window.mpeDesktop?.numbering?.[key] === true;
+// One plain sentence per Ledger refusal: what happened and what to do. Unknown codes name themselves so they can be reported.
+const LEDGER_FIELD_MESSAGES = {
+  name_missing: 'The customer name is empty. Type a name and Finalize again.',
+  field_too_long: 'A customer field is too long. Shorten it and Finalize again.',
+  bad_character: 'A customer field has a character Ledger cannot accept (such as a line break). Retype it and Finalize again.',
+  bad_email: 'The customer email is not a valid address (like name@example.com). Fix or clear it and Finalize again.',
+  bad_address: 'The billing address is not complete. Fix the street, city, state and zip, then Finalize again.',
+  bad_provider_id: 'The selected QuickBooks customer is not valid. Clear the customer and pick them again.',
+  name_reserved: 'That name is the shared Maui Power Equipment customer. Use that customer instead of New customer.',
+};
+const LEDGER_FINALIZE_MESSAGES = {
+  pos_context_unavailable: "Ledger can't reach QuickBooks or its customer list right now. Nothing was sent. Try Finalize again in a minute.",
+  ledger_unavailable: "This register can't reach Ledger. Nothing was sent. Check the internet, then Finalize again in a minute.",
+  authentication_required: 'Ledger needs you to sign in. Nothing was sent. Sign in under Desktop Settings, then Finalize again.',
+  not_configured: 'Invoice sync is not set up on this register. Nothing was sent. Your draft is still here.',
+  invalid_request: 'Ledger rejected the customer details, usually an empty name or a bad character. Check name, phone, email and address, then Finalize again.',
+  shape_invalid: 'The customer details were not in a form Ledger accepts. Check name, phone, email and address, then Finalize again.',
+  customer_not_found: 'Ledger has no active QuickBooks customer with this name. Add or fix the customer in Ledger, then Finalize again.',
+  customer_not_adopted: 'This QuickBooks customer is not linked in Ledger yet. Link them in Ledger, then Finalize again.',
+  customer_ambiguous: 'More than one customer matches this name. Pick the right one in Ledger, then Finalize again.',
+  identity_invalid: 'Check the customer name, address, and phone, then Finalize again.',
+  formal_ineligible: 'Complete the customer name, address, and phone, then Finalize again.',
+  source_binding: 'The invoice changed while it was being finalized. Nothing was sent. Review the draft and Finalize again.',
+  release_unattested: 'This register is running unverified invoice code. Nothing was sent. Restart the app, then Finalize again.',
+  local_integrity_uncertain: 'The invoice number may have saved but confirmation was interrupted. Press Finalize Invoice again; do not make another copy.',
+  sale_date_invalid: 'The sale date is not a valid date. Pick the date again, then Finalize.',
+  sale_date_out_of_range: 'The sale date must be today or up to 90 days back. Pick the date again, then Finalize.',
+  integrity_conflict: 'Ledger could not confirm this invoice. It may already exist, so press Finalize Invoice again; do not make another copy.',
+  // This computer's own Ledger sign-in (Desktop returns the server's code unchanged).
+  device_revoked: 'This computer was shut off in Ledger. Nothing was sent. Ask Trevor to set it up again (Desktop Settings, Set up this computer), then Finalize again.',
+  device_scope: 'This computer is not allowed to send invoices to Ledger. Nothing was sent. Ask Trevor to set it up again in Ledger, Computers.',
+  device_not_set_up: 'This computer is not set up for Ledger yet. Nothing was sent. Ask Trevor to use Set up this computer in Desktop Settings.',
+  unauthenticated: 'Ledger did not accept this computer\'s sign-in. Nothing was sent. Ask Trevor to use Set up this computer in Desktop Settings.',
+  invalid_credentials: 'Ledger did not accept this computer\'s sign-in. Nothing was sent. Ask Trevor to use Set up this computer in Desktop Settings.',
+  too_many_requests: 'Ledger is getting too many requests from this computer. Nothing was sent. Wait a minute, then Finalize again.',
+  too_many_attempts: 'Too many sign-in attempts. Nothing was sent. Wait a few minutes, then Finalize again.',
+  forbidden_origin: 'This register is pointed at the wrong Ledger address. Nothing was sent. Tell Trevor.',
+  untrusted_context: 'This register page is not the trusted POS page. Nothing was sent. Restart the app, then Finalize again.',
+};
+function ledgerFinalizeMessage(code, field) {
+  if (code === 'invalid_request' && LEDGER_FIELD_MESSAGES[field]) return LEDGER_FIELD_MESSAGES[field];
+  return LEDGER_FINALIZE_MESSAGES[code]
+    || 'Finalize failed with code "' + code + '". Your draft is kept. Tell Trevor this code; if an invoice number was already assigned, do not make another copy.';
+}
+
+async function finalizeLedgerInvoice(choice = {}) {
   if (_docType !== 'invoice' || _ledgerInvoiceFinalizing) return;
   if ((_reprintSource && !_reprintSource.ledgerFinalization) || (_currentTxnId && !_ledgerOutputCoordinator?.current())) { setLedgerInvoiceStatus('Open a new invoice to finalize. Historical documents need Ledger review.'); return; }
   if (_ledgerOutputCoordinator?.current()) { await refreshLedgerInvoiceStatus(); return; }
@@ -9090,13 +9202,26 @@ async function finalizeLedgerInvoice() {
   _ledgerInvoiceFinalizing = true;
   const button = document.getElementById('finalizeInvoiceBtn');
   button.disabled = true;
+  hideLedgerCustomerChooser();
   lockLedgerOutputUi();
   try {
+    const saleDate = String(document.getElementById('saleDate')?.value || '');
+    const dateProblem = ledgerDesktopHas('saleDate') ? ledgerSaleDateProblem(saleDate) : '';
+    if (dateProblem) throw ledgerRefusalError(dateProblem);
     const value = id => String(document.getElementById(id)?.value || '').trim();
     const customer = { name: value('custName'), company: value('custCompany'), phone: value('custPhone'), email: value('custEmail'),
       address: [value('custAddr'), [value('custCity'), value('custState'), value('custZip')].filter(Boolean).join(', ')].filter(Boolean).join('\n') };
-    const reply = await numbering.resolveCustomer({ customer, billing_address: ledgerBillingAddress(), provider_id: _ledgerAdoptedCustomer?.proof?.provider_id || null });
-    if (!reply.ok) throw ledgerRefusalError(reply.error_code);
+    const newCustomer = choice.new_customer === true;
+    const reply = await numbering.resolveCustomer({ customer, billing_address: ledgerBillingAddress(),
+      ...(ledgerDesktopHas('saleDate') ? { sale_date: saleDate || null } : {}),
+      provider_id: newCustomer ? null : choice.provider_id || _ledgerAdoptedCustomer?.proof?.provider_id || null,
+      ...(newCustomer ? { new_customer: true } : {}) });
+    if (!reply.ok) {
+      const refusal = ledgerRefusalError(reply.error_code);
+      if (typeof reply.error_field === 'string') refusal.field = reply.error_field;
+      if (Array.isArray(reply.error_candidates)) refusal.candidates = reply.error_candidates;
+      throw refusal;
+    }
     _ledgerStructuredAddress = reply.result.structured_address === true;
     _ledgerAdoptedCustomer = { customerId: reply.result.customer_id, identityKind: reply.result.identity_kind, proof: reply.result.adoption_proof };
     const committed = await prepareAndSaveForPrint('finalize_invoice', { prepareOutput: false });
@@ -9107,21 +9232,44 @@ async function finalizeLedgerInvoice() {
     await refreshLedgerInvoiceStatus();
   } catch (error) {
     const code = ledgerErrorCode(error);
-    const messages = {
-      pos_context_unavailable: 'Customer check unavailable; the draft is retained. Retry when Ledger and QuickBooks reconnect.',
-      authentication_required: 'Sign in to Ledger in Desktop Settings, then finalize this invoice.',
-      not_configured: 'Invoice sync is not configured on this register. The draft is still here.',
-      customer_not_found: 'This customer is not yet linked to Ledger. Complete the customer in Ledger, then try again.',
-      customer_ambiguous: 'More than one customer matches. Select the correct customer in Ledger first.',
-      identity_invalid: 'Check the customer name, address, and phone before finalizing.',
-      formal_ineligible: 'Complete the customer name, address, and phone before finalizing.',
-    };
-    setLedgerInvoiceStatus(messages[code] || 'The invoice was not confirmed. Keep this draft and retry Finalize Invoice; do not make another copy.');
+    const chooser = code === 'customer_ambiguous' && ledgerDesktopHas('customerChooser');
+    const listed = chooser && error.candidates?.length > 0;
+    setLedgerInvoiceStatus(!chooser ? ledgerFinalizeMessage(code, error && error.field)
+      : listed ? 'More than one customer matches this name. Pick the right one below, or choose New customer.'
+      : 'Ledger found a possible match but could not list it. Fix the name and Finalize again, or choose New customer.');
+    if (chooser) showLedgerCustomerChooser(error.candidates || []);
     button.disabled = false;
   } finally {
     _ledgerInvoiceFinalizing = false;
     releaseLedgerOutputUi();
   }
+}
+
+// Several QuickBooks customers share the typed name: list them, plus "New customer" (Trevor D37).
+function hideLedgerCustomerChooser() {
+  const node = document.getElementById('ledgerCustomerChooser');
+  if (node) { node.hidden = true; node.replaceChildren(); }
+}
+function showLedgerCustomerChooser(candidates) {
+  const node = document.getElementById('ledgerCustomerChooser');
+  if (!node) return;
+  const add = (label, choice) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn-big'; b.style.marginRight = '8px'; b.textContent = label;
+    b.onclick = () => finalizeLedgerInvoice(choice);
+    node.appendChild(b);
+  };
+  node.replaceChildren();
+  for (const c of candidates) add(c.display_name + ' (QuickBooks #' + c.provider_id + ')', { provider_id: c.provider_id });
+  add('New customer', { new_customer: true });
+  node.hidden = false;
+}
+// Date control: today by default; bounds shown to the picker, enforced again before sending.
+function resetSaleDate() {
+  const input = document.getElementById('saleDate');
+  if (!input) return;
+  const { min, max } = ledgerSaleDateBounds();
+  input.min = min; input.max = max; input.value = '';   // blank = today
 }
 
 let _saveFeedbackTimer = null;
@@ -9159,6 +9307,9 @@ async function prepareAndSaveForPrint(
   { prepareOutput = true, outputKind = null } = {},
 ) {
   if (document.body.dataset.ledgerContactMode === '1') throw new Error('Finish customer details before returning to the register.');
+  { const row = document.getElementById('saleDateRow'), problem = row && !row.hidden && !_currentTxnDate && !_reprintSource
+      ? ledgerSaleDateProblem(String(document.getElementById('saleDate').value || '')) : '';
+    if (problem) throw ledgerRefusalError(problem); }
   if (prepareOutput && _printPrepared) return _ledgerOutputCoordinator?.current()
     || Object.freeze({ mode: 'legacy', reused: true });
   const preparationKey = JSON.stringify([completionAction, prepareOutput, outputKind]);
@@ -9840,7 +9991,7 @@ async function exportPdf() {
         finalized.document_number,
       );
     }
-    const now = finalized ? new Date(finalized.completion_at) : (reserveDocDate() || new Date());
+    const now = finalized ? new Date(finalized.completion_at) : shownDocDate(reserveDocDate() || new Date());
     const number = finalized?.document_number || activeDocNumber() || formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
@@ -9896,7 +10047,7 @@ async function emailDoc() {
   clearToolFailure();
   setBtn('⏳', true);
   try {
-    const now    = reserveDocDate() || new Date();
+    const now    = shownDocDate(reserveDocDate() || new Date());
     const number = activeDocNumber() || formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
@@ -10248,7 +10399,7 @@ function saveToHistory() {
       const ids = new Set(history.map(entry => entry.txnId));
       for (let n = 2; ids.has(order.txnId); n++) order.txnId = base + '-' + n;
     }
-    order.date = now.toISOString();
+    order.date = (finalized ? now : shownDocDate(now)).toISOString();
     order.docType = finalized ? finalized.document_type : _docType;
     order.docNumber = finalized ? finalized.document_number
       : (_pendingTxnDate && _pendingDocNumber) || nextRegisterDocNumber(now);
@@ -10514,6 +10665,8 @@ async function reprintOrder(idx) {
   clearTimeout(_ledgerInvoiceStatusTimer);
   releaseLedgerInvoiceControls();
   setLedgerInvoiceStatus('');
+  hideLedgerCustomerChooser();
+  resetSaleDate();
   const finalizeButton = document.getElementById('finalizeInvoiceBtn');
   if (finalizeButton) { finalizeButton.disabled = false; finalizeButton.textContent = 'Finalize Invoice'; }
   if (window.mpeDesktop?.numbering?.invoiceFinalization) void window.mpeDesktop.numbering.resetDraft();
@@ -11719,6 +11872,8 @@ function onMobileClick(e) {
   if (discountRemove) { const i = parseInt(discountRemove.dataset.row); const p = document.getElementById(`price-${i}`); if (parseFloat(p?.dataset.discountPerUnit) > 0) removeLineDiscount(i); else closeMobileDiscount(i); renderMobileDiscountState(i); return; }
   const clearBtn = e.target.closest('.mobile-clear');
   if (clearBtn) { clearMobileRow(parseInt(clearBtn.dataset.row)); updateSummary(); return; }
+  const expand = e.target.closest('.dd-expand');
+  if (expand) { expandVariants(expand.parentElement); return; }
   const item = e.target.closest('.dd-item');
   if (item?.dataset.noteTrigger) {
     const i = parseInt(item.closest('.mobile-row')?.dataset.row);
@@ -11814,9 +11969,9 @@ function handleMobileSearch(i) {
   input.className = 'mobile-part-input part-input';
   clearRowData(i); clearMobileRowData(i);
   const shown = results.slice(0, MAX_RESULTS);
-  dd.innerHTML = shown.map((p,idx) => `<div class="dd-item${idx===0?' active':''}" data-row="${i}" data-idx="${idx}"><div class="dd-pn">${p.og || p.pn}${p._supersededFrom ? `<span class="dd-supersede">* replaces ${p._supersededFrom}</span>` : ''}</div><div class="dd-desc">${p.desc||'—'}</div><div style="display:flex;justify-content:space-between;"><span class="dd-make">${p.make||''}</span><span class="dd-price">${p.list ? (+p.list).toFixed(2) : ''}</span></div></div>`).join('')
-    + (results.length > MAX_RESULTS ? `<div class="dd-more">${results.length} results — type more to narrow</div>` : '');
-  dd._results = shown; dd.classList.add('open');
+  dd.dataset.row = i;
+  dd.innerHTML = ddItemsHtml(i, shown) + ddMoreHtml(results);
+  dd._results = shown; dd._more = results._more || []; dd.classList.add('open');
   updateSummary();
 }
 

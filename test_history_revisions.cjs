@@ -28,7 +28,7 @@ function setup() {
     getSheetNumericId: async () => 7,
     sheetsGet: async range => {
       if(range === 'Transactions') return clone(sheet);
-      const match=range.match(/A(\d+):[PV](\d+)/);assert.ok(match,range);
+      const match=range.match(/A(\d+):[PVW](\d+)/);assert.ok(match,range);
       const result=clone(sheet.slice(Number(match[1])-1, Number(match[2])));
       if(corruptRead && result[1]) result[1][10]='999';
       return result;
@@ -47,6 +47,7 @@ function setup() {
   };
   const entered = rows=>rows.map(row=>row.map(v=>typeof v==='string'?v.replace(/^'/,''):v));
   s.draft={customer:{company:'TEST LANDFILL'},items:[{pn:'0000131',desc:'FS 131',qty:1,ea:529.99,sub:529.99}],total:'554.96',toggles:{cardFee:false}};
+  s.shownDocDate = d => d;   // the sale-date picker is not part of these history tests
   vm.createContext(s);
   const start=html.indexOf('// A document keeps its identity;');
   vm.runInContext(html.slice(start,html.indexOf('function showPrintBanner()',start)),s);
@@ -80,7 +81,7 @@ test('summary row keeps joined E/H and adds unjoined customer Q-V',async()=>{
  const c=setup();c.s.draft.customer={name:'Jo Kai',company:'TEST LANDFILL',addr:'12 Main St',city:'Kula',state:'HI',zip:'96790'};
  c.save();await c.sync();const txn=c.sheet()[0];
  assert.equal(txn[4],'Jo Kai / TEST LANDFILL');assert.equal(txn[7],'12 Main St, Kula, HI, 96790');
- assert.deepEqual(txn.slice(16),['Jo Kai','TEST LANDFILL','12 Main St','Kula','HI','96790']);
+ assert.deepEqual(txn.slice(16,22),['Jo Kai','TEST LANDFILL','12 Main St','Kula','HI','96790']);
  assert.equal(c.s.getHistory()[0].historySyncPending,false);
 });
 test('adding then removing lines resizes the existing block and preserves neighboring transactions',async()=>{
@@ -186,4 +187,12 @@ test('a sale converted from a quote saves as a new transaction naming the quote 
  // Re-saving the printed sale keeps the link; a quote never carries one.
  c.s._quoteSource=null;c.save();assert.equal(c.s.getHistory()[0].fromQuote.txnId,'TX-1013-0925-49-3');
  const q=setup();q.s._quoteSource={txnId:'TX-X',docNumber:'1'};q.save();assert.equal(q.s.getHistory()[0].fromQuote,undefined);
+});
+test('a quote marked Subtract from inventory count saves PRESELL in column W, and unmarking it re-saves',async()=>{
+ const c=setup();c.connect();c.s.draft.presell=true;c.save();await c.sync();
+ assert.equal(c.sheet().find(r=>r[0]==='TXN')[22],'PRESELL');
+ c.s.draft.presell=undefined;c.save();assert.equal(c.s.getHistory()[0].historySyncPending,true);await c.sync();
+ assert.equal(c.sheet().find(r=>r[0]==='TXN')[22]||'','');
+ const r=setup();r.connect();r.s._docType='receipt';r.s.draft.presell=true;r.save();await r.sync();
+ assert.equal(r.sheet().find(row=>row[0]==='TXN')[22]||'','');
 });

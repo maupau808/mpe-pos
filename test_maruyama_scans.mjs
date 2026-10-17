@@ -78,7 +78,7 @@ for (const kind of ['index','scan']) {
   assert.equal(c.maruyamaSerialScan('A100499'),null);checks++;
   if(kind==='scan') {
     // The actual phone accept path handles an unknown checksum serial after a UPC.
-    Object.assign(c,{scannerMode:'pos',SCANNER_MODES:{pos:{}},claimScannedValue:()=>true,
+    Object.assign(c,{scannerMode:'scan',SCANNER_MODES:{scan:{}},landScan:(p,m)=>c.addToList(p,m),claimScannedValue:()=>true,
       list:[{...parts[0],serial:'',price:305}],persistList(){},showHero(){},beep(){},buzz(){},scanActive:false,
       ignorableScanCode:()=>false,addUnknown(){throw Error('serial became an unknown UPC');},openSearch(){},setCamStatus(){}});
     vm.runInContext(fn(html.scan,'looksLikeSerial')+'\n'+fn(html.scan,'acceptScan'),c);
