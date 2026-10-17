@@ -172,7 +172,12 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .cell-r { font-size: var(--value-fit-size, 14px); font-weight: 400; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .empty-cell { font-size: 13px; color: #c7cfc4; }
 .not-found { font-size: 13px; color: #e53935; }
-.clear-row { width: 20px; text-align: center; cursor: pointer; font-size: 15px; color: #c7cfc4; user-select: none; }
+.row-grip { visibility: hidden; cursor: grab; margin-right: 4px; color: #9aa596; font-size: 13px; }
+tr:has(.part-input.matched) .row-grip { visibility: visible; }
+tr.row-dragging { opacity: .4; }
+tr.drop-before > td { box-shadow: inset 0 3px 0 #1a73e8; }
+tr.drop-after > td { box-shadow: inset 0 -3px 0 #1a73e8; }
+.clear-row { white-space: nowrap; width: 20px; text-align: center; cursor: pointer; font-size: 15px; color: #c7cfc4; user-select: none; }
 .clear-row:hover { color: #e53935; }
 .reorder-head { width: 42px; min-width: 42px; max-width: 42px; padding-left: 1px !important; padding-right: 1px !important; color: #a52a24 !important; font-size: 9px !important; font-weight: 650 !important; line-height: 1.15; text-align: center !important; }
 .reorder-cell { width: 42px; min-width: 42px; max-width: 42px; padding-left: 12px !important; padding-right: 0 !important; text-align: left; }
@@ -971,7 +976,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <th class="r" style="width:80px;" id="hdr-unitprice">Ea.</th>
         <th style="width:44px;text-align:center;">Qty</th>
         <th class="r" style="width:90px;">Price</th>
-        <th style="width:20px;"></th>
+        <th style="width:40px;"></th>
       </tr>
     </thead>
     <tbody id="searchRows"></tbody>
@@ -1160,7 +1165,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.16.1';
+const POS_RELEASE = '2026.10.16.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1198,7 +1203,8 @@ function checkoutTotals(subtotal, cardFeeActive) {
   return { tax, cardFee, total: subtotal + tax + cardFee };
 }
 let discountControlsEnabled = false;
-let NUM_ROWS = 3;
+const DEFAULT_ROWS = 3;   // standard opening row count; clearing shrinks back to this
+let NUM_ROWS = DEFAULT_ROWS;   // next new row index (rows removed by compactRows leave gaps)
 const MAX_RESULTS = 50;
 const DB_NAME = 'PartsLookup';
 const DB_STORE = 'files';
@@ -2521,7 +2527,7 @@ async function _flushPendingReorders() {
         sheetText(item.partNumber), item.description, item.occurredAt, item.registerId, item.release,
       ]);
       if (missing.length) {
-        const result = await sheetsAppend('Transactions!A:J', rows);
+        const result = await sheetsAppend('Transactions!A1', rows);
         if (!result) return false;
         const writtenRange = result?.updates?.updatedRange;
         if (!writtenRange) throw new Error('Reorder append returned no range to verify');
@@ -2723,7 +2729,7 @@ async function _flushStockSessionQueue() {
           sheetText(item.partNumber), item.qty, item.occurredAt, item.registerId,
           item.txnId || '', item.release,
         ]);
-        const result = await sheetsAppend('Transactions!A:J', rows);
+        const result = await sheetsAppend('Transactions!A1', rows);
         if (!result) return false;
         const writtenRange = result?.updates?.updatedRange;
         if (!writtenRange) throw new Error('Stock session append returned no range to verify');
@@ -3607,7 +3613,7 @@ function appendScanToMatchingPartRow(part) {
 }
 
 function firstOpenScanRow() {
-  for (let i = 0; i < NUM_ROWS; i++) {
+  for (const i of rowOrder()) {
     const input = tbody.querySelector(`[data-row="${i}"].part-input`);
     if (input && !input.dataset.partPn && !input.value.trim()) return i;
   }
@@ -3662,7 +3668,7 @@ function updateScanNext() {
   if (!el) return;
   const row = firstOpenScanRow();
   const review = scanIssues.size ? ` · ${scanIssues.size} to review later` : '';
-  el.textContent = `Next scan fills row ${row + 1}${review}`;
+  el.textContent = `Next scan fills row ${rowPos(row)}${review}`;
 }
 
 function clearScanChoices() {
@@ -3741,7 +3747,7 @@ function playScanBeep(needsReview) {
 }
 
 function addEmptyRowAfterScan(row) {
-  if (row !== NUM_ROWS - 1) return;
+  if (!isLastRow(row)) return;
   addRow();
   ensureScannerMobileRow(NUM_ROWS - 1);
 }
@@ -3818,8 +3824,8 @@ function saveScanForReview(rawValue, format, candidates, options = {}) {
   addEmptyRowAfterScan(row);
   ++scanStatusVersion;
   setScanStatus(options.serial
-    ? `Serial ${options.serial} saved in row ${row + 1} — choose the unit later`
-    : `Saved row ${row + 1} for review — keep scanning`, 'warn');
+    ? `Serial ${options.serial} saved in row ${rowPos(row)} — choose the unit later`
+    : `Saved row ${rowPos(row)} for review — keep scanning`, 'warn');
   updateScanNext();
   updateScanButton();
   revealScannedResult(row);
@@ -3856,7 +3862,7 @@ function showNextScanIssue(preferredRow) {
   const row = scanIssues.has(preferredRow) ? preferredRow : scanIssues.keys().next().value;
   const issue = scanIssues.get(row);
   const choices = document.getElementById('scanChoice');
-  setScanStatus(`Review row ${row + 1}: ${issue.rawValue}`, 'warn');
+  setScanStatus(`Review row ${rowPos(row)}: ${issue.rawValue}`, 'warn');
   if (issue.candidates.length) {
     issue.candidates.forEach((part, index) => {
       const button = document.createElement('button');
@@ -3935,7 +3941,7 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
     if (duplicate) {
       const row = Number(duplicate.closest('tr').dataset.snFor);
       rememberLatestScannedSaleRow(row);
-      setScanStatus(`SN ${scannedSerial} is already on row ${row + 1}`, 'warn');
+      setScanStatus(`SN ${scannedSerial} is already on row ${rowPos(row)}`, 'warn');
       return;
     }
   }
@@ -3946,8 +3952,8 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
       if (merged) {
         ++scanStatusVersion;
         setScanStatus(merged.duplicate
-          ? `SN ${result.serial} is already on row ${merged.row + 1}`
-          : `Row ${merged.row + 1} → qty ${merged.qty} · SN ${result.serial}`, merged.duplicate ? 'warn' : 'ok');
+          ? `SN ${result.serial} is already on row ${rowPos(merged.row)}`
+          : `Row ${rowPos(merged.row)} → qty ${merged.qty} · SN ${result.serial}`, merged.duplicate ? 'warn' : 'ok');
         updateScanNext();
         updateScanButton();
         return;
@@ -4000,8 +4006,8 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
     if (merged) {
       ++scanStatusVersion;
       setScanStatus(merged.duplicate
-        ? `SN ${raw} is already on row ${merged.row + 1}`
-        : `Row ${merged.row + 1} → qty ${merged.qty} · SN ${raw}`, merged.duplicate ? 'warn' : 'ok');
+        ? `SN ${raw} is already on row ${rowPos(merged.row)}`
+        : `Row ${rowPos(merged.row)} → qty ${merged.qty} · SN ${raw}`, merged.duplicate ? 'warn' : 'ok');
       updateScanNext();
       updateScanButton();
       return;
@@ -4038,7 +4044,7 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
   const merged = appendScanToMatchingPartRow(part);
   if (merged) {
     ++scanStatusVersion;
-    setScanStatus(`Row ${merged.row + 1} → qty ${merged.qty}`, 'ok');
+    setScanStatus(`Row ${rowPos(merged.row)} → qty ${merged.qty}`, 'ok');
     updateScanNext();
     updateScanButton();
     return;
@@ -4762,7 +4768,7 @@ function reportLicenseScanFailure() {
 }
 
 function lastFilledSaleRow() {
-  for (let i = NUM_ROWS - 1; i >= 0; i--) {
+  for (const i of rowOrder().reverse()) {
     const input = tbody.querySelector(`[data-row="${i}"].part-input`);
     if (input && (input.dataset.partPn || input.value.trim())) return i;
   }
@@ -4783,7 +4789,7 @@ function setRowQuantity(i, next) {
 // What a sale needs to come back exactly: Master does the rest on restore.
 function captureSaleLines() {
   const out = [];
-  for (let i = 0; i < NUM_ROWS; i++) {
+  for (const i of rowOrder()) {
     const input = tbody.querySelector(`[data-row="${i}"].part-input`);
     if (!input) continue;
     const pn = input.dataset.partPn || '';
@@ -4823,7 +4829,7 @@ function runScanCommand(raw) {
     const next = qty[1] === '=' ? amount : qty[1] === '+' ? current + amount : current - amount;
     const landed = setRowQuantity(row, next);
     const name = document.getElementById(`desc-${row}`)?.textContent.trim();
-    flashScanCommand(`Line ${row + 1}${name ? ' · ' + name : ''} → qty ${landed}`, 'ok');
+    flashScanCommand(`Line ${rowPos(row)}${name ? ' · ' + name : ''} → qty ${landed}`, 'ok');
     return;
   }
 
@@ -4895,7 +4901,7 @@ function runScanCommand(raw) {
     const row = lastFilledSaleRow();
     if (row < 0) { flashScanCommand('Nothing to undo', 'err'); return; }
     const name = document.getElementById(`desc-${row}`)?.textContent.trim()
-      || tbody.querySelector(`[data-row="${row}"].part-input`)?.value.trim() || `line ${row + 1}`;
+      || tbody.querySelector(`[data-row="${row}"].part-input`)?.value.trim() || `line ${rowPos(row)}`;
     clearRow(row);        // the same path as the row's own × — the next scan refills it
     updateSummary();
     flashScanCommand(`Removed ${name}`, 'warn');
@@ -5695,7 +5701,7 @@ function onEditableKeydown(e) {
     el.blur();
     const i = parseInt(el.dataset.row);
     if (!isNaN(i)) {
-      const next = tbody.querySelector(`[data-row="${i+1}"].part-input`);
+      const next = nextRowInput(i);
       if (next) { next.focus(); next.select(); }
     }
   } else if (e.key === 'Tab') {
@@ -5843,7 +5849,7 @@ function addRow() {
     <td style="text-align:right;"><span class="cell-r" id="price-${i}" data-price="">—</span></td>
     <td style="text-align:center;"><input class="qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="qty-${i}"></td>
     <td style="text-align:right;"><span class="cell-r sub-total" id="sub-${i}" data-val="">—</span></td>
-    <td class="clear-row" data-row="${i}" title="Clear row">×</td>
+    <td class="clear-row" data-row="${i}" title="Clear row"><span class="row-grip" draggable="true" title="Drag to move line">⠿</span>×</td>
   `;
   tbody.appendChild(tr);
   tr.querySelector('.part-input').addEventListener('keydown', onKeydown);
@@ -5854,7 +5860,7 @@ function addRow() {
   tr.querySelector('.qty-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const next = tbody.querySelector(`[data-row="${i+1}"].part-input`);
+      const next = nextRowInput(i);
       if (next) { next.focus(); next.select(); }
     }
   });
@@ -5907,7 +5913,7 @@ function applyNoteToRow(i) {
   pInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const next = tbody.querySelector(`[data-row="${i+1}"].part-input`);
+      const next = nextRowInput(i);
       if (next) { next.focus(); next.select(); }
     } else if (e.key === 'Tab') {
       e.preventDefault();
@@ -5917,7 +5923,7 @@ function applyNoteToRow(i) {
   });
   document.getElementById(`qty-${i}`).style.visibility = 'hidden';
   updateSubtotal(i); updateSummary();
-  if (i === NUM_ROWS - 1) addRow();
+  if (isLastRow(i)) addRow();
   noteInput.focus();
 }
 
@@ -5975,7 +5981,7 @@ function applyDiscountToRow(i) {
   pInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const next = tbody.querySelector(`[data-row="${i+1}"].part-input`);
+      const next = nextRowInput(i);
       if (next) { next.focus(); next.select(); }
     } else if (e.key === 'Tab') {
       e.preventDefault();
@@ -5985,7 +5991,7 @@ function applyDiscountToRow(i) {
   });
   document.getElementById(`qty-${i}`).style.visibility = 'hidden';
   updateSubtotal(i); updateSummary();
-  if (i === NUM_ROWS - 1) addRow();
+  if (isLastRow(i)) addRow();
   discInput.focus();
 }
 function getPriceChanges() {
@@ -7247,7 +7253,7 @@ function buildRows() {
       <td style="text-align:right;"><span class="cell-r" id="price-${i}" data-price="">—</span></td>
       <td style="text-align:center;"><input class="qty-input" type="number" value="1" min="1" step="1" data-row="${i}" id="qty-${i}"></td>
       <td style="text-align:right;"><span class="cell-r sub-total" id="sub-${i}" data-val="">—</span></td>
-      <td class="clear-row" data-row="${i}" title="Clear row">×</td>
+      <td class="clear-row" data-row="${i}" title="Clear row"><span class="row-grip" draggable="true" title="Drag to move line">⠿</span>×</td>
     `;
     tbody.appendChild(tr);
     tr.querySelector('.part-input').addEventListener('keydown', onKeydown);
@@ -7259,7 +7265,7 @@ function buildRows() {
     tr.querySelector('.qty-input').addEventListener('keydown', function(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        const next = tbody.querySelector(`[data-row="${i+1}"].part-input`);
+        const next = nextRowInput(i);
         if (next) { next.focus(); next.select(); }
       }
     });
@@ -7271,10 +7277,54 @@ function buildRows() {
   document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) closeAllDropdowns(); });
 }
 
+// Registered once at startup (not in buildRows, which reruns on every clear/load).
+function installRowDrag() {
+  // Drag a filled line by its grip to reorder; the whole <tr> (and its serial row) moves.
+  let dragRow = null;
+  const dropTarget = e => {
+    const tr = e.target.closest?.('tr');
+    const idx = tr ? (tr.dataset.row ?? tr.dataset.snFor) : undefined;
+    const t = idx === undefined ? null : tbody.querySelector(`tr[data-row="${idx}"]`);
+    return t && +t.dataset.row !== dragRow ? t : null;
+  };
+  const clearDropMarks = () => tbody.querySelectorAll('.drop-before,.drop-after,.row-dragging')
+    .forEach(el => el.classList.remove('drop-before', 'drop-after', 'row-dragging'));
+  tbody.addEventListener('dragstart', e => {
+    const grip = e.target.closest?.('.row-grip');
+    const i = grip ? +grip.closest('tr').dataset.row : NaN;
+    if (!grip || rowIsEmpty(i)) { e.preventDefault(); return; }
+    dragRow = i;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', 'line ' + i);
+    const tr = grip.closest('tr');
+    e.dataTransfer.setDragImage(tr, 10, 10);
+    setTimeout(() => tr.classList.add('row-dragging'), 0);
+  });
+  tbody.addEventListener('dragover', e => {
+    const t = dropTarget(e);
+    if (dragRow === null || !t) return;
+    e.preventDefault();
+    const r = t.getBoundingClientRect();
+    tbody.querySelectorAll('.drop-before,.drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
+    t.classList.add(e.clientY < r.top + r.height / 2 ? 'drop-before' : 'drop-after');
+  });
+  tbody.addEventListener('drop', e => {
+    const t = dropTarget(e);
+    if (dragRow === null || !t) return;
+    e.preventDefault();
+    const after = t.classList.contains('drop-after');
+    const from = dragRow;
+    clearDropMarks();
+    moveRow(from, after ? nextRowIndexSkipping(+t.dataset.row, from) : +t.dataset.row);
+    compactRows(); updateSummary();
+  });
+  tbody.addEventListener('dragend', () => { dragRow = null; clearDropMarks(); });
+}
+
 function onTableClick(e) {
   const reorder = e.target.closest('.reorder-toggle[data-reorder-row]');
   if (reorder) { setRowReorder(parseInt(reorder.dataset.reorderRow), reorder.checked); return; }
-  if (e.target.classList.contains('clear-row')) { clearRow(parseInt(e.target.dataset.row)); updateSummary(); }
+  if (e.target.classList.contains('clear-row')) { clearRow(parseInt(e.target.dataset.row)); compactRows(); updateSummary(); }
   if (e.target.closest('.dd-item[data-note-trigger]')) {
     const item = e.target.closest('.dd-item[data-note-trigger]');
     const row = item.dataset.row;
@@ -7440,8 +7490,8 @@ function onKeydown(e) {
 }
 
 function focusNextProductRow(i, mobile) {
-  const nextRow = i + 1;
-  if (nextRow >= NUM_ROWS) addRow();
+  let nextRow = nextRowIndex(i);
+  if (nextRow == null) { nextRow = NUM_ROWS; addRow(); }
   if (mobile) ensureScannerMobileRow(nextRow);
   const next = mobile
     ? document.querySelector(`#mobileRows [data-row="${nextRow}"].part-input`)
@@ -7844,7 +7894,7 @@ function applyPart(i, part, options) {
   pInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const next = tbody.querySelector(`[data-row="${i+1}"].part-input`);
+      const next = nextRowInput(i);
       if (next) { next.focus(); next.select(); }
     } else if (e.key === 'Tab') {
       e.preventDefault();
@@ -7864,7 +7914,7 @@ function applyPart(i, part, options) {
     if (e.key === 'Enter') {
       e.preventDefault();
       onSubEdit(i);
-      const next = tbody.querySelector(`[data-row="${i+1}"].part-input`);
+      const next = nextRowInput(i);
       if (next) { next.focus(); next.select(); }
     } else if (e.key === 'Tab') {
       e.preventDefault();
@@ -7895,7 +7945,7 @@ function applyPart(i, part, options) {
     schedulePackageRefresh();
   }
   updateSubtotal(i); updateSummary(); updateReorderAvailability(i);
-  if (i === NUM_ROWS - 1 && !options?.skipAddRow) addRow();
+  if (isLastRow(i) && !options?.skipAddRow) addRow();
   if (other && !options?.skipFocus) setTimeout(() => { input.focus(); input.select(); }, 0);
   if (correctedScanIssue) {
     if (!correctedScanIssue.bindCode && part.warranty
@@ -7975,6 +8025,51 @@ function clearRowData(i) {
   if (s.tagName === 'INPUT') s.outerHTML = `<span class="cell-r sub-total" id="sub-${i}" data-val="">—</span>`;
   else { s.textContent = '—'; s.dataset.val = ''; }
   clearReorderVisual(i);
+}
+
+
+// Row indexes are identities (ids, closures, mobile mirror); on-screen order is the DOM order.
+function rowOrder() { return Array.from(tbody.querySelectorAll('tr[data-row]'), tr => +tr.dataset.row); }
+// Screen position (1-based) of a row, for messages.
+function rowPos(i) { return rowOrder().indexOf(i) + 1; }
+function relabelRows() {
+  rowOrder().forEach((r, n) => reorderToggles(r).forEach(t => t.setAttribute('aria-label', (t.closest('.mobile-row') ? 'Need to order line ' : 'Restock line ') + (n + 1))));
+}
+function nextRowIndex(i) { const o = rowOrder(); const n = o[o.indexOf(i) + 1]; return n === undefined ? null : n; }
+function nextRowInput(i) { const n = nextRowIndex(i); return n === null ? null : tbody.querySelector(`[data-row="${n}"].part-input`); }
+function nextRowIndexSkipping(i, skip) { const n = nextRowIndex(i); return n === skip ? nextRowIndex(n) : n; }
+function isLastRow(i) { const o = rowOrder(); return o[o.length - 1] === i; }
+function rowIsEmpty(i) {
+  const input = tbody.querySelector(`[data-row="${i}"].part-input`);
+  return !input || !(input.dataset.partPn || input.value.trim());
+}
+// Move a whole line (state is the DOM itself, so nothing is copied) before row `beforeIdx`, or to the end.
+function moveRow(i, beforeIdx) {
+  if (i === beforeIdx) return;
+  const tr = tbody.querySelector(`tr[data-row="${i}"]`);
+  if (!tr) return;
+  const ref = beforeIdx == null ? null : tbody.querySelector(`tr[data-row="${beforeIdx}"]`);
+  tbody.insertBefore(tr, ref);
+  const sn = tbody.querySelector(`tr[data-sn-for="${i}"]`);
+  if (sn) tr.after(sn);
+  const box = document.getElementById('mobileRows');
+  const m = box?.querySelector(`.mobile-row[data-row="${i}"]`);
+  if (m) box.insertBefore(m, beforeIdx == null ? null : box.querySelector(`.mobile-row[data-row="${beforeIdx}"]`));
+}
+// After a clear or move: filled lines sit together at the top, rows past the last filled line + one
+// spare are dropped, and the table never shows fewer than DEFAULT_ROWS.
+function compactRows() {
+  const empties = rowOrder().filter(rowIsEmpty);
+  const filled = rowOrder().filter(i => !rowIsEmpty(i));
+  // Cleared (empty) rows go below lines that are still filled.
+  empties.forEach(i => moveRow(i, null));
+  const keep = Math.max(DEFAULT_ROWS, filled.length + 1);
+  empties.slice(Math.max(0, keep - filled.length)).forEach(i => {
+    tbody.querySelector(`tr[data-row="${i}"]`)?.remove();
+    document.querySelector(`#mobileRows .mobile-row[data-row="${i}"]`)?.remove();
+  });
+  while (rowOrder().length < keep) { const n = NUM_ROWS; addRow(); ensureScannerMobileRow(n); }
+  relabelRows();
 }
 
 function clearRow(i) {
@@ -8182,7 +8277,7 @@ function clearAll() {
   scanIssues.clear();
   clearScanChoices();
   updateScanButton();
-  NUM_ROWS = 3; buildRows(); buildMobileRows(); updateSummary();
+  NUM_ROWS = DEFAULT_ROWS; buildRows(); buildMobileRows(); updateSummary();
   clearCustFields();
   resetTenderUi();
   document.getElementById('signatureBtn')?.classList.remove('active');
@@ -8257,7 +8352,7 @@ function buildCopy2HTML() {
   let rowsHtml = '';
   let anyMulti = false;
 
-  for (let i = 0; i < NUM_ROWS; i++) {
+  for (const i of rowOrder()) {
     const pn = document.querySelector(`[data-row="${i}"].part-input`)?.value || '';
     if (!pn) continue;
     const priceEl = document.getElementById(`price-${i}`);
@@ -8269,7 +8364,7 @@ function buildCopy2HTML() {
     if (qty !== 1 || parseFloat(priceEl.dataset.discountPerUnit) > 0) anyMulti = true;
   }
 
-  for (let i = 0; i < NUM_ROWS; i++) {
+  for (const i of rowOrder()) {
     const pn = document.querySelector(`[data-row="${i}"].part-input`)?.value || '';
     if (!pn) continue;
     const priceEl = document.getElementById(`price-${i}`);
@@ -10138,7 +10233,7 @@ function upperText(value) {
 
 function captureOrder() {
   const items = [];
-  for (let i = 0; i < NUM_ROWS; i++) {
+  for (const i of rowOrder()) {
     const priceEl = document.getElementById(`price-${i}`);
     if (!priceEl) continue;
     const pInput = priceEl.querySelector('.price-edit');
@@ -11750,6 +11845,7 @@ if (window.mpeDesktop?.onLedgerDraft && window.mpeDesktop?.acknowledgeLedgerDraf
   });
 }
 
+installRowDrag();
 buildRows();
 buildMobileRows();
 renderScannerModeCommandCodes();
@@ -11871,7 +11967,7 @@ function onMobileClick(e) {
   const discountRemove = e.target.closest('.mobile-discount-remove');
   if (discountRemove) { const i = parseInt(discountRemove.dataset.row); const p = document.getElementById(`price-${i}`); if (parseFloat(p?.dataset.discountPerUnit) > 0) removeLineDiscount(i); else closeMobileDiscount(i); renderMobileDiscountState(i); return; }
   const clearBtn = e.target.closest('.mobile-clear');
-  if (clearBtn) { clearMobileRow(parseInt(clearBtn.dataset.row)); updateSummary(); return; }
+  if (clearBtn) { clearMobileRow(parseInt(clearBtn.dataset.row)); compactRows(); updateSummary(); return; }
   const expand = e.target.closest('.dd-expand');
   if (expand) { expandVariants(expand.parentElement); return; }
   const item = e.target.closest('.dd-item');
