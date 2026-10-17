@@ -1,62 +1,62 @@
 {
   "posRelease": "2026.10.17.1",
   "forceRelease": "2026.10.17.1",
-  "desktopRelease": "0.3.31",
-  "publishedAt": "2026-10-17T20:54:56Z",
+  "desktopRelease": "0.3.29",
+  "publishedAt": "2026-10-17T20:24:01Z",
   "desktop": {
     "windows": {
-      "version": "0.3.31",
-      "archiveSize": 145680414,
-      "archiveSha256": "d982a18aa4ddc30b012a32574f211a0331e9343e7c48ce0f6af98464b445aa51",
+      "version": "0.3.29",
+      "archiveSize": 145701354,
+      "archiveSha256": "3d014c2e9529e5299d2c3f17b884e7b22d4b8bd9c9a591154ecbc1ccca954ade",
       "parts": [
         {
-          "fileId": "1pE7QiUBoclmYEICiw_W5ucepIMy8Tf8i",
-          "name": "MPE-POS-Windows-0.3.31.zip.part-000",
+          "fileId": "187yaU0Uhto5o2CSpH3veiad2SUfqL6x-",
+          "name": "MPE-POS-Windows-0.3.29.zip.part-000",
           "size": 41943040,
-          "sha256": "712ebf3e47de7d1b1aacca32c3ac1b9330c4e066fc956be63dc319d676b948f5"
+          "sha256": "472762030c7dc7e924b6f706278b5fb6fdf64378b093a882fe8a26d57981c393"
         },
         {
-          "fileId": "1Q-0CbK8gbTdYZi3qGyEVSUEOzgR7iKaT",
-          "name": "MPE-POS-Windows-0.3.31.zip.part-001",
+          "fileId": "1_JQJ4eqTqaavFlGbAODkwjwoOENxbB3m",
+          "name": "MPE-POS-Windows-0.3.29.zip.part-001",
           "size": 41943040,
-          "sha256": "066ffc3065e0c9252f3d8a094e2bdb450e94a15e0327112fb4880ab2c90f4be6"
+          "sha256": "118e1d7b9ba5987cd2074779d3c717c5f4f45893f5228fedcacba83a4bdbe140"
         },
         {
-          "fileId": "1b5gAQei8drZH3HBHrs5Z8a_K5pyErto-",
-          "name": "MPE-POS-Windows-0.3.31.zip.part-002",
+          "fileId": "15k4q9QmBgLUC9JE_F-SRamHFZ5wXPs2n",
+          "name": "MPE-POS-Windows-0.3.29.zip.part-002",
           "size": 41943040,
-          "sha256": "14c0c6fe78786b7fcd849ca968ac0e480c64b4f125d6f32e2127c1bbe093673a"
+          "sha256": "03a77c3de70798b27cd057886c2e6de1800bc4e9a0e8d2bb6a225531f8f02cd3"
         },
         {
-          "fileId": "1Y9K9lB_3TfFComC25vO3q9jlnP9k3IdA",
-          "name": "MPE-POS-Windows-0.3.31.zip.part-003",
-          "size": 19851294,
-          "sha256": "3397d3dad3bd29184e1c3ce4cfe2a13b4d949cbafdd96b626ffff3c4b225051a"
+          "fileId": "1a_evFajwnlx-3cPDSm4o0vgu23A-Z19C",
+          "name": "MPE-POS-Windows-0.3.29.zip.part-003",
+          "size": 19872234,
+          "sha256": "c6800084563907a9b5cfe5146592cbce75306f2bc8f876c2fccbd0a979305ba9"
         }
       ]
     },
     "mac": {
-      "version": "0.3.31",
-      "archiveSize": 120087154,
-      "archiveSha256": "dc818b6af546f4e0fba9fa99b552d8fafa5ef4b7fcf814b59608e1c3ef5e5622",
+      "version": "0.3.29",
+      "archiveSize": 120086937,
+      "archiveSha256": "4418af3592551e0e6ce6359da732948d00b466d08e3f1773a2b4987af93f149c",
       "parts": [
         {
-          "fileId": "1dcGNx2ROLJDxKRGwdVh-kzGDlBktYT2r",
-          "name": "MPE-POS-mac-arm64-0.3.31.zip.part-000",
+          "fileId": "1NgaMX4HS8Ttr31cXZkchbOcim6qppzWq",
+          "name": "MPE-POS-mac-arm64-0.3.29.zip.part-000",
           "size": 41943040,
-          "sha256": "4db1106b33b39622c752f25393dbb92858da085da20557e5fd6f73f82410dbc6"
+          "sha256": "4083b2bdf3a7d442a6fb7228196799a4cf6f4d2280ecbd05b10747ee413468d4"
         },
         {
-          "fileId": "10VvFdV7hPim5btWeGEUhCHDZDIvu5hbW",
-          "name": "MPE-POS-mac-arm64-0.3.31.zip.part-001",
+          "fileId": "1ziSvbmoDXNLwbxVj_B7QnACg4JK6mROj",
+          "name": "MPE-POS-mac-arm64-0.3.29.zip.part-001",
           "size": 41943040,
-          "sha256": "94881db63fa7373fd2c5b6571183c6b07ebc7ec8fe1f763af108fc5934193913"
+          "sha256": "1fa92f8768e434552bc017351af2becf79d02e52e8744029be6316a32eaee946"
         },
         {
-          "fileId": "1rqfm5-3feJfl98WLRS7OQkeiJRAE2U13",
-          "name": "MPE-POS-mac-arm64-0.3.31.zip.part-002",
-          "size": 36201074,
-          "sha256": "8386d497a55efcdf47e9307bb9d04280543fa9194e82ed8d75e3fe7b589cad18"
+          "fileId": "1541-LRmEPRAzt0PVcnANtkjU8UdIBXsh",
+          "name": "MPE-POS-mac-arm64-0.3.29.zip.part-002",
+          "size": 36200857,
+          "sha256": "d82c95ba923869cb4454b7b5fad8b30ed380f6892ce76bf45d06a5d30bbb7a34"
         }
       ]
     }
