@@ -1360,6 +1360,16 @@ function setFeedState(state, help) {
   if (help) $('feedHelp').textContent = help;
 }
 
+// SCAG, Kawasaki and Wright fill Supercedes with the OLDER numbers this part
+// replaces (often a list, Wright prefixed "Also known as:"). Every other brand
+// fills it with the one NEWER number that replaces this row. Returns the old
+// numbers for the first kind, or null for the second.
+function supersededNumbers(p) {
+  if (!/^(scag|kawasaki|wright)$/i.test(String(p.make || '').trim())) return null;
+  return String(p.sup || '').replace(/^\s*also known as:/i, '').split(/[;,]/)
+    .map(n => n.trim()).filter(n => n && n !== p.pn);
+}
+
 async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   if (typeof DecompressionStream === 'undefined') throw new Error('browser too old to read the feed');
   const stream = new Blob([arrayBuffer]).stream().pipeThrough(new DecompressionStream('gzip'));
@@ -1372,7 +1382,9 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   const parts = [];
   for (const e of feed.parts) {
     parts.push(e);
-    if (e.sup && e.sup !== e.pn) parts.push({ ...e, pn: e.sup, og: e.pn, _supersedeAlias: true, _salePn: e.pn, _saleOg: e.og });
+    const oldNumbers = supersededNumbers(e);
+    if (oldNumbers) for (const n of oldNumbers) parts.push({ ...e, pn: n, og: e.og || e.pn, _supersedeAlias: true, _supersededFrom: n, _salePn: e.pn, _saleOg: e.og });
+    else if (e.sup && e.sup !== e.pn) parts.push({ ...e, pn: e.sup, og: e.pn, _supersedeAlias: true, _salePn: e.pn, _saleOg: e.og });
   }
   saleRules = normalizeSaleRules(feed.sales);
   serialNumberMap = feed.serials && typeof feed.serials === 'object' ? feed.serials : {};
@@ -1619,7 +1631,7 @@ function buildScanExactIndex() {
         push(key, p);
         continue;
       }
-      if (p.sup && normalizePN(p.sup) !== nPN) {
+      if (p.sup && normalizePN(p.sup) !== nPN && !supersededNumbers(p)) {
         const current = nonAliasByKey.get(normalizePN(p.sup));
         push(key, {
           ...(current || p),

@@ -39,7 +39,7 @@ function harness(kind) {
     isOtherPart:p=>p.pn==='OTHER',normalizeSaleRules:x=>x||[],rebuildCustomCodeMap(){},buildWarrantyModelMap(){},
     overlayPendingSerialMatches(){},warmUpSearch(){},flushPendingCatalogScans(){},refreshStatusUI(){},setFeedState(){},renderBindPool(){},
   });
-  for(const name of [...shared,'canonicalScannedCode','canonicalSerialNumber','loadUnitSerialRules','unitSerialCandidates','resolveScannedValue','loadPosJsonBytes'])
+  for(const name of [...shared,'canonicalScannedCode','canonicalSerialNumber','loadUnitSerialRules','unitSerialCandidates','resolveScannedValue','supersededNumbers','loadPosJsonBytes'])
     vm.runInContext(fn(html[kind],name),c);
   return {c,stored,run:src=>vm.runInContext(src,c),async load(){const b=gzipSync(JSON.stringify({parts,codes}));c.bytes=b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength);await c.loadPosJsonBytes(c.bytes,'fixture');}};
 }

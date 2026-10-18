@@ -1162,7 +1162,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.17.1';
+const POS_RELEASE = '2026.10.17.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1984,6 +1984,16 @@ function loadKeyFromDB(key) {
   }));
 }
 
+// SCAG, Kawasaki and Wright fill Supercedes with the OLDER numbers this part
+// replaces (often a list, Wright prefixed "Also known as:"). Every other brand
+// fills it with the one NEWER number that replaces this row. Returns the old
+// numbers for the first kind, or null for the second.
+function supersededNumbers(p) {
+  if (!/^(scag|kawasaki|wright)$/i.test(String(p.make || '').trim())) return null;
+  return String(p.sup || '').replace(/^\s*also known as:/i, '').split(/[;,]/)
+    .map(n => n.trim()).filter(n => n && n !== p.pn);
+}
+
 // ─── STAGE 4: POS JSON FEED (gzipped, from master.db) ───────────────────────
 // Turns raw gzip bytes into partsArray, applying the SAME supersede expansion the
 // XLSX WORKER_SCRIPT does — so the JSON path and the xlsx path yield identical arrays.
@@ -1996,7 +2006,9 @@ async function loadPosJsonBytes(arrayBuffer, sourceLabel) {
   const parts = [];
   for (const e of feed.parts) {
     parts.push(e);
-    if (e.sup && e.sup !== e.pn) parts.push({ ...e, pn: e.sup, og: e.pn, _supersedeAlias: true, _salePn: e.pn, _saleOg: e.og }); // mirrors worker
+    const oldNumbers = supersededNumbers(e); // mirrors worker
+    if (oldNumbers) for (const n of oldNumbers) parts.push({ ...e, pn: n, og: e.og || e.pn, _supersedeAlias: true, _supersededFrom: n, _salePn: e.pn, _saleOg: e.og });
+    else if (e.sup && e.sup !== e.pn) parts.push({ ...e, pn: e.sup, og: e.pn, _supersedeAlias: true, _salePn: e.pn, _saleOg: e.og });
   }
   // A successful current feed is authoritative. Missing/invalid rules mean no
   // automatic sale, never "keep yesterday's sale" in memory.
@@ -2070,6 +2082,7 @@ async function tryFetchPosJson(capturedVersion) {
 // ─── PARSE & LOAD ──────────────────────────────────────────────────────────
 // Worker script as a blob — handles all XLSX parsing off the main thread
 const WORKER_SCRIPT = `
+${supersededNumbers.toString()}
 importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
 self.onmessage = function(e) {
   const { name, binaryData } = e.data;
@@ -2107,7 +2120,9 @@ self.onmessage = function(e) {
         warranty: warVal === 'Y'
       };
       parts.push(entry);
-      if (sup && sup !== pn) parts.push({ ...entry, pn: sup, og: pn, _supersedeAlias: true, _salePn: pn, _saleOg: og });
+      const oldNumbers = supersededNumbers(entry);
+      if (oldNumbers) for (const n of oldNumbers) parts.push({ ...entry, pn: n, og: og || pn, _supersedeAlias: true, _supersededFrom: n, _salePn: pn, _saleOg: og });
+      else if (sup && sup !== pn) parts.push({ ...entry, pn: sup, og: pn, _supersedeAlias: true, _salePn: pn, _saleOg: og });
     });
     self.postMessage({ ok: true, parts, sheetName: targetName });
   } catch(err) {
@@ -2187,7 +2202,9 @@ function parseAndLoadSync(name, binaryData) {
         warranty: warVal === 'Y'
       };
       partsArray.push(entry);
-      if (sup && sup !== pn) partsArray.push({ ...entry, pn: sup, og: pn, _supersedeAlias: true, _salePn: pn, _saleOg: og });
+      const oldNumbers = supersededNumbers(entry);
+      if (oldNumbers) for (const n of oldNumbers) partsArray.push({ ...entry, pn: n, og: og || pn, _supersedeAlias: true, _supersededFrom: n, _salePn: pn, _saleOg: og });
+      else if (sup && sup !== pn) partsArray.push({ ...entry, pn: sup, og: pn, _supersedeAlias: true, _salePn: pn, _saleOg: og });
     });
     loaded = true;
     warmUpSearch();
@@ -3053,7 +3070,7 @@ function buildScanExactIndex() {
         push(key, p);
         continue;
       }
-      if (p.sup && normalizePN(p.sup) !== nPN) {
+      if (p.sup && normalizePN(p.sup) !== nPN && !supersededNumbers(p)) {
         // An exact obsolete PN selects the current row, not the obsolete row's
         // own price and description.
         const current = nonAliasByKey.get(normalizePN(p.sup));
@@ -7657,7 +7674,7 @@ function searchParts(val) {
       }
       // An exact obsolete PN should select the real current row, not the alias row
       // carrying the obsolete item's old price/description.
-      if (!p._supersedeAlias && p.sup && normalizePN(p.sup) !== normPN) {
+      if (!p._supersedeAlias && p.sup && normalizePN(p.sup) !== normPN && !supersededNumbers(p)) {
         const currentPN = normalizePN(p.sup);
         const current = partsArray.find(candidate =>
           !candidate._supersedeAlias &&
