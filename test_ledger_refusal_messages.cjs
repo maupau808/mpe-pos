@@ -17,7 +17,7 @@ test('each known code has its own plain sentence', () => {
   const codes = ['pos_context_unavailable', 'ledger_unavailable', 'authentication_required', 'not_configured', 'invalid_request',
     'shape_invalid', 'customer_not_found', 'customer_not_adopted', 'customer_ambiguous', 'identity_invalid', 'formal_ineligible',
     'source_binding', 'release_unattested', 'local_integrity_uncertain', 'integrity_conflict', 'sale_date_invalid', 'sale_date_out_of_range',
-    'device_revoked', 'device_scope', 'device_not_set_up', 'unauthenticated', 'too_many_requests', 'too_many_attempts', 'forbidden_origin', 'untrusted_context'];
+    'csrf_failed', 'replay_collision', 'device_revoked', 'device_scope', 'device_not_set_up', 'unauthenticated', 'too_many_requests', 'too_many_attempts', 'forbidden_origin', 'untrusted_context'];
   const seen = new Set(codes.map(code => message(code)));
   assert.equal(seen.size, codes.length);   // invalid_credentials deliberately shares unauthenticated's sentence
   assert.equal(message('invalid_credentials'), message('unauthenticated'));
@@ -35,5 +35,7 @@ test('unknown code appears in the sentence; copy warning only where a document m
   assert.match(message('weird_new_code'), /"weird_new_code"/);
   assert.doesNotMatch(message('pos_context_unavailable'), /another copy/);
   assert.doesNotMatch(message('customer_ambiguous'), /another copy/);
-  assert.match(message('integrity_conflict'), /do not make another copy/);
+  assert.match(message('integrity_conflict'), /Do not press Finalize again/);
+  assert.match(message('authentication_required'), /Set up this computer/);
+  for (const c of ['csrf_failed', 'replay_collision', 'customer_name_reused']) assert.doesNotMatch(message(c), /^Finalize failed/);
 });

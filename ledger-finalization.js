@@ -121,6 +121,7 @@
     'local_integrity_uncertain', 'output_failed', 'output_cancelled',
     'ledger_unavailable', 'ledger_ambiguous', 'ledger_rejected',
     'qbo_definite_failure', 'qbo_ambiguous', 'integrity_conflict', 'quarantined',
+    'customer_name_reused',
   ]);
   const MONEY_FIELDS = [
     'original_unit_amount', 'discount_amount', 'unit_amount', 'line_rounding',
@@ -480,13 +481,20 @@
     });
   }
 
+  // Desktop's IPC drops .code; its refusal text carries `mpe-ledger-refusal:<code>` (maybe after a prefix).
+  const REFUSAL_IN_MESSAGE = /mpe-ledger-refusal:([a-z_]{1,80})(?![a-z_])/;
+
   function publicErrorCode(error, fallback = 'integrity_conflict') {
     try {
       if (!error || (typeof error !== 'object' && typeof error !== 'function')) return fallback;
       const descriptor = Object.getOwnPropertyDescriptor(error, 'code');
-      return descriptor && Object.hasOwn(descriptor, 'value')
-        && typeof descriptor.value === 'string' && PUBLIC_CODES.has(descriptor.value)
-        ? descriptor.value : fallback;
+      let code = descriptor && Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined;
+      if (typeof code !== 'string' || !code) {
+        const message = Object.getOwnPropertyDescriptor(error, 'message');
+        const match = message && typeof message.value === 'string' && REFUSAL_IN_MESSAGE.exec(message.value);
+        code = match ? match[1] : undefined;
+      }
+      return typeof code === 'string' && PUBLIC_CODES.has(code) ? code : fallback;
     } catch (_error) {
       return fallback;
     }

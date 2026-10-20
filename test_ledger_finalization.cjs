@@ -525,6 +525,18 @@ test('a lost commit response clears only in-flight state and exact retry can rep
   assert.deepEqual(requests[1], requests[0]);
 });
 
+test('a refusal code carried only in the message (Electron IPC prefix) is read; non-public or no code stays integrity_conflict', async () => {
+  const run = async message => {
+    const coordinator = coordinatorWith({ finalize: async () => { throw new Error(message); } });
+    return coordinator.preflight(actionProposal(), () => captureFromSource());
+  };
+  await expectCodeAsync(() => run("Error invoking remote method 'x': Error: mpe-ledger-refusal:release_unattested"), 'release_unattested');
+  await expectCodeAsync(() => run('mpe-ledger-refusal:customer_name_reused'), 'customer_name_reused');
+  await expectCodeAsync(() => run('mpe-ledger-refusal:made_up_code'), 'integrity_conflict');
+  await expectCodeAsync(() => run('mpe-ledger-refusal:output_failed_extra_Z'), 'integrity_conflict');
+  await expectCodeAsync(() => run('plain failure'), 'integrity_conflict');
+});
+
 test('enabled-but-unavailable, malformed status, and malformed finalize results fail closed', async () => {
   const unavailable = coordinatorWith({
     getStatus: async () => ({ enabled: true, available: false, reason: 'not_configured', capacity: [] }),

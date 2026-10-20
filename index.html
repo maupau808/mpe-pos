@@ -451,6 +451,12 @@ body.doc-internal .sum-internal { display: block; }
 .doc-type-btn:last-child { border-right: none; }
 .doc-type-btn.active { background: #2f4339; color: #fff; font-weight: 600; }
 .doc-type-btn[data-doc="internal"].active { background: #9b1c1c; color: #fff; }
+.sale-date { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+.sale-date[hidden] { display: none; }
+.sale-date-btn, .sale-date-clear { min-height: 44px; font-size: 12px; font-family: inherit; border: 1px solid #c7cfc4; border-radius: 6px; background: #fff; color: #2f4339; cursor: pointer; padding: 0 12px; }
+.sale-date-btn.set { background: #2f4339; color: #fff; font-weight: 600; }
+.sale-date-clear { min-width: 44px; padding: 0; font-size: 18px; line-height: 1; }
+.sale-date-input { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .doc-screen-title { font-size: 12px; font-weight: 400; color: #999; }
 .cell-r.sub-total { font-size: 16px !important; font-weight: 700 !important; }
 .mobile-rows { display: none; }
@@ -843,6 +849,11 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="quote" onclick="setDocType('quote')">Quote</button>
         <button class="doc-type-btn" data-doc="internal" onclick="requestInternalDoc(event)" title="Internal only — shows cost and profit">Internal</button>
       </div>
+      <span id="saleDateRow" class="sale-date no-print" hidden>
+        <button type="button" id="saleDateBtn" class="sale-date-btn" onclick="openSaleDate()">Sale date</button>
+        <button type="button" id="saleDateClear" class="sale-date-clear" aria-label="Clear sale date, use today" onclick="clearSaleDate()" hidden>&times;</button>
+        <input type="date" id="saleDate" class="sale-date-input" aria-label="Sale date" tabindex="-1" onchange="syncSaleDateLabel()">
+      </span>
       <label class="menu-check presell-check" id="presellWrap" hidden title="Unit Stock takes these items off now; converting this quote to a sale later subtracts only what changed"><input type="checkbox" id="presellChk"> Subtract from inventory count</label>
       <!-- The button itself lives in Admin; this empty slot is the toolbar
            anchor the live preview still takes over, so opening the camera
@@ -1134,7 +1145,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async="" defer=""></script>
-  <script src="ledger-finalization.js" integrity="sha256-gEQ/JDd8ciZ4AbdABdt8KtN/Lex+6BOhAFEdUIs6Vss="></script>
+  <script src="ledger-finalization.js" integrity="sha256-qwjoB1WIrG0o59g8t9iRH/Fi9U8OfNObiFx0m/mqATM="></script>
   <script src="ledger-contact.js"></script>
   <script src="print-relay.js"></script>
   <script>
@@ -1162,7 +1173,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.17.2';
+const POS_RELEASE = '2026.10.19.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -9057,6 +9068,9 @@ function showLedgerRefusal(label, error) {
     finalized_source_missing: 'This numbered document must be reopened from its verified Ledger source.',
     ledger_unavailable: 'Email is locked until QBO confirms this exact document.',
     local_integrity_uncertain: 'The number may have saved, but confirmation was interrupted. Try the same action again.',
+    integrity_conflict: 'Ledger could not confirm this document. A number may already be assigned. Do not press the button again. Check Transaction History for the number. If it is not there, tell Trevor.',
+    output_failed: 'The number was assigned but the print or file did not finish. Do not make another copy. Check Transaction History for the number and reprint from there. If it is not there, tell Trevor.',
+    quarantined: 'This document is on hold after its number was assigned. Do not make another copy. Tell Trevor.',
     release_unattested: 'The verified numbering code did not load. Nothing was printed or saved.',
     sale_date_invalid: 'The sale date is not a valid date. Nothing was printed or saved.',
     sale_date_out_of_range: 'The sale date must be today or up to 90 days back. Nothing was printed or saved.',
@@ -9199,6 +9213,11 @@ function setLedgerInvoiceStatus(message) {
   if (node) { node.hidden = !message; node.textContent = message; }
 }
 
+const LEDGER_STATUS_REFUSALS = {
+  device_revoked: 'This computer was shut off in Ledger. Ask Trevor to set it up again.',
+  device_scope: 'This computer is not allowed to sync invoices. Ask Trevor to set it up again in Ledger, Computers.',
+  release_unattested: 'This register is running unverified invoice code. Restart the app.',
+};
 async function refreshLedgerInvoiceStatus() {
   clearTimeout(_ledgerInvoiceStatusTimer);
   const current = _ledgerOutputCoordinator?.current();
@@ -9224,7 +9243,8 @@ async function refreshLedgerInvoiceStatus() {
     if (ledgerErrorCode(error) === 'source_binding') { setLedgerInvoiceStatus('The visible edits are not part of finalized invoice ' + number + '. Clear to start a new invoice.'); return; }
     const authentication = ledgerErrorCode(error) === 'authentication_required';
     setLedgerInvoiceStatus('Invoice ' + number + ' saved locally. ' + (authentication
-      ? 'Sign in to Ledger in Desktop Settings to sync.' : 'Waiting for the Ledger connection; the invoice is retained.'));
+      ? 'Open Desktop Settings and press Set up this computer to sync.'
+      : LEDGER_STATUS_REFUSALS[ledgerErrorCode(error)] || 'Waiting for the Ledger connection; the invoice is retained.'));
   }
   _ledgerInvoiceStatusTimer = setTimeout(refreshLedgerInvoiceStatus, 5000);
 }
@@ -9269,21 +9289,24 @@ const LEDGER_FIELD_MESSAGES = {
 const LEDGER_FINALIZE_MESSAGES = {
   pos_context_unavailable: "Ledger can't reach QuickBooks or its customer list right now. Nothing was sent. Try Finalize again in a minute.",
   ledger_unavailable: "This register can't reach Ledger. Nothing was sent. Check the internet, then Finalize again in a minute.",
-  authentication_required: 'Ledger needs you to sign in. Nothing was sent. Sign in under Desktop Settings, then Finalize again.',
+  authentication_required: 'This computer is not signed in to Ledger. Nothing was sent. Open Desktop Settings, press Set up this computer, then Finalize again.',
   not_configured: 'Invoice sync is not set up on this register. Nothing was sent. Your draft is still here.',
   invalid_request: 'Ledger rejected the customer details, usually an empty name or a bad character. Check name, phone, email and address, then Finalize again.',
   shape_invalid: 'The customer details were not in a form Ledger accepts. Check name, phone, email and address, then Finalize again.',
   customer_not_found: 'Ledger has no active QuickBooks customer with this name. Add or fix the customer in Ledger, then Finalize again.',
   customer_not_adopted: 'This QuickBooks customer is not linked in Ledger yet. Link them in Ledger, then Finalize again.',
   customer_ambiguous: 'More than one customer matches this name. Pick the right one in Ledger, then Finalize again.',
-  identity_invalid: 'Check the customer name, address, and phone, then Finalize again.',
+  identity_invalid: 'Ledger could not use these customer details. Nothing was sent. Check the name, address and phone, then Finalize again.',
+  csrf_failed: 'Ledger turned this request down. Nothing was sent. Restart the app, then Finalize again. If it keeps happening, tell Trevor.',
+  replay_collision: 'A Finalize is already in progress on this register. Wait a moment and check Transaction History before pressing Finalize again.',
+  customer_name_reused: 'A different customer with this name was already made on this register. Retype the phone and address to match, or change the name, then Finalize again.',
   formal_ineligible: 'Complete the customer name, address, and phone, then Finalize again.',
   source_binding: 'The invoice changed while it was being finalized. Nothing was sent. Review the draft and Finalize again.',
   release_unattested: 'This register is running unverified invoice code. Nothing was sent. Restart the app, then Finalize again.',
   local_integrity_uncertain: 'The invoice number may have saved but confirmation was interrupted. Press Finalize Invoice again; do not make another copy.',
   sale_date_invalid: 'The sale date is not a valid date. Pick the date again, then Finalize.',
   sale_date_out_of_range: 'The sale date must be today or up to 90 days back. Pick the date again, then Finalize.',
-  integrity_conflict: 'Ledger could not confirm this invoice. It may already exist, so press Finalize Invoice again; do not make another copy.',
+  integrity_conflict: 'Ledger could not confirm this invoice. Do not press Finalize again. Check Transaction History for the invoice number. If it is not there, tell Trevor.',
   // This computer's own Ledger sign-in (Desktop returns the server's code unchanged).
   device_revoked: 'This computer was shut off in Ledger. Nothing was sent. Ask Trevor to set it up again (Desktop Settings, Set up this computer), then Finalize again.',
   device_scope: 'This computer is not allowed to send invoices to Ledger. Nothing was sent. Ask Trevor to set it up again in Ledger, Computers.',
@@ -9341,12 +9364,15 @@ async function finalizeLedgerInvoice(choice = {}) {
     await refreshLedgerInvoiceStatus();
   } catch (error) {
     const code = ledgerErrorCode(error);
-    const chooser = code === 'customer_ambiguous' && ledgerDesktopHas('customerChooser');
-    const listed = chooser && error.candidates?.length > 0;
+    const reused = code === 'customer_name_reused' && ledgerDesktopHas('customerChooser');
+    const chooser = (code === 'customer_ambiguous' && ledgerDesktopHas('customerChooser')) || reused;
+    const listed = chooser && !reused && error.candidates?.length > 0;
     setLedgerInvoiceStatus(!chooser ? ledgerFinalizeMessage(code, error && error.field)
+      : reused ? 'A different customer named ' + String(document.getElementById('custName')?.value || '').trim()
+        + ' was already made on this register. Choose New customer to make a separate one, or retype the phone and address to match.'
       : listed ? 'More than one customer matches this name. Pick the right one below, or choose New customer.'
       : 'Ledger found a possible match but could not list it. Fix the name and Finalize again, or choose New customer.');
-    if (chooser) showLedgerCustomerChooser(error.candidates || []);
+    if (chooser) showLedgerCustomerChooser(reused ? [] : error.candidates || []);
     button.disabled = false;
   } finally {
     _ledgerInvoiceFinalizing = false;
@@ -9362,14 +9388,15 @@ function hideLedgerCustomerChooser() {
 function showLedgerCustomerChooser(candidates) {
   const node = document.getElementById('ledgerCustomerChooser');
   if (!node) return;
-  const add = (label, choice) => {
+  const add = (label, choice, providerId) => {
     const b = document.createElement('button');
+    if (providerId !== undefined) b.setAttribute('data-provider-id', String(providerId));
     b.type = 'button'; b.className = 'btn-big'; b.style.marginRight = '8px'; b.textContent = label;
     b.onclick = () => finalizeLedgerInvoice(choice);
     node.appendChild(b);
   };
   node.replaceChildren();
-  for (const c of candidates) add(c.display_name + ' (QuickBooks #' + c.provider_id + ')', { provider_id: c.provider_id });
+  for (const c of candidates) add(c.display_name, { provider_id: c.provider_id }, c.provider_id);
   add('New customer', { new_customer: true });
   node.hidden = false;
 }
@@ -9379,6 +9406,25 @@ function resetSaleDate() {
   if (!input) return;
   const { min, max } = ledgerSaleDateBounds();
   input.min = min; input.max = max; input.value = '';   // blank = today
+  syncSaleDateLabel();
+}
+function openSaleDate() {
+  const input = document.getElementById('saleDate');
+  if (!input) return;
+  try { input.showPicker(); } catch { input.focus(); input.click(); }
+}
+function clearSaleDate() {
+  const input = document.getElementById('saleDate');
+  if (input) input.value = '';
+  syncSaleDateLabel();
+}
+function syncSaleDateLabel() {
+  const btn = document.getElementById('saleDateBtn'), clear = document.getElementById('saleDateClear');
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(document.getElementById('saleDate')?.value || ''));
+  if (!btn) return;
+  btn.textContent = m ? 'Sale date: ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2]) - 1] + ' ' + Number(m[3]) : 'Sale date';
+  btn.classList.toggle('set', !!m);
+  if (clear) clear.hidden = !m;
 }
 
 let _saveFeedbackTimer = null;

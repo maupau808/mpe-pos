@@ -17,7 +17,7 @@ function world({ replies, saleDate = TODAY, advertised = { saleDate: true, custo
     replaceChildren() { this.children = []; }, appendChild(c) { this.children.push(c); }, setAttribute() {}, removeAttribute() {} });
   el('saleDate', saleDate); el('finalizeInvoiceBtn'); el('ledgerCustomerChooser'); el('custName', 'John');
   const sandbox = {
-    document: { getElementById: id => nodes[id] || null, createElement: () => ({ style: {} }) },
+    document: { getElementById: id => nodes[id] || null, createElement: () => ({ style: {}, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } }) },
     window: { mpeDesktop: { numbering: { invoiceFinalization: true, ...advertised, resolveCustomer: async r => { sent.push(r); return replies.shift(); } } } },
     _docType: 'invoice', _ledgerInvoiceFinalizing: false, _reprintSource: null, _currentTxnId: null, _ledgerAdoptedCustomer: null,
     _ledgerStructuredAddress: false, _ledgerOutputCoordinator: { current: () => null },
@@ -39,7 +39,8 @@ test('several matches show each candidate plus New customer; each choice is one 
   const chooser = w.nodes.ledgerCustomerChooser;
   assert.equal(chooser.hidden, false);
   assert.deepEqual(chooser.children.map(b => b.textContent),
-    ['John (QuickBooks #12)', 'John (QuickBooks #345)', 'New customer']);
+    ['John', 'John', 'New customer']);
+  assert.deepEqual(chooser.children.map(b => b.attrs['data-provider-id']), ['12', '345', undefined]);
   assert.match(w.statuses.at(-1), /Pick the right one below/);
   await chooser.children[1].onclick();           // second John
   assert.equal(w.sent[1].provider_id, '345');
@@ -118,4 +119,59 @@ test('receipts: a past day replaces the date at the real time of day; today, bla
   }
   state.row.hidden = false; state.current = { document_number: '1' };
   assert.equal(sandbox.shown(real), real);   // a Ledger-finalized invoice takes completion_at instead
+});
+
+test('customer_name_reused offers only New customer, with the typed name in the sentence', async () => {
+  const w = world({ replies: [{ ok: false, error_code: 'customer_name_reused' }] });
+  await w.sandbox.finalize();
+  assert.deepEqual(w.nodes.ledgerCustomerChooser.children.map(b => b.textContent), ['New customer']);
+  assert.equal(w.nodes.ledgerCustomerChooser.hidden, false);
+  assert.equal(w.statuses.at(-1), 'A different customer named John was already made on this register. Choose New customer to make a separate one, or retype the phone and address to match.');
+});
+
+test('Sale date button: sits right after the doc type selector, never prints, holds the date input', () => {
+  const at = id => html.indexOf(`id="${id}"`);
+  assert.ok(at('docTypeSel') > 0 && at('saleDateRow') > at('docTypeSel') && at('saleDateRow') < at('presellWrap'), 'beside #docTypeSel in the toolbar');
+  const row = html.match(/<span id="saleDateRow"[^>]*>[\s\S]*?<\/span>/)[0];
+  assert.match(row, /class="[^"]*\bno-print\b/);
+  assert.match(row, /id="saleDateBtn"[^>]*>Sale date</);
+  assert.match(row, /<input type="date" id="saleDate"/);
+  assert.doesNotMatch(row, /Blank is today|paper receipt/);
+  assert.match(html, /@media print \{\s*\.no-print \{ display: none !important; \}/);
+  assert.match(html, /\.sale-date-btn[^}]*min-height: 44px/);
+});
+
+test('Sale date button: shown only when the dateWanted rule says so', () => {
+  const src = html.slice(html.indexOf('function syncLedgerInvoiceButtons'), html.indexOf('function setLedgerInvoiceStatus'));
+  const run = (_docType, enabled, saleDate) => {
+    const row = { hidden: true };
+    vm.runInNewContext(src + ';syncLedgerInvoiceButtons()', { _docType, _ledgerInvoiceEnabled: enabled, window: { mpeDesktop: { numbering: { invoiceFinalization: true } } },
+      ledgerDesktopHas: () => saleDate, resetSaleDate() {}, document: { getElementById: id => id === 'saleDateRow' ? row : null } });
+    return row.hidden;
+  };
+  assert.equal(run('receipt', false, false), false);
+  assert.equal(run('invoice', true, true), false);
+  assert.equal(run('invoice', true, false), true);
+  assert.equal(run('quote', false, true), true);
+});
+
+test('Sale date button: label shows the picked day, clearing returns to today, and the pick reaches shownDocDate', () => {
+  const cls = new Set();
+  const nodes = { saleDateBtn: { textContent: 'Sale date', classList: { toggle: (c, on) => (on ? cls.add(c) : cls.delete(c)) } },
+    saleDateClear: { hidden: true }, saleDate: { value: '' }, saleDateRow: { hidden: false } };
+  const sandbox = { document: { getElementById: id => nodes[id] }, _reprintSource: null, _currentTxnDate: null,
+    _ledgerOutputCoordinator: { current: () => null } };
+  vm.runInNewContext(code + ';this.sync = syncSaleDateLabel; this.clear = clearSaleDate; this.reset = resetSaleDate; this.shown = shownDocDate;', sandbox);
+  const day = hst(3), [, mm, dd] = day.split('-');
+  nodes.saleDate.value = day; sandbox.sync();
+  assert.equal(nodes.saleDateBtn.textContent, `Sale date: ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(mm) - 1]} ${Number(dd)}`);
+  assert.equal(nodes.saleDateClear.hidden, false);
+  const shown = sandbox.shown(new Date());
+  assert.equal(shown.getDate(), Number(dd));
+  sandbox.clear();
+  assert.equal(nodes.saleDate.value, ''); assert.equal(nodes.saleDateBtn.textContent, 'Sale date'); assert.equal(nodes.saleDateClear.hidden, true);
+  nodes.saleDate.value = day; sandbox.reset();
+  assert.equal(nodes.saleDateBtn.textContent, 'Sale date');
+  assert.ok(nodes.saleDate.min && nodes.saleDate.max, 'bounds applied');
+  const real = new Date(); assert.equal(sandbox.shown(real), real);
 });
