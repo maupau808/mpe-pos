@@ -451,12 +451,6 @@ body.doc-internal .sum-internal { display: block; }
 .doc-type-btn:last-child { border-right: none; }
 .doc-type-btn.active { background: #2f4339; color: #fff; font-weight: 600; }
 .doc-type-btn[data-doc="internal"].active { background: #9b1c1c; color: #fff; }
-.sale-date { position: relative; display: inline-flex; align-items: center; gap: 4px; }
-.sale-date[hidden] { display: none; }
-.sale-date-btn, .sale-date-clear { min-height: 44px; font-size: 12px; font-family: inherit; border: 1px solid #c7cfc4; border-radius: 6px; background: #fff; color: #2f4339; cursor: pointer; padding: 0 12px; }
-.sale-date-btn.set { background: #2f4339; color: #fff; font-weight: 600; }
-.sale-date-clear { min-width: 44px; padding: 0; font-size: 18px; line-height: 1; }
-.sale-date-input { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .doc-screen-title { font-size: 12px; font-weight: 400; color: #999; }
 .cell-r.sub-total { font-size: 16px !important; font-weight: 700 !important; }
 .mobile-rows { display: none; }
@@ -849,11 +843,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
         <button class="doc-type-btn" data-doc="quote" onclick="setDocType('quote')">Quote</button>
         <button class="doc-type-btn" data-doc="internal" onclick="requestInternalDoc(event)" title="Internal only — shows cost and profit">Internal</button>
       </div>
-      <span id="saleDateRow" class="sale-date no-print" hidden>
-        <button type="button" id="saleDateBtn" class="sale-date-btn" onclick="openSaleDate()">Sale date</button>
-        <button type="button" id="saleDateClear" class="sale-date-clear" aria-label="Clear sale date, use today" onclick="clearSaleDate()" hidden>&times;</button>
-        <input type="date" id="saleDate" class="sale-date-input" aria-label="Sale date" tabindex="-1" onchange="syncSaleDateLabel()">
-      </span>
       <label class="menu-check presell-check" id="presellWrap" hidden title="Unit Stock takes these items off now; converting this quote to a sale later subtracts only what changed"><input type="checkbox" id="presellChk"> Subtract from inventory count</label>
       <!-- The button itself lives in Admin; this empty slot is the toolbar
            anchor the live preview still takes over, so opening the camera
@@ -1173,7 +1162,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.19.1';
+const POS_RELEASE = '2026.10.20.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -8285,7 +8274,6 @@ function clearAll() {
   releaseLedgerInvoiceControls();
   setLedgerInvoiceStatus('');
   hideLedgerCustomerChooser();
-  resetSaleDate();
   const finalizeButton = document.getElementById('finalizeInvoiceBtn');
   if (finalizeButton) { finalizeButton.disabled = false; finalizeButton.textContent = 'Finalize Invoice'; }
   if (window.mpeDesktop?.numbering?.invoiceFinalization) void window.mpeDesktop.numbering.resetDraft();
@@ -8583,7 +8571,7 @@ function preparePrint() {
   // C06 completion time/number are main-owned and already durable. Legacy and
   // retained historical documents keep their original minute-derived path.
   const finalized = _ledgerOutputCoordinator?.current();
-  const now = finalized ? new Date(finalized.completion_at) : shownDocDate(reserveDocDate() || new Date());
+  const now = finalized ? new Date(finalized.completion_at) : (reserveDocDate() || new Date());
   const dateStr = now.toLocaleDateString("en-US", {year:"numeric", month:"long", day:"numeric"});
   const timeStr = now.toLocaleTimeString("en-US", {hour:"numeric", minute:"2-digit"});
   const _reprintTag = _reprintSource ? '  ·  <span class="reprint-tag">Reprint</span>' : '';
@@ -9072,8 +9060,6 @@ function showLedgerRefusal(label, error) {
     output_failed: 'The number was assigned but the print or file did not finish. Do not make another copy. Check Transaction History for the number and reprint from there. If it is not there, tell Trevor.',
     quarantined: 'This document is on hold after its number was assigned. Do not make another copy. Tell Trevor.',
     release_unattested: 'The verified numbering code did not load. Nothing was printed or saved.',
-    sale_date_invalid: 'The sale date is not a valid date. Nothing was printed or saved.',
-    sale_date_out_of_range: 'The sale date must be today or up to 90 days back. Nothing was printed or saved.',
   };
   const message = messages[code] || 'Official numbering could not be verified. Nothing was printed or saved.';
   flashScanCommand(message, 'warn');
@@ -9187,7 +9173,7 @@ function recordOutgoingDocument() {
 let _ledgerFrozenControls = [];
 function freezeLedgerInvoiceControls() {
   if (_ledgerFrozenControls.length) return;
-  for (const node of document.querySelectorAll('#searchRows, #mobileRows, #custPanel, #docTypeSel, #discountsBtn, #phoneListBtn, #togglesMenu, #saveBtn, #chargeCardBtn, #saleDateRow')) {
+  for (const node of document.querySelectorAll('#searchRows, #mobileRows, #custPanel, #docTypeSel, #discountsBtn, #phoneListBtn, #togglesMenu, #saveBtn, #chargeCardBtn')) {
     _ledgerFrozenControls.push([node, node.hasAttribute('inert')]);
     node.setAttribute('inert', '');
   }
@@ -9203,9 +9189,6 @@ function syncLedgerInvoiceButtons() {
   const saveButton = document.getElementById('saveBtn');
   if (finalizeButton) finalizeButton.hidden = !enabled;
   if (saveButton) saveButton.hidden = enabled;
-  const dateRow = document.getElementById('saleDateRow');
-  const dateWanted = _docType === 'receipt' || (_docType === 'invoice' && (!enabled || ledgerDesktopHas('saleDate')));
-  if (dateRow) { if (dateRow.hidden && dateWanted) resetSaleDate(); dateRow.hidden = !dateWanted; }
 }
 
 function setLedgerInvoiceStatus(message) {
@@ -9249,31 +9232,6 @@ async function refreshLedgerInvoiceStatus() {
   _ledgerInvoiceStatusTimer = setTimeout(refreshLedgerInvoiceStatus, 5000);
 }
 
-// Sale date for a paper receipt: today or up to 90 days back, Hawaii time (Desktop enforces the same bound).
-const LEDGER_SALE_DATE_MAX_DAYS_BACK = 90;
-function ledgerSaleDateBounds(nowMs = Date.now()) {
-  const day = ms => new Date(ms - 10 * 3600000).toISOString().slice(0, 10);
-  return { min: day(nowMs - LEDGER_SALE_DATE_MAX_DAYS_BACK * 86400000), max: day(nowMs) };
-}
-// '' when the date may be used (blank means today), else the refusal code.
-function ledgerSaleDateProblem(value, bounds = ledgerSaleDateBounds()) {
-  if (value === '') return '';
-  const real = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(value + 'T00:00:00Z') : null;
-  if (!real || Number.isNaN(real.getTime()) || real.toISOString().slice(0, 10) !== value) return 'sale_date_invalid';
-  return value < bounds.min || value > bounds.max ? 'sale_date_out_of_range' : '';
-}
-// Receipts (and invoices not finalized through Ledger): the picked past day at the real time of day.
-// The document number and TxnId keep the real clock.
-function ledgerBackdated(real, value, bounds = ledgerSaleDateBounds()) {
-  if (!value || ledgerSaleDateProblem(value, bounds) || value >= bounds.max) return real;
-  const [y, m, d] = value.split('-').map(Number);
-  return new Date(y, m - 1, d, real.getHours(), real.getMinutes(), real.getSeconds());
-}
-function shownDocDate(real) {
-  if ((typeof _ledgerOutputCoordinator !== 'undefined' && _ledgerOutputCoordinator?.current()) || _reprintSource || _currentTxnDate) return real;
-  const row = document.getElementById('saleDateRow');
-  return row && !row.hidden ? ledgerBackdated(real, document.getElementById('saleDate').value) : real;
-}
 // Desktop builds that predate sale_date / new_customer do not advertise these; the page then behaves as before.
 const ledgerDesktopHas = key => window.mpeDesktop?.numbering?.[key] === true;
 // One plain sentence per Ledger refusal: what happened and what to do. Unknown codes name themselves so they can be reported.
@@ -9304,8 +9262,6 @@ const LEDGER_FINALIZE_MESSAGES = {
   source_binding: 'The invoice changed while it was being finalized. Nothing was sent. Review the draft and Finalize again.',
   release_unattested: 'This register is running unverified invoice code. Nothing was sent. Restart the app, then Finalize again.',
   local_integrity_uncertain: 'The invoice number may have saved but confirmation was interrupted. Press Finalize Invoice again; do not make another copy.',
-  sale_date_invalid: 'The sale date is not a valid date. Pick the date again, then Finalize.',
-  sale_date_out_of_range: 'The sale date must be today or up to 90 days back. Pick the date again, then Finalize.',
   integrity_conflict: 'Ledger could not confirm this invoice. Do not press Finalize again. Check Transaction History for the invoice number. If it is not there, tell Trevor.',
   // This computer's own Ledger sign-in (Desktop returns the server's code unchanged).
   device_revoked: 'This computer was shut off in Ledger. Nothing was sent. Ask Trevor to set it up again (Desktop Settings, Set up this computer), then Finalize again.',
@@ -9337,15 +9293,11 @@ async function finalizeLedgerInvoice(choice = {}) {
   hideLedgerCustomerChooser();
   lockLedgerOutputUi();
   try {
-    const saleDate = String(document.getElementById('saleDate')?.value || '');
-    const dateProblem = ledgerDesktopHas('saleDate') ? ledgerSaleDateProblem(saleDate) : '';
-    if (dateProblem) throw ledgerRefusalError(dateProblem);
     const value = id => String(document.getElementById(id)?.value || '').trim();
     const customer = { name: value('custName'), company: value('custCompany'), phone: value('custPhone'), email: value('custEmail'),
       address: [value('custAddr'), [value('custCity'), value('custState'), value('custZip')].filter(Boolean).join(', ')].filter(Boolean).join('\n') };
     const newCustomer = choice.new_customer === true;
     const reply = await numbering.resolveCustomer({ customer, billing_address: ledgerBillingAddress(),
-      ...(ledgerDesktopHas('saleDate') ? { sale_date: saleDate || null } : {}),
       provider_id: newCustomer ? null : choice.provider_id || _ledgerAdoptedCustomer?.proof?.provider_id || null,
       ...(newCustomer ? { new_customer: true } : {}) });
     if (!reply.ok) {
@@ -9400,33 +9352,6 @@ function showLedgerCustomerChooser(candidates) {
   add('New customer', { new_customer: true });
   node.hidden = false;
 }
-// Date control: today by default; bounds shown to the picker, enforced again before sending.
-function resetSaleDate() {
-  const input = document.getElementById('saleDate');
-  if (!input) return;
-  const { min, max } = ledgerSaleDateBounds();
-  input.min = min; input.max = max; input.value = '';   // blank = today
-  syncSaleDateLabel();
-}
-function openSaleDate() {
-  const input = document.getElementById('saleDate');
-  if (!input) return;
-  try { input.showPicker(); } catch { input.focus(); input.click(); }
-}
-function clearSaleDate() {
-  const input = document.getElementById('saleDate');
-  if (input) input.value = '';
-  syncSaleDateLabel();
-}
-function syncSaleDateLabel() {
-  const btn = document.getElementById('saleDateBtn'), clear = document.getElementById('saleDateClear');
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(document.getElementById('saleDate')?.value || ''));
-  if (!btn) return;
-  btn.textContent = m ? 'Sale date: ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2]) - 1] + ' ' + Number(m[3]) : 'Sale date';
-  btn.classList.toggle('set', !!m);
-  if (clear) clear.hidden = !m;
-}
-
 let _saveFeedbackTimer = null;
 async function saveOnly() {
   if (_docType === 'internal') {
@@ -9462,9 +9387,6 @@ async function prepareAndSaveForPrint(
   { prepareOutput = true, outputKind = null } = {},
 ) {
   if (document.body.dataset.ledgerContactMode === '1') throw new Error('Finish customer details before returning to the register.');
-  { const row = document.getElementById('saleDateRow'), problem = row && !row.hidden && !_currentTxnDate && !_reprintSource
-      ? ledgerSaleDateProblem(String(document.getElementById('saleDate').value || '')) : '';
-    if (problem) throw ledgerRefusalError(problem); }
   if (prepareOutput && _printPrepared) return _ledgerOutputCoordinator?.current()
     || Object.freeze({ mode: 'legacy', reused: true });
   const preparationKey = JSON.stringify([completionAction, prepareOutput, outputKind]);
@@ -10146,7 +10068,7 @@ async function exportPdf() {
         finalized.document_number,
       );
     }
-    const now = finalized ? new Date(finalized.completion_at) : shownDocDate(reserveDocDate() || new Date());
+    const now = finalized ? new Date(finalized.completion_at) : (reserveDocDate() || new Date());
     const number = finalized?.document_number || activeDocNumber() || formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
@@ -10202,7 +10124,7 @@ async function emailDoc() {
   clearToolFailure();
   setBtn('⏳', true);
   try {
-    const now    = shownDocDate(reserveDocDate() || new Date());
+    const now    = (reserveDocDate() || new Date());
     const number = activeDocNumber() || formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
@@ -10554,7 +10476,7 @@ function saveToHistory() {
       const ids = new Set(history.map(entry => entry.txnId));
       for (let n = 2; ids.has(order.txnId); n++) order.txnId = base + '-' + n;
     }
-    order.date = (finalized ? now : shownDocDate(now)).toISOString();
+    order.date = now.toISOString();
     order.docType = finalized ? finalized.document_type : _docType;
     order.docNumber = finalized ? finalized.document_number
       : (_pendingTxnDate && _pendingDocNumber) || nextRegisterDocNumber(now);
@@ -10821,7 +10743,6 @@ async function reprintOrder(idx) {
   releaseLedgerInvoiceControls();
   setLedgerInvoiceStatus('');
   hideLedgerCustomerChooser();
-  resetSaleDate();
   const finalizeButton = document.getElementById('finalizeInvoiceBtn');
   if (finalizeButton) { finalizeButton.disabled = false; finalizeButton.textContent = 'Finalize Invoice'; }
   if (window.mpeDesktop?.numbering?.invoiceFinalization) void window.mpeDesktop.numbering.resetDraft();

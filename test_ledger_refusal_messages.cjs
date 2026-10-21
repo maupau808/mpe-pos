@@ -16,7 +16,7 @@ const message = sandbox.m;
 test('each known code has its own plain sentence', () => {
   const codes = ['pos_context_unavailable', 'ledger_unavailable', 'authentication_required', 'not_configured', 'invalid_request',
     'shape_invalid', 'customer_not_found', 'customer_not_adopted', 'customer_ambiguous', 'identity_invalid', 'formal_ineligible',
-    'source_binding', 'release_unattested', 'local_integrity_uncertain', 'integrity_conflict', 'sale_date_invalid', 'sale_date_out_of_range',
+    'source_binding', 'release_unattested', 'local_integrity_uncertain', 'integrity_conflict',
     'csrf_failed', 'replay_collision', 'device_revoked', 'device_scope', 'device_not_set_up', 'unauthenticated', 'too_many_requests', 'too_many_attempts', 'forbidden_origin', 'untrusted_context'];
   const seen = new Set(codes.map(code => message(code)));
   assert.equal(seen.size, codes.length);   // invalid_credentials deliberately shares unauthenticated's sentence
