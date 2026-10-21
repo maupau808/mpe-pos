@@ -196,3 +196,44 @@ test('a quote marked Subtract from inventory count saves PRESELL in column W, an
  const r=setup();r.connect();r.s._docType='receipt';r.s.draft.presell=true;r.save();await r.sync();
  assert.equal(r.sheet().find(row=>row[0]==='TXN')[22]||'','');
 });
+
+function nextTransactionHarness() {
+ const c=setup(),s=c.s;s._docType='receipt';s._nextTransactionBusy=false;s._clearedSale=null;
+ s.lines=[{pn:'0000131',desc:'FS 131',qty:1,ea:529.99}];s.messages=[];s.clears=0;s.saves=0;
+ s.captureSaleLines=()=>clone(s.lines);s.flashScanCommand=(...args)=>s.messages.push(args);
+ s.lockLedgerOutputUi=()=>{s.locked=true;};s.releaseLedgerOutputUi=()=>{s.locked=false;};
+ s.commitActiveBridgeDraft=()=>{};s.noteToolFailure=()=>{};
+ s.prepareAndSaveForPrint=async(action,opts)=>{assert.equal(action,'save_snapshot');assert.equal(opts.prepareOutput,false);s.saves++;if(s.gate)await s.gate;assert.equal(c.save(),true);};
+ s.clearAll=()=>{if(s.refuseClear)return false;assert.ok(s.getHistory().length,'save must precede clear');s.clears++;s.draft=null;s._currentTxnId=null;return true;};
+ const at=html.indexOf('async function saveAndClearTransaction()');
+ vm.runInContext(html.slice(at,html.indexOf('function runScanCommand(',at)),s);
+ return {...c,next:()=>vm.runInContext('saveAndClearTransaction()',s)};
+}
+test('Next Transaction saves locally while offline before clearing, retaining its identity for Undo',async()=>{
+ const c=nextTransactionHarness();assert.equal(await c.next(),true);assert.equal(c.s.clears,1);
+ assert.equal(c.s.getHistory().length,1);assert.equal(c.s.getHistory()[0].historySyncPending,true);
+ assert.equal(c.s._clearedSale.savedTxnId,c.s.getHistory()[0].txnId);
+ assert.equal(c.s._nextTransactionBusy,false);assert.equal(c.s.locked,false);
+});
+test('failed local save leaves the sale and previous Undo snapshot intact',async()=>{
+ const c=nextTransactionHarness();const before=clone(c.s.draft);c.s._clearedSale=['prior'];
+ c.s.localStorage.setItem=()=>{throw Error('quota');};assert.equal(await c.next(),false);
+ assert.deepEqual(c.s.draft,before);assert.equal(c.s.clears,0);assert.deepEqual(c.s._clearedSale,['prior']);assert.equal(c.s.locked,false);
+});
+test('repeated Next Transaction during pending save makes one save and one clear',async()=>{
+ const c=nextTransactionHarness();let release;c.s.gate=new Promise(r=>release=r);
+ const first=c.next();assert.equal(c.s._nextTransactionBusy,true);assert.equal(await c.next(),false);
+ release();assert.equal(await first,true);assert.equal(c.s.saves,1);assert.equal(c.s.clears,1);
+});
+test('unpriced or partly unpriced sales stay on screen instead of silently dropping lines',async()=>{
+ const c=nextTransactionHarness();c.s.lines.push({pn:'UNPRICED',qty:1});assert.equal(await c.next(),false);assert.equal(c.s.saves,0);assert.equal(c.s.clears,0);
+ c.s.draft=null;assert.equal(await c.next(),false);assert.equal(c.s.clears,0);
+});
+test('Internal mode cannot leak into saved history and refused reset keeps Undo unchanged',async()=>{
+ const c=nextTransactionHarness();c.s._docType='internal';assert.equal(await c.next(),false);assert.equal(c.s.saves,0);
+ c.s._docType='receipt';c.s.refuseClear=true;c.s._clearedSale=['prior'];assert.equal(await c.next(),false);assert.equal(c.s.getHistory().length,1);assert.deepEqual(c.s._clearedSale,['prior']);
+});
+test('Next Transaction on an already saved sale retains one transaction',async()=>{
+ const c=nextTransactionHarness();c.save();const id=c.s.getHistory()[0].txnId;assert.equal(await c.next(),true);
+ assert.equal(c.s.getHistory().length,1);assert.equal(c.s._clearedSale.savedTxnId,id);
+});

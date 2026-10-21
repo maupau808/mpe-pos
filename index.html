@@ -1195,7 +1195,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.21.5';
+const POS_RELEASE = '2026.10.21.6';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -3935,6 +3935,7 @@ function flushPendingCatalogScans() {
 }
 
 function acceptDecodedScan(rawValue, format, options = {}) {
+  if (_nextTransactionBusy) { flashScanCommand('Saving the sale — scan again in a moment', 'warn'); return false; }
   if (document.body.dataset.ledgerContactMode === '1') return false;
   if (_ledgerOutputCoordinator?.current()?.document_type === 'invoice' && !isScanCommand(String(rawValue || '').trim())) { flashScanCommand('Invoice finalized — Clear for a new sale', 'warn'); return false; }
   // A package re-group triggered as a side effect of this scan may carry
@@ -4521,6 +4522,7 @@ document.addEventListener('visibilitychange', resetScannerModeIdleTimer);
 const SCAN_COMMAND_REPEAT_MS = 900;
 let _lastScanCommand = '', _lastScanCommandAt = 0;
 let _clearedSale = null;
+let _nextTransactionBusy = false;
 
 function isScanCommand(value) {
   return SCAN_COMMANDS.has(String(value || '').trim().toUpperCase());
@@ -4861,7 +4863,46 @@ function captureSaleLines() {
   return out;
 }
 
+// Next Transaction completes through the existing Save seam before wiping any rows.
+// Local durability is required; Drive delivery remains queued safely when offline.
+async function saveAndClearTransaction() {
+  if (_nextTransactionBusy) return false;
+  if (_docType === 'internal') {
+    flashScanCommand('Switch to Receipt, Invoice, or Quote before saving the sale', 'warn');
+    return false;
+  }
+  _nextTransactionBusy = true;
+  lockLedgerOutputUi();
+  try {
+    commitActiveBridgeDraft();
+    const lines = captureSaleLines();
+    const order = captureOrder();
+    if (!order || order.items.length !== lines.length) {
+      flashScanCommand('Enter a price for every item before Next Transaction — sale kept on screen', 'warn');
+      return false;
+    }
+    await prepareAndSaveForPrint('save_snapshot', { prepareOutput: false });
+    const txnId = _currentTxnId;
+    if (!txnId || !getHistory().some(entry => entry.txnId === txnId)) {
+      throw new Error('The sale could not be verified in local history');
+    }
+    if (clearAll() === false) return false;
+    lines.savedTxnId = txnId;
+    _clearedSale = lines;
+    flashScanCommand('Sale saved — ready for the next transaction. Undo reopens the saved sale.', 'ok');
+    return true;
+  } catch (error) {
+    flashScanCommand('Sale not cleared — saving failed. Use Save to retry.', 'err');
+    noteToolFailure('Next Transaction save', error);
+    return false;
+  } finally {
+    releaseLedgerOutputUi();
+    _nextTransactionBusy = false;
+  }
+}
+
 function runScanCommand(raw) {
+  if (_nextTransactionBusy) { flashScanCommand('Saving the sale — please wait', 'warn'); return; }
   const payload = String(raw || '').trim().toUpperCase();
   const body = SCAN_COMMANDS.get(payload);
   if (!body) return;
@@ -4935,12 +4976,7 @@ function runScanCommand(raw) {
 
   if (body === 'CLEAR') {
     if (!sheetHasContent()) { flashScanCommand('Already empty', 'ok'); return; }
-    // Stashed BEFORE the wipe: a misfired trigger pull costs one scan of Undo,
-    // not a retyped sale with a customer standing at the counter.
-    _clearedSale = captureSaleLines();
-    clearAll();
-    flashScanCommand(`Cleared ${_clearedSale.length} line${_clearedSale.length === 1 ? '' : 's'} — scan Undo to put it back`, 'warn');
-    return;
+    return saveAndClearTransaction();
   }
 
   // Undo takes back the last thing that happened, whichever it was: normally
@@ -4950,6 +4986,15 @@ function runScanCommand(raw) {
     if (!sheetHasContent()) {
       if (!_clearedSale || !_clearedSale.length) { flashScanCommand('Nothing to undo', 'err'); return; }
       const restored = _clearedSale;
+      if (restored.savedTxnId) {
+        const index = getHistory().findIndex(order => order.txnId === restored.savedTxnId);
+        if (index < 0) { flashScanCommand('Open Transaction History to find the saved sale', 'warn'); return; }
+        return reprintOrder(index).then(() => {
+          if (_reprintSource?.txnId !== restored.savedTxnId) return;
+          _clearedSale = null;
+          flashScanCommand('Reopened the saved sale — saving again updates the same transaction', 'ok');
+        });
+      }
       // Rebuilt at today's List and today's sale rules, like any loaded list.
       const outcome = loadSaleLines(restored, { restoreSnapshot: true });
       _clearedSale = null;
@@ -10777,7 +10822,7 @@ async function reprintOrder(idx) {
   const historyBinding = order.ledgerFinalization
     ? { ...order.ledgerFinalization }
     : null;
-  closeHistory();
+  closeTxnHistory();
   if (!clearAll()) return;
   if (historyBinding) {
     try {

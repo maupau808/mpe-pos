@@ -120,6 +120,7 @@ async function burst(frame, value, options = {}) {
 function reset(frame, type = 'receipt') {
   const win = frameWindow(frame);
   win.clearAll();
+  win.eval("_lastScanCommandAt = 0; _lastScanCommand = ''");
   win.setDocType(type);
   win.setScannerModeActive(false);
 }
@@ -819,13 +820,20 @@ pos.addEventListener('load', async () => {
       assert(phoneResolved.candidates[0]?.pn === '22295' && phoneResolved.serial === '421173038', 'phone Toro QR resolution failed');
     });
 
-    await test('Clear command still requires and accepts two pulls', async () => {
+    await test('Next Transaction saves before clearing on one pull and Undo reopens the same sale', async () => {
       reset(pos); await burst(pos, codeC);
       const clear = '~MPE2:Q7X4:CLEAR:2D9M';
+      const historyBefore = win.getHistory().length;
       await burst(pos, clear, { burstGap: 3000 });
-      assert(filledRows(pos).length === 1, 'first Clear pull cleared sale');
+      await waitFor(() => !win.eval('_nextTransactionBusy'));
+      assert(filledRows(pos).length === 0, 'one Next Transaction pull did not clear the saved sale');
+      assert(win.getHistory().length === historyBefore + 1, 'sale was not saved before clearing');
+      const txnId = win.getHistory()[0].txnId;
       await burst(pos, clear, { burstGap: 120 });
-      assert(filledRows(pos).length === 0, 'second Clear pull did not clear sale');
+      assert(win.getHistory().length === historyBefore + 1, 'repeat clear duplicated the sale');
+      await burst(pos, '~MPE2:Q7X4:UNDO:5R8P');
+      await waitFor(() => filledRows(pos).length === 1);
+      assert(win.eval('_reprintSource?.txnId') === txnId, 'Undo did not retain the saved transaction identity');
     });
 
     await test('Need to Order marks the last scan, repeats safely, and can be unticked', async () => {
@@ -875,10 +883,11 @@ pos.addEventListener('load', async () => {
       assert(/Undo/i.test(pos.contentDocument.querySelector('[aria-label="Undo command QR code"]')?.textContent || ''), 'Undo command disappeared after printing');
       assert(/sale kept/i.test(pos.contentDocument.getElementById('scannerModeStatus')?.textContent || ''), 'kept-sale status was not shown');
       const clear = '~MPE2:Q7X4:CLEAR:2D9M';
+      const historyBefore = win.getHistory().length;
       await burst(pos, clear, { burstGap: 3000 });
-      assert(filledRows(pos).length === 1, 'first post-print Clear pull cleared the sale');
-      await burst(pos, clear, { burstGap: 120 });
-      assert(filledRows(pos).length === 0, 'second post-print Clear pull did not clear the sale');
+      await waitFor(() => !win.eval('_nextTransactionBusy'));
+      assert(filledRows(pos).length === 0, 'post-print Next Transaction did not clear the saved sale');
+      assert(win.getHistory().length === historyBefore, 'post-print Next Transaction duplicated the sale');
       assert(!pos.contentDocument.getElementById('scannerModeNextCommand')?.classList.contains('is-next'), 'Next transaction emphasis did not reset after Clear');
     });
 
@@ -949,10 +958,9 @@ pos.addEventListener('load', async () => {
       // SCAN_COMMAND_REPEAT_MS, and the next test opens with its own UNDO.
       await burst(pos, codeA);
       await burst(pos, '~MPE2:Q7X4:CLEAR:2D9M');
-      assert(/scan clear again/i.test(status()), `pending Clear was silent: ${status()}`);
-      await burst(pos, '~MPE2:Q7X4:CLEAR:2D9M', { burstGap: 120 });
-      assert(filledRows(pos).length === 0, 'confirmed Clear did not clear the sale');
-      assert(/cleared 1 line/i.test(status()), `Clear result was silent: ${status()}`);
+      await waitFor(() => !win.eval('_nextTransactionBusy'));
+      assert(filledRows(pos).length === 0, 'Next Transaction did not clear the saved sale');
+      assert(/sale saved/i.test(status()), `Next Transaction save result was silent: ${status()}`);
       win.setScannerModeActive(false);
     });
 
