@@ -1195,7 +1195,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.21.6';
+const POS_RELEASE = '2026.10.21.7';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1848,12 +1848,14 @@ async function maybeAutoRefresh() {
     _checkingCatalog = false;
   }
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); flushStockSessionQueue(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); flushStockSessionQueue(); retryTransactionSync(); } });
 setInterval(() => { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); }, 60 * 1000);
 setInterval(checkForPosUpdate, 5 * 60 * 1000);
 setInterval(flushPendingPriceChanges, PRICE_CHANGE_RETRY_MS);
 setInterval(flushPendingReorders, PRICE_CHANGE_RETRY_MS);
 setInterval(flushStockSessionQueue, PRICE_CHANGE_RETRY_MS);
+setInterval(retryTransactionSync, 60 * 1000);
+window.addEventListener('online', retryTransactionSync);
 
 async function fetchFromDrive(options = {}) {
   if (desktopGoogleAvailable()) {
@@ -6604,10 +6606,27 @@ function flushPendingPartCodes() {
 // with the Drive Transactions sheet. One read clears false backlog entries that are
 // already present; only a bounded number of genuinely missing transactions are pushed.
 const AUTO_TXN_PUSH_LIMIT = 10;
-async function flushUnpushedTxns() {
+let _txnRecoveryPromise = null;
+function flushUnpushedTxns() {
+  if (_txnRecoveryPromise) return _txnRecoveryPromise;
+  _txnRecoveryPromise = reconcileUnpushedTxns()
+    .catch(error => { console.warn('[MPE] Transaction reconciliation deferred:', error.message); })
+    .finally(() => { _txnRecoveryPromise = null; });
+  return _txnRecoveryPromise;
+}
+async function retryTransactionSync() {
+  if (!googleSessionAvailable() || window.mpeDesktop?.contactOnly) return;
+  try {
+    const historyOpen = !document.getElementById('txnModal')?.classList.contains('hidden');
+    if (historyOpen) await refreshTxns({ silent: true });
+    else await flushUnpushedTxns();
+  } catch (error) { console.warn('[MPE] Transaction retry deferred:', error.message); }
+}
+async function reconcileUnpushedTxns() {
   if (!googleSessionAvailable()) return;
   const pushed = getPushedTxnIds();
-  const queue = getHistory().filter(o => o.txnId && !pushed.has(o.txnId));
+  const queue = getHistory().filter(o => o.txnId && !pushed.has(o.txnId))
+    .sort((a, b) => (Date.parse(a.date) || 0) - (Date.parse(b.date) || 0));
   if (!queue.length) return;
 
   let sheetRows;
@@ -6628,7 +6647,7 @@ async function flushUnpushedTxns() {
   let n = 0;
   for (const order of missing.slice(0, AUTO_TXN_PUSH_LIMIT)) {
     try { await pushTransactionToSheet(order); n++; }
-    catch (e) { break; }   // network/auth hiccup — leave the rest for next sign-in
+    catch (e) { break; }   // retain on failure; the minute retry will resume
   }
   if (alreadyPresent.length || n) console.log(
     '[MPE] Transaction recovery:',
@@ -6727,9 +6746,16 @@ function acknowledgeTransactionSnapshot(order) {
 let _transactionPushChain = Promise.resolve();
 function pushTransactionToSheet(order) {
   const attempt = _transactionPushChain.catch(() => {}).then(() => {
-    if (order?.mode === 'customer-contact') return writeTransactionToSheet(order);
-    const latest = getHistory().find(entry => entry.txnId === order?.txnId);
-    return writeTransactionToSheet(latest || order);
+    const write = () => {
+      if (order?.mode === 'customer-contact') return writeTransactionToSheet(order);
+      const latest = getHistory().find(entry => entry.txnId === order?.txnId);
+      return writeTransactionToSheet(latest || order);
+    };
+    // Native sale tabs share storage: serialize their writes too, so a retry
+    // cannot append the same pending sale while another tab is uploading it.
+    return typeof navigator !== 'undefined' && navigator.locks?.request
+      ? navigator.locks.request('mpe-pos-transaction-write', write)
+      : write();
   });
   _transactionPushChain = attempt;
   return attempt;
@@ -7050,6 +7076,8 @@ function closeLedgerContact() {
 // TxnID, and searches client-side across name/company/product/part#/serial/date.
 // Cached in IndexedDB so reopening is instant; ↻ Refresh re-pulls from Drive.
 let _txns = null, _txnsLoadedAt = 0, _txnShown = [];
+let _txnRefreshWarning = "";
+let _txnRefreshPromise = null;
 
 async function _idbPut(key, value) {
   const db = await openDB();
@@ -7147,31 +7175,40 @@ async function initTxns() {
   } catch (e) { _setTxnStatus('Error: ' + e.message); }
 }
 
-async function refreshTxns(opts) {
+function refreshTxns(opts) {
+  if (_txnRefreshPromise) return _txnRefreshPromise;
+  _txnRefreshPromise = loadFreshTransactions(opts).finally(() => { _txnRefreshPromise = null; });
+  return _txnRefreshPromise;
+}
+async function loadFreshTransactions(opts) {
   const silent = opts && opts.silent;
-  if (!silent) _setTxnStatus('Loading from Drive…');
+  if (!silent) _setTxnStatus('Syncing transaction history…');
   try {
+    // Refresh must also send this computer's backlog, not just download others.
+    await flushUnpushedTxns();
     const rows = await sheetsGet(TXN_SHEET);
     _txns = await parseTransactionsWithContacts(rows);
     _txnsLoadedAt = Date.now();
+    _txnRefreshWarning = '';
     try { await _idbPut('txnCache', { at: _txnsLoadedAt, rows }); } catch {}
     renderTxnResults();
   } catch (e) {
-    if (silent) { console.warn('[MPE] Background txn refresh failed:', e.message); return; }
-    const hint = /sign|token|401|unauth/i.test(e.message) ? ' — sign in to Google first.'
-               : /parse range/i.test(e.message) ? ' — no "Transactions" tab found yet.' : '';
-    _setTxnStatus('Could not load: ' + e.message + hint);
+    _txnRefreshWarning = /sign|token|401|unauth/i.test(e.message)
+      ? 'Refresh failed — sign in to Google'
+      : 'Refresh failed — showing saved history';
+    console.warn('[MPE] Transaction refresh deferred:', e.message);
+    renderTxnResults();
   }
 }
 
 function renderTxnResults() {
-  if (!_txns) return;
   const q = (document.getElementById('txnSearch').value || '').trim().toLowerCase();
   const tokens = q.split(/\s+/).filter(Boolean);
   const qCollapsed = q.replace(/[^a-z0-9]/g, '');   // for space-insensitive serial match
-  const pending = getHistory().filter(order => order.historySyncPending);
+  const pushed = getPushedTxnIds();
+  const pending = getHistory().filter(order => order.txnId && (order.historySyncPending || !pushed.has(order.txnId)));
   const pendingIds = new Set(pending.map(order => order.txnId));
-  const transactions = _txns.filter(order => !pendingIds.has(order.txnId))
+  const transactions = (_txns || []).filter(order => !pendingIds.has(order.txnId))
     .concat(_parseTxnRows(pending.flatMap(order => transactionRowsForOrder(order))));
   let res = tokens.length
     ? transactions.filter(t => tokens.every(tok => t._hay.includes(tok))
@@ -7186,7 +7223,9 @@ function renderTxnResults() {
   const synced = _txnsLoadedAt ? new Date(_txnsLoadedAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
   _setTxnStatus(`${total} transaction${total!==1?'s':''}${q?' matching':''}`
     + (total > _txnShown.length ? ` · showing first ${_txnShown.length}` : '')
-    + ` · synced ${synced}`);
+    + ` · synced ${synced}`
+    + (pending.length ? ` · ${pending.length} waiting to sync from this computer` : '')
+    + (_txnRefreshWarning ? ` · ${_txnRefreshWarning}` : ''));
 }
 
 function _fmtMoney(v) {

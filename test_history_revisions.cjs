@@ -14,7 +14,7 @@ function setup() {
     _lastPrintedOrder: null, _lastPushStatus: null, _ledgerOutputCoordinator: null,
     HISTORY_KEY: 'history', HISTORY_MAX: 1000, PUSHED_TXNIDS_KEY: 'pushed',
     SHEETS_ID: 'test', TXN_SHEET: 'Transactions', DOC_TITLES: {quote:'Quote',receipt:'Receipt',invoice:'Invoice'},
-    _txns: null, _txnsLoadedAt: 0, _txnShown: [],
+    _txns: null, _txnsLoadedAt: 0, _txnShown: [], _txnRefreshWarning: '', _txnRefreshPromise: null,
     captureOrder: () => clone(s.draft), maybeSaveNewCustomer() {}, updatePrintBanner() {},
     updatePriceChangesBadge() {}, _idbPut: async () => {},
     googleSessionAvailable: () => connected,
@@ -236,4 +236,44 @@ test('Internal mode cannot leak into saved history and refused reset keeps Undo 
 test('Next Transaction on an already saved sale retains one transaction',async()=>{
  const c=nextTransactionHarness();c.save();const id=c.s.getHistory()[0].txnId;assert.equal(await c.next(),true);
  assert.equal(c.s.getHistory().length,1);assert.equal(c.s._clearedSale.savedTxnId,id);
+});
+
+test('automatic retry resumes a failed upload without another sign-in',async()=>{
+ const c=setup();c.save();c.connect();c.fail(true);
+ c.s.document={getElementById:()=>({classList:{contains:()=>true}})};c.s.window={};
+ await vm.runInContext('retryTransactionSync()',c.s);assert.equal(c.s.countUnpushedTxns(),1);
+ c.fail(false);await vm.runInContext('retryTransactionSync()',c.s);
+ assert.equal(c.s.countUnpushedTxns(),0);assert.equal(c.sheet().filter(r=>r[0]==='TXN').length,1);
+});
+test('repeated automatic passes drain a backlog larger than ten without losing or duplicating sales',async()=>{
+ const c=setup();for(let i=0;i<23;i++){c.s._currentTxnId=null;c.s._currentTxnDate=null;c.save();}
+ c.connect();await c.flush();assert.equal(c.s.countUnpushedTxns(),13);
+ await c.flush();assert.equal(c.s.countUnpushedTxns(),3);
+ await c.flush();assert.equal(c.s.countUnpushedTxns(),0);
+ const txns=c.sheet().filter(r=>r[0]==='TXN');assert.equal(txns.length,23);assert.equal(new Set(txns.map(r=>r[1])).size,23);
+});
+test('overlapping recovery triggers share one reconciliation and one verified transaction',async()=>{
+ const c=setup();c.save();c.connect();const get=c.s.sheetsGet;let resolve,reads=0;
+ const gate=new Promise(r=>resolve=r);c.s.sheetsGet=async range=>{reads++;await gate;return get(range);};
+ const first=c.flush(),second=c.flush();assert.equal(first,second);assert.equal(reads,1);
+ resolve();await Promise.all([first,second]);assert.equal(c.s.countUnpushedTxns(),0);assert.equal(c.sheet().length,2);
+});
+function installHistoryView(c) {
+ const els={txnSearch:{value:''},txnList:{innerHTML:''}};let status='';
+ Object.assign(c.s,{document:{getElementById:id=>els[id]},_setTxnStatus:text=>{status=text;},_txnRowHtml:t=>t.txnId});
+ const parse=html.indexOf('function _parseTxnRows(');vm.runInContext(html.slice(parse,html.indexOf('function _setTxnStatus',parse)),c.s);
+ c.s.parseTransactionsWithContacts=async rows=>c.s._parseTxnRows(rows);
+ const refresh=html.indexOf('function refreshTxns(opts)');vm.runInContext(html.slice(refresh,html.indexOf('function _txnRowHtml',refresh)),c.s);
+ return {status:()=>status,els};
+}
+test('history Refresh uploads local backlog before downloading the shared list',async()=>{
+ const c=setup();c.save();c.connect();const view=installHistoryView(c);
+ await c.s.refreshTxns();assert.equal(c.s.countUnpushedTxns(),0);assert.equal(c.s._txnShown.length,1);
+ assert.ok(!view.status().includes('waiting to sync'));assert.ok(!view.status().includes('Refresh failed'));
+});
+test('failed history refresh keeps local-only legacy rows visible and explicitly reports stale history',async()=>{
+ const c=setup();c.save();const order=c.s.getHistory()[0];delete order.historySyncPending;c.storage.set('history',JSON.stringify([order]));
+ const view=installHistoryView(c);c.s.sheetsGet=async()=>{throw Error('offline');};
+ await c.s.refreshTxns({silent:true});assert.equal(c.s._txnShown.length,1);
+ assert.match(view.status(),/1 waiting to sync from this computer/);assert.match(view.status(),/Refresh failed/);
 });
