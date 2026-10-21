@@ -802,6 +802,38 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   /* Darken the grayscale logo while preserving its white bitmap background. */
   .print-header img { filter: grayscale(1) contrast(2) !important; }
 }
+/* Counter layout is screen-only. The original receipt DOM and print styles remain authoritative. */
+#counterView{display:none}
+@media screen{
+ body.counter-view{padding:0!important;background:#fffdfa;zoom:1;overflow:hidden;color:#202c24}
+ body.counter-view>.wrap{display:none!important}
+ body.counter-view #counterView{position:fixed;inset:0;display:flex;flex-direction:column;background:#fffdfa;color:#202c24;font:14px -apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;z-index:2}
+ #counterView *{box-sizing:border-box}#counterView button,#counterView input{font:inherit;color:inherit}#counterView button{cursor:pointer;border:1px solid #d5ddd3;border-radius:5px;background:#fff;padding:8px 10px;font-weight:600}#counterView button:hover{background:#eef3ea}#counterView input{min-width:0;border:1px solid #d5ddd3;border-radius:5px;background:#fff;padding:6px 8px}#counterView :focus-visible{outline:2px solid #273d2d;outline-offset:2px}
+ #counterView .cv-top{height:54px;min-height:54px;display:flex;align-items:center;gap:6px;padding:6px 16px;border-bottom:1px solid #d5ddd3;flex-shrink:0}#counterView .cv-tabs{display:flex;gap:3px;max-width:220px;overflow:auto}#counterView .cv-tab{font-size:12px;white-space:nowrap}#counterView .cv-tab.active{background:#dce9db;border-color:#91ab94}#counterView .cv-new{font-size:22px;padding:0;width:30px;height:34px}#counterView .cv-docs{margin-left:auto;display:flex;align-items:center}#counterView #docTypeSel{display:flex;gap:3px;margin:0}#counterView #docTypeSel button{font-size:12px;padding:8px;border-color:transparent;background:transparent}#counterView #docTypeSel button.active{background:#e1e8dd;border-color:#a6b5a0}#counterView #txnHistoryBtn{font-size:14px;font-weight:700;color:#294e35;border-color:#8da791;background:#e0eae1;margin-left:22px;margin-right:auto;padding:10px 14px;white-space:nowrap}#counterView .cv-top .icon-btn,#counterView .cv-top .cv-icon{display:flex;align-items:center;justify-content:center;width:36px;height:36px;padding:8px;font-size:16px;flex-shrink:0}#counterView .cv-top svg{width:19px;height:19px}#counterView #themeToggle{height:36px;width:36px;padding:4px;font-size:18px}
+ #counterView .menu-wrap{position:relative}#counterView .menu-panel{z-index:90;max-height:calc(100dvh - 70px);overflow:auto;background:#fffdfa;color:#202c24}#counterView .menu-panel button{font-size:13px}
+ #counterView .cv-quote{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid #d5ddd3;background:#f2f5f0;font-size:12px}#counterView .cv-quote[hidden]{display:none}#counterView .cv-quote label{display:flex;align-items:center;gap:6px}
+ #counterView .cv-body{display:grid;grid-template-columns:minmax(0,1fr) 286px;flex:1;min-height:0}#counterView .cv-work{padding:10px 16px;min-width:0;overflow:auto}#counterView .cv-head,#counterView .cv-line{display:grid;grid-template-columns:var(--cv-columns,22px minmax(150px,1fr) 64px 58px 68px 92px 44px 104px 26px);gap:8px;padding:5px 4px;align-items:center}#counterView .cv-head{position:sticky;top:-10px;z-index:2;background:#fffdfa;border-bottom:1px solid #d5ddd3;font-size:11px;min-height:32px}#counterView .cv-head>span{text-align:right}#counterView .cv-head>span:nth-child(2){display:flex;justify-content:space-between;text-align:left;gap:8px}#counterView .cv-head .cv-reorder-label{font-size:10px;width:84px;text-align:right}#counterView .cv-head>span:nth-child(7){text-align:center}#counterView .cv-article{border-bottom:1px solid #d5ddd3}#counterView .cv-article:nth-child(even){background:#f3f5f0}#counterView .cv-line{min-height:64px}#counterView .cv-desc{position:relative;min-width:0}#counterView .cv-desc input.cv-description{height:26px;line-height:22px;width:100%;font-size:16px;font-weight:600;letter-spacing:-.015em;text-align:left;padding:1px 3px;border-color:transparent;background:transparent}#counterView .cv-desc input.cv-description:hover,#counterView .cv-desc input.cv-description:focus{border-color:#b8c6b5;background:#fff}#counterView .cv-meta{min-height:18px;padding-right:22px;display:flex;align-items:start;gap:4px}#counterView .cv-sn-group,#counterView .cv-sn-overflow{display:flex;flex-wrap:wrap;gap:4px 8px}#counterView .cv-sn-group{width:100%}#counterView .cv-sn{display:flex;align-items:center;gap:4px;font-size:10px;color:#4b6052;flex:0 0 140px;height:18px}#counterView .cv-sn span{white-space:nowrap}#counterView .cv-sn input{width:108px;max-width:108px;flex:0 0 108px;height:18px;font-size:10px;padding:1px 4px;line-height:14px}#counterView .cv-sn-overflow{padding:0 30px 8px 34px}#counterView .cv-reorder{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:13px;height:13px;margin:0;accent-color:#315e41}
+ #counterView .cv-line>input{width:100%;padding:5px 4px;text-align:right;border-color:transparent;background:transparent;font-variant-numeric:tabular-nums}#counterView .cv-line>input:hover,#counterView .cv-line>input:focus{border-color:#b8c6b5;background:#fff}#counterView .cv-cost,#counterView .cv-margin,#counterView .cv-discount{font-size:12px;color:#536158!important}#counterView .cv-ea{font-size:15px}#counterView .cv-line .cv-qty{font-size:16px;text-align:center;border-color:#d5ddd3;background:#fff}#counterView .cv-line .cv-sub{font-size:18px;font-weight:650}#counterView .cv-line .cv-grip,#counterView .cv-line .cv-clear{padding:4px;border-color:transparent;background:transparent;color:#59665c;width:24px;height:30px;font-size:18px;line-height:20px}#counterView .cv-grip{cursor:grab;touch-action:none}#counterView .cv-clear:hover{color:#963d32;background:#fff0ec}#counterView .cv-drop{outline:2px solid #315e41;outline-offset:-2px}
+ #counterView .cv-entry{padding:8px 4px 8px 34px}#counterView .cv-entry input{width:100%;font-size:16px;padding:10px 12px}#counterView .cv-checkout{padding:14px 16px;background:#f2f5f0;border-left:1px solid #d5ddd3;display:flex;flex-direction:column;gap:10px;min-width:0;overflow:auto}#counterView .cv-customer-label{font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:space-between}#counterView #custPanel{display:grid!important;grid-template-columns:1fr 52px 72px;gap:6px;margin:0;padding:0;border:0;background:transparent;position:relative}#counterView #custPanel>input{width:100%;font-size:11px;padding:7px 8px;min-height:30px;grid-column:1/-1;display:block}#counterView #custCity{grid-column:1!important}#counterView #custState{grid-column:2!important}#counterView #custZip{grid-column:3!important}#counterView .cv-note{font-size:11px;align-self:flex-start;padding:5px 8px}#counterView .cv-summary{margin-top:auto}#counterView .summary{width:auto!important;min-width:0!important;margin:0;padding:0;background:transparent;border:0}#counterView .sum-row{padding:4px 0;display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#202c24}#counterView .sum-row.total{display:block;border-top:1px solid #d5ddd3;margin-top:8px;padding-top:10px}#counterView .sum-row.total .sum-val{display:block;text-align:left;font-size:38px;font-weight:700;margin-top:4px;letter-spacing:-.025em}#counterView .sum-val{font-variant-numeric:tabular-nums}#counterView #sumInternal{display:none}#counterView .cv-fee{display:flex;align-items:center;gap:6px;font-size:12px;color:#59665c}#counterView .cv-fee input{margin:0}#counterView .cv-checkout #chargeCardBtn,#counterView #finalizeInvoiceBtn{font-size:12px;padding:10px;width:100%}#counterView .cv-order{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}#counterView .cv-order>button{font-size:11px;padding:5px 7px}#counterView .cv-discount-mode{display:flex}#counterView .cv-discount-mode button{padding:4px 7px;font-size:12px}#counterView .cv-discount-mode button.active{background:#dce8dc;border-color:#8ca28b}#counterView .cv-order>input{width:72px;padding:5px;font-size:12px;text-align:right}#counterView .cv-order-off{font-weight:800}
+ #counterView .cv-deck{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;padding:9px 16px;background:#f2f5f0;border-top:1px solid #d5ddd3;flex-shrink:0}#counterView .cv-command{min-height:106px;display:flex;align-items:center;justify-content:flex-start;gap:18px;padding:6px 12px;border-radius:5px;font-size:25px;text-align:left;line-height:1.1;min-width:0}#counterView .cv-command svg{width:80px;height:80px;background:#fff;flex:0 0 80px;shape-rendering:crispEdges}#counterView .cv-command span{white-space:normal}#counterView .cv-command.print{background:#315e41;color:#fff;border-color:#315e41}#counterView .cv-command.print:hover{background:#274c34}#counterView .cv-command.save{background:#cfdee7;color:#294859;border-color:#8faabd}#counterView .cv-command.undo{background:#eddfb3;color:#675321;border-color:#bda86b}#counterView .cv-command.next{background:#ecd5ce;color:#853b30;border-color:#c29487;font-size:22px}#counterView .cv-feedback{min-height:22px;padding:3px 16px;border-top:1px solid #d5ddd3;font-size:11px;flex-shrink:0}#counterView .cv-feedback.err{color:#963d32}#counterView .cv-feedback.warn{color:#805600}
+ body.counter-view .hist-modal{z-index:100}body.counter-view #ledgerCustomerChooser,body.counter-view #ledgerInvoiceStatus{font-size:12px}body.counter-view[data-ledger-contact-mode="1"]>.wrap{display:block!important}body.counter-view[data-ledger-contact-mode="1"] #counterView{display:none}
+ .cv-results{position:fixed!important;z-index:200!important;background:#fffdfa;color:#202c24;border:1px solid #8da18b;border-radius:6px;padding:6px;box-shadow:0 6px 20px #20382024;overflow:auto;max-height:320px;font:14px -apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}.cv-results button{display:flex;align-items:center;justify-content:space-between;gap:20px;width:100%;padding:10px;border:0;border-radius:4px;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}.cv-results button:hover,.cv-results button.active{background:#e8eee3}.cv-results small{display:block;font-size:11px;color:#59665c;margin-top:3px}.cv-results strong{font-variant-numeric:tabular-nums;white-space:nowrap}
+ body.dark #counterView{background:#1d241f;color:#eff3ed}body.dark #counterView .cv-top,body.dark #counterView .cv-head{background:#1d241f;border-color:#48544a}body.dark #counterView .cv-checkout,body.dark #counterView .cv-deck,body.dark #counterView .cv-quote{background:#252f27;border-color:#48544a}body.dark #counterView .cv-article:nth-child(even){background:#29362b}body.dark #counterView input,body.dark #counterView button{background:#273229;color:#eff3ed;border-color:#48544a}body.dark #counterView .cv-desc input.cv-description,body.dark #counterView .cv-line>input{background:transparent}body.dark #counterView .cv-line>input.cv-qty{background:#273229}body.dark #counterView .sum-row,body.dark #counterView .cv-cost,body.dark #counterView .cv-margin,body.dark #counterView .cv-discount{color:#e1e8dd!important}body.dark #counterView #txnHistoryBtn{background:#36513b;color:#eef6ec}body.dark #counterView .cv-command.print{background:#315e41;color:#fff}body.dark #counterView .cv-command.save{background:#455e70;color:#f0f5f8}body.dark #counterView .cv-command.undo{background:#736437;color:#fff7db}body.dark #counterView .cv-command.next{background:#78564b;color:#fff1eb}body.dark .cv-results{background:#273229;color:#eff3ed}body.dark .cv-results button:hover,body.dark .cv-results button.active{background:#3e5942}
+ @media(max-width:1100px) and (min-width:900px){#counterView .cv-body{grid-template-columns:minmax(0,1fr) 260px}#counterView .cv-top{gap:4px;padding-left:10px;padding-right:10px}#counterView #docTypeSel button{padding:7px}#counterView #txnHistoryBtn{font-size:13px;padding:9px 10px;margin-left:14px}#counterView .cv-top .cv-icon,#counterView .cv-top .icon-btn{width:32px}}
+ @media(max-width:899px){body.counter-view{overflow:auto}body.counter-view #counterView{position:relative;min-height:100dvh;height:auto}#counterView .cv-top{height:auto;flex-wrap:wrap;padding:8px 12px}#counterView .cv-docs{margin-left:0}#counterView #txnHistoryBtn{margin-left:8px;font-size:13px;padding:8px}#counterView .cv-body{display:flex;flex-direction:column}#counterView .cv-work{overflow:visible;padding:10px 12px;min-height:400px}#counterView .cv-head,#counterView .cv-line{grid-template-columns:18px minmax(95px,1fr) 52px 34px 65px 22px;gap:4px}#counterView .cv-head>.cv-support,#counterView .cv-line>.cv-support,#counterView .cv-reorder-label{display:none}#counterView .cv-desc input.cv-description{font-size:14px}#counterView .cv-head>span:nth-child(7){text-align:center}#counterView .cv-checkout{border-left:0;border-top:1px solid #d5ddd3;padding:16px}#counterView .cv-deck{gap:6px;padding:8px}#counterView .cv-command{flex-direction:column;gap:8px;padding:8px 2px;min-height:100px;font-size:16px}#counterView .cv-command.next{font-size:14px}#counterView .cv-command svg{width:58px;height:58px;flex-basis:58px}#counterView .cv-sn{flex-basis:126px}#counterView .cv-sn input{width:92px;max-width:92px;flex-basis:92px}#counterView .cv-summary{margin-top:6px}}
+}
+@media print{#counterView,.cv-results{display:none!important}tr[data-order-discount] td,tr[data-order-discount] input,tr.cv-order-print td,tr.cv-order-print input{font-weight:800!important;color:#000!important}}
+
+
+@media screen{#counterView [hidden],#counterView .hidden{display:none!important}#counterView .cv-top>button,#counterView .cv-top .menu-wrap{flex-shrink:0}#counterView #cvOptions{font-size:12px;padding:8px;width:auto;min-width:0}#counterView .cv-top .cv-history{display:flex;align-items:center;margin-right:auto}#counterView .cv-docs{margin-left:auto}#counterView #txnHistoryBtn{margin-right:0}#counterView #docTypeSel{border:0;border-radius:0;background:transparent}#counterView .cv-top #docTypeSel button.active{color:#294e35}#counterView .cv-top .cv-history{min-width:max-content}body.dark #counterView .sum-label,body.dark #counterView .sum-row.total,body.dark #counterView .cv-fee,body.dark #counterView .cv-sn{color:#e1e8dd}body.dark #counterView .cv-top #docTypeSel button.active{background:#3e5942;color:#eff5ec;border-color:#779379}body.dark #counterView .cv-discount-mode button.active{background:#3e5942;color:#eff5ec}#counterView .cv-quote #presellWrap{margin:0}#counterView .cv-order-print-label{font-weight:800}#counterView .cv-tabs .cv-tab{border-radius:5px 5px 0 0}#counterView .cv-top .cv-icon{min-width:36px}}
+@media screen{#counterView .cv-desc input.cv-description{width:calc(100% - 24px)}}
+@media screen{#counterView .cv-desc input.cv-description{field-sizing:content;width:auto;min-width:8ch;max-width:calc(100% - 24px)}}
+@media screen{#counterView #custEmail::placeholder{color:#7a877d;opacity:1}}
+@media screen{#counterView .cv-top .cv-history{margin-right:0}#counterView .cv-top .output-icons{border:0;padding-left:0}}
+
+@media screen{#counterView #txnHistoryBtn{background:#e4edf3;border-color:#8fa8ba;color:#29485c}#counterView #txnHistoryBtn:hover{background:#d5e3ed;border-color:#698da6}body.dark #counterView #txnHistoryBtn{background:#354e60;border-color:#7898af;color:#edf5fb}}
+
+@media screen{#counterView .cv-tab-group{display:flex;align-items:stretch;flex-shrink:0;border:1px solid #bccbb8;border-radius:5px 5px 0 0;overflow:hidden}#counterView .cv-tab-group .cv-tab{border:0;border-radius:0;padding:8px}#counterView .cv-close-tab{border:0!important;border-radius:0;padding:3px!important;width:22px;font-size:16px!important;background:#eef3e9}#counterView .cv-close-tab:hover{background:#eadbd5;color:#853b30}}
 </style>
 <script defer src="http://localhost:8765/bug-report.js"></script>
 </head>
@@ -1162,7 +1194,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.20.1';
+const POS_RELEASE = '2026.10.21.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -4314,6 +4346,7 @@ const SCAN_COMMANDS = new Map([
   ['~MPE:QTY+1', 'QTY+1'],
   ['~MPE:QTY-1', 'QTY-1'],
   ['~MPE2:Q7X4:PRINT:8K3N', 'PRINT'],
+  ['~MPE2:Q7X4:SAVE:6T8R', 'SAVE'],
   ['~MPE2:Q7X4:CLEAR:2D9M', 'CLEAR'],
   ['~MPE2:Q7X4:UNDO:5R8P', 'UNDO'],
   ['~MPE2:Q7X4:REORDER:9V2J', 'REORDER'],
@@ -4327,6 +4360,7 @@ const SCANNER_IDLE_MS = 3 * 60 * 1000;
 // stickers and PDF417 licences, and a 29 × 29 grid gives each onscreen mark
 // many more pixels than the old long Code 128 symbol could fit into this box.
 const SCANNER_COMMAND_QR_ROWS = {
+  save: '11111110100111101110001111111/10000010001010100000001000001/10111010011110011011001011101/10111010111101001110101011101/10111010000010010001101011101/10000010010010111101001000001/11111110101010101010101111111/00000000011000100111100000000/00101110101100010010010001001/11010001110110111111001100010/11111010110100110100000010011/10001001111101100101011000011/00011011111010100000011100110/01011001101010000010000100100/00011111011000010010100001111/01101001010100011111010100000/11101111101100111011111111101/01101000110000101101100000001/10011110101011100011101001111/01101101110101001110100001010/10100110111001011011111111011/00000000111001101010100011010/11111110011100111000101010111/10000010100010110100100010001/10111010111011011100111110101/10111010010001010100110011100/10111010111100010101110010001/10000010010010100001010001010/11111110001011110100100111011',
   print: '11111110000101011100001111111/10000010011101001000001000001/10111010011100011001001011101/10111010011010101000101011101/10111010101110110011101011101/10000010000101110111001000001/11111110101010101010101111111/00000000101111000000000000000/00110011110011001011011010000/10000101100101110110110110110/11011110001101010101101101110/10111100100100110010100010000/00000010100111010011100100001/11101000001001010011110101000/01111111011111111001000010011/10101001010000010010001011011/01010010011101010011100011100/00000000001010111111010000110/10110110001100000100010000100/00001001111101011001010111110/01101110110111000100111110011/00000000100100011101100010000/11111110111101010110101010110/10000010010011010100100010001/10111010011011111100111110010/10111010111000111101000011110/10111010110110001110010001001/10000010010000111000010110010/11111110010000000101111001010',
   clear: '11111110001100111001101111111/10000010000010000111001000001/10111010110010111011001011101/10111010110001010000001011101/10111010000111001011101011101/10000010000101111000001000001/11111110101010101010101111111/00000000011000011111000000000/00011011010010100001000001100/01000100010110111110001111101/10010010110000000101111101100/00111001000100010011100111000/00110011011000011110001001100/11101100000110101010110010000/01110110100001000101001000001/01011101011001111110101011101/01101011100001010101110001101/10100001110001101110010110010/11111010111111000101011100101/11010000100100010101010000110/11010111101101100010111110001/00000000110111000011100010101/11111110110001001010101010100/10000010010100000111100011010/10111010111110100101111111111/10111010111111101110000101110/10111010001001011100000011111/10000010000011000000100110101/11111110011010001011100011000',
   undo: '11111110011001001110101111111/10000010011001010001101000001/10111010011001100000101011101/10111010011110011001101011101/10111010101101011111101011101/10000010010110000001001000001/11111110101010101010101111111/00000000111000010110000000000/00110011100100011001111010000/00110101110001000000001011010/01010111111110101010001110110/10100100100111100001000000000/00000010000110001000100100001/00100000001010110111110101000/11110010111010110001000010011/01101100010011011010010011011/11101011000010110101110001111/01010001101010011001111100110/10110110110111010011010111100/00111101000010111111010000100/01100110011010101000111110111/00000000111111101101100010010/11111110101011010010101010110/10000010000110001100100010011/10111010010010100000111110000/10111010101100111101000010010/10111010111011100110010001101/10000010010001111110010110010/11111110000101101010100001010',
@@ -4812,8 +4846,13 @@ function captureSaleLines() {
     const serials = Array.from(tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`)).map(field => field.value.trim());
     const serial = serials[0] || '';
     out.push({
-      pn,
-      freeEntry: input.dataset.freeEntry === '1' || undefined, ea: document.getElementById(`price-${i}`)?.dataset.price, desc: document.getElementById(`desc-${i}`)?.textContent.trim() || typed,
+      pn: pn || typed,
+      freeEntry: input.dataset.freeEntry === '1' || undefined, ea: document.getElementById(`price-${i}`)?.dataset.price,
+      originalEa: document.getElementById(`price-${i}`)?.dataset.originalEa,
+      discountPerUnit: document.getElementById(`price-${i}`)?.dataset.discountPerUnit,
+      discountRate: document.getElementById(`price-${i}`)?.dataset.cvDiscountRate,
+      cost: document.getElementById(`cost-${i}`)?.dataset.cost,
+      desc: document.getElementById(`desc-${i}`)?.querySelector('input')?.value || document.getElementById(`desc-${i}`)?.textContent.trim() || typed,
       qty: parseInt(document.getElementById(`qty-${i}`)?.value, 10) || 1,
       serial, serials,
     });
@@ -4829,7 +4868,7 @@ function runScanCommand(raw) {
   const now = Date.now();
   // Print, Undo, and Clear ignore an electrical double-read. ADD commands
   // deliberately stack on repeat.
-  const guarded = /^(PRINT|UNDO|CLEAR)$/.test(body);
+  const guarded = /^(PRINT|SAVE|UNDO|CLEAR)$/.test(body);
   if (guarded && body === _lastScanCommand && now - _lastScanCommandAt < SCAN_COMMAND_REPEAT_MS) return;
   _lastScanCommand = body;
   _lastScanCommandAt = now;
@@ -4880,6 +4919,12 @@ function runScanCommand(raw) {
     return;
   }
 
+  if (body === 'SAVE') {
+    if (!sheetHasContent()) { flashScanCommand('Nothing to save yet', 'err'); return; }
+    saveOnly();
+    return;
+  }
+
   if (body === 'PRINT') {
     if (!sheetHasContent()) { flashScanCommand('Nothing to print yet', 'err'); return; }
     flashScanCommand('Printing…', 'ok');
@@ -4905,7 +4950,7 @@ function runScanCommand(raw) {
       if (!_clearedSale || !_clearedSale.length) { flashScanCommand('Nothing to undo', 'err'); return; }
       const restored = _clearedSale;
       // Rebuilt at today's List and today's sale rules, like any loaded list.
-      const outcome = loadSaleLines(restored);
+      const outcome = loadSaleLines(restored, { restoreSnapshot: true });
       _clearedSale = null;
       flashScanCommand(`Put back ${restored.length} line${restored.length === 1 ? '' : 's'}`
         + (outcome.unmatched.length ? ` · ${outcome.unmatched.length} need${outcome.unmatched.length === 1 ? 's' : ''} a price` : ''),
@@ -5567,7 +5612,9 @@ function previewLineDiscountMargin(i, rawAmount) {
   if (!priceEl || !pInput) return;
   const committed = parseFloat(priceEl.dataset.price) || parseFloat(pInput.value.replace(/[$,]/g, '')) || 0;
   const original = parseFloat(priceEl.dataset.originalEa) || committed;
-  const requested = Math.max(0, parseFloat(String(rawAmount || '').replace(/[$,]/g, '')) || 0);
+  const discountText = String(rawAmount || '').trim();
+  const discountNumber = Math.max(0, parseFloat(discountText.replace(/[$,%]/g, '')) || 0);
+  const requested = discountText.endsWith('%') ? original * Math.min(100, discountNumber) / 100 : discountNumber;
   const charged = Math.max(0, original - Math.min(requested, original));
   updateMarginForLine(i, charged);
 }
@@ -5599,13 +5646,18 @@ function applyLineDiscount(i, amount) {
   const pInput = priceEl?.querySelector('.price-edit');
   if (!priceEl || !pInput) return;
   const raw = amount == null ? priceEl.querySelector('.discount-money')?.value : amount;
-  const requestedOff = Math.max(0, parseFloat(String(raw || '').replace(/[$,]/g, '')) || 0);
+  const discountRaw = String(raw || '').trim();
+  const percentage = discountRaw.endsWith('%');
+  const requested = Math.max(0, parseFloat(discountRaw.replace(/[$,%]/g, '')) || 0);
+  const discountBase = parseFloat(priceEl.dataset.originalEa) || parseFloat(priceEl.dataset.price) || 0;
+  const requestedOff = percentage ? discountBase * Math.min(100, requested) / 100 : requested;
+  if (percentage) priceEl.dataset.cvDiscountRate = Math.min(100, requested); else delete priceEl.dataset.cvDiscountRate;
   if (!(requestedOff > 0)) { removeLineDiscount(i); return; }
   const chargedNow = parseFloat(priceEl.dataset.price) || parseFloat(pInput.value.replace(/[$,]/g, '')) || 0;
   const original = parseFloat(priceEl.dataset.originalEa) || chargedNow;
   if (!(original > 0)) { closeLineDiscount(i); return; }
-  const offEach = Math.min(requestedOff, original);
-  const charged = Math.max(0, original - offEach);
+  const offEach = Math.min(Math.round(requestedOff * 100) / 100, original);
+  const charged = Math.max(0, Math.round((original - offEach) * 100) / 100);
   priceEl.dataset.originalEa = original;
   priceEl.dataset.discountPerUnit = offEach;
   priceEl.dataset.price = charged;
@@ -5617,6 +5669,7 @@ function applyLineDiscount(i, amount) {
 }
 
 function clearLineDiscountMetadata(i) {
+  const target = document.getElementById(`price-${i}`); if (target) delete target.dataset.cvDiscountRate;
   const priceEl = document.getElementById(`price-${i}`);
   if (!priceEl) return;
   delete priceEl.dataset.originalEa;
@@ -5736,7 +5789,7 @@ function onPriceEdit(i, commitBridge = false) {
   delete priceEl._bulkPart; delete priceEl.dataset.bulkTotal;
   if (parseFloat(priceEl.dataset.discountPerUnit) > 0) clearLineDiscountMetadata(i);
   const pInput = priceEl.querySelector('.price-edit');
-  const raw = (pInput ? pInput.value : priceEl.textContent).replace(/[$,]/g, '').trim();
+  const raw = (pInput ? pInput.value : priceEl.textContent).replace(/[$,]/g, '').replace(/^-\s+/, '-').trim();
   const price = parseFloat(raw);
   const discounted = parseFloat(priceEl.dataset.discountPerUnit) > 0;
   if (!isNaN(price) && (price !== 0 || discounted)) {
@@ -7837,6 +7890,7 @@ function updateSNFields(i) {
 }
 
 function applyPart(i, part, options) {
+  tbody.querySelector(`tr[data-row="${i}"]`)?.removeAttribute('data-order-discount');
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
   const activeReorder = reorderRowSignal(i);
   if (activeReorder && (normalizePN(activeReorder.partNumber) !== normalizePN(part?.pn)
@@ -8024,7 +8078,7 @@ function clearRowData(i) {
   descEl.innerHTML = '—'; descEl.className = 'empty-cell'; descEl.contentEditable = 'false'; descEl.dataset.row = '';
   setPrintMake(i, '');
   const tr = tbody.querySelector(`tr[data-row="${i}"]`);
-  if (tr) { delete tr.dataset.warranty; delete tr.dataset.pkgUnits; delete tr.dataset.pkgDeal; delete tr.dataset.pkgPrice; delete tr.dataset.scanOrigin; }
+  if (tr) { delete tr.dataset.orderDiscount; delete tr.dataset.warranty; delete tr.dataset.pkgUnits; delete tr.dataset.pkgDeal; delete tr.dataset.pkgPrice; delete tr.dataset.scanOrigin; }
   document.getElementById(`make-${i}`).textContent = '—';
   const costEl = document.getElementById(`cost-${i}`);
   if (costEl.tagName === 'INPUT') costEl.outerHTML = `<span class="cell-cost" id="cost-${i}">—</span>`;
@@ -8407,7 +8461,7 @@ function buildCopy2HTML() {
 
     // 10 columns to match the live table and print CSS nth-child selectors:
     // 1:PN 2:Desc 3-6(hide) 7:Ea 8:Qty 9:Price 10(hide)
-    rowsHtml += `<tr>
+    rowsHtml += `<tr${/^Discount$/i.test(pn) && /^Order discount\b/.test(desc) ? ' class="cv-order-print"' : ''}>
       <td>${printMake(i) ? `<div class="search-wrap" data-make="${esc(printMake(i)).replace(/"/g, '&quot;')}"><span class="part-input">${esc(pn)}</span></div>` : esc(pn)}</td>
       <td>${esc(desc)}</td>
       <td></td><td></td><td></td><td></td>
@@ -9173,7 +9227,7 @@ function recordOutgoingDocument() {
 let _ledgerFrozenControls = [];
 function freezeLedgerInvoiceControls() {
   if (_ledgerFrozenControls.length) return;
-  for (const node of document.querySelectorAll('#searchRows, #mobileRows, #custPanel, #docTypeSel, #discountsBtn, #phoneListBtn, #togglesMenu, #saveBtn, #chargeCardBtn')) {
+  for (const node of document.querySelectorAll('#searchRows, #mobileRows, #custPanel, #docTypeSel, #discountsBtn, #phoneListBtn, #togglesMenu, #saveBtn, #chargeCardBtn, #cvItems, #cvEntry, #cvOrderValue, #cvNote')) {
     _ledgerFrozenControls.push([node, node.hasAttribute('inert')]);
     node.setAttribute('inert', '');
   }
@@ -9897,7 +9951,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       : `$${ea.toFixed(2)}`;
     let snHtml = '';
     if (it.sn && it.sn.length) snHtml = `<tr><td></td><td colspan="3" style="padding:2px 8px 8px;font-size:12px;color:${PDF_INK}">${it.sn.map(esc).join(' &nbsp; ')}</td></tr>`;
-    const cell = `padding:6px 8px;border-bottom:1px solid ${PDF_LINE};font-size:13px;color:${PDF_INK}`;
+    const cell = `padding:6px 8px;border-bottom:1px solid ${PDF_LINE};font-size:13px;color:${PDF_INK}${/^Discount$/i.test(it.pn) && /^Order discount\b/.test(it.desc) ? ';font-weight:800' : ''}`;
     return `<tr>
       <td style="${cell};white-space:nowrap${it.make ? ';padding-top:2px;padding-bottom:2px' : ''}">${it.make ? `<div style="font-size:12px;line-height:14px">${esc(it.make)}</div><div style="font-size:8px;line-height:9px">${esc(it.pn)}</div>` : esc(it.pn)}</td>
       <td style="${cell}">${esc(it.desc)}</td>
@@ -10219,7 +10273,7 @@ function captureOrder() {
     const priceEl = document.getElementById(`price-${i}`);
     if (!priceEl) continue;
     const pInput = priceEl.querySelector('.price-edit');
-    const ea = parseFloat(pInput ? pInput.value.replace(/[$,]/g, '') : priceEl.dataset.price) || 0;
+    const ea = parseFloat(pInput ? pInput.value.replace(/[$,]/g, '').replace(/^-\s+/, '-') : priceEl.dataset.price) || 0;
     const pn = document.querySelector(`[data-row="${i}"].part-input`)?.value.trim() || '';
     if (!pn) continue;
     // For note rows inline, desc is an input inside the cell
@@ -11152,7 +11206,7 @@ function sheetHasContent() {
 // sale goes through the same Master lookup, sale rules, serial fields and
 // package re-grouping as a loaded one. Prices in the list are ignored on
 // purpose: the sale is rebuilt at today's List and today's sale rules.
-function loadSaleLines(lines) {
+function loadSaleLines(lines, { restoreSnapshot = false } = {}) {
   const unmatched = [], missingSerial = [];
   clearAll();
   while (NUM_ROWS < lines.length + 1) addRow();
@@ -11160,6 +11214,15 @@ function loadSaleLines(lines) {
   for (let i = 0; i < NUM_ROWS; i++) clearRow(i);
 
   lines.forEach((item, i) => {
+    if (restoreSnapshot && /^Discount$/i.test(item.pn || '')) {
+      applyDiscountToRow(i);
+      document.getElementById(`desc-${i}`).querySelector('.discount-desc-input').value = item.desc || 'Discount';
+      const field = document.getElementById(`price-${i}`).querySelector('.price-edit');
+      field.value = fmt(Number(item.ea) || 0);
+      onPriceEdit(i);
+      if (/^Order discount\b/.test(item.desc || '')) tbody.querySelector(`tr[data-row="${i}"]`).dataset.orderDiscount = '1';
+      return;
+    }
     // Undo preserves the operator's custom item and its entered price.
     // Phone list prices still never override Master.
     if (item.freeEntry) {
@@ -11207,6 +11270,16 @@ function loadSaleLines(lines) {
       const fields = tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);
       serials.forEach((sn, k) => { if (fields[k]) fields[k].value = sn; });
       if (!serials.some(Boolean)) missingSerial.push(part.desc || part.pn);
+    }
+    if (restoreSnapshot) {
+      const cost = document.getElementById(`cost-${i}`);
+      if (item.cost != null && cost) { cost.value = item.cost; cost.dataset.cost = item.cost; }
+      if (item.desc) document.getElementById(`desc-${i}`).textContent = item.desc;
+      const price = document.getElementById(`price-${i}`);
+      const base = Number(item.originalEa || item.ea);
+      if (Number.isFinite(base)) { price.querySelector('.price-edit').value = fmt(base); onPriceEdit(i, false); }
+      if (Number(item.discountPerUnit) > 0) applyLineDiscount(i, item.discountRate ? item.discountRate + '%' : item.discountPerUnit);
+      updateMarginForLine(i);
     }
     // A list carries a serial only for units that could be identified, so
     // remembering has to happen either way or an unserialised battery and
@@ -12215,4 +12288,150 @@ function closeMobileDropdowns() {
 </script>
 
 
+<script>
+// Counter view is an editor over the existing POS rows. It owns no sale, matching,
+// receipt, payment, history, or Bridge implementation; Classic remains the fallback.
+(() => {
+'use strict';
+const VIEW_KEY='mpePosClassicViewV1';
+const q=s=>document.querySelector(s), qa=s=>Array.from(document.querySelectorAll(s));
+const num=x=>parseFloat(String(x??'').replace(/[$,%\s]/g,''))||0;
+const enc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const plain=n=>Number(n||0).toFixed(2);
+let mounted=false,printing=false,frame=0,busy=false,lastIds=null,lastCount=0,searchTarget=null,searchMatches=[],searchActive=0,dragId=null,focusSnapshot=null;
+const originals=[];
+const root=document.createElement('section');root.id='counterView';root.setAttribute('aria-label','Counter POS');
+root.innerHTML=`<header class="cv-top"><div class="cv-tabs" id="cvTabs"></div><button class="cv-new" id="cvNew" type="button" title="New sale" aria-label="New sale">+</button><div class="cv-docs"></div><div class="cv-history"></div><button class="cv-icon" id="cvOptions" type="button">Options</button></header>
+<div class="cv-quote" hidden><label><input type="checkbox" data-cv-toggle="Signature">Signature</label><label><input type="checkbox" data-cv-toggle="Review">Review request</label><label><input type="checkbox" data-cv-toggle="SalesView">Sales View</label><span id="cvPresell"></span></div>
+<div class="cv-body"><div class="cv-work"><div class="cv-head"><span></span><span><span>Description</span><span class="cv-reorder-label">Need to reorder?</span></span><span class="cv-support">Cost</span><span class="cv-support">Margin %</span><span class="cv-support">Discount</span><span>Ea.</span><span>Qty</span><span>Price</span><span></span></div><div id="cvItems"></div><div class="cv-entry"><input id="cvEntry" autocomplete="off" aria-label="New item" placeholder="Part number or description…"></div><div id="cvReview"></div></div>
+<aside class="cv-checkout"><div class="cv-customer-label">Customer</div><div id="cvCustomer"></div><button class="cv-note" id="cvNote" type="button">Add note</button><div id="cvLedger"></div><div class="cv-summary"><div class="cv-order"><button id="cvOrderToggle" type="button" aria-expanded="true">Order discount</button><div class="cv-discount-mode" role="group" aria-label="Order discount type"><button id="cvOrderMoney" type="button" aria-pressed="true">$</button><button id="cvOrderPercent" type="button" aria-pressed="false">%</button></div><input id="cvOrderValue" aria-label="Whole order discount" type="text" inputmode="decimal" value="0.00" autocomplete="off"></div><div id="cvTotals"></div></div><label class="cv-fee"><input id="cvCardFee" type="checkbox">Card fee · 3%</label><div id="cvFinalize"></div><div id="cvCharge"></div></aside></div>
+<div class="cv-deck"><button class="cv-command print" type="button" data-cv-command="PRINT"><svg data-cv-qr="print" role="img" aria-label="Print QR"></svg><span>Print</span></button><button class="cv-command save" type="button" data-cv-command="SAVE"><svg data-cv-qr="save" role="img" aria-label="Save QR"></svg><span>Save</span></button><button class="cv-command undo" type="button" data-cv-command="UNDO"><svg data-cv-qr="undo" role="img" aria-label="Undo QR"></svg><span>Undo</span></button><button class="cv-command next" type="button" data-cv-command="CLEAR"><svg data-cv-qr="clear" role="img" aria-label="Next Transaction QR"></svg><span>Next Transaction</span></button></div><div class="cv-feedback" role="status" id="cvFeedback"></div>`;
+document.body.append(root);
+const results=document.createElement('div');results.id='cvResults';results.className='cv-results';results.hidden=true;document.body.append(results);
+const oldUpdateSummary=updateSummary;
+let orderMode='amount',orderRequested=0,orderGuard=false;
+const orderRow=()=>rowOrder().find(i=>{const tr=tbody.querySelector(`tr[data-row="${i}"]`);return tr?.dataset.orderDiscount==='1'||(/^Discount$/i.test(tr?.querySelector('.part-input')?.value||'')&&/^Order discount(?:\b|\s*\()/i.test(q(`#desc-${i}`)?.querySelector('input')?.value||q(`#desc-${i}`)?.textContent||''));});
+function editable(){return !_ledgerOutputCoordinator?.current();}
+function emptyRow(){let i=rowOrder().find(rowIsEmpty);if(i===undefined){i=NUM_ROWS;addRow();}return i;}
+function orderStateFromRow(){const i=orderRow();if(i===undefined){orderMode='amount';orderRequested=0;return;}const tr=tbody.querySelector(`tr[data-row="${i}"]`),desc=q(`#desc-${i}`),label=desc?.querySelector('input')?.value||desc?.textContent||'',match=label.match(/\(([\d.]+)%\)/);orderMode=match?'percent':'amount';orderRequested=match?Number(match[1]):Math.abs(num(q(`#price-${i}`)?.dataset.price));tr.dataset.orderDiscount='1';}
+function syncOrderDiscount(){
+ if(orderGuard)return;const i=orderRow();if(i===undefined)return;
+ orderGuard=true;try{const tr=tbody.querySelector(`tr[data-row="${i}"]`);tr.dataset.orderDiscount='1';const source=q(`#desc-${i}`),label=source?.querySelector('input')?.value||source?.textContent||'',rate=label.match(/\(([\d.]+)%\)/);let base=0;for(const n of rowOrder()){if(n!==i)base+=num(q(`#sub-${n}`)?.dataset.val);}base=Math.max(0,Math.round(base*100)/100);const requested=rate?base*Number(rate[1])/100:Math.abs(num(q(`#price-${i}`)?.dataset.price));const off=Math.min(base,Math.max(0,Math.round(requested*100)/100));const price=q(`#price-${i}`);price.dataset.price=off?-off:'';const inp=price.querySelector('.price-edit');if(inp)inp.value=off?fmt(-off):'';updateSubtotal(i);}finally{orderGuard=false;}
+}
+updateSummary=function(){syncOrderDiscount();oldUpdateSummary();schedule();};
+function applyOrderDiscount(){
+ if(_ledgerOutputCoordinator?.current()){flashScanCommand('This document is finalized — start a new sale to change the discount','warn');return;}
+ const value=q('#cvOrderValue'),raw=value.value.trim(),amount=raw===''?0:Number(raw);const valid=Number.isFinite(amount)&&amount>=0&&(orderMode!=='percent'||amount<=100);value.setCustomValidity(valid?'':'Enter a non-negative amount, or 0–100 percent');if(!valid)return;
+ orderRequested=amount;let i=orderRow();if(amount===0){if(i!==undefined)clearRow(i);oldUpdateSummary();schedule();return;}
+ if(i===undefined){i=emptyRow();applyDiscountToRow(i);}
+ const tr=tbody.querySelector(`tr[data-row="${i}"]`);tr.dataset.orderDiscount='1';
+ const label=orderMode==='percent'?`Order discount (${amount}%)`:'Order discount';const d=q(`#desc-${i}`),di=d.querySelector('.discount-desc-input');if(di)di.value=label;else d.textContent=label;
+ let base=0;for(const n of rowOrder()){if(n!==i)base+=num(q(`#sub-${n}`)?.dataset.val);}const off=Math.min(Math.max(0,base),orderMode==='percent'?base*amount/100:amount);const price=q(`#price-${i}`);price.dataset.price=-Math.round(off*100)/100;price.querySelector('.price-edit').value=fmt(-off);q(`#qty-${i}`).value=1;updateSubtotal(i);updateSummary();
+}
+function move(selector,target){const node=typeof selector==='string'?q(selector):selector;if(!node||originals.some(x=>x.node===node))return;const marker=document.createComment('counter-view original');node.before(marker);originals.push({node,marker,target});if(mounted)target.append(node);}
+function mount(){if(mounted||printing)return;mounted=true;originals.forEach(x=>x.target.append(x.node));q('#adminMenuBtn').closest('.menu-wrap').before(q('#cvOptions'));document.body.classList.add('counter-view');document.body.classList.remove('scanner-mode-active');_scannerModeActive=false;clearTimeout(_scannerIdleTimer);sync();}
+function unmount(){if(!mounted)return;mounted=false;originals.slice().reverse().forEach(x=>x.marker.after(x.node));document.body.classList.remove('counter-view');hideSearch();}
+window.setCounterClassicView=function(classic){localStorage.setItem(VIEW_KEY,classic?'1':'0');q('#cvClassic').checked=!!classic;if(classic)unmount();else mount();};
+const classic=document.createElement('label');classic.className='menu-check';classic.innerHTML='<input type="checkbox" id="cvClassic"> Classic view';q('#adminMenu').append(classic);q('#cvClassic').addEventListener('change',e=>window.setCounterClassicView(e.target.checked));
+move('#docTypeSel',q('.cv-docs'));move('#txnHistoryBtn',q('.cv-history'));q('#txnHistoryBtn').textContent='Transaction History';
+const top=q('.cv-top');move('#phoneListBtn',top);move('#emailDocBtn',top);move('#exportPdfBtn',top);move('#printBtn',top);move(q('#adminMenuBtn')?.closest('.menu-wrap'),top);move('#themeToggle',top);move('#custPanel',q('#cvCustomer'));move(q('.checkout-summary .summary'),q('#cvTotals'));move('#presellWrap',q('#cvPresell'));move('#chargeCardBtn',q('#cvCharge'));move('#finalizeInvoiceBtn',q('#cvFinalize'));move('#ledgerCustomerChooser',q('#cvLedger'));move('#ledgerInvoiceStatus',q('#cvLedger'));move('#licenseDiag',q('#cvCustomer'));move('#scanPanel',q('#cvReview'));
+q('#printBtn').classList.add('cv-icon');q('#printBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 8V3h12v5M6 17H3V9h18v8h-3M6 14h12v7H6zM17 11h1"/></svg>';q('#printBtn').setAttribute('aria-label','Manual print');q('#printBtn').title='Manual print';
+q('#emailDocBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg>';q('#emailDocBtn').setAttribute('aria-label','Email PDF');
+q('#exportPdfBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M13 3H5v18h14V9zM13 3v6h6M8 14h8M12 11v7m-3-3 3 3 3-3"/></svg>';q('#exportPdfBtn').setAttribute('aria-label','Download PDF');
+const customerPanel=q('#custPanel');['custName','custCompany','custAddr','custCity','custState','custZip','custPhone','custEmail'].forEach(id=>customerPanel.append(q('#'+id)));q('#custEmail').placeholder='Email (Optional)';
+
+q('#cvOptions').onclick=e=>{const button=q('#adminMenuBtn');button.click();const panel=q('#adminMenu');panel.querySelector('.menu-check')?.focus?.();};
+q('#cvNote').onclick=()=>{if(!editable())return;const i=emptyRow();applyNoteToRow(i);schedule();requestAnimationFrame(()=>q(`[data-cv-id="${i}"] .cv-description`)?.focus());};
+q('#cvCardFee').onchange=e=>toggleCardFee(e.target.checked);
+qa('[data-cv-toggle]').forEach(el=>el.onchange=()=>{const name=el.dataset.cvToggle;const original=q('#tg'+name);if(original){original.checked=el.checked;original.dispatchEvent(new Event('change',{bubbles:true}));}schedule();});
+q('#cvOrderValue').addEventListener('input',applyOrderDiscount);q('#cvOrderValue').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.target.blur();}});
+q('#cvOrderToggle').onclick=()=>{const open=q('#cvOrderToggle').getAttribute('aria-expanded')!=='true';q('#cvOrderToggle').setAttribute('aria-expanded',String(open));q('.cv-discount-mode').hidden=!open;q('#cvOrderValue').hidden=!open;if(open)q('#cvOrderValue').focus();};
+q('#cvOrderMoney').onclick=()=>{orderMode='amount';applyOrderDiscount();schedule();};q('#cvOrderPercent').onclick=()=>{orderMode='percent';applyOrderDiscount();schedule();};
+qa('[data-cv-command]').forEach(button=>button.onclick=()=>{commitFocused();const command=button.dataset.cvCommand;const payload=[...SCAN_COMMANDS].find(([,action])=>action===command)?.[0];if(payload)runScanCommand(payload);});
+function drawQR(svg,rows){const list=rows.split('/'),size=list.length+8;svg.setAttribute('viewBox',`0 0 ${size} ${size}`);let d='';list.forEach((r,y)=>[...r].forEach((v,x)=>{if(v==='1')d+=`M${x+4} ${y+4}h1v1h-1z`;}));svg.innerHTML=`<rect width="${size}" height="${size}" fill="#fff"/><path d="${d}" fill="#000"/>`;}
+qa('[data-cv-qr]').forEach(svg=>drawQR(svg,SCANNER_COMMAND_QR_ROWS[svg.dataset.cvQr]));
+const oldFlash=flashScanCommand;flashScanCommand=function(message,kind){oldFlash(message,kind);q('#cvFeedback').textContent=message;q('#cvFeedback').className='cv-feedback '+(kind||'');};
+function schedule(){if(frame||!mounted||printing)return;frame=requestAnimationFrame(()=>{frame=0;sync();});}
+const observer=new MutationObserver(schedule);observer.observe(tbody,{childList:true,subtree:true,attributes:true,characterData:true});
+function rowInfo(i){const tr=tbody.querySelector(`tr[data-row="${i}"]`),part=tr?.querySelector('.part-input'),price=q(`#price-${i}`),desc=q(`#desc-${i}`),note=desc?.querySelector('.note-desc-input,.discount-desc-input');const sn=Array.from(tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`));return{i,tr,part,price,desc,note,sn,name:note?note.value:desc?.textContent||part?.value||'',qty:num(q(`#qty-${i}`)?.value)||1,base:num(price?.dataset.originalEa)||num(price?.dataset.price),charged:num(price?.dataset.price),cost:num(q(`#cost-${i}`)?.dataset.cost),off:num(price?.dataset.discountPerUnit),total:num(q(`#sub-${i}`)?.dataset.val)};}
+function field(r,key,cls,label){return `<input class="${cls}" data-cv-field="${key}" data-cv-row="${r.i}" aria-label="${label} line ${rowPos(r.i)}" autocomplete="off" spellcheck="false" ${key==='qty'?'inputmode="numeric"':'inputmode="decimal"'}>`;}
+function makeArticle(r){const a=document.createElement('article');a.className='cv-article';a.dataset.cvId=r.i;a.innerHTML=`<div class="cv-line"><button class="cv-grip" type="button" draggable="true" data-cv-drag="${r.i}" aria-label="Reorder line ${rowPos(r.i)}" title="Drag to reorder; Alt + Up or Down">⠿</button><div class="cv-desc"><input class="cv-description" data-cv-field="desc" data-cv-row="${r.i}" aria-label="Description line ${rowPos(r.i)}" autocomplete="off"><div class="cv-meta"><div class="cv-sn-group"></div></div><input class="cv-reorder" type="checkbox" data-cv-field="restock" data-cv-row="${r.i}" aria-label="Need to reorder line ${rowPos(r.i)}"></div>${field(r,'cost','cv-cost cv-support','Cost')}${field(r,'margin','cv-margin cv-support','Margin percent')}${field(r,'discount','cv-discount cv-support','Discount per item')}${field(r,'ea','cv-ea','Each price')}${field(r,'qty','cv-qty','Quantity')}${field(r,'sub','cv-sub','Line total')}<button class="cv-clear" type="button" data-cv-clear="${r.i}" aria-label="Clear line ${rowPos(r.i)}">×</button></div><div class="cv-sn-overflow"></div>`;return a;}
+function syncSerials(a,r){const group=a.querySelector('.cv-sn-group'),spill=a.querySelector('.cv-sn-overflow');let fields=[...a.querySelectorAll('[data-cv-sn]')];const count=Math.max(1,r.sn.length);if(fields.length!==count){group.innerHTML='';spill.innerHTML='';for(let n=0;n<count;n++){const label=document.createElement('label');label.className='cv-sn';label.innerHTML=`<span>${count===1?'SN:':`SN ${n+1}:`}</span><input data-cv-sn="${n}" data-cv-row="${r.i}" aria-label="Serial ${n+1} line ${rowPos(r.i)}" placeholder="Enter serial" autocomplete="off">`;group.append(label);}fields=[...group.querySelectorAll('input')];}else [...spill.children].forEach(l=>group.append(l));fields.forEach((el,n)=>{if(el!==document.activeElement)el.value=r.sn[n]?.value||'';});const width=group.getBoundingClientRect().width,capacity=Math.max(1,Math.floor((width+8)/148));[...group.children].slice(capacity).forEach(label=>spill.append(label));spill.hidden=!spill.children.length;}
+function sync(){
+ if(!mounted||printing||busy)return;busy=true;try{
+ const ids=rowOrder().filter(i=>!rowIsEmpty(i)&&i!==orderRow());const key=ids.join(',');const box=q('#cvItems');
+ if(key!==lastIds){const existing=new Map([...box.children].map(a=>[+a.dataset.cvId,a]));ids.forEach(i=>{const a=existing.get(i)||makeArticle(rowInfo(i));box.append(a);existing.delete(i);});existing.forEach(a=>a.remove());lastIds=key;}
+ for(const i of ids){const r=rowInfo(i),a=q(`[data-cv-id="${i}"]`);const values={desc:r.name,cost:plain(r.cost),margin:r.charged>0?marginPercent(r.cost,r.charged).toFixed(1):'',discount:r.price?.dataset.cvDiscountRate?`${r.price.dataset.cvDiscountRate}%`:plain(r.off),ea:plain(r.base),qty:String(r.qty),sub:plain(r.total)};for(const [k,v] of Object.entries(values)){const el=a.querySelector(`[data-cv-field="${k}"]`);if(el!==document.activeElement)el.value=v;el.disabled=!!q(`#price-input-${i}`)?.disabled;}
+ const check=a.querySelector('[data-cv-field="restock"]'),source=r.tr.querySelector('.reorder-toggle');check.checked=!!source?.checked;check.disabled=!!source?.disabled;syncSerials(a,r);}
+ const locked=!editable();qa('#cvEntry,#cvOrderValue,#cvOrderMoney,#cvOrderPercent,#cvNote,[data-cv-field],[data-cv-sn],[data-cv-clear],[data-cv-drag]').forEach(el=>el.disabled=locked||(el.matches('[data-cv-field]')&&!!q(`#price-input-${el.dataset.cvRow}`)?.disabled));
+ const qv=q('.cv-quote');qv.hidden=_docType!=='quote';qa('[data-cv-toggle]').forEach(e=>e.checked=!!q('#tg'+e.dataset.cvToggle)?.checked);q('#cvCardFee').checked=q('#cardFeeBtn').classList.contains('active');
+ if(document.activeElement!==q('#cvOrderValue')){orderStateFromRow();q('#cvOrderValue').value=plain(orderRequested);}for(const mode of ['Money','Percent']){const b=q('#cvOrder'+mode),active=(mode==='Percent')===(orderMode==='percent');b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}
+ const maximum=(get,base,cap)=>Math.min(cap,Math.max(base,...ids.map(i=>String(get(rowInfo(i))).length*9+12)));root.style.setProperty('--cv-columns',`22px minmax(150px,1fr) ${maximum(r=>plain(r.cost),64,110)}px 58px 68px ${maximum(r=>plain(r.base),92,140)}px 44px ${maximum(r=>fmt(r.total),104,154)}px 26px`);
+ if(ids.length>lastCount){q('.cv-work').scrollTop=q('.cv-work').scrollHeight;}lastCount=ids.length;
+ }finally{busy=false;}
+}
+function hideSearch(){results.hidden=true;results.replaceChildren();searchTarget=null;searchMatches=[];}
+function positionSearch(){if(results.hidden||!searchTarget?.input?.isConnected)return;const anchor=searchTarget.input.getBoundingClientRect();const width=Math.min(innerWidth-16,Math.max(360,anchor.width));results.style.width=width+'px';results.style.maxHeight='320px';const wanted=Math.min(320,results.scrollHeight),below=innerHeight-anchor.bottom-8,above=anchor.top-8,up=below<wanted&&above>below;const room=Math.max(40,up?above:below),height=Math.min(wanted,room);results.style.maxHeight=room+'px';results.style.left=Math.min(Math.max(8,anchor.left),innerWidth-width-8)+'px';results.style.top=(up?anchor.top-height-6:anchor.bottom+6)+'px';results.dataset.direction=up?'up':'down';}
+function showSearch(input,row){if(!editable())return;if(!loaded){flashScanCommand('Prices are still loading','warn');return;}const text=input.value.trim();if(!text){hideSearch();return;}searchTarget={input,row,text};searchMatches=searchParts(text);searchActive=0;renderResults();}
+function renderResults(){if(!searchTarget)return;const matches=searchMatches.slice(0,MAX_RESULTS);results.innerHTML=matches.map((p,n)=>`<button type="button" data-cv-pick="${n}" class="${n===searchActive?'active':''}"><span>${enc(p.desc||p.pn)}<small>${enc(p.og||p.pn)}${p.make?' · '+enc(p.make):''}</small></span><strong>${enc(fmt(p.list))}</strong></button>`).join('')+(!matches.length?`<button type="button" data-cv-custom="1">Use “${enc(searchTarget.text)}” as a custom item</button>`:'')+(searchMatches._more?.length?`<button type="button" data-cv-more="1">Show ${searchMatches._more.length} other variants</button>`:'');results.hidden=false;positionSearch();}
+function pick(part){if(!editable())return;const target=searchTarget;if(!target)return;const i=target.row==null?emptyRow():target.row;const input=tbody.querySelector(`[data-row="${i}"].part-input`);input.value=part.og||part.pn;ensureScannerMobileRow(i);applyMobilePart(i,part,{skipFocus:true});hideSearch();q('#cvEntry').value='';schedule();requestAnimationFrame(()=>q('#cvEntry').focus());}
+function customPick(){if(!editable())return;const target=searchTarget;if(!target)return;const i=target.row==null?emptyRow():target.row;clearRowData(i);const input=tbody.querySelector(`[data-row="${i}"].part-input`);input.readOnly=false;input.value=target.text;input.className='part-input no-match';commitFreeItem(i,false);hideSearch();q('#cvEntry').value='';schedule();requestAnimationFrame(()=>q(`[data-cv-id="${i}"] .cv-description`)?.focus());}
+results.addEventListener('mousedown',e=>e.preventDefault());results.addEventListener('click',e=>{const pickBtn=e.target.closest('[data-cv-pick]');if(pickBtn){pick(searchMatches[+pickBtn.dataset.cvPick]);return;}if(e.target.closest('[data-cv-custom]'))customPick();if(e.target.closest('[data-cv-more]')){searchMatches=[...searchMatches,...searchMatches._more];renderResults();}});
+function searchKey(e){if(!searchTarget||results.hidden)return false;if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();searchActive=Math.max(0,Math.min(searchMatches.length-1,searchActive+(e.key==='ArrowDown'?1:-1)));qa('#cvResults [data-cv-pick]').forEach((el,n)=>el.classList.toggle('active',n===searchActive));q('#cvResults .active')?.scrollIntoView({block:'nearest'});return true;}if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();if(searchMatches.length)pick(searchMatches[searchActive]);else customPick();return true;}if(e.key==='Escape'){e.preventDefault();hideSearch();return true;}return false;}
+q('#cvEntry').addEventListener('input',e=>showSearch(e.target,null));q('#cvEntry').addEventListener('keydown',e=>{if(searchKey(e))return;if((e.key==='Enter'||e.key==='Tab')&&e.target.value.trim()){showSearch(e.target,null);if(searchMatches.length)pick(searchMatches[0]);else customPick();e.preventDefault();}});q('#cvEntry').addEventListener('blur',()=>{if(searchTarget?.row==null&&!searchMatches.length&&searchTarget?.text)customPick();});
+root.addEventListener('focusin',e=>{if(e.target.matches('[data-cv-field="desc"]')){focusSnapshot={input:e.target,value:e.target.value,searching:false};}if(e.target.matches('[data-cv-field="ea"],[data-cv-field="cost"],[data-cv-field="margin"],[data-cv-field="sub"],[data-cv-field="discount"]'))e.target.select();});
+function canonicalPrice(i,value,commit){const el=q(`#price-${i}`)?.querySelector('.price-edit');if(!el)return;el.value=plain(value);onPriceEdit(i,!!commit);}
+function updateField(el,commit=false){if(!editable())return;const i=+el.dataset.cvRow,r=rowInfo(i),kind=el.dataset.cvField;if(!r.part)return;const raw=el.value.trim(),value=num(raw);if(kind==='desc'){if(!commit)return;if(focusSnapshot?.searching){if(searchTarget?.input===el&&searchMatches.length===0&&searchTarget.text)customPick();return;}if(r.note)r.note.value=raw;else {r.desc.textContent=raw;onDescEdit(i);}updateSummary();return;}
+ if(kind==='restock'){setRowReorder(i,el.checked);return;}if(raw===''&&kind!=='discount')return;
+ if(kind==='discount'){if(!/^(?:\d+(?:\.\d*)?|\.\d+)?%?$/.test(raw)){el.setCustomValidity('Enter an amount or a percentage');return;}el.setCustomValidity('');applyLineDiscount(i,raw);return;}
+ if(!Number.isFinite(Number(raw))||value<0||(kind==='qty'&&value<1)){el.setCustomValidity('Enter a valid non-negative number');return;}el.setCustomValidity('');
+ if(kind==='qty'){setRowQuantity(i,value);return;}
+ if(kind==='cost'){const c=q(`#cost-${i}`);if(c?.tagName==='INPUT'){c.value=raw;c.dataset.cost=value;if(commit)onCostEdit(i);else{updateMarginForLine(i);updateSummary();}}return;}
+ if(kind==='ea'){const oldOff=r.off,rate=r.price.dataset.cvDiscountRate;canonicalPrice(i,value,commit);if(oldOff>0)applyLineDiscount(i,rate?rate+'%':oldOff);return;}
+ if(kind==='margin'){if(value>=100||r.cost<=0)return;const target=r.cost/(1-value/100),rate=r.price.dataset.cvDiscountRate;canonicalPrice(i,rate?target/(1-Number(rate)/100):target+r.off,commit);if(r.off>0)applyLineDiscount(i,rate?rate+'%':r.off);return;}
+ if(kind==='sub'&&commit){const sub=q(`#sub-${i}`);if(sub?.tagName==='INPUT'){sub.value=raw;onSubEdit(i);}return;}
+}
+// Scanner keystrokes can briefly type into a focused editor before the suffix
+// proves the burst. Restore both the mirror and its canonical draft, including
+// serials that a temporary quantity change may have removed.
+const oldSnapshotOrigin=snapshotHardwareScanOrigin,oldRestoreOrigin=restoreHardwareScanOrigin;
+snapshotHardwareScanOrigin=function(target){const origin=oldSnapshotOrigin(target);if(origin&&target?.matches('[data-cv-field],[data-cv-sn]')){const r=rowInfo(+target.dataset.cvRow);origin.counterDraft={i:r.i,price:{...r.price.dataset},bulk:r.price._bulkPart,cost:{...q(`#cost-${r.i}`).dataset},costValue:q(`#cost-${r.i}`).value,qty:r.qty,serials:r.sn.map(el=>el.value)};}return origin;};
+restoreHardwareScanOrigin=function(origin){oldRestoreOrigin(origin);const saved=origin?.counterDraft;if(saved&&origin.element?.isConnected){const price=q(`#price-${saved.i}`),cost=q(`#cost-${saved.i}`);if(price&&cost){for(const key of Object.keys(price.dataset))delete price.dataset[key];Object.assign(price.dataset,saved.price);price._bulkPart=saved.bulk;for(const key of Object.keys(cost.dataset))delete cost.dataset[key];Object.assign(cost.dataset,saved.cost);if(cost.tagName==='INPUT')cost.value=saved.costValue;const input=price.querySelector('.price-edit');if(input)input.value=fmt(num(saved.price.price));q(`#qty-${saved.i}`).value=saved.qty;if(saved.serials.length){renderSNFields(saved.i,saved.serials.length);tbody.querySelectorAll(`tr[data-sn-for="${saved.i}"] .sn-input`).forEach((el,n)=>el.value=saved.serials[n]||'');}else removeSNRow(saved.i);updateSubtotal(saved.i);updateMarginForLine(saved.i);updateSummary();}}if(origin?.element?.closest('#counterView'))hideSearch();};
+function commitFocused(){const active=document.activeElement;if(active?.matches('[data-cv-field]'))updateField(active,true);if(active===q('#cvOrderValue'))applyOrderDiscount();}
+root.addEventListener('input',e=>{if(!editable())return;const el=e.target;if(el.matches('[data-cv-field="desc"]')){if(focusSnapshot?.input===el){if(!el.value)focusSnapshot.searching=true;if(focusSnapshot.searching)showSearch(el,+el.dataset.cvRow);}return;}if(el.matches('[data-cv-field]'))updateField(el);if(el.matches('[data-cv-sn]')){const i=+el.dataset.cvRow,n=+el.dataset.cvSn;let list=tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);if(!list.length){renderSNFields(i,num(q(`#qty-${i}`)?.value)||1);list=tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);}if(list[n])list[n].value=el.value;}});
+root.addEventListener('focusout',e=>{if(e.target.matches('[data-cv-field]'))updateField(e.target,true);});
+root.addEventListener('change',e=>{if(e.target.matches('[data-cv-field="restock"]'))updateField(e.target,true);});
+root.addEventListener('keydown',e=>{const el=e.target;if(el.matches('[data-cv-field="desc"]')&&e.key==='Escape'){e.preventDefault();e.stopPropagation();if(focusSnapshot?.input===el){el.value=focusSnapshot.value;focusSnapshot.searching=false;}hideSearch();return;}if(el.matches('[data-cv-field="desc"]')&&searchKey(e))return;if(el.matches('[data-cv-field]')&&e.key==='Enter'){e.preventDefault();updateField(el,true);q('#cvEntry').focus();}const handle=el.closest('[data-cv-drag]');if(handle&&editable()&&e.altKey&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const i=+handle.dataset.cvDrag,o=rowOrder().filter(n=>n!==orderRow()),pos=o.indexOf(i);if(e.key==='ArrowUp'&&pos>0)moveRow(i,o[pos-1]);else if(e.key==='ArrowDown'&&pos<o.length-1)moveRow(i,o[pos+2]??null);updateSummary();}});
+root.addEventListener('click',e=>{const c=e.target.closest('[data-cv-clear]');if(c&&editable()){clearRow(+c.dataset.cvClear);schedule();}});
+root.addEventListener('dragstart',e=>{const h=e.target.closest('[data-cv-drag]');if(!h||!editable()){e.preventDefault();return;}dragId=+h.dataset.cvDrag;e.dataTransfer.setData('text/plain','line '+dragId);e.dataTransfer.effectAllowed='move';});root.addEventListener('dragover',e=>{const a=e.target.closest('[data-cv-id]');if(dragId==null||!a)return;e.preventDefault();qa('.cv-drop').forEach(x=>x.classList.remove('cv-drop'));a.classList.add('cv-drop');const work=q('.cv-work'),r=work.getBoundingClientRect();if(e.clientY>r.bottom-40)work.scrollTop+=16;if(e.clientY<r.top+40)work.scrollTop-=16;});root.addEventListener('drop',e=>{const a=e.target.closest('[data-cv-id]');if(dragId==null||!a||!editable())return;e.preventDefault();const target=+a.dataset.cvId;if(target!==dragId){const r=a.getBoundingClientRect();moveRow(dragId,e.clientY>r.top+r.height/2?nextRowIndexSkipping(target,dragId):target);compactRows();updateSummary();}dragId=null;qa('.cv-drop').forEach(x=>x.classList.remove('cv-drop'));});root.addEventListener('dragend',()=>{dragId=null;qa('.cv-drop').forEach(x=>x.classList.remove('cv-drop'));});
+window.addEventListener('resize',()=>{schedule();positionSearch();});document.addEventListener('scroll',e=>{if(!results.contains(e.target))positionSearch();},true);document.addEventListener('pointerdown',e=>{if(!results.contains(e.target)&&e.target!==searchTarget?.input)hideSearch();});
+// Print preparation temporarily returns the original controls to their original
+// receipt locations. Both native output and exported PDFs still use the single seam.
+const oldBridgeCommit=commitActiveBridgeDraft;let bridgeCommitting=false;commitActiveBridgeDraft=function(){if(bridgeCommitting)return;bridgeCommitting=true;try{commitFocused();return oldBridgeCommit();}finally{bridgeCommitting=false;}};
+const oldPrepare=preparePrint,oldCleanup=cleanupPrint;
+preparePrint=function(){commitFocused();const od=orderRow();if(od!==undefined)tbody.querySelector(`tr[data-row="${od}"]`).dataset.orderDiscount='1';printing=true;const was=mounted;unmount();try{oldPrepare();}catch(error){printing=false;if(was)mount();throw error;}};
+cleanupPrint=function(){try{return oldCleanup();}finally{printing=false;if(localStorage.getItem(VIEW_KEY)!=='1')mount();}};
+const oldScannerMode=setScannerModeActive;setScannerModeActive=function(active,...args){if(mounted){_scannerModeActive=false;document.body.classList.remove('scanner-mode-active');return;}return oldScannerMode(active,...args);};
+const oldClear=clearAll;clearAll=function(){const result=oldClear();if(result!==false){orderMode='amount';orderRequested=0;lastIds=null;q('#cvEntry').value='';hideSearch();schedule();}return result;};
+// Desktop continues to own its independent native sale tabs. Browser sessions
+// retain detached canonical rows per tab; switching never saves/clears a sale.
+const browserTabs=new Map();let activeTab=1,nextTab=2;
+function snapshotTab(){return{rows:[...tbody.childNodes],mobile:[...q('#mobileRows').childNodes],count:NUM_ROWS,customer:custFields.map(id=>q('#'+id)?.value||''),doc:_docType,toggles:['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].map(id=>q('#'+id).classList.contains('active')),pendingDate:_pendingTxnDate,pendingNumber:_pendingDocNumber,entry:q('#cvEntry').value,txn:_currentTxnId,date:_currentTxnDate,number:_currentDocNumber,reprint:_reprintSource,quote:_quoteSource,baseline:_historyContentBaseline,cleared:_clearedSale,stock:cartStockSession,tender:readTenderSelection(),binding:_ledgerDraftCustomerBinding,adopted:_ledgerAdoptedCustomer,conversion:_ledgerConversion,scanIssues:new Map(scanIssues),presell:q('#presellChk').checked};}
+function activateTab(id){commitFocused();browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;_ledgerDraftCustomerBinding=s.binding;_ledgerAdoptedCustomer=s.adopted;_ledgerConversion=s.conversion;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;_ledgerDraftCustomerBinding=null;_ledgerAdoptedCustomer=null;_ledgerConversion=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
+function closeBrowserTab(id){
+ const state=id===activeTab?snapshotTab():browserTabs.get(id);
+ const hasContent=state&&(state.rows.some(row=>row.nodeType===1&&(row.querySelector('.part-input')?.value.trim()||row.querySelector('.note-desc-input,.discount-desc-input')?.value.trim()))||state.customer.some(Boolean)||state.entry.trim());
+ if(hasContent&&!confirm('Close Sale '+id+'? Items and customer details in this tab will be discarded.'))return;
+ const ids=qa('#cvTabs .cv-tab').map(b=>Number(b.dataset.cvTab));
+ if(id===activeTab){const other=ids.find(n=>n!==id);if(other===undefined)addTab();else activateTab(other);}
+ browserTabs.delete(id);q(`[data-cv-tab="${id}"]`)?.closest('.cv-tab-group')?.remove();
+}
+function addTab(){const id=nextTab++,b=document.createElement('button');b.type='button';b.className='cv-tab';b.dataset.cvTab=id;b.textContent='Sale '+id;b.onclick=()=>activateTab(id);const group=document.createElement('div');group.className='cv-tab-group';const close=document.createElement('button');close.type='button';close.className='cv-close-tab';close.textContent='×';close.setAttribute('aria-label','Close sale '+id);close.title='Close sale '+id;close.onclick=()=>closeBrowserTab(id);group.append(b,close);q('#cvTabs').append(group);if(id!==1)activateTab(id);else b.classList.add('active');}
+if(window.mpeDesktop){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;}else{nextTab=1;addTab();q('#cvNew').onclick=addTab;}
+const oldIdle=posRegisterIsIdleAndEmpty;posRegisterIsIdleAndEmpty=function(){if(q('#cvEntry').value.trim())return false;for(const [id,state] of browserTabs){if(id!==activeTab&&(state.entry.trim()||state.customer.some(Boolean)||state.rows.some(row=>row.nodeType===1&&row.querySelector('.part-input')?.value.trim())))return false;}return oldIdle();};
+const contactObserver=new MutationObserver(()=>{if(document.body.dataset.ledgerContactMode==='1')unmount();else if(localStorage.getItem(VIEW_KEY)!=='1')mount();});contactObserver.observe(document.body,{attributes:true,attributeFilter:['data-ledger-contact-mode']});
+q('#cvClassic').checked=localStorage.getItem(VIEW_KEY)==='1';if(!q('#cvClassic').checked)mount();
+})();
+
+</script>
 </body></html>
