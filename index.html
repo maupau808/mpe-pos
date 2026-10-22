@@ -1195,7 +1195,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.21.8';
+const POS_RELEASE = '2026.10.21.9';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -6607,6 +6607,9 @@ function flushPendingPartCodes() {
 // already present; only a bounded number of genuinely missing transactions are pushed.
 const AUTO_TXN_PUSH_LIMIT = 10;
 let _txnRecoveryPromise = null;
+// txnId → { count, reason }. A sale that keeps failing waits behind the healthy ones
+// instead of blocking them, and History shows why it is still waiting.
+const _txnPushFailures = new Map();
 function flushUnpushedTxns() {
   if (_txnRecoveryPromise) return _txnRecoveryPromise;
   _txnRecoveryPromise = reconcileUnpushedTxns()
@@ -6643,11 +6646,17 @@ async function reconcileUnpushedTxns() {
   const alreadyPresent = queue.filter(order => !order.historySyncPending && existingIds.has(String(order.txnId).trim()));
   if (alreadyPresent.length) addPushedTxnIds(alreadyPresent.map(order => order.txnId));
 
-  const missing = queue.filter(order => order.historySyncPending || !existingIds.has(String(order.txnId).trim()));
-  let n = 0;
-  for (const order of missing.slice(0, AUTO_TXN_PUSH_LIMIT)) {
+  const missing = queue.filter(order => order.historySyncPending || !existingIds.has(String(order.txnId).trim()))
+    .sort((a, b) => (_txnPushFailures.get(a.txnId)?.count || 0) - (_txnPushFailures.get(b.txnId)?.count || 0));
+  let n = 0, failed = 0;
+  for (const order of missing) {
+    if (n + failed >= AUTO_TXN_PUSH_LIMIT) break;
     try { await pushTransactionToSheet(order); n++; }
-    catch (e) { break; }   // retain on failure; the minute retry will resume
+    catch (e) {   // retain on failure and keep going; the minute retry will try it again
+      failed++;
+      _txnPushFailures.set(order.txnId, { count: (_txnPushFailures.get(order.txnId)?.count || 0) + 1, reason: e.message });
+      if (/not signed in|sign in|rate limit/i.test(e.message || '')) break;   // nothing else can succeed right now
+    }
   }
   if (alreadyPresent.length || n) console.log(
     '[MPE] Transaction recovery:',
@@ -6719,15 +6728,6 @@ function transactionBlockEnd(rows, start, id) {
 function transactionUserEnteredRows(rows) {
   return rows.map(row => row.map((value, col) => [8, 13, 15].includes(col) || col >= 16 ? sheetText(value) : value));
 }
-function transactionCellRows(rows) {
-  return rows.map(row => ({ values: row.map((value, col) => {
-    const text = String(value ?? '').replace(/^'/, '');
-    const numeric = col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11, 14, 15].includes(col));
-    return { userEnteredValue: numeric && text !== ''
-      ? { numberValue: Number(text.replace(/[$,]/g, '')) }
-      : { stringValue: text } };
-  }) }));
-}
 function acknowledgeTransactionSnapshot(order) {
   const history = getHistory();
   const current = history.find(entry => entry.txnId === order.txnId);
@@ -6741,6 +6741,7 @@ function acknowledgeTransactionSnapshot(order) {
     }
   }
   addPushedTxnId(order.txnId);
+  _txnPushFailures.delete(order.txnId);
 }
 // Serialize inserts/row resizing across this register and always send its newest saved copy.
 let _transactionPushChain = Promise.resolve();
@@ -6789,6 +6790,7 @@ async function writeTransactionToSheet(order) {
 
     let writtenRange = '';
     let writeMode = '(verified existing)';
+    let checkBlockEnd = false;
     const existingTxnIdx = existingRows.findIndex(row =>
       String(row[0] || '').trim().toUpperCase() === 'TXN' && String(row[1] || '') === txnId);
     if (order.historySyncPending && existingRows.some(row => row[0] === 'CUSTOMER_UPDATE' && String(row[1] || '') === txnId)) {
@@ -6799,26 +6801,29 @@ async function writeTransactionToSheet(order) {
       const savedRows = existingRows.slice(existingTxnIdx, end);
       const changed = transactionRowsFingerprint(savedRows) !== transactionRowsFingerprint(rows);
       if (order.historySyncPending && changed) {
-        // Resize this one transaction and replace its complete contents atomically.
+        // MPE POS Desktop permits only row insert/delete and value writes on Transactions
+        // (never updateCells), so grow the block, write it in place, then drop leftovers.
+        // The read-back below catches a pass that stopped part-way; the next pass redoes it.
         const delta = rows.length - savedRows.length;
-        const requests = [];
-        if (delta > 0) requests.push({ insertDimension: {
-          range: { sheetId, dimension: 'ROWS', startIndex: end, endIndex: end + delta },
-          inheritFromBefore: false,
-        } });
-        requests.push({ updateCells: {
-          range: { sheetId, startRowIndex: existingTxnIdx, endRowIndex: existingTxnIdx + rows.length,
-            startColumnIndex: 0, endColumnIndex: 23 },
-          rows: transactionCellRows(rows), fields: 'userEnteredValue',
-        } });
-        if (delta < 0) requests.push({ deleteDimension: {
+        if (delta > 0) {
+          // Reuse blank rows an interrupted earlier pass may have left after this block.
+          let spare = 0;
+          while (spare < delta && end + spare < existingRows.length
+              && !(existingRows[end + spare] || []).some(value => String(value ?? '').trim())) spare++;
+          if (delta > spare) await sheetsBatchUpdate([{ insertDimension: {
+            range: { sheetId, dimension: 'ROWS', startIndex: end, endIndex: end + delta - spare },
+            inheritFromBefore: false,
+          } }]);
+        }
+        await sheetsUpdate(`${TXN_SHEET}!A${existingTxnIdx + 1}`, transactionUserEnteredRows(rows));
+        if (delta < 0) await sheetsBatchUpdate([{ deleteDimension: {
           range: { sheetId, dimension: 'ROWS', startIndex: existingTxnIdx + rows.length, endIndex: end },
-        } });
-        await sheetsBatchUpdate(requests);
+        } }]);
         writeMode = '(updated existing)';
+        checkBlockEnd = true;
       }
       // Old already-synced local copies never overwrite a newer copy from another register.
-      writtenRange = `${TXN_SHEET}!A${existingTxnIdx + 1}:W${existingTxnIdx + (order.historySyncPending ? rows.length : savedRows.length)}`;
+      writtenRange = `${TXN_SHEET}!A${existingTxnIdx + 1}:W${existingTxnIdx + (order.historySyncPending ? rows.length : savedRows.length) + (checkBlockEnd ? 1 : 0)}`;
     } else {
       const txnTs = txnDate.getTime();
       // Find the first TXN row that is older than this transaction → insert before it.
@@ -6852,7 +6857,14 @@ async function writeTransactionToSheet(order) {
     }
 
     if (!writtenRange) throw new Error('Transaction save returned no range to verify');
-    const writtenRows = await sheetsGet(writtenRange);
+    let writtenRows = await sheetsGet(writtenRange);
+    if (checkBlockEnd) {
+      const after = writtenRows[rows.length];
+      if (after && String(after[0] || '').toLowerCase() === 'item' && String(after[1] || '') === txnId) {
+        throw new Error('Transaction still has extra saved lines after updating');
+      }
+      writtenRows = writtenRows.slice(0, rows.length);
+    }
     const savedSummary = writtenRows.find(row =>
       String(row[0] || '').trim().toUpperCase() === 'TXN' && String(row[1] || '') === txnId);
     if (!savedSummary
@@ -7208,6 +7220,7 @@ function renderTxnResults() {
   const pushed = getPushedTxnIds();
   const pending = getHistory().filter(order => order.txnId && (order.historySyncPending || !pushed.has(order.txnId)));
   const pendingIds = new Set(pending.map(order => order.txnId));
+  const stuck = typeof _txnPushFailures !== 'undefined' ? pending.map(order => _txnPushFailures.get(order.txnId)).find(Boolean) : null;
   const transactions = (_txns || []).filter(order => !pendingIds.has(order.txnId))
     .concat(_parseTxnRows(pending.flatMap(order => transactionRowsForOrder(order))));
   let res = tokens.length
@@ -7225,6 +7238,7 @@ function renderTxnResults() {
     + (total > _txnShown.length ? ` · showing first ${_txnShown.length}` : '')
     + ` · synced ${synced}`
     + (pending.length ? ` · ${pending.length} waiting to sync from this computer` : '')
+    + (stuck ? ` · could not save one yet: ${stuck.reason}` : '')
     + (_txnRefreshWarning ? ` · ${_txnRefreshWarning}` : ''));
 }
 

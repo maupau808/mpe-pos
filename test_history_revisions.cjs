@@ -40,8 +40,7 @@ function setup() {
       for(const req of requests){
         if(req.insertDimension){const r=req.insertDimension.range;sheet.splice(r.startIndex,0,...Array.from({length:r.endIndex-r.startIndex},()=>[]));}
         else if(req.deleteDimension){const r=req.deleteDimension.range;sheet.splice(r.startIndex,r.endIndex-r.startIndex);}
-        else if(req.updateCells){const u=req.updateCells;assert.equal(u.fields,'userEnteredValue');const rows=u.rows.map(row=>row.values.map(c=>c.userEnteredValue.numberValue??c.userEnteredValue.stringValue));sheet.splice(u.range.startRowIndex,rows.length,...rows);}
-        else throw Error('Unexpected request');
+        else throw Error('Google Sheets batch operation is not allowed');   // exactly what MPE POS Desktop refuses
       }
     },
   };
@@ -276,4 +275,27 @@ test('failed history refresh keeps local-only legacy rows visible and explicitly
  const view=installHistoryView(c);c.s.sheetsGet=async()=>{throw Error('offline');};
  await c.s.refreshTxns({silent:true});assert.equal(c.s._txnShown.length,1);
  assert.match(view.status(),/1 waiting to sync from this computer/);assert.match(view.status(),/Refresh failed/);
+});
+test('a sale that cannot be saved does not hold newer sales back, and History names the reason',async()=>{
+ const c=setup();c.connect();c.save();await c.sync();const stuckId=c.s.getHistory()[0].txnId;
+ c.setSheet([...c.sheet(),['CUSTOMER_UPDATE',stuckId,'evt-1']]);c.s.draft.items[0].qty=3;c.save();   // this edit is refused for good
+ c.s._currentTxnId=null;c.s._currentTxnDate=null;c.s._historyContentBaseline=null;c.s.draft.items[0].qty=1;c.save();
+ assert.equal(c.s.countUnpushedTxns(),2);await c.flush();
+ assert.equal(c.s.countUnpushedTxns(),1);assert.equal(c.sheet().filter(r=>r[0]==='TXN').length,2);
+ await c.flush();assert.equal(c.s.countUnpushedTxns(),1);assert.equal(c.sheet().filter(r=>r[0]==='TXN').length,2);
+ const view=installHistoryView(c);c.s.googleSessionAvailable=()=>false;await c.s.refreshTxns({silent:true});
+ assert.match(view.status(),/1 waiting to sync from this computer · could not save one yet: .*customer updates/);
+});
+test('an interrupted edit pass is completed by the next pass without duplicate or leftover lines',async()=>{
+ const c=setup();c.save();await c.sync();
+ const neighbor=[['TXN','OTHER','1/1/2020','10:00 AM','Other'],['item','OTHER','','','','','','','NEIGHBOR','Keep',1,'$1.00','$1.00']];
+ c.setSheet([...c.sheet(),...neighbor]);
+ c.s.draft.items.push({pn:'B',desc:'Added',qty:1,ea:10,sub:10});c.save();
+ const update=c.s.sheetsUpdate;c.s.sheetsUpdate=async()=>{throw Error('offline');};   // rows inserted, contents not written
+ await assert.rejects(c.sync(),/offline/);assert.equal(c.sheet().length,5);assert.deepEqual(c.sheet()[2],[]);   // one blank row left behind
+ c.s.sheetsUpdate=update;await c.sync();assert.equal(c.sheet().length,5);assert.deepEqual(c.sheet().slice(-2),neighbor);
+ c.s.draft.items.pop();c.save();
+ const batch=c.s.sheetsBatchUpdate;c.s.sheetsBatchUpdate=async()=>{throw Error('offline');};   // contents written, leftover not removed
+ await assert.rejects(c.sync(),/offline/);assert.equal(c.s.countUnpushedTxns(),1);
+ c.s.sheetsBatchUpdate=batch;await c.sync();assert.equal(c.sheet().length,4);assert.deepEqual(c.sheet().slice(-2),neighbor);assert.equal(c.s.countUnpushedTxns(),0);
 });
