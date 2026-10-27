@@ -985,9 +985,10 @@
       const status = await readStatus();
       if (!status.enabled) return deepFreeze({ mode: 'legacy' });
       if (!status.available) refuse(status.reason);
-      // This renderer currently has no bounded QBO-confirmation evidence. Local
-      // finalization is intentionally insufficient for Gmail/payment artifacts.
-      refuse('ledger_unavailable');
+      // Ledger is the system of record (Trevor, 2026-10-24); QuickBooks is a
+      // parallel copy, so a locally issued document is enough for an email
+      // attachment. Trevor lifted the old QBO-confirmation lock on 2026-10-27.
+      return deepFreeze({ mode: 'c06' });
     }
 
     async function recover(inputValue) {

@@ -576,7 +576,7 @@ test('receipt Save refuses before context/allocation and configured Gmail stays 
   }), () => captureFromSource()), 'action_unrepresentable');
   assert.equal(contextCalls, 0);
   assert.equal(finalizeCalls, 0);
-  await expectCodeAsync(() => coordinator.guardArtifact(), 'ledger_unavailable');
+  assert.deepEqual(await coordinator.guardArtifact(), { mode: 'c06' });
 
   const legacy = coordinatorWith({
     getStatus: async () => clone(fixture.interface_vectors.status.disabled),
