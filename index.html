@@ -1024,7 +1024,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <input class="cust-input" id="custEmail" placeholder="Email" autocomplete="off" type="email">
     <input class="cust-input" id="docPO" placeholder="PO # (invoice)" autocomplete="off" maxlength="60">
     <div class="dropdown cust-dd" id="custDD"></div>
-    <div id="customerSaveStatus" role="status" aria-live="polite" hidden></div>
   </div>
 
 
@@ -1191,7 +1190,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.27.1';
+const POS_RELEASE = '2026.10.27.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1428,7 +1427,6 @@ function googleConnectedActions() {
   flushPendingReorders();
   flushPendingPriceChanges();
   flushStockSessionQueue();
-  flushCustomerEdits();
   flushUnpushedTxns();
   schedulePhoneListNotice();
   if (_pendingAction) { const fn = _pendingAction; _pendingAction = null; fn(); }
@@ -1494,7 +1492,6 @@ function initTokenClient() {
       flushPendingReorders();
       flushPendingPriceChanges();
       flushStockSessionQueue();
-  flushCustomerEdits();
       flushUnpushedTxns();
       schedulePhoneListNotice();
     }
@@ -1846,14 +1843,12 @@ async function maybeAutoRefresh() {
     _checkingCatalog = false;
   }
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); flushStockSessionQueue(); flushCustomerEdits(); retryTransactionSync(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); flushStockSessionQueue(); retryTransactionSync(); } });
 setInterval(() => { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); }, 60 * 1000);
 setInterval(checkForPosUpdate, 5 * 60 * 1000);
 setInterval(flushPendingPriceChanges, PRICE_CHANGE_RETRY_MS);
 setInterval(flushPendingReorders, PRICE_CHANGE_RETRY_MS);
 setInterval(flushStockSessionQueue, PRICE_CHANGE_RETRY_MS);
-setInterval(flushCustomerEdits, 60 * 1000);
-window.addEventListener('online', flushCustomerEdits);
 setInterval(retryTransactionSync, 60 * 1000);
 window.addEventListener('online', retryTransactionSync);
 
@@ -2701,7 +2696,6 @@ function queueStockSessionEvent(action, sessionId, partNumber, qty, txnId) {
     throw error;
   }
   flushStockSessionQueue();
-  flushCustomerEdits();
 }
 
 // One snapshot of the cart's scanner-origin tracked rows, aggregated by
@@ -6926,7 +6920,6 @@ async function writeTransactionContact(request) {
 }
 
 async function parseTransactionsWithContacts(rows) {
-  try { applyCustomerEditResults(rows); } catch { /* the sale list remains available if local storage is full */ }
   const owner = window.MPETransactionContact;
   if (!owner) {
     const parsed = _parseTxnRows(rows);
@@ -10660,8 +10653,6 @@ function saveToHistory() {
   const finalized = typeof _ledgerOutputCoordinator !== 'undefined' ? _ledgerOutputCoordinator?.current() : null;
   maybeSaveNewCustomer();
   const history = getHistory();
-  try { recoverCustomerEditOutbox(history); }
-  catch { customerEditStatus('Customer changes could not be saved. Keep this sale open and try again.'); return false; }
   const identity = _reprintSource || (_currentTxnId ? { txnId: _currentTxnId, date: _currentTxnDate } : null);
   const previous = identity && history.find(entry => entry.txnId === identity.txnId);
   const now = finalized ? new Date(finalized.completion_at) : (_pendingTxnDate || new Date());
@@ -10699,7 +10690,6 @@ function saveToHistory() {
   const quoteSource = typeof _quoteSource !== 'undefined' ? _quoteSource : null;
   const fromQuote = quoteSource && ['receipt', 'invoice'].includes(order.docType) ? quoteSource : previous?.fromQuote;
   if (fromQuote) order.fromQuote = { txnId: fromQuote.txnId, docNumber: fromQuote.docNumber };
-  const customerEdit = stageCustomerEdit(order, previous);
   const fingerprint = historyContentFingerprint(order, order.docType);
   const baseline = _historyContentBaseline
     || (previous && historyContentFingerprint(previous, previous.docType || 'receipt'));
@@ -10721,8 +10711,6 @@ function saveToHistory() {
   _pendingDocNumber = null;
   _historyContentBaseline = fingerprint;
   _lastPrintedOrder = order;
-  commitCustomerEditSelection(customerEdit);
-  void flushCustomerEdits();
   _lastPushStatus = googleSessionAvailable() ? 'pending' : 'skipped';
   if (googleSessionAvailable()) {
     pushTransactionToSheet(order)
@@ -11733,226 +11721,6 @@ function formatPhone(raw) {
   return raw;
 }
 
-// Saved customer edits ride beside the sale in the existing Bridge. The saved
-// history entry is the recovery source; the outbox survives history retention.
-const CUSTOMER_EDIT_OUTBOX = 'mpeCustomerEditOutboxV1';
-const CUSTOMER_EDIT_OVERLAY = 'mpeCustomerEditOverlayV1';
-const CUSTOMER_EDIT_FIELDS = ['name','company','phone','email','addr','city','state','zip'];
-var _customerEditSelection = null;
-let _customerEditFlush = null;
-function customerEditStatus(message) {
-  const node = document.getElementById('customerSaveStatus');
-  if (node) { node.textContent = message; node.hidden = !message; }
-}
-function customerEditObject(value) {
-  return Object.fromEntries(CUSTOMER_EDIT_FIELDS.map(key => [key, String(value?.[key] || '').trim()]));
-}
-function customerEditEqual(a, b) {
-  return CUSTOMER_EDIT_FIELDS.every(key => String(a?.[key] || '').trim().toUpperCase() === String(b?.[key] || '').trim().toUpperCase());
-}
-function compactCustomerEdit(record) {
-  const name = String(record?.nm || '').trim(), company = String(record?.co || '').trim();
-  return customerEditObject({ name: name.toUpperCase() === company.toUpperCase() ? '' : name,
-    company, phone: record?.ph, email: record?.em, addr: record?.st, city: record?.ci, state: record?.sta, zip: record?.z });
-}
-function customerEditRecord(fields, id = '') {
-  return { ...(id ? { id } : {}), nm: fields.name, co: fields.company, ph: fields.phone,
-    pd: _digits10(fields.phone), em: fields.email, st: fields.addr, ci: fields.city, sta: fields.state, z: fields.zip };
-}
-function selectCustomerForPermanentEdit(record) {
-  _customerEditSelection = { providerId: /^[0-9]{1,40}$/.test(String(record.id || '')) ? String(record.id) : '',
-    original: compactCustomerEdit(record) };
-  customerEditStatus('');
-}
-function currentCustomerEditFields() {
-  const read = id => String(document.getElementById(id)?.value || '').trim().toUpperCase();
-  return customerEditObject({ name: read('custName'), company: read('custCompany'), phone: read('custPhone'),
-    email: read('custEmail'), addr: read('custAddr'), city: read('custCity'), state: read('custState'), zip: read('custZip') });
-}
-function readCustomerEditStorage(key) {
-  const result = JSON.parse(localStorage.getItem(key) || '{}');
-  if (!result || Array.isArray(result) || typeof result !== 'object') throw new Error('Customer saves could not be read.');
-  return result;
-}
-function writeCustomerEditStorage(key, value) {
-  const text = JSON.stringify(value);
-  localStorage.setItem(key, text);
-  if (localStorage.getItem(key) !== text) throw new Error('Customer saves could not be retained.');
-}
-function customerEditRow(event) {
-  return ['CUSTOMER_EDIT', event.event_id, event.txn_id, event.provider_id,
-    JSON.stringify(event.before), JSON.stringify(event.after), event.register_id, event.occurred_at,
-    event.release, 'mpe-pos-counter-customer-edit-v1'];
-}
-function exactCustomerEditRow(raw, wanted) {
-  const row = Array.from(raw || [], String);
-  while (row.length && !row[row.length - 1]) row.pop();
-  return JSON.stringify(row) === JSON.stringify(wanted);
-}
-function recoverCustomerEditOutbox(history = getHistory()) {
-  const outbox = readCustomerEditStorage(CUSTOMER_EDIT_OUTBOX);
-  let changed = false;
-  for (const order of history) for (const event of order.customerEdits || []) {
-    const saved = outbox[event.event_id];
-    if (saved && JSON.stringify(saved.event) !== JSON.stringify(event)) throw new Error('A saved customer change conflicts.');
-    if (!saved) { outbox[event.event_id] = { event, delivered: false, state: 'pending' }; changed = true; }
-  }
-  if (changed) writeCustomerEditStorage(CUSTOMER_EDIT_OUTBOX, outbox);
-  return outbox;
-}
-function stageCustomerEdit(order, previous) {
-  order.customerEdits = [...(previous?.customerEdits || [])];
-  if (!_customerEditSelection || _docType === 'internal' || _reprintSource) return null;
-  const after = currentCustomerEditFields(), before = _customerEditSelection.original;
-  if (customerEditEqual(before, after)) return null;
-  const event = { event_id: crypto.randomUUID(), txn_id: order.txnId,
-    provider_id: _customerEditSelection.providerId, before: customerEditObject(before), after,
-    register_id: stockSessionRegisterId(), occurred_at: new Date().toISOString(), release: POS_RELEASE };
-  order.customerEdits.push(event);
-  return event;
-}
-function commitCustomerEditSelection(event) {
-  if (!event) return;
-  _customerEditSelection = { providerId: event.provider_id, original: event.after };
-  customerEditStatus('Customer changes saved here; waiting for Ledger.');
-  try {
-    const overlays = readCustomerEditStorage(CUSTOMER_EDIT_OVERLAY);
-    overlays[event.event_id] = { providerId: event.provider_id, before: event.before, after: event.after,
-      occurredAt: event.occurred_at, state: 'pending' };
-    writeCustomerEditStorage(CUSTOMER_EDIT_OVERLAY, overlays);
-    _custBust();
-  } catch { customerEditStatus('Sale saved. Customer changes will retry from this sale.'); }
-}
-function applyCustomerEditResults(rows) {
-  const outbox = readCustomerEditStorage(CUSTOMER_EDIT_OUTBOX);
-  const overlays = readCustomerEditStorage(CUSTOMER_EDIT_OVERLAY);
-  const events = new Map();
-  for (const row of rows) {
-    if (row[0] !== 'CUSTOMER_EDIT' || row[9] !== 'mpe-pos-counter-customer-edit-v1') continue;
-    try {
-      const before = JSON.parse(row[4]), after = JSON.parse(row[5]);
-      if (![before,after].every(fields => fields && Object.keys(fields).sort().join(',') === [...CUSTOMER_EDIT_FIELDS].sort().join(',')
-          && CUSTOMER_EDIT_FIELDS.every(key => typeof fields[key] === 'string' && fields[key].length <= 1000))) continue;
-      const event = { event_id: row[1], txn_id: row[2], provider_id: row[3], before, after,
-        register_id: row[6], occurred_at: row[7], release: row[8] };
-      if (!/^[0-9a-f-]{36}$/.test(event.event_id) || !Number.isFinite(Date.parse(event.occurred_at))) continue;
-      const previous = events.get(event.event_id);
-      events.set(event.event_id, previous && JSON.stringify(previous) !== JSON.stringify(event) ? null : event);
-    } catch { /* incomplete rows never become customer records */ }
-  }
-  const rank = { pending: 0, committed: 1, verified: 2, noop: 2, conflict: 3, failed: 3, ambiguous: 3 };
-  const advances = (current, next) => {
-    if (current === 'conflict') return next === 'conflict';
-    if (['verified','noop'].includes(current)) return ['verified','noop'].includes(next);
-    if (['verified','noop'].includes(next)) return true; // a later reconciliation can prove an uncertain write
-    return rank[next] >= rank[current || 'pending'];
-  };
-  let changed = false;
-  for (const row of rows) {
-    if (row[0] !== 'CUSTOMER_EDIT_RESULT' || row[7] !== 'mpe-pos-counter-customer-result-v1') continue;
-    const id = String(row[1] || ''), state = String(row[2] || '');
-    if (!(state in rank)) continue;
-    const event = events.get(id) || outbox[id]?.event;
-    if (!event) continue;
-    let after;
-    try {
-      after = JSON.parse(row[4]);
-      if (!after || Object.keys(after).sort().join(',') !== [...CUSTOMER_EDIT_FIELDS].sort().join(',')
-          || !CUSTOMER_EDIT_FIELDS.every(key => typeof after[key] === 'string' && after[key].length <= 1000)) continue;
-    } catch { continue; }
-    if (!outbox[id]) { outbox[id] = { event, delivered: true, state: 'pending' }; changed = true; }
-    if (!overlays[id] && !outbox[id].retired) {
-      overlays[id] = { providerId: row[3] || event.provider_id, before: event.before, after,
-        occurredAt: event.occurred_at, state: 'pending', resultAt: row[6] };
-      changed = true;
-    }
-    const saved = outbox[id];
-    // Results never authorize a new edit or replace the original request.
-    if (saved && advances(saved.state, state)) { saved.state = state; changed = true; }
-    if (overlays[id] && advances(overlays[id].state, state)) {
-      overlays[id].state = state;
-      if (!(Date.parse(overlays[id].cacheAt) > Date.parse(row[6]))) overlays[id].after = after;
-      overlays[id].resultAt = row[6];
-      if (row[3]) overlays[id].providerId = String(row[3]);
-      changed = true;
-    }
-  }
-  if (changed) {
-    writeCustomerEditStorage(CUSTOMER_EDIT_OUTBOX, outbox);
-    writeCustomerEditStorage(CUSTOMER_EDIT_OVERLAY, overlays);
-    _custBust();
-    if (_customerEditSelection) {
-      const latest = Object.values(overlays).filter(item => customerEditEqual(item.after, _customerEditSelection.original))
-        .sort((a,b) => a.occurredAt.localeCompare(b.occurredAt)).pop();
-      if (latest) customerEditStatus(['conflict','failed','ambiguous'].includes(latest.state)
-        ? 'Customer changes need attention in Ledger. Your sale is saved.'
-        : ['verified','noop'].includes(latest.state) ? 'Customer saved in Ledger and QuickBooks.'
-        : 'Customer saved in Ledger; waiting for QuickBooks.');
-    }
-  }
-}
-function customerEditOverlayRecords() {
-  try {
-    const records = [];
-    for (const item of Object.values(readCustomerEditStorage(CUSTOMER_EDIT_OVERLAY))
-      .filter(item => !['conflict','failed','ambiguous'].includes(item.state))
-      .sort((a,b) => b.occurredAt.localeCompare(a.occurredAt))) {
-      const later = records.find(record => item.providerId && record.id === item.providerId
-        || record._counterBeforeList.some(before => customerEditEqual(before, item.after)));
-      if (later) { later._counterBeforeList.push(item.before, item.after); continue; }
-      records.push({ ...customerEditRecord(item.after, item.providerId), _counterBeforeList: [item.before] });
-    }
-    return records;
-  } catch { return []; }
-}
-function refreshCustomerEditOverlays(customers, refreshedAt) {
-  const overlays = readCustomerEditStorage(CUSTOMER_EDIT_OVERLAY);
-  let changed = false;
-  for (const item of Object.values(overlays)) {
-    if (!['verified','noop'].includes(item.state) || !item.providerId || !item.resultAt
-        || !(Date.parse(refreshedAt) > Date.parse(item.resultAt))) continue;
-    const fresh = customers.find(customer => String(customer.id) === item.providerId);
-    if (fresh) {
-      item.after = compactCustomerEdit(fresh);
-      item.cacheAt = refreshedAt;
-      changed = true;
-    }
-  }
-  if (changed) writeCustomerEditStorage(CUSTOMER_EDIT_OVERLAY, overlays);
-}
-async function flushCustomerEdits() {
-  if (_customerEditFlush) return _customerEditFlush;
-  const flush = async () => {
-    if (!googleSessionAvailable()) return;
-    let outbox = recoverCustomerEditOutbox();
-    // Read once: both an interrupted append and Ledger's results reconcile here.
-    const rows = await sheetsGet('Transactions!A:P');
-    applyCustomerEditResults(rows);
-    const pending = Object.values(outbox).filter(item => !item.delivered).slice(0, 25);
-    for (const { event } of pending) {
-      const wanted = customerEditRow(event);
-      const found = rows.filter(row => row[0] === 'CUSTOMER_EDIT' && row[1] === event.event_id);
-      if (found.some(row => !exactCustomerEditRow(row, wanted))) throw new Error('A shared customer save conflicts.');
-      if (!found.length) {
-        // The sale writer may still be offline: Ledger also waits for the TXN.
-        const result = await sheetsAppend('Transactions!A1', [wanted.map(value => "'" + value)]);
-        const range = result?.updates?.updatedRange;
-        if (!range || !(await sheetsGet(range)).some(row => exactCustomerEditRow(row, wanted))) throw new Error('Customer save is awaiting confirmation.');
-      }
-      // Re-read shared storage after the network wait; another sale tab may add a request.
-      outbox = readCustomerEditStorage(CUSTOMER_EDIT_OUTBOX);
-      if (outbox[event.event_id]) outbox[event.event_id].delivered = true;
-      writeCustomerEditStorage(CUSTOMER_EDIT_OUTBOX, outbox);
-    }
-  };
-  const work = () => typeof navigator !== 'undefined' && navigator.locks?.request
-    ? navigator.locks.request('mpe-pos-customer-edits', flush) : flush();
-  _customerEditFlush = work().catch(() => {
-    if (_customerEditSelection) customerEditStatus('Customer changes saved here; sync will retry.');
-  }).finally(() => { _customerEditFlush = null; });
-  return _customerEditFlush;
-}
-
 // ─── CUSTOMER AUTOFILL (from embedded MPE_CUSTOMERS / QBO export) ─────────────
 // Suggestions trigger on name, company, or phone. Deliberately conservative so a
 // stray "a" or area-code "808" doesn't flood the list.
@@ -11979,11 +11747,7 @@ function custIndex() {
   const seen = new Set();
   _custIndex = [];
   // Sheet/pending first so an updated record wins over a stale seed entry.
-  const overlays = customerEditOverlayRecords();
-  const replaced = new Set(overlays.filter(c => c.id).map(c => c.id));
-  for (const c of overlays.concat(_custPending, _custSheet, _custQbo, seed)) {
-    if (c.id && replaced.has(c.id) && !overlays.includes(c)) continue;
-    if (!overlays.includes(c) && overlays.some(o => o._counterBeforeList.some(before => customerEditEqual(compactCustomerEdit(c), before)))) continue;
+  for (const c of _custPending.concat(_custSheet, _custQbo, seed)) {
     const key = (c.pd ? 'p:' + c.pd : '') + '|' + (c.co || c.nm || '').toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -12097,7 +11861,6 @@ function renderCustDD(list) {
 }
 function custPick(i) {
   const c = _custDDItems[i]; if (!c) return;
-  selectCustomerForPermanentEdit(c);
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
   const typedName = (document.getElementById('custName')?.value || '').trim();
   // A real human contact on the record = nm that differs from the company.
@@ -12152,7 +11915,6 @@ async function syncQboCustomerCache() {
     const readBack = JSON.parse(localStorage.getItem(QBO_CUSTOMERS_CACHE_KEY) || '[]');
     if (!Array.isArray(readBack) || readBack.length !== payload.count) return;
     _custQbo = readBack;
-    try { refreshCustomerEditOverlays(readBack, payload.refreshed_at); } catch {}
     _custBust();
   } catch {} finally {
     clearTimeout(timer);
@@ -12243,8 +12005,6 @@ async function syncCustomersFromSheet(){
   } catch (e) { console.warn('Customers tab not loaded yet:', e.message); }
 }
 function clearCustFields() {
-  _customerEditSelection = null;
-  customerEditStatus('');
   custFields.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const po = document.getElementById('docPO'); if (po) po.value = '';   // the PO number belongs to one sale, like the customer
 }
@@ -12802,8 +12562,8 @@ const oldClear=clearAll;clearAll=function(){const result=oldClear();if(result!==
 // Desktop continues to own its independent native sale tabs. Browser sessions
 // retain detached canonical rows per tab; switching never saves/clears a sale.
 const browserTabs=new Map();let activeTab=1,nextTab=2;
-function snapshotTab(){return{rows:[...tbody.childNodes],mobile:[...q('#mobileRows').childNodes],count:NUM_ROWS,customer:custFields.map(id=>q('#'+id)?.value||''),po:q('#docPO')?.value||'',doc:_docType,toggles:['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].map(id=>q('#'+id).classList.contains('active')),pendingDate:_pendingTxnDate,pendingNumber:_pendingDocNumber,entry:q('#cvEntry').value,txn:_currentTxnId,date:_currentTxnDate,number:_currentDocNumber,reprint:_reprintSource,quote:_quoteSource,baseline:_historyContentBaseline,cleared:_clearedSale,stock:cartStockSession,customerSelection:_customerEditSelection,tender:readTenderSelection(),binding:_ledgerDraftCustomerBinding,adopted:_ledgerAdoptedCustomer,conversion:_ledgerConversion,scanIssues:new Map(scanIssues),presell:q('#presellChk').checked};}
-function activateTab(id){commitFocused();browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);q('#docPO').value=s.po||'';_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;_customerEditSelection=s.customerSelection||null;customerEditStatus('');_ledgerDraftCustomerBinding=s.binding;_ledgerAdoptedCustomer=s.adopted;_ledgerConversion=s.conversion;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;_ledgerDraftCustomerBinding=null;_ledgerAdoptedCustomer=null;_ledgerConversion=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}orderMode='amount';orderRequested=0;lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
+function snapshotTab(){return{rows:[...tbody.childNodes],mobile:[...q('#mobileRows').childNodes],count:NUM_ROWS,customer:custFields.map(id=>q('#'+id)?.value||''),po:q('#docPO')?.value||'',doc:_docType,toggles:['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].map(id=>q('#'+id).classList.contains('active')),pendingDate:_pendingTxnDate,pendingNumber:_pendingDocNumber,entry:q('#cvEntry').value,txn:_currentTxnId,date:_currentTxnDate,number:_currentDocNumber,reprint:_reprintSource,quote:_quoteSource,baseline:_historyContentBaseline,cleared:_clearedSale,stock:cartStockSession,tender:readTenderSelection(),binding:_ledgerDraftCustomerBinding,adopted:_ledgerAdoptedCustomer,conversion:_ledgerConversion,scanIssues:new Map(scanIssues),presell:q('#presellChk').checked};}
+function activateTab(id){commitFocused();browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);q('#docPO').value=s.po||'';_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;_ledgerDraftCustomerBinding=s.binding;_ledgerAdoptedCustomer=s.adopted;_ledgerConversion=s.conversion;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;_ledgerDraftCustomerBinding=null;_ledgerAdoptedCustomer=null;_ledgerConversion=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}orderMode='amount';orderRequested=0;lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
 function closeBrowserTab(id){
  const state=id===activeTab?snapshotTab():browserTabs.get(id);
  const hasContent=state&&(state.rows.some(row=>row.nodeType===1&&(row.querySelector('.part-input')?.value.trim()||row.querySelector('.note-desc-input,.discount-desc-input')?.value.trim()))||state.customer.some(Boolean)||state.entry.trim());
