@@ -18,13 +18,17 @@ const source = (type) => ({
   document: { type, due_date: type === 'invoice' ? '2026-11-26' : null },
   customer: { name: 'Keoni', company: 'Island LLC', phone: '808', email: '', billing_address: { lines: ['PO Box 1'], city: 'Kahului', region: 'HI', postal_code: '96732', country: '' } },
   lines: [
-    { kind: 'item', part_number: 'MS 271', description: 'Saw', quantity: '1', serials: ['A1'], original_unit_amount: '100.00', discount_amount: '0.00', unit_amount: '100.00', line_total: '100.00' },
-    { kind: 'note', part_number: '', description: 'Thanks', quantity: null, serials: [], original_unit_amount: null, discount_amount: null, unit_amount: null, line_total: null },
+    { kind: 'item', line_id: 'L1', part_number: 'MS 271', description: 'Saw', quantity: '1', serials: ['A1'], original_unit_amount: '100.00', discount_amount: '0.00', unit_amount: '100.00', line_total: '100.00' },
+    { kind: 'note', line_id: 'L2', part_number: '', description: 'Thanks', quantity: null, serials: [], original_unit_amount: null, discount_amount: null, unit_amount: null, line_total: null },
   ],
   totals: { currency: 'USD', subtotal: '100.00', card_fee: '0.00', tax: '4.71', rounding: '0.00', total: '104.71' },
 });
-const build = (docType, finalized) => {
-  const sandbox = { _docType: docType, _ledgerOutputCoordinator: { current: () => finalized } };
+const build = (docType, finalized, screen = {}) => {
+  const sandbox = {
+    _docType: docType, _ledgerOutputCoordinator: { current: () => finalized },
+    tbody: { children: screen.rows || [] }, _ledgerLineIds: screen.ids || new WeakMap(),
+    printMake: screen.make || (() => ''), document: { getElementById: (id) => (id === 'docPO' && screen.po !== undefined ? { value: screen.po } : null) },
+  };
   vm.createContext(sandbox);
   vm.runInContext(page.slice(start, end), sandbox);
   return vm.runInContext('ledgerDocumentRequest()', sandbox);
@@ -52,4 +56,17 @@ test('Auto Print offers Desktop the template first and keeps the page layout as 
   const legacy = auto.indexOf('mpeDesktop.printReceipt(');
   assert.ok(document > 0 && legacy > document);
   assert.match(auto, /documentResult && !documentResult\.fallback/);
+});
+
+test('the PO number and each row\'s brand ride along as print-only extras; a quote carries no PO', () => {
+  const row = { hasAttribute: () => false, dataset: { row: '0' } };
+  const screen = { rows: [row], ids: new WeakMap([[row, 'L1']]), make: (i) => (i === '0' ? 'STIHL' : ''), po: ' PO-9 ' };
+  const invoice = build('invoice', finalized('invoice'), screen);
+  assert.equal(invoice.po, 'PO-9');
+  assert.equal(invoice.lines[0].make, 'STIHL');
+  const facts = factsFromRequest(JSON.parse(JSON.stringify(invoice)));
+  assert.equal(facts.lines[0].make, 'STIHL');
+  assert.equal(build('quote', finalized('quote'), screen).po, '');
+  assert.equal(build('invoice', finalized('invoice')).lines[0].make, '');
+  assert.equal('make' in factsFromRequest(JSON.parse(JSON.stringify(build('invoice', finalized('invoice'))))).lines[0], false);
 });
