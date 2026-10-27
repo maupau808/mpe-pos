@@ -21,3 +21,5 @@
 !test_print_relay.cjs
 !test_ledger_customer_chooser_and_date.cjs
 !test_ledger_refusal_messages.cjs
+!document-template.html
+!test_ledger_document_print.cjs

@@ -1209,6 +1209,7 @@ test('Manual and Auto share one physical-output mutex in both race directions', 
         },
       },
     },
+    ledgerDocumentRequest: () => null,
     prepareAndSaveForPrint: async () => {
       preparations += 1;
       await preparation;
