@@ -127,6 +127,12 @@ Ea.
 <template data-name="counter.sig">
 <div class="sig"><div class="sig-received">Received by:</div><div class="sig-line">PO#: <span class="sig-underline">{{po}}</span></div><div class="sig-line">Print: <span class="sig-underline"></span></div><div class="sig-line">Sign: <span class="sig-underline"></span></div></div>
 </template>
+<template data-name="counter.po">
+<div class="sig"><div class="sig-line">PO#: <span class="sig-underline">{{po}}</span></div></div>
+</template>
+<template data-name="counter.copy">
+<div style="margin-top:22px;text-align:center;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">{{label}}</div>
+</template>
 <template data-name="counter.row">
 <tr><td>{{part}}</td><td>{{description}}</td><td class="r">{{each}}</td><td class="c">{{qty}}</td><td class="r">{{saved}}{{amount}}</td></tr>
 </template>
