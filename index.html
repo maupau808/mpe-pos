@@ -1190,7 +1190,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.29.1';
+const POS_RELEASE = '2026.10.29.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -5541,8 +5541,10 @@ function editDistLE1(a, b) {
 }
 // Counter values omit currency symbols to preserve the cents in narrow fields.
 // Printed documents restore the symbol explicitly through fmtPrint.
-function fmt(n) { return n < 0 ? '- ' + Math.abs(n).toFixed(2) : n.toFixed(2); }
-function fmtPrint(n) { return n < 0 ? '- $' + Math.abs(n).toFixed(2) : '$' + n.toFixed(2); }
+// Feed rows can carry a blank list ('') or null; a non-number here used to throw
+// mid-render and leave the search dropdown showing the previous keystroke's results.
+function fmt(n) { n = Number(n) || 0; return n < 0 ? '- ' + Math.abs(n).toFixed(2) : n.toFixed(2); }
+function fmtPrint(n) { n = Number(n) || 0; return n < 0 ? '- $' + Math.abs(n).toFixed(2) : '$' + n.toFixed(2); }
 
 const VALUE_FIT_SELECTOR = '.price-edit, .sub-edit, .cost-edit, .cell-cost, .cell-margin, .sub-total, .note-price-input, .discount-money, .mobile-price, .mobile-sub';
 const VALUE_FIT_MIN_PX = 7.5;
@@ -12546,7 +12548,7 @@ function sync(){
 function hideSearch(){results.hidden=true;results.replaceChildren();searchTarget=null;searchMatches=[];}
 function positionSearch(){if(results.hidden||!searchTarget?.input?.isConnected)return;const anchor=searchTarget.input.getBoundingClientRect();const width=Math.min(innerWidth-16,Math.max(360,anchor.width));results.style.width=width+'px';results.style.maxHeight='320px';const wanted=Math.min(320,results.scrollHeight),below=innerHeight-anchor.bottom-8,above=anchor.top-8,up=below<wanted&&above>below;const room=Math.max(40,up?above:below),height=Math.min(wanted,room);results.style.maxHeight=room+'px';results.style.left=Math.min(Math.max(8,anchor.left),innerWidth-width-8)+'px';results.style.top=(up?anchor.top-height-6:anchor.bottom+6)+'px';results.dataset.direction=up?'up':'down';}
 function showSearch(input,row){if(!editable())return;if(!loaded){flashScanCommand('Prices are still loading','warn');return;}const text=input.value.trim();if(!text){hideSearch();return;}searchTarget={input,row,text};searchMatches=searchParts(text);searchActive=0;renderResults();}
-function renderResults(){if(!searchTarget)return;const matches=searchMatches.slice(0,MAX_RESULTS);results.innerHTML=matches.map((p,n)=>`<button type="button" data-cv-pick="${n}" class="${n===searchActive?'active':''}"><span>${enc(p.desc||p.pn)}<small>${enc(p.og||p.pn)}${p.make?' · '+enc(p.make):''}</small></span><strong>${enc(fmt(p.list))}</strong></button>`).join('')+(!matches.length?`<button type="button" data-cv-custom="1">Use “${enc(searchTarget.text)}” as a custom item</button>`:'')+(searchMatches._more?.length?`<button type="button" data-cv-more="1">Show ${searchMatches._more.length} other variants</button>`:'');results.hidden=false;positionSearch();}
+function renderResults(){if(!searchTarget)return;const matches=searchMatches.slice(0,MAX_RESULTS);results.innerHTML=matches.map((p,n)=>`<button type="button" data-cv-pick="${n}" class="${n===searchActive?'active':''}"><span>${enc(p.desc||p.pn)}<small>${enc(p.og||p.pn)}${p.make?' · '+enc(p.make):''}</small></span><strong>${p.list?enc(fmt(p.list)):''}</strong></button>`).join('')+(!matches.length?`<button type="button" data-cv-custom="1">Use “${enc(searchTarget.text)}” as a custom item</button>`:'')+(searchMatches._more?.length?`<button type="button" data-cv-more="1">Show ${searchMatches._more.length} other variants</button>`:'');results.hidden=false;positionSearch();}
 function pick(part){if(!editable())return;const target=searchTarget;if(!target)return;const i=target.row==null?emptyRow():target.row;const input=tbody.querySelector(`[data-row="${i}"].part-input`);input.value=part.og||part.pn;ensureScannerMobileRow(i);applyMobilePart(i,part,{skipFocus:true});hideSearch();q('#cvEntry').value='';schedule();requestAnimationFrame(()=>q('#cvEntry').focus());}
 function customPick(){if(!editable())return;const target=searchTarget;if(!target)return;const i=target.row==null?emptyRow():target.row;clearRowData(i);const input=tbody.querySelector(`[data-row="${i}"].part-input`);input.readOnly=false;input.value=target.text;input.className='part-input no-match';commitFreeItem(i,false);hideSearch();q('#cvEntry').value='';schedule();requestAnimationFrame(()=>q(`[data-cv-id="${i}"] .cv-description`)?.focus());}
 results.addEventListener('mousedown',e=>e.preventDefault());results.addEventListener('click',e=>{const pickBtn=e.target.closest('[data-cv-pick]');if(pickBtn){pick(searchMatches[+pickBtn.dataset.cvPick]);return;}if(e.target.closest('[data-cv-custom]'))customPick();if(e.target.closest('[data-cv-more]')){searchMatches=[...searchMatches,...searchMatches._more];renderResults();}});
