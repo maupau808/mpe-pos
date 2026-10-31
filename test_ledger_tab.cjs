@@ -36,8 +36,8 @@ function fixture() {
 test('Ledger is the first tab, labelled, with no close button and no count', () => {
   const { api, tabs } = fixture();
   assert.equal(tabs.children[0], api.button);
-  assert.match(api.button.innerHTML, /<svg[\s\S]*<span>Ledger<\/span>$/);
-  assert.equal(api.button.innerHTML.split('</svg>')[1], '<span>Ledger</span>', 'no count, no ×');
+  assert.match(api.button.innerHTML, /<svg[\s\S]*<span>History<\/span>$/);
+  assert.equal(api.button.innerHTML.split('</svg>')[1], '<span>History</span>', 'no count, no ×');
   assert.equal(api.button.dataset.cvTab, undefined, 'not a sale: close and switch code skip it');
 });
 

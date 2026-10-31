@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ledger</title>
+<title>History</title>
 <style>
 :root{
   --paper:#fffdfa; --panel:#f2f5f0; --ink:#202c24; --ink-2:#4f5d52; --ink-3:#5f6b61;
@@ -94,8 +94,12 @@ a.rec{color:var(--green);font-weight:700;text-decoration:underline;text-underlin
 .rail .acts .btn.primary{justify-content:center}
 .rail .acts .btn svg.sm:last-child{margin-left:auto}
 .rail .why{font-size:12px;color:var(--ink-3);margin:-3px 0 2px 2px}
-.rail .who{font-size:14px;line-height:1.5}
+.rail .who{display:block;width:100%;margin:-6px -8px;padding:6px 8px;border:1px solid transparent;border-radius:6px;background:transparent;text-align:left;font-size:14px;line-height:1.5}
+.rail .who:hover{background:var(--panel);border-color:var(--line)}
+.rail .who h3{display:flex;align-items:center;gap:6px}
+.rail .who h3 svg.i{width:14px;height:14px}
 .rail .who b{display:block}
+.owed[hidden]{display:none}
 .rail ol{list-style:none;font-size:13.5px;border-left:1px solid var(--line);margin-left:4px}
 .rail li{position:relative;padding:0 0 9px 14px}
 .rail li::before{content:"";position:absolute;left:-4px;top:6px;width:7px;height:7px;border-radius:50%;background:#fff;border:1px solid #8da18b}

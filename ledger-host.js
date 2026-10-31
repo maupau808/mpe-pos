@@ -146,6 +146,7 @@
         createDraft: raw => d.google.createGmailDraft(raw),
         printDocument: request => d.printDocument(request),
         openSale: async request => { const r = await d.openSale(request); if (!r || !r.ok) throw new Error('The sale tab did not open'); },
+        scan: typeof d.scan === 'function' ? value => d.scan(value) : undefined, // app 0.3.49+
       };
     }
     const p = w.parent;
@@ -276,6 +277,8 @@
         await mark('email_draft', record);
       },
       openInNewSale: ({ kind, txn }) => env.openSale(saleRequest(kind, txn)),
+      // A keyboard-style scan caught on this page goes to the last sale tab (app only; the website's register catches its own).
+      scan: env.scan,
       // One-time, by hand, after Trevor's go (website only: the app's Ledger tab has no tab-adding permission).
       setupPaymentsTab: env.batchUpdate ? () => setupPaymentsTab(env) : undefined,
     };

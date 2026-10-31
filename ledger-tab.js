@@ -35,8 +35,8 @@
     button.type = 'button';
     button.className = 'cv-tab cv-ledger-tab';
     button.dataset.cvLedger = '1';
-    button.title = 'Ledger';
-    button.innerHTML = BOOK + '<span>Ledger</span>';
+    button.title = 'History';
+    button.innerHTML = BOOK + '<span>History</span>';
     let frame = null, shown = false;
     // An iframe keeps its 150px default height even with top and bottom set, so its height is set here too.
   const place = () => { if (frame) { frame.style.top = header.offsetHeight + 'px'; frame.style.height = Math.max(0, host.clientHeight - header.offsetHeight) + 'px'; } };
@@ -44,7 +44,7 @@
       if (!frame) {
         frame = document.createElement('iframe');
         frame.className = 'cv-ledger-frame';
-        frame.title = 'Ledger';
+        frame.title = 'History';
         frame.src = src;
         if (scanKeydown) frame.addEventListener('load', () => forwardScans(frame.contentWindow, scanKeydown, onScan));
         host.append(frame);

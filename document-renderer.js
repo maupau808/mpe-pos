@@ -189,7 +189,7 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
       else above.push(fill('counter.row.note', { text: escape(line.description) }));
       continue;
     }
-    const serials = line.serials.length ? escape(line.serials.join(', ')) : '';
+    const serials = line.serials.length ? escape(line.serials.join(', ').toUpperCase()) : '';
     const off = !isZero(dec(line.discount_amount));
     if (style === 'clean') {
       rows.push(fill('clean.row', {
@@ -229,7 +229,8 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
   const revised = (extra.revision === undefined ? 1 : extra.revision) >= 2 && extra.revised_on
     ? fill('revised', { date: escape(longDate(extra.revised_on)) }) : '';
   const words = (text) => text.split('{terms}').join(terms).split('{valid_until}').join(validUntil).split('{valid_days}').join(String(cfg.quote_valid_days));
-  const footerKeys = { invoice: ['invoice_footer_1', 'invoice_footer_2'], quote: ['quote_footer'], receipt: ['receipt_footer'] }[kind];
+  // Quotes print no fine print (Trevor, Oct 31); quote_footer stays a setting so saved wording still loads.
+  const footerKeys = { invoice: ['invoice_footer_1', 'invoice_footer_2'], quote: [], receipt: ['receipt_footer'] }[kind];
   const footers = footerKeys.map((key) => words(cfg[key])).filter(Boolean);
   const contact = [cfg.phone, cfg.email].filter(Boolean).join(' · ');
   const page = {
@@ -277,7 +278,6 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
     if (extra.valid_until === undefined) box.push(['Valid for', `${cfg.quote_valid_days} days`]);
     box.push(['Expires', `${mm}/${dd}/${yy}`]);
   } else box.push(['Receipt #', number]);
-  if (kind === 'quote') footers.push(piece('counter.quote.go'));
   const address = [cfg.address_1, cfg.address_2].filter(Boolean).map(escape).join(piece('sep.dot'));
   const contactHtml = escape(contact).split(' · ').join(piece('sep.dot'));
   const infoBlocks = (billLines.length ? fill('counter.bill', { name: escape(billLines[0]), rest: lines(billLines.slice(1)) }) : '')

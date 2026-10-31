@@ -2,7 +2,7 @@
  *
  * Transactions A:W (0-based): 0 type, 1 txnId, 2 date, 3 time, 4 name/company, 5 phone, 6 email, 7 addr,
  *   12 total (TXN) / sub (item), 13 fromQuote (TXN) / serials (item), 14 docType, 15 number (P),
- *   16-21 name, company, street, city, state, zip (Q-V); item rows: 8 pn, 9 desc, 10 qty, 11 ea.
+ *   16-21 name, company, street, city, state, zip (Q-V); item rows: 8 pn, 9 desc, 10 qty, 11 ea, 14 original ea, 15 off per unit.
  * Only TXN and item rows are read; REORDER, STOCK_SESSION, CUSTOMER_*, blank and unknown rows are ignored.
  * Duplicate txnId (in-place edit): the first TXN row from the top wins (edits rewrite the topmost row in place).
  * History's parser (POS/index.html:7118-7426) is to be deleted in T5b so this becomes the only one. Until then
@@ -87,8 +87,11 @@
         };
         out.push(cur);
       } else if (type === 'item' && cur && s(r[1]) === cur.txnId) {
+        // O, P: original Ea. and the amount off each unit, written only for a discounted line.
+        const off = money(r[15]);
         cur.items.push({ pn: s(r[8]), desc: s(r[9]), qty: s(r[10]), ea: money(r[11]), sub: money(r[12]),
-          serials: s(r[13]).split(',').map(x => x.trim()).filter(Boolean) });
+          serials: s(r[13]).split(',').map(x => x.trim().toUpperCase()).filter(Boolean),
+          origEa: off > 0 ? money(r[14]) : 0, off: off > 0 ? off : 0 });
         cur._hayParts.push(s(r[8]), s(r[9]), s(r[13]));
       } else if (type !== 'item') cur = null; // noise row ends the open group
     });

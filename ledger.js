@@ -44,7 +44,10 @@
   // ledger-data.js puts the address state (column U) in r.state and then overwrites r.state with the paid status, so the
   // region is read back from the joined address (column H: "street, city, state, zip"). Drop this once ledger-data keeps it.
   const regionOf = r => { if (s(r.region)) return s(r.region); const p = s(r.addr).split(',').map(x => x.trim()); return p.length >= 3 ? p[p.length - 2] : ''; };
-  const who = r => r.company || r.name || (r.kind === 'receipt' ? 'Walk-in sale' : 'No customer');
+  // No customer: name the sale by its highest-value line, as Oldger did.
+  const topItem = r => (r.items || []).filter(i => i.pn !== 'Note').reduce((a, i) => (!a || i.sub > a.sub ? i : a), null);
+  const who = r => r.company || r.name || (topItem(r) && (topItem(r).desc || topItem(r).pn)) || 'No items';
+  const fmtT = t => s(t).replace(/^0(?=\d:)/, '');
   const minutes = t => { const x = /(\d{1,2}):(\d{2})\s*([AP]M)?/i.exec(s(t)); if (!x) return 0; let h = +x[1] % 12; if (/p/i.test(x[3] || '')) h += 12; return h * 60 + +x[2]; };
   const newest = (a, b) => (b.date || '').localeCompare(a.date || '') || minutes(b.time) - minutes(a.time) || s(b.number).localeCompare(s(a.number));
   const byDue = (a, b) => (a.dueDate || '9').localeCompare(b.dueDate || '9') || s(a.number).localeCompare(s(b.number));
@@ -176,7 +179,7 @@
   }
 
   // The print request, built from a Ledger record the way POS/index.html saleScreenDocumentRequest() builds it from the sale
-  // screen. The sheet has no PO, brand or line discount, so those print empty (as the app prints a sale without them).
+  // screen. The sheet has no PO or brand, so those print empty; a line discount comes from item columns O and P.
   function requestFromRecord(r) {
     const items = r.items.filter(i => i.pn !== 'Note');
     const subtotal = items.reduce((a, i) => a + i.sub, 0);
@@ -194,7 +197,7 @@
       lines: r.items.map(i => (i.pn === 'Note'
         ? { kind: 'note', description: i.desc }
         : { kind: 'item', part_number: i.pn, make: '', description: i.desc, quantity: s(i.qty) || '1', serials: [...i.serials],
-          original_unit_amount: m2(i.ea), discount_amount: m2(0), unit_amount: m2(i.ea), line_total: m2(i.sub) })),
+          original_unit_amount: m2(i.off ? i.origEa : i.ea), discount_amount: m2(i.off || 0), unit_amount: m2(i.ea), line_total: m2(i.sub) })),
       totals: { subtotal: m2(subtotal), card_fee: m2(cardFee), tax: m2(tax),
         rounding: m2(cents(r.total) - cents(subtotal) - cents(tax) - cents(cardFee)), total: m2(r.total) },
     };
@@ -299,6 +302,7 @@
       }
       $('main').hidden = false; $('state').hidden = true;
       const sum = st.model.owedSummary();
+      $('owed').hidden = ui.q || ui.section !== 'invoices'; // the owed line belongs to Invoices only
       $('owed').innerHTML = `Owed to us: <span class="num">${money(sum.total)}</span>, <span class="${sum.overdue ? 'late' : ''}">${sum.overdue} overdue</span>`;
       const counts = subCounts(st.records);
       $('sections').innerHTML = SECTIONS.map(([k, label]) => `<button data-section="${k}" aria-pressed="${!ui.q && ui.section === k}">${label}</button>`).join('');
@@ -324,12 +328,14 @@
       remember();
     }
 
+    // Row: who (or the top item), total; then date and time, and the type with its status for invoices.
     function rowHtml(r) {
       const t = statusOf(r, st.today);
-      const sub = [`${KIND_LABEL[r.kind]} ${r.number || ''}`.trim(), r.company && r.name ? r.name : ''].filter(Boolean).join(' · ');
+      const when = [fmtD(r.date), fmtT(r.time)].filter(Boolean).join(' · ');
+      const kind = r.kind === 'invoice' ? `Invoice · ${t.key === 'paid' ? 'Paid' : t.text}` : KIND_LABEL[r.kind];
       return `<button class="row${r.state === 'void' ? ' is-void' : ''}" role="option" data-id="${esc(r.txnId)}" aria-selected="${r.txnId === ui.sel}">
         <span class="nm">${esc(who(r))}</span><span class="amt num">${money(UNPAID.has(r.state) ? r.balance : r.total)}</span>
-        <span class="sub">${esc(sub)}</span><span class="when ${t.tone}">${esc(t.text)}</span></button>`;
+        <span class="sub num">${esc(when)}</span><span class="when ${r.kind === 'invoice' ? t.tone : 'muted'}">${esc(kind)}</span></button>`;
     }
 
     function drawRecord(r) {
@@ -347,8 +353,8 @@
       $('rail').innerHTML = `
         <div><h3>${esc(KIND_LABEL[r.kind])} ${esc(r.number)}</h3><div class="big num">${money(r.total)}</div>
           <div class="state"><span class="pill ${t.tone}">${['paid'].includes(t.key) ? ICON.check : ''}${esc(t.pill)}</span>${draft ? `<span class="pill draft">${ICON.email}Draft made ${esc(fmtD(draft))}</span>` : ''}</div></div>
+        ${r.name || r.company || r.phone ? `<button class="who" data-act="${r.state === 'void' ? 'noop' : 'edit'}" title="Edit customer"><h3>Customer ${r.state === 'void' ? '' : ICON.edit}</h3><b>${esc(r.company || r.name)}</b>${r.company && r.name ? esc(r.name) + '<br>' : ''}${r.phone ? esc(r.phone) + '<br>' : ''}${r.email ? esc(r.email) : '<span class="muted">No email on file</span>'}${addr.length ? '<br>' + addr.map(esc).join('<br>') : ''}</button>` : ''}
         <div class="acts">${acts.map(btn).join('')}</div>
-        ${r.name || r.company || r.phone ? `<div><h3>Customer</h3><div class="who"><b>${esc(who(r))}</b>${r.company && r.name ? esc(r.name) + '<br>' : ''}${r.phone ? esc(r.phone) + '<br>' : ''}${r.email ? esc(r.email) : '<span class="muted">No email on file</span>'}${addr.length ? '<br>' + addr.map(esc).join('<br>') : ''}</div></div>` : ''}
         <div><h3>History</h3><ol>${hist.map(e => `<li>${esc(e.t)}<span>${esc([fmtD(e.d), e.at].filter(Boolean).join(' · '))}</span></li>`).join('')}</ol></div>`;
     }
 
@@ -504,6 +510,31 @@
       const n = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
       if (n) { e.preventDefault(); select(n.txnId); }
     });
+    // Scanner typed like a keyboard (app): keys under SCAN_GAP ms apart, ending in Enter or Tab, are a scan. Its keys are kept
+    // out of the page, the search box keeps its text, and the code goes to the last sale tab, which is shown.
+    const SCAN_GAP = 35, SCAN_MIN = 4;
+    let burst = '', lastKey = 0, saved = null;
+    doc.addEventListener('keydown', e => {
+      const h = host();
+      if (!h || !h.scan || e.ctrlKey || e.metaKey || e.altKey) return;
+      const now = e.timeStamp || Date.now();
+      const fast = now - lastKey < SCAN_GAP;
+      lastKey = now;
+      if (e.key.length === 1) {
+        if (!fast) { burst = ''; saved = e.target.id === 'q' ? { el: e.target, v: e.target.value } : null; }
+        burst += e.key;
+        if (burst.length >= 3) e.preventDefault(); // three keys each under 35 ms apart is a scanner, never a person
+        return;
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && fast && burst.length >= SCAN_MIN) {
+        e.preventDefault(); e.stopPropagation();
+        if (saved && saved.el.value !== saved.v) { saved.el.value = saved.v; saved.el.dispatchEvent(new root.Event('input', { bubbles: true })); }
+        const code = burst; burst = ''; saved = null;
+        h.scan(code);
+        return;
+      }
+      if (!fast) burst = '';
+    }, true);
     const q = $('q');
     q.value = ui.q;
     q.addEventListener('input', () => { ui.q = q.value; ui.sel = ''; $('list').scrollTop = 0; draw(); });
