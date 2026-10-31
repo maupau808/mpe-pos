@@ -834,6 +834,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 
 @media screen{#counterView #txnHistoryBtn{background:#e4edf3;border-color:#8fa8ba;color:#29485c}#counterView #txnHistoryBtn:hover{background:#d5e3ed;border-color:#698da6}body.dark #counterView #txnHistoryBtn{background:#354e60;border-color:#7898af;color:#edf5fb}}
 
+@media screen{#counterView .cv-tabs{max-width:330px}#counterView .cv-tabs .cv-ledger-tab{display:flex;align-items:center;gap:6px;flex-shrink:0;border-radius:5px 5px 0 0;padding:8px 12px}#counterView .cv-tabs .cv-ledger-tab svg{width:15px;height:15px}#counterView .cv-ledger-frame{position:absolute;left:0;right:0;bottom:0;width:100%;border:0;background:#fffdfa;z-index:5}#counterView .cv-ledger-frame[hidden]{display:none!important}}
 @media screen{#counterView .cv-tab-group{display:flex;align-items:stretch;flex-shrink:0;border:1px solid #bccbb8;border-radius:5px 5px 0 0;overflow:hidden}#counterView .cv-tab-group .cv-tab{border:0;border-radius:0;padding:8px}#counterView .cv-close-tab{border:0!important;border-radius:0;padding:3px!important;width:22px;font-size:18px!important;background:#eef3e9}#counterView .cv-close-tab:hover{background:#eadbd5;color:#853b30}}
 </style>
 <script defer src="http://localhost:8765/bug-report.js"></script>
@@ -882,7 +883,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     </div>
     <div class="toolbar-right">
       <div class="tr-row">
-        <button class="menu-btn" id="txnHistoryBtn" type="button" onclick="openTxnHistory()" title="Look up past sales, invoices and quotes">History</button>
         <button class="icon-btn" id="phoneListBtn" type="button" onclick="openPhoneLists()" aria-label="Phone list" title="Phone list — pick a list sent from MPE Scan on the phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><line x1="10.6" y1="5.4" x2="13.4" y2="5.4" stroke-width="1.4" stroke-linecap="round"/><line x1="10.4" y1="18.6" x2="13.6" y2="18.6" stroke-width="1.4" stroke-linecap="round"/></svg><span class="admin-dot phone-list-dot" id="phoneListDot" style="display:none" aria-hidden="true"></span></button>
         <button class="icon-btn" id="emailDocBtn" onclick="emailDoc()" title="Email — attach the colour PDF to a Gmail draft">✉</button>
         <button class="icon-btn" id="exportPdfBtn" onclick="exportPdf()" title="Export PDF — download the colour copy">⬇</button>
@@ -1164,6 +1164,11 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 <script src="https://accounts.google.com/gsi/client" async="" defer=""></script>
   <script src="ledger-finalization.js" integrity="sha256-Le9aldYdjUdnOfUI2on8GWBhfmWc4qCLSCJokhH0T20="></script>
   <script src="ledger-contact.js"></script>
+  <script src="ledger-numbering.js"></script>
+  <script src="ledger-tab.js"></script>
+  <script src="email-draft.js"></script>
+  <script src="ledger-data.js"></script>
+  <script src="ledger-host.js"></script>
   <script src="print-relay.js"></script>
   <script>
   // Run before scanner/global keyboard listeners. Text still types normally;
@@ -1190,7 +1195,7 @@ const MPE_CUSTOMERS = [{"co":"0941469 BC LTD.","ph":"(604) 818-4185","pd":"60481
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.10.29.2';
+const POS_RELEASE = '2026.10.31.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -4112,10 +4117,12 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
 // happened to have focus, and send the decoded value through the camera's exact
 // same row-filling path. Ordinary typing is too slow to qualify.
 function snapshotHardwareScanOrigin(target) {
-  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+  // The field may sit in the Ledger tab's same-origin frame, whose elements belong to that frame's window.
+  const view = target?.ownerDocument?.defaultView || window;
+  if (target instanceof view.HTMLInputElement || target instanceof view.HTMLTextAreaElement) {
     return { kind: 'value', element: target, value: target.value, start: target.selectionStart, end: target.selectionEnd };
   }
-  if (target instanceof HTMLSelectElement) {
+  if (target instanceof view.HTMLSelectElement) {
     return { kind: 'select', element: target, selectedIndex: target.selectedIndex };
   }
   const editable = target?.closest?.('[contenteditable="true"]');
@@ -4178,7 +4185,11 @@ function hardwareKeyTime(event) {
   const stamp = Number(event?.timeStamp);
   if (!Number.isFinite(stamp) || stamp <= 0) return performance.now();
   const origin = Number(performance.timeOrigin) || (Date.now() - performance.now());
-  return stamp > 1e12 ? stamp - origin : stamp;
+  // A key typed in the Ledger tab's frame is stamped on that frame's clock: move it onto this page's clock,
+  // so frame scans and register scans share one repeat guard.
+  const eventClock = event?.target?.ownerDocument?.defaultView?.performance;
+  const eventOrigin = Number(eventClock?.timeOrigin) || origin;
+  return stamp > 1e12 ? stamp - origin : stamp + eventOrigin - origin;
 }
 
 function hardwareKeyWallTime(eventTime) {
@@ -5012,7 +5023,7 @@ function runScanCommand(raw) {
       const restored = _clearedSale;
       if (restored.savedTxnId) {
         const index = getHistory().findIndex(order => order.txnId === restored.savedTxnId);
-        if (index < 0) { flashScanCommand('Open Transaction History to find the saved sale', 'warn'); return; }
+        if (index < 0) { flashScanCommand('Open the Ledger tab to find the saved sale', 'warn'); return; }
         return reprintOrder(index).then(() => {
           if (_reprintSource?.txnId !== restored.savedTxnId) return;
           _clearedSale = null;
@@ -6900,7 +6911,9 @@ async function writeTransactionToSheet(order) {
     if (order.historySyncPending && transactionRowsFingerprint(writtenRows) !== transactionRowsFingerprint(rows)) {
       throw new Error('Updated transaction contents could not be verified after saving');
     }
+    await settleDocNumber(order);
     acknowledgeTransactionSnapshot(order);
+    if (order.ledgerEdit && writeMode === '(updated existing)') queueLedgerEditMark(order, txnId);
     _txns = null;
     try { await _idbPut('txnCache', null); } catch {}
     try { updatePriceChangesBadge(); } catch (e) {}   // un-synced count just dropped
@@ -6917,6 +6930,17 @@ async function writeTransactionToSheet(order) {
     console.warn('[MPE] Transaction export failed —', why, '· stays queued for the next sync');
     throw new Error(why);
   }
+}
+
+// Ledger's 'edit' mark (a Payments-tab row, amount 0) after a record opened from Ledger's Edit is rewritten
+// in place. Durable like every Bridge write (MPELedgerHostKit); it never blocks or fails the sale's own save.
+function queueLedgerEditMark(order, txnId) {
+  const kit = window.MPELedgerHostKit, data = window.MPELedgerData;
+  if (!kit || !data) return;
+  const place = registerDigit() || (window.mpeDesktop ? '' : '9');
+  kit.createPaymentsStore({ get: range => sheetsGet(range, { retryThrottle: false }), append: sheetsAppend, storage: localStorage })
+    .appendRows([data.buildMarkRow({ kind: 'edit', txnId, invoice_number: order.docNumber, place })])
+    .catch(error => console.warn('[MPE] Ledger edit mark deferred:', error.message));
 }
 
 // Customer completion shares the existing transaction writer/serialization.
@@ -8717,7 +8741,8 @@ function buildBillTo() {
 // has no cached template yet.
 function ledgerDocumentRequest() {
   const finalized = _ledgerOutputCoordinator?.current();
-  if (!finalized || (_docType !== 'invoice' && _docType !== 'quote')) return null;
+  if (!finalized) return saleScreenDocumentRequest();
+  if ( (_docType !== 'invoice' && _docType !== 'quote')) return null;
   const source = finalized.source_facts;
   if (!source?.document || source.document.type !== _docType) return null;
   const customer = source.customer;
@@ -8750,6 +8775,47 @@ function ledgerDocumentRequest() {
         unit_amount: line.unit_amount, line_total: line.line_total })),
     totals: { subtotal: source.totals.subtotal, card_fee: source.totals.card_fee, tax: source.totals.tax,
       rounding: source.totals.rounding, total: source.totals.total },
+  };
+}
+
+// The same request, built from the sale on screen when no Oldger finalization exists (the normal case now). Money is rounded
+// the way the screen shows it; "rounding" carries any cent the three rounded parts differ from the shown total by.
+function saleScreenDocumentRequest() {
+  if (_docType !== 'invoice' && _docType !== 'quote') return null;
+  const number = activeDocNumber();
+  const order = captureOrder();
+  if (!number || !order) return null;
+  const cents = n => Math.round(n * 100) / 100;
+  const m = n => cents(n).toFixed(2);
+  const subtotal = order.items.reduce((sum, item) => sum + (Number(item.sub) || 0), 0);
+  const t = checkoutTotals(subtotal, order.toggles.cardFee);
+  const completion = new Date(_currentTxnDate || _pendingTxnDate || Date.now());
+  let dueDate = null;
+  if (_docType === 'invoice') {
+    dueDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Honolulu', year: 'numeric', month: '2-digit', day: '2-digit' })
+      .format(new Date(completion.getTime() + 30 * 86400000));
+  }
+  const c = order.customer;
+  const billing = ledgerBillingAddress();
+  return {
+    po: _docType === 'invoice' ? String(document.getElementById('docPO')?.value || '').trim() : '',
+    type: _docType,
+    number,
+    completionAt: completion.toISOString(),
+    dueDate,
+    customer: {
+      name: c.name, company: c.company, phone: c.phone, email: c.email,
+      ...(billing.lines.length || billing.city
+        ? { billing_address: billing }
+        : { address: '' }),
+    },
+    lines: order.items.map(item => (item.pn === 'Note'
+      ? { kind: 'note', description: item.desc }
+      : { kind: 'item', part_number: item.pn, make: item.make || '', description: item.desc, quantity: String(item.qty),
+        serials: [...(item.sn || [])], original_unit_amount: m(item.discountPerUnit ? item.originalEa : item.ea),
+        discount_amount: m(item.discountPerUnit || 0), unit_amount: m(item.ea), line_total: m(item.sub) })),
+    totals: { subtotal: m(subtotal), card_fee: m(t.cardFee), tax: m(t.tax),
+      rounding: m(cents(t.total) - cents(subtotal) - cents(t.tax) - cents(t.cardFee)), total: m(t.total) },
   };
 }
 
@@ -8966,10 +9032,17 @@ function cleanupPrint() {
   _preparedPrintHtml = null;
   releaseLedgerOutputUi();
   releasePhysicalOutput();
-  // Quote / Invoice / Internal are one-off modes. Once that document has printed,
-  // fall back to Sales Receipt so the next sale at the counter can't inherit the
-  // wrong document type from the last one.
-  if (_docType !== 'receipt' && !_ledgerOutputCoordinator?.current()) setDocType('receipt');
+  resetOneOffDocTypeAfterPrint();
+}
+// Quote and Internal are one-off modes. Once that document has printed, fall back to
+// Sales Receipt so the next sale at the counter can't inherit the wrong document type.
+// A printed invoice stays an invoice while it is on screen (Oldger's finalization used
+// to hold it; without Oldger its saved number does), so Save or Print again can't
+// rewrite it as a receipt. Clearing the sale still starts the next one as a receipt.
+function resetOneOffDocTypeAfterPrint() {
+  if (_docType === 'receipt' || _ledgerOutputCoordinator?.current()) return;
+  if (_docType === 'invoice' && (_currentTxnId || _reprintSource)) return;
+  setDocType('receipt');
 }
 
 function ledgerMoneyText(value) {
@@ -9275,8 +9348,8 @@ function showLedgerRefusal(label, error) {
     finalized_source_missing: 'This numbered document must be reopened from its verified Ledger source.',
     ledger_unavailable: 'Ledger is not reachable, so this is locked for now. Check the internet and try again.',
     local_integrity_uncertain: 'The number may have saved, but confirmation was interrupted. Try the same action again.',
-    integrity_conflict: 'Ledger could not confirm this document. A number may already be assigned. Do not press the button again. Check Transaction History for the number. If it is not there, tell Trevor.',
-    output_failed: 'The number was assigned but the print or file did not finish. Do not make another copy. Check Transaction History for the number and reprint from there. If it is not there, tell Trevor.',
+    integrity_conflict: 'Ledger could not confirm this document. A number may already be assigned. Do not press the button again. Check the Ledger tab for the number. If it is not there, tell Trevor.',
+    output_failed: 'The number was assigned but the print or file did not finish. Do not make another copy. Check the Ledger tab for the number and reprint from there. If it is not there, tell Trevor.',
     quarantined: 'This document is on hold after its number was assigned. Do not make another copy. Tell Trevor.',
     release_unattested: 'The verified numbering code did not load. Nothing was printed or saved.',
   };
@@ -9295,7 +9368,6 @@ async function preflightLedgerOutput(completionAction) {
     return Object.freeze({ mode: 'legacy', reused: false });
   }
   if (!_ledgerOutputCoordinator) {
-    if (window.mpeDesktop?.numbering) throw ledgerRefusalError('release_unattested');
     return Object.freeze({ mode: 'legacy', reused: false });
   }
   if (_reprintSource) {
@@ -9317,9 +9389,11 @@ async function preflightLedgerOutput(completionAction) {
 }
 
 (() => {
+  // T2: numbers come from MPELedgerNumbering (letter + place digit + count), not Oldger leases. Oldger code stays, uncalled.
+  const OLDGER_NUMBERING = false;
   const api = window.MPELedgerFinalization;
   const numbering = window.mpeDesktop?.numbering;
-  if (!api || !numbering
+  if (!OLDGER_NUMBERING || !api || !numbering
       || typeof numbering.beginOutput !== 'function'
       || typeof numbering.finishOutput !== 'function'
       || typeof numbering.getFinalizedSource !== 'function'
@@ -9475,13 +9549,13 @@ const LEDGER_FINALIZE_MESSAGES = {
   customer_ambiguous: 'More than one customer matches this name. Pick the right one in Ledger, then Finalize again.',
   identity_invalid: 'Ledger could not use these customer details. Nothing was sent. Check the name, address and phone, then Finalize again.',
   csrf_failed: 'Ledger turned this request down. Nothing was sent. Restart the app, then Finalize again. If it keeps happening, tell Trevor.',
-  replay_collision: 'A Finalize is already in progress on this register. Wait a moment and check Transaction History before pressing Finalize again.',
+  replay_collision: 'A Finalize is already in progress on this register. Wait a moment and check the Ledger tab before pressing Finalize again.',
   customer_name_reused: 'A different customer with this name was already made on this register. Retype the phone and address to match, or change the name, then Finalize again.',
   formal_ineligible: 'Complete the customer name, address, and phone, then Finalize again.',
   source_binding: 'The invoice changed while it was being finalized. Nothing was sent. Review the draft and Finalize again.',
   release_unattested: 'This register is running unverified invoice code. Nothing was sent. Restart the app, then Finalize again.',
   local_integrity_uncertain: 'The invoice number may have saved but confirmation was interrupted. Press Finalize Invoice again; do not make another copy.',
-  integrity_conflict: 'Ledger could not confirm this invoice. Do not press Finalize again. Check Transaction History for the invoice number. If it is not there, tell Trevor.',
+  integrity_conflict: 'Ledger could not confirm this invoice. Do not press Finalize again. Check the Ledger tab for the invoice number. If it is not there, tell Trevor.',
   // This computer's own Ledger sign-in (Desktop returns the server's code unchanged).
   device_revoked: 'This computer was shut off in Ledger. Nothing was sent. Ask Trevor to set it up again (Desktop Settings, Set up this computer), then Finalize again.',
   device_scope: 'This computer is not allowed to send invoices to Ledger. Nothing was sent. Ask Trevor to set it up again in Ledger, Computers.',
@@ -9628,6 +9702,7 @@ async function prepareAndSaveForPrint(
       auditKind = finalized.mode === 'c06' && outputKind
         ? (finalized.recovered ? 'reprint' : outputKind)
         : null;
+      if (finalized.mode === 'legacy') await reserveDocNumber();
       if (prepareOutput) preparePrint();
       else if (finalized.mode === 'legacy') reserveDocDate();
       if (!recordOutgoingDocument()) {
@@ -9953,113 +10028,6 @@ document.addEventListener('keydown', e => {
 // user can review/edit and send manually. Nothing is sent automatically.
 
 let _emailScopeRetried = false;  // guards against a re-consent loop if Gmail permission is denied
-function _bytesToB64(bytes) {
-  let bin = ''; const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  return btoa(bin);
-}
-function _b64UrlUtf8(str) {
-  return _bytesToB64(new TextEncoder().encode(str)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-function _blobToB64(blob) {
-  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(blob); });
-}
-function _buildEmailMime(to, subject, bodyText, filename, pdfB64, bodyHtml = '', from = '') {
-  const boundary = 'mpe_' + Date.now();
-  const alternative = boundary + '_body';
-  const header = value => String(value || '').replace(/[\r\n]/g, ' ');
-  const encoded = value => _bytesToB64(new TextEncoder().encode(value)).match(/.{1,76}/g)?.join('\r\n') || '';
-  return [
-    'MIME-Version: 1.0',
-    'To: ' + header(to),
-    ...(from ? ['From: ' + header(from)] : []),
-    'Subject: =?UTF-8?B?' + _bytesToB64(new TextEncoder().encode(header(subject))) + '?=',
-    'Content-Type: multipart/mixed; boundary="' + boundary + '"',
-    '', '--' + boundary,
-    'Content-Type: multipart/alternative; boundary="' + alternative + '"',
-    '', '--' + alternative,
-    'Content-Type: text/plain; charset="UTF-8"',
-    'Content-Transfer-Encoding: base64', '', encoded(bodyText),
-    ...(bodyHtml ? ['', '--' + alternative,
-      'Content-Type: text/html; charset="UTF-8"',
-      'Content-Transfer-Encoding: base64', '', encoded(bodyHtml)] : []),
-    '', '--' + alternative + '--',
-    '', '--' + boundary,
-    'Content-Type: application/pdf',
-    'Content-Transfer-Encoding: base64',
-    'Content-Disposition: attachment; filename="' + header(filename).replace(/["\\]/g, '_') + '"',
-    '', pdfB64.match(/.{1,76}/g)?.join('\r\n') || '',
-    '', '--' + boundary + '--', ''
-  ].join('\r\n');
-}
-
-async function _emailIdentity(token) {
-  if (desktopGoogleAvailable()) {
-    if (typeof window.mpeDesktop.google.gmailIdentity !== 'function') {
-      throw new Error('This POS Desktop needs an update to load your Gmail signature. Use the browser POS for this email.');
-    }
-    return window.mpeDesktop.google.gmailIdentity();
-  }
-  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs?fields=sendAs(sendAsEmail,isDefault,isPrimary,signature)', {
-    headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(15000),
-  });
-  if (response.status === 401 || response.status === 403) {
-    const error = new Error('Sign in again to allow POS to read your Gmail signature.');
-    error.emailConsentRequired = true;
-    throw error;
-  }
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || 'Could not read your Gmail signature.');
-  const aliases = data.sendAs || [];
-  const sender = aliases.find(alias => alias.isDefault) || aliases.find(alias => alias.isPrimary);
-  if (!sender?.sendAsEmail) throw new Error('Gmail did not return your default From address.');
-  return { email: sender.sendAsEmail, accountEmail: aliases.find(alias => alias.isPrimary)?.sendAsEmail || sender.sendAsEmail, signature: sender.signature || '' };
-}
-
-function buildEmailBody(order, title, number, dateStr, signature = '') {
-  const esc = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const money = value => '$' + Number(value).toFixed(2);
-  const items = order.items || [];
-  const frozenTotals = order.ledgerTotals;
-  const subtotal = frozenTotals
-    ? Number(frozenTotals.subtotal)
-    : items.reduce((sum, item) => sum + (parseFloat(item.sub) || 0), 0);
-  const calculated = checkoutTotals(subtotal, !!order.toggles?.cardFee);
-  const tax = frozenTotals ? Number(frozenTotals.tax) : calculated.tax;
-  const cardFee = frozenTotals ? Number(frozenTotals.card_fee) : calculated.cardFee;
-  const total = frozenTotals ? Number(frozenTotals.total) : calculated.total;
-  const greeting = 'Aloha' + (order.customer?.name ? ' ' + order.customer.name : '') + ',';
-  const intro = `Please find your ${title.toLowerCase()} (No. ${number}) attached. A summary is included below.`;
-  const cell = 'padding:8px 6px;border-bottom:1px solid #d7d7d7;text-align:left;vertical-align:top';
-  const rows = items.map(item => {
-    const qty = parseFloat(item.qty) || 1, ea = parseFloat(item.ea) || 0;
-    const sub = Number.isFinite(parseFloat(item.sub)) ? parseFloat(item.sub) : ea * qty;
-    const serials = item.sn?.length ? `<br><small>Serial: ${item.sn.map(esc).join(', ')}</small>` : '';
-    const discount = (parseFloat(item.discountPerUnit) || 0) > 0
-      ? `<br><small>${money(item.discountPerUnit * qty)} discount included</small>` : '';
-    return `<tr><td style="${cell}">${esc(item.desc)}<br><small>${esc(item.pn)}</small>${serials}${discount}</td>` +
-      `<td style="${cell};text-align:right">${esc(qty)}</td><td style="${cell};text-align:right;white-space:nowrap">${money(ea)}</td>` +
-      `<td style="${cell};text-align:right;white-space:nowrap">${money(sub)}</td></tr>`;
-  }).join('');
-  const sums = [['Subtotal', subtotal], ['Tax', tax], ...(order.toggles?.cardFee ? [['Card fee (3%)', cardFee]] : []), ['Total', total]];
-  // Keep the document OUTSIDE the signature wrapper: replacing a signature must
-  // never remove line items. Gmail's marker is a compatibility hint, not an API
-  // guarantee. The prefix AND wrapper were checked in Gmail: From changes
-  // replace the signature while preserving the following document.
-  const signatureHtml = signature ? `<br clear="all"><div><br></div><span class="gmail_signature_prefix">-- </span><br><div dir="ltr" class="gmail_signature" data-smartmail="gmail_signature">${signature}</div>` : '';
-  const html = `<div dir="ltr" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111">` +
-    `<p>${esc(greeting)}</p><p>${esc(intro)}</p>${signatureHtml}` +
-    `<div style="margin-top:24px;max-width:680px"><h2 style="font-size:20px;color:#2f4339;margin-bottom:6px">${esc(title)} ${esc(number)}</h2>` +
-    `<p style="font-size:12px">${esc(dateStr)}</p><table style="width:100%;border-collapse:collapse;font-size:13px">` +
-    `<thead><tr>${['Description / Product', 'Qty', 'Each', 'Price'].map((label, i) => `<th scope="col" style="${cell};border-bottom:2px solid #111;${i ? 'text-align:right' : ''}">${label}</th>`).join('')}</tr></thead>` +
-    `<tbody>${rows}</tbody><tfoot>${sums.map(([label, amount]) => `<tr><th colspan="3" style="${cell};text-align:right">${label}</th><td style="${cell};text-align:right;white-space:nowrap;${label === 'Total' ? 'font-weight:bold' : ''}">${money(amount)}</td></tr>`).join('')}</tfoot></table></div></div>`;
-  const signatureDoc = new DOMParser().parseFromString(signature.replace(/<br\s*\/?\s*>/gi, '\n').replace(/<\/(?:div|p|tr)>/gi, '\n'), 'text/html');
-  const text = [greeting, intro, signatureDoc.body.textContent.trim(), `${title} ${number} — ${dateStr}`,
-    ...items.map(item => `${item.desc} (${item.pn}) — ${item.qty} @ ${money(item.ea)}: ${money(item.sub)}`),
-    ...sums.map(([label, amount]) => `${label}: ${money(amount)}`)].filter(Boolean).join('\n\n');
-  return { html, text };
-}
-
 // Brand palette, matching the website (Website/index.html :root) so the emailed
 // PDF looks like the rest of MPE rather than a fax. Green carries the structure
 // (header band, rules, totals), gold is the accent only. This is the CUSTOMER
@@ -10338,9 +10306,6 @@ async function emailDoc() {
       showLedgerRefusal('Email draft', error);
       return;
     }
-  } else if (window.mpeDesktop?.numbering) {
-    showLedgerRefusal('Email draft', ledgerRefusalError('release_unattested'));
-    return;
   }
 
   let token = accessToken || localStorage.getItem('gToken');
@@ -10350,6 +10315,7 @@ async function emailDoc() {
   clearToolFailure();
   setBtn('⏳', true);
   try {
+    await reserveDocNumber();
     const now    = (reserveDocDate() || new Date());
     const number = activeDocNumber() || formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
@@ -10571,30 +10537,40 @@ function formatDocNumber(d, type) {
   const mins = Math.max(0, Math.floor((d.getTime() - DOC_EPOCH) / 60000));
   return String(mins).padStart(7, '0');
 }
-// Ledger's numbering plan: 7 plain digits, first digit = register (1 Mac, 2 PC Left,
-// 3 PC Right). Ledger leases count up from D000001; numbers this register issues on its
-// own count up from D500001, so the two can never meet. Gaps are allowed, reuse is not.
-const LOCAL_DOC_NUMBER_KEY = 'mpeLocalDocNumberV1';
-const LOCAL_DOC_NUMBER_BASE = 500000;
-function nextRegisterDocNumber(d) {
-  const digit = registerDigit();
-  if (!digit) return formatDocNumber(d, _docType);
-  const band = new RegExp('^' + digit + '([5-9]\\d{5})$');
-  let last = LOCAL_DOC_NUMBER_BASE;
-  try {
-    const saved = JSON.parse(localStorage.getItem(LOCAL_DOC_NUMBER_KEY) || 'null');
-    if (saved?.digit === digit && Number.isInteger(saved.last)) last = Math.max(last, saved.last);
-  } catch (e) {}
-  try {
-    for (const entry of getHistory()) {
-      const match = band.exec(String(entry?.docNumber || ''));
-      if (match) last = Math.max(last, Number(match[1]));
-    }
-  } catch (e) {}
-  if (last >= 999999) return formatDocNumber(d, _docType);
-  const next = last + 1;
-  try { localStorage.setItem(LOCAL_DOC_NUMBER_KEY, JSON.stringify({ digit, last: next })); } catch (e) {}
-  return digit + String(next);
+// Synchronous last resort only (numbering unavailable): the old minute number, digits only, so it can never match a lettered number.
+function nextRegisterDocNumber(d) { return formatDocNumber(d, _docType); }
+// New numbers: letter + place digit + count (ledger-numbering.js). The Desktop app counts in its main process; a browser
+// uses the sheet maximum for digit 9. If numbering cannot run, the counter keeps working on the old minute number.
+const _docNumbering = typeof MPELedgerNumbering === 'object' ? MPELedgerNumbering.create({
+  place: window.mpeDesktop?.placeNumbering,
+  readRows: () => sheetsGet(TXN_SHEET + '!A:P'),
+  writeNumber: (sheetRow, number) => sheetsUpdate(TXN_SHEET + '!P' + sheetRow, [[number]]),
+  localNumbers: () => { try { return getHistory().map(entry => entry?.docNumber); } catch (e) { return []; } },
+  log: (...args) => console.warn('[MPE numbering]', ...args),
+}) : null; // a missing ledger-numbering.js leaves the register on the minute number
+if (_docNumbering) MPELedgerNumbering.syncDigit({ place: window.mpeDesktop?.placeNumbering, chosen: registerDigit() }).catch(() => {});
+async function reserveDocNumber() {
+  if (_docType === 'internal' || _reprintSource || _currentTxnDate) return;
+  const letter = _docNumbering ? MPELedgerNumbering.letterFor(_docType) : null;
+  if (_pendingTxnDate && _pendingDocNumber && _pendingDocNumber[0] === letter) return;
+  const date = _pendingTxnDate || (_pendingTxnDate = new Date());
+  let number;
+  try { if (!_docNumbering) throw new Error('numbering unavailable'); number = await _docNumbering.next(_docType); }
+  catch (error) { console.warn('[MPE numbering] fell back to the minute number:', error.message); number = formatDocNumber(date, _docType); }
+  if (_pendingTxnDate === date) _pendingDocNumber = number;
+}
+// After a browser's row is on the sheet: if another row holds the same number, this row takes the next one.
+async function settleDocNumber(order) {
+  if (!_docNumbering) return;
+  const was = order.docNumber;
+  const kept = await _docNumbering.settle({ number: was, txnId: order.txnId });
+  if (kept === was) return;
+  order.docNumber = kept;
+  // The paper copy already shows the old number: tell the counter to correct it.
+  if (typeof flashScanCommand === 'function') flashScanCommand('Number changed from ' + was + ' to ' + kept + ' (another register used it). Write ' + kept + ' on the paper copy.', 'err');
+  const history = getHistory();
+  const saved = history.find(entry => entry.txnId === order.txnId);
+  if (saved) { saved.docNumber = kept; localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); }
 }
 // This register's digit, chosen once in Admin and kept in this register's storage.
 // The desktop Mac needs no setup.
@@ -10610,6 +10586,8 @@ function registerDigit() {
 function setRegisterDigit(value) {
   if (!/^[123]$/.test(value)) return;
   try { localStorage.setItem(REGISTER_DIGIT_KEY, value); } catch (e) {}
+  // The Desktop app keeps the document-number digit in its own settings (main process).
+  try { Promise.resolve(window.mpeDesktop?.placeNumbering?.setDigit(Number(value))).catch(() => {}); } catch (e) {}
   renderRegisterDigit();
   updateAdminDot();
   updateScreenDocTitle();
@@ -10693,6 +10671,7 @@ function saveToHistory() {
     if (identity.ledgerFinalization || previous?.ledgerFinalization) {
       order.ledgerFinalization = { ...(identity.ledgerFinalization || previous.ledgerFinalization) };
     }
+    if (identity.ledgerEdit) order.ledgerEdit = true;   // opened from Ledger's Edit: the in-place save leaves an 'edit' mark
   } else {
     const pad = n => String(n).padStart(2, '0');
     const base = 'TX-' + pad(now.getMonth()+1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + '-' + pad(now.getSeconds())
@@ -11600,6 +11579,28 @@ function ledgerQuoteSale(draft) {
     customer: customer.some(Boolean) ? customer : null, phone: f('phone', 100), email: f('email', 254), items };
 }
 
+// Ledger tab → a NEW sale tab (app: main opened it; browser: the tab row just added it).
+// { kind: 'quote-to-sale' | 'copy-sale' | 'new-invoice' | 'edit', txn } with txn in History's shape
+// (MPELedgerHostKit.toHistory). Runs only on an empty tab, so a sale in progress is never cleared.
+// 'edit' keeps the same txnId and number (Load into POS), so saving rewrites that record in place and
+// leaves an 'edit' mark for Ledger. 'copy-sale' and 'new-invoice' are new sales with a new number.
+function openLedgerSale({ kind, txn }) {
+  try {
+    if (!ledgerDraftTabIsEmpty()) throw new Error('This POS tab is not empty.');
+    if (txn?.contactConflict) throw new Error('Customer changes for this sale need review first.');
+    const type = ['receipt', 'invoice', 'quote'].includes(txn?.docType) ? txn.docType : 'receipt';
+    if (kind === 'edit') { fillTxnIntoPOS(txn); _reprintSource.ledgerEdit = true; }
+    else if (kind === 'quote-to-sale') fillTxnIntoPOS(txn, 'receipt');
+    else if (kind === 'copy-sale' || kind === 'new-invoice') {
+      fillTxnIntoPOS(kind === 'copy-sale' ? txn : { ...txn, items: [] }, kind === 'copy-sale' ? type : 'invoice');
+      _quoteSource = null;   // a copy is its own sale, not a quote conversion
+      updateScreenDocTitle();
+    } else throw new Error('Unknown Ledger action.');
+  } catch (error) {
+    alert('Ledger could not open this sale. ' + (error?.message || ''));
+  }
+}
+
 function applyLedgerDraft(draft) {
   if (!ledgerDraftTabIsEmpty()) throw new Error('This POS tab is not empty');
   if (!draft || draft.schema !== 'mpe-ledger-pos-draft-v1' || !['invoice','quote','receipt'].includes(draft.documentType)) {
@@ -12500,7 +12501,7 @@ function mount(){if(mounted||printing)return;mounted=true;originals.forEach(x=>x
 function unmount(){if(!mounted)return;mounted=false;originals.slice().reverse().forEach(x=>x.marker.after(x.node));document.body.classList.remove('counter-view');hideSearch();}
 window.setCounterClassicView=function(classic){localStorage.setItem(VIEW_KEY,classic?'1':'0');q('#cvClassic').checked=!!classic;if(classic)unmount();else mount();};
 const classic=document.createElement('label');classic.className='menu-check';classic.innerHTML='<input type="checkbox" id="cvClassic"> Classic view';q('#adminMenu').append(classic);q('#cvClassic').addEventListener('change',e=>window.setCounterClassicView(e.target.checked));
-move('#docTypeSel',q('.cv-docs'));move('#txnHistoryBtn',q('.cv-history'));q('#txnHistoryBtn').textContent='Transaction History';
+move('#docTypeSel',q('.cv-docs'));
 const top=q('.cv-top');move('#phoneListBtn',top);move('#emailDocBtn',top);move('#exportPdfBtn',top);move('#printBtn',top);move(q('#adminMenuBtn')?.closest('.menu-wrap'),top);move('#themeToggle',top);move('#custPanel',q('#cvCustomer'));move(q('.checkout-summary .summary'),q('#cvTotals'));move('#presellWrap',q('#cvPresell'));move('#chargeCardBtn',q('#cvCharge'));move('#finalizeInvoiceBtn',q('#cvFinalize'));move('#ledgerCustomerChooser',q('#cvLedger'));move('#ledgerInvoiceStatus',q('#cvLedger'));move('#licenseDiag',q('#cvCustomer'));move('#scanPanel',q('#cvReview'));
 q('#printBtn').classList.add('cv-icon');q('#printBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 8V3h12v5M6 17H3V9h18v8h-3M6 14h12v7H6zM17 11h1"/></svg>';q('#printBtn').setAttribute('aria-label','Manual print');q('#printBtn').title='Manual print';
 q('#emailDocBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg>';q('#emailDocBtn').setAttribute('aria-label','Email PDF');
@@ -12592,17 +12593,19 @@ const oldClear=clearAll;clearAll=function(){const result=oldClear();if(result!==
 // retain detached canonical rows per tab; switching never saves/clears a sale.
 const browserTabs=new Map();let activeTab=1,nextTab=2;
 function snapshotTab(){return{rows:[...tbody.childNodes],mobile:[...q('#mobileRows').childNodes],count:NUM_ROWS,customer:custFields.map(id=>q('#'+id)?.value||''),po:q('#docPO')?.value||'',doc:_docType,toggles:['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].map(id=>q('#'+id).classList.contains('active')),pendingDate:_pendingTxnDate,pendingNumber:_pendingDocNumber,entry:q('#cvEntry').value,txn:_currentTxnId,date:_currentTxnDate,number:_currentDocNumber,reprint:_reprintSource,quote:_quoteSource,baseline:_historyContentBaseline,cleared:_clearedSale,stock:cartStockSession,tender:readTenderSelection(),binding:_ledgerDraftCustomerBinding,adopted:_ledgerAdoptedCustomer,conversion:_ledgerConversion,scanIssues:new Map(scanIssues),presell:q('#presellChk').checked};}
-function activateTab(id){commitFocused();browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);q('#docPO').value=s.po||'';_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;_ledgerDraftCustomerBinding=s.binding;_ledgerAdoptedCustomer=s.adopted;_ledgerConversion=s.conversion;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;_ledgerDraftCustomerBinding=null;_ledgerAdoptedCustomer=null;_ledgerConversion=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}orderMode='amount';orderRequested=0;lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
+function activateTab(id){ledgerTab?.hide();commitFocused();browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);q('#docPO').value=s.po||'';_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;_ledgerDraftCustomerBinding=s.binding;_ledgerAdoptedCustomer=s.adopted;_ledgerConversion=s.conversion;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;_ledgerDraftCustomerBinding=null;_ledgerAdoptedCustomer=null;_ledgerConversion=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}orderMode='amount';orderRequested=0;lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
 function closeBrowserTab(id){
  const state=id===activeTab?snapshotTab():browserTabs.get(id);
  const hasContent=state&&(state.rows.some(row=>row.nodeType===1&&(row.querySelector('.part-input')?.value.trim()||row.querySelector('.note-desc-input,.discount-desc-input')?.value.trim()))||state.customer.some(Boolean)||state.entry.trim());
  if(hasContent&&!confirm('Close Sale '+id+'? Items and customer details in this tab will be discarded.'))return;
- const ids=qa('#cvTabs .cv-tab').map(b=>Number(b.dataset.cvTab));
+ const ids=qa('#cvTabs .cv-tab[data-cv-tab]').map(b=>Number(b.dataset.cvTab));
  if(id===activeTab){const other=ids.find(n=>n!==id);if(other===undefined)addTab();else activateTab(other);}
  browserTabs.delete(id);q(`[data-cv-tab="${id}"]`)?.closest('.cv-tab-group')?.remove();
 }
 function addTab(){const id=nextTab++,b=document.createElement('button');b.type='button';b.className='cv-tab';b.dataset.cvTab=id;b.textContent='Sale '+id;b.onclick=()=>activateTab(id);const group=document.createElement('div');group.className='cv-tab-group';const close=document.createElement('button');close.type='button';close.className='cv-close-tab';close.textContent='×';close.setAttribute('aria-label','Close sale '+id);close.title='Close sale '+id;close.onclick=()=>closeBrowserTab(id);group.append(b,close);q('#cvTabs').append(group);if(id!==1)activateTab(id);else b.classList.add('active');}
-if(window.mpeDesktop){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;}else{nextTab=1;addTab();q('#cvNew').onclick=addTab;}
+// Ledger tab: first, never closed. The app shows it in its native tab strip instead.
+let ledgerTab=null;
+if(window.mpeDesktop){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;window.mpeDesktop.onLedgerSale?.(openLedgerSale);}else{nextTab=1;addTab();q('#cvNew').onclick=addTab;ledgerTab=window.MPELedgerTab?.install({document,window,tabs:q('#cvTabs'),header:q('.cv-top'),host:root,onShow:()=>qa('#cvTabs .cv-tab[data-cv-tab]').forEach(b=>b.classList.remove('active')),onOpenSale:sale=>{addTab();openLedgerSale(sale);},scanKeydown:onHardwareScanKeydown,onScan:()=>activateTab(activeTab)})||null;}
 const oldIdle=posRegisterIsIdleAndEmpty;posRegisterIsIdleAndEmpty=function(){if(q('#cvEntry').value.trim())return false;for(const [id,state] of browserTabs){if(id!==activeTab&&(state.entry.trim()||state.customer.some(Boolean)||state.rows.some(row=>row.nodeType===1&&row.querySelector('.part-input')?.value.trim())))return false;}return oldIdle();};
 const contactObserver=new MutationObserver(()=>{if(document.body.dataset.ledgerContactMode==='1')unmount();else if(localStorage.getItem(VIEW_KEY)!=='1')mount();});contactObserver.observe(document.body,{attributes:true,attributeFilter:['data-ledger-contact-mode']});
 q('#cvClassic').checked=localStorage.getItem(VIEW_KEY)==='1';if(!q('#cvClassic').checked)mount();

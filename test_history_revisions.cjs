@@ -12,6 +12,7 @@ function setup() {
     _currentTxnId: null, _currentTxnDate: null, _pendingTxnDate: null,
     _pendingDocNumber: null, _currentDocNumber: null,
     _lastPrintedOrder: null, _lastPushStatus: null, _ledgerOutputCoordinator: null,
+    MPELedgerNumbering: require('./ledger-numbering'), window: {}, sheetsGet: async () => [],
     HISTORY_KEY: 'history', HISTORY_MAX: 1000, PUSHED_TXNIDS_KEY: 'pushed',
     SHEETS_ID: 'test', TXN_SHEET: 'Transactions', DOC_TITLES: {quote:'Quote',receipt:'Receipt',invoice:'Invoice'},
     _txns: null, _txnsLoadedAt: 0, _txnShown: [], _txnRefreshWarning: '', _txnRefreshPromise: null,
@@ -136,23 +137,10 @@ test('stale legacy history during sign-in does not overwrite corrected Drive quo
  const c=setup();c.save();await c.sync();const sheet=c.sheet();sheet[1][10]=2;c.setSheet(sheet);
  c.storage.set('pushed','[]');c.connect();await c.flush();assert.equal(c.sheet()[1][10],2);assert.equal(c.batches(),0);
 });
-test('register numbers are 7 plain digits starting with the register digit and never repeat',()=>{
+test('without the new numbering a sale keeps the old digits-only minute number, which can never match a lettered number',()=>{
  const unset=setup();unset.save();const plain=unset.s.getHistory()[0];
  assert.match(plain.txnId,/^TX-\d{4}-\d{4}-\d{2}$/);assert.match(plain.docNumber,/^\d{7}$/);
- const c=setup();c.storage.set('mpeRegisterDigitV1','2');
- assert.equal(vm.runInContext('reserveDocDate(), activeDocNumber()',c.s),'2500001');
- c.save();const first=c.s.getHistory()[0];
- assert.equal(first.docNumber,'2500001');assert.match(first.txnId,/^TX-\d{4}-\d{4}-\d{2}-2$/);
- assert.equal(vm.runInContext('activeDocNumber()',c.s),'2500001');
- c.s.draft.items[0].qty=2;c.save();assert.equal(c.s.getHistory()[0].docNumber,'2500001');
- vm.runInContext('_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_historyContentBaseline=null',c.s);
- c.save();assert.equal(c.s.getHistory()[0].docNumber,'2500002');
- c.storage.delete('mpeLocalDocNumberV1');
- vm.runInContext('_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_historyContentBaseline=null',c.s);
- c.save();assert.equal(c.s.getHistory()[0].docNumber,'2500003','history guards against a lost counter');
- const other=setup();other.storage.set('mpeRegisterDigitV1','3');other.save();
- assert.equal(other.s.getHistory()[0].docNumber,'3500001');
- const old=setup();old.storage.set('mpeRegisterDigitV1','2');
+ const old=setup();
  old.s._reprintSource={txnId:'TX-0101-0900-00',date:'2026-01-01T19:00:00.000Z',docNumber:null};
  assert.match(vm.runInContext('activeDocNumber()',old.s),/^0\d{6}$/);
  old.save();assert.equal(old.s.getHistory()[0].txnId,'TX-0101-0900-00');assert.match(old.s.getHistory()[0].docNumber,/^0\d{6}$/);

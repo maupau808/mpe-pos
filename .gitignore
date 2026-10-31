@@ -9,6 +9,17 @@
 !version.json
 !ledger-finalization.js
 !ledger-contact.js
+!ledger-numbering.js
+!ledger-data.js
+!ledger.html
+!ledger-tab.js
+!ledger.js
+!ledger-host.js
+!email-draft.js
+!document-renderer.js
+!test_ledger_tab.cjs
+!test_ledger_host.cjs
+!test_document_renderer_copy.cjs
 !test_ledger_finalization.cjs
 !.gitignore
 !.githooks/

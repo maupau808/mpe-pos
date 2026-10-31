@@ -1352,7 +1352,7 @@ test('Manual keeps physical-output ownership through pending afterprint audit an
   assert.equal(vm.runInContext('_physicalOutputInFlight', sandbox), null);
 });
 
-test('actual POS refuses configured output when the verified helper is missing', async () => {
+test('actual POS no longer needs the Oldger helper: output takes the legacy path with new-format numbers', async () => {
   const start = entryText.indexOf('async function preflightLedgerOutput');
   const end = entryText.indexOf('(() => {', start);
   const sandbox = {
@@ -1365,9 +1365,9 @@ test('actual POS refuses configured output when the verified helper is missing',
   };
   vm.createContext(sandbox);
   vm.runInContext(entryText.slice(start, end), sandbox, { filename: 'POS-preflight-guard.js' });
-  await expectCodeAsync(
-    () => vm.runInContext("preflightLedgerOutput('print_snapshot')", sandbox),
-    'release_unattested',
+  assert.deepEqual(
+    clone(await vm.runInContext("preflightLedgerOutput('print_snapshot')", sandbox)),
+    { mode: 'legacy', reused: false },
   );
   sandbox.window.mpeDesktop = null;
   assert.deepEqual(
@@ -1717,4 +1717,26 @@ test('renderer accepts strict numeric V4 allocation and preserves it after lost 
   assert.equal(result.document_number, '1749451');
   assert.equal(result.source_event_id, firstRequest.sourceEventId);
   assert.equal(attempts, 2);
+});
+
+test('without Oldger the app register drafts an email: no "unverified invoice code" refusal when no Oldger helper is set up', async () => {
+  const body = entryText.slice(entryText.indexOf('async function emailDoc'), entryText.indexOf('// ─── HISTORY'));
+  const guardAt = body.indexOf('  if (_ledgerOutputCoordinator) {');
+  const guard = body.slice(guardAt, body.indexOf('  let token', guardAt));
+  assert.ok(guardAt > 0 && guard.length > 0);
+  const run = async (coordinator) => {
+    const refused = [];
+    const sandbox = { _ledgerOutputCoordinator: coordinator, window: { mpeDesktop: { numbering: { invoiceFinalization: true } } },
+      showLedgerRefusal: (action, error) => refused.push([action, error?.code || String(error)]),
+      ledgerRefusalError: (code) => Object.assign(new Error(code), { code }) };
+    vm.createContext(sandbox);
+    const went = await vm.runInContext(`(async () => {\n${guard}\nreturn 'continued';\n})()`, sandbox);
+    return { went, refused };
+  };
+  // The normal case now: the app's preload offers Oldger numbering, but the page never sets it up (OLDGER_NUMBERING = false).
+  assert.deepEqual(await run(null), { went: 'continued', refused: [] });
+  // A set-up Oldger helper still guards the artifact first.
+  const blocked = await run({ guardArtifact: async () => { throw Object.assign(new Error('x'), { code: 'output_failed' }); } });
+  assert.equal(blocked.went, undefined);
+  assert.deepEqual(blocked.refused, [['Email draft', 'output_failed']]);
 });
