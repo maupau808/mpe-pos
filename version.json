@@ -1,62 +1,62 @@
 {
-  "posRelease": "2026.10.31.3",
+  "posRelease": "2026.10.31.4",
   "forceRelease": "2026.10.17.1",
-  "desktopRelease": "0.3.49",
-  "publishedAt": "2026-10-31T20:55:09Z",
+  "desktopRelease": "0.3.50",
+  "publishedAt": "2026-10-31T21:34:41Z",
   "desktop": {
     "windows": {
-      "version": "0.3.49",
-      "archiveSize": 145718011,
-      "archiveSha256": "abe52c7747e0590e003162fcd56a7487c1145bc0cdb7ea969df3fe1ff296ac4d",
+      "version": "0.3.50",
+      "archiveSize": 145718314,
+      "archiveSha256": "5cd0c0851d3a5663c63cecdcd3ab2837364d0d8c4a3e3b190c96ecca026de148",
       "parts": [
         {
-          "fileId": "15gwV99alH7GTzNJrYm9IHEyywnnyMLn4",
-          "name": "MPE-POS-Windows-0.3.49.zip.part-000",
+          "fileId": "1tlZXB_75REUm7QcsgI3mriX5MxodUbsQ",
+          "name": "MPE-POS-Windows-0.3.50.zip.part-000",
           "size": 41943040,
-          "sha256": "fa8d7e042ac9f2cab2172eb6010d42b9950688092cfbbf23bd9e90e525604201"
+          "sha256": "59560cfe86312f930d813839d70640669a3873727cda4b963768a84abb2ecbd2"
         },
         {
-          "fileId": "1DR_CyKRm5yYDly7vL6JAWbMMc3GJ8rLt",
-          "name": "MPE-POS-Windows-0.3.49.zip.part-001",
+          "fileId": "1l5H9MdF58Cy5BSkmyXhMOMm2LxpqQRLB",
+          "name": "MPE-POS-Windows-0.3.50.zip.part-001",
           "size": 41943040,
-          "sha256": "85247a18ce98aa9b8718dac1a5f461350d9a210e791478fcf9cf3db7ee3979ca"
+          "sha256": "c9f288d0a414bdb0dbabf56497d7d034b8243f223887eae6f359e590e23783e1"
         },
         {
-          "fileId": "1oLUDJFvAo-oNUJd-xxCPsGFSsXcju3aJ",
-          "name": "MPE-POS-Windows-0.3.49.zip.part-002",
+          "fileId": "1pngQLkXxdE8Kcpu_BAdNFnzq0qJ-INVr",
+          "name": "MPE-POS-Windows-0.3.50.zip.part-002",
           "size": 41943040,
-          "sha256": "035f0bd8642eaa95192c20288f8f981d97f38eb76310dd92c9dbe1fce3a0a315"
+          "sha256": "8140ef2a02e4179048045cbc374c6c5eccf1749ef2f2a8db8a1fac0d322e258f"
         },
         {
-          "fileId": "1WNj0Z16OrH1OiBXFWLqb2v483e5Xl-ZF",
-          "name": "MPE-POS-Windows-0.3.49.zip.part-003",
-          "size": 19888891,
-          "sha256": "1cd74f8b45bb26f729bfa56380d90d2e6a6b09c6ed7c8782c991a2563a603ff8"
+          "fileId": "1ze94QnxV9vYABvvPC7QOlKpigHAFMFU2",
+          "name": "MPE-POS-Windows-0.3.50.zip.part-003",
+          "size": 19889194,
+          "sha256": "60168f94572a3aa514ce76720f2f84ce8504d6101497bbe7137826314e3e17dd"
         }
       ]
     },
     "mac": {
-      "version": "0.3.49",
-      "archiveSize": 120122044,
-      "archiveSha256": "498512ad60fdc9e80b8683731bb4ed320e2eaead2ffd0212c906cead951342b7",
+      "version": "0.3.50",
+      "archiveSize": 120122347,
+      "archiveSha256": "4e5b1bc0fd85fccf71f4fdecb6ef6a7a80b902509181596e44bf59adb6524d4c",
       "parts": [
         {
-          "fileId": "1iav-aj4XS2aZXm7YKG1VZNp73GmxSDiY",
-          "name": "MPE-POS-mac-arm64-0.3.49.zip.part-000",
+          "fileId": "1HOoRdwgAkWEaS7Btd-nAHifHl5i1l7s1",
+          "name": "MPE-POS-mac-arm64-0.3.50.zip.part-000",
           "size": 41943040,
-          "sha256": "07635abc16bee323c0bac2e0a8b1c3e875033e4fbd00e2a515fca3b1879f60da"
+          "sha256": "e5ffcc12b6330c5427b5cacbb7e0add11f48a03e2b1cfdb53acf58e931aaf3c2"
         },
         {
-          "fileId": "1pNEUsrJWiPVab-QL8HX5M35nZyz6lT5H",
-          "name": "MPE-POS-mac-arm64-0.3.49.zip.part-001",
+          "fileId": "1axQDU6Q5uHRxJCAVGT19ABl3Bj6d69A-",
+          "name": "MPE-POS-mac-arm64-0.3.50.zip.part-001",
           "size": 41943040,
-          "sha256": "87ce38ebb7c1ac8b63dcec14b7ab00904c4c2c2370110c6fd22c0fc54a460686"
+          "sha256": "da4ed78cf56293a29aa9fa409f938aa421e78c6e347ee8a3bc0660efd148891f"
         },
         {
-          "fileId": "1u976h9P4SwMERTG6g52rlYS7r9xCpfp4",
-          "name": "MPE-POS-mac-arm64-0.3.49.zip.part-002",
-          "size": 36235964,
-          "sha256": "f857001f93af9a1644ca4e2bb824de40f32f55b7f14b887b76629e13697a0060"
+          "fileId": "10Ja0G8v9ucVZUQ-4tZ22_w6VFxRBg_77",
+          "name": "MPE-POS-mac-arm64-0.3.50.zip.part-002",
+          "size": 36236267,
+          "sha256": "62d553aa7a8e94b45603ee723782c2e587235be165312e2425885117f174f50e"
         }
       ]
     }
