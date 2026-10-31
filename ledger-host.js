@@ -119,7 +119,8 @@
       customer: customer.some(Boolean) ? customer : null, presell: !!r.presell, contactConflict: !!r.contactConflict,
       completedContact: Array.isArray(r.completedContact) ? r.completedContact.slice() : null,
       items: (r.items || []).map(i => ({ pn: s(i.pn), desc: s(i.desc), qty: s(i.qty), ea: i.pn === 'Note' ? '' : m2(i.ea),
-        sub: i.pn === 'Note' ? '' : m2(i.sub), sn: (i.serials || []).join(', ') })),
+        sub: i.pn === 'Note' ? '' : m2(i.sub), sn: (i.serials || []).join(', '),
+        ...(i.off > 0 && i.origEa > 0 ? { originalEa: m2(i.origEa), discountPerUnit: m2(i.off) } : {}) })),
     };
   }
   function saleRequest(kind, record) {
