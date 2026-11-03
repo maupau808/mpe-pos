@@ -314,7 +314,7 @@
         // Every type, receipts too: the app prints the filled template to the counter printer (browser print is a no-op there).
         if (env.printDocument) {
           const r = await env.printDocument(request);
-          if (r && r.ok) return;
+          if (r && r.ok) return r;   // { printed: false } when the print window was closed without printing
           if (!(r && r.fallback)) throw new Error('The printer did not take it');
         }
         await printPages(await pages(request));

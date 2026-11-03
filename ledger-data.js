@@ -218,7 +218,7 @@
       const kind = t.docType === 'invoice' || t.docType === 'quote' ? t.docType : 'receipt';
       const r = { ...t, kind, draftMade: draftSet.has(t.txnId) || (!!t.number && draftSet.has(t.number)) };
       r.draftText = r.draftMade ? 'Draft made' : '';
-      const gone = kind !== 'quote' && cancels && cancels[t.txnId] && cancels[t.txnId].cancelled ? cancels[t.txnId] : null;
+      const gone = cancels && cancels[t.txnId] && cancels[t.txnId].cancelled ? cancels[t.txnId] : null;
       const mine = (ids, nums) => live.filter(p => ids.has(p.txnId) || (!p.txnId && nums.has(p.invoice_number)));
       if (kind === 'quote') { // a deposit on a quote (Trevor, Nov 1): payment rows on the quote; the sale made from it counts them
         r.paymentsLive = mine(new Set([t.txnId]), new Set(t.number ? [t.number] : []));

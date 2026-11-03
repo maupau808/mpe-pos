@@ -115,7 +115,7 @@
 
   const SECTIONS = [['recent', 'Recent'], ['invoices', 'Invoices'], ['quotes', 'Quotes'], ['sales', 'Sales'], ['customers', 'Customers']];
   const INVOICE_SUBS = [['unpaid', 'Unpaid'], ['dueSoon', 'Due soon'], ['overdue', 'Overdue'], ['paid', 'Paid'], ['void', 'Void or cancelled']];
-  const QUOTE_SUBS = [['open', 'Open'], ['converted', 'Turned into sale'], ['closed', 'Closed in QuickBooks']];
+  const QUOTE_SUBS = [['open', 'Open'], ['converted', 'Turned into sale'], ['closed', 'Closed in QuickBooks'], ['deleted', 'Deleted']];
   // Filters under the search box. Records: when and where from. Customers: who to show and the order.
   const FILTERS = {
     when: [['', 'Any date'], ['30', 'Last 30 days'], ['year', 'This year'], ['lastYear', 'Last year']],
@@ -144,7 +144,8 @@
       unpaid: inv.filter(r => UNPAID.has(r.state)).length, dueSoon: inv.filter(r => r.state === 'dueSoon').length,
       overdue: inv.filter(r => r.state === 'overdue').length, paid: inv.filter(r => r.state === 'paid').length,
       void: inv.filter(isGone).length,
-      open: q.filter(r => !r.convertedTo && !(isQbo(r) && !qboOpenQuote(r))).length, converted: q.filter(r => r.convertedTo).length,
+      deleted: q.filter(isGone).length,
+      open: q.filter(r => !isGone(r) && !r.convertedTo && !(isQbo(r) && !qboOpenQuote(r))).length, converted: q.filter(r => r.convertedTo).length,
       closed: q.filter(r => isQbo(r) && !qboOpenQuote(r)).length,
     };
   }
@@ -174,10 +175,10 @@
     }
     if (ui.section === 'quotes') {
       const sub = ui.quoteSub || 'open';
-      const pick = { open: r => !r.convertedTo && !(isQbo(r) && !qboOpenQuote(r)), converted: r => !!r.convertedTo, closed: r => isQbo(r) && !qboOpenQuote(r) && !r.convertedTo }[sub] || (() => false);
+      const pick = { deleted: isGone, open: r => !isGone(r) && !r.convertedTo && !(isQbo(r) && !qboOpenQuote(r)), converted: r => !!r.convertedTo, closed: r => isQbo(r) && !qboOpenQuote(r) && !r.convertedTo }[sub] || (() => false);
       const rows = byNewest(records).filter(r => r.kind === 'quote' && pick(r));
-      return { groups: rows.length ? [group(sub, { open: 'Open quotes', converted: 'Turned into sale', closed: 'Closed in QuickBooks' }[sub], rows)] : [],
-        empty: { open: 'No open quotes.', converted: 'No quotes have been turned into a sale yet.', closed: 'No closed QuickBooks quotes.' }[sub] };
+      return { groups: rows.length ? [group(sub, { open: 'Open quotes', converted: 'Turned into sale', closed: 'Closed in QuickBooks', deleted: 'Deleted quotes' }[sub], rows)] : [],
+        empty: { open: 'No open quotes.', converted: 'No quotes have been turned into a sale yet.', closed: 'No closed QuickBooks quotes.', deleted: 'No deleted quotes.' }[sub] };
     }
     if (ui.section === 'sales') {
       const rows = byNewest(records).filter(r => r.kind === 'receipt');
@@ -226,7 +227,7 @@
       return a;
     }
     const isVoid = r.state === 'void' || r.state === 'cancelled'; // a cancelled sale gets no Edit or Email draft, as a void one
-    if (r.kind === 'quote' && !r.convertedTo) a.push({ act: 'toSale', label: 'Turn quote into sale', primary: true });
+    if (r.kind === 'quote' && !r.convertedTo && !isVoid) a.push({ act: 'toSale', label: 'Turn quote into sale', primary: true });
     if (r.kind === 'quote' && !r.convertedTo && !isVoid && cents(r.total - (r.deposit || 0)) > 0) a.push({ act: 'pay', label: r.deposit > 0 ? `Take more deposit · ${money(r.deposit)} paid` : 'Take deposit' });
     if (r.kind === 'invoice' && UNPAID.has(r.state)) a.push({ act: 'pay', label: r.paid > 0 ? `Take payment · ${money(r.balance)} left` : 'Take payment', primary: true });
     a.push({ act: 'reprint', label: 'Reprint' });
@@ -236,8 +237,8 @@
     if (r.kind === 'invoice' && !isVoid && (r.paymentsLive || []).length) a.push({ act: 'undoPay', label: r.paymentsLive.length > 1 ? 'Undo last payment' : r.state === 'paid' ? 'Undo paid' : 'Undo payment' });
     if (r.kind === 'quote' && !r.convertedTo && (r.paymentsLive || []).length) a.push({ act: 'undoPay', label: 'Undo last deposit' });
     if (!isVoid && r.docType !== 'internal' && !r.convertedTo && !r.replaces && !isQbo(r)) a.push({ act: 'retype', label: 'Change type', quiet: true, menu: true });
-    if (r.state === 'cancelled') a.push({ act: 'uncancel', label: 'Undo cancel' });
-    else if (!isVoid && r.kind !== 'quote' && r.docType !== 'internal') a.push({ act: 'cancel', label: 'Cancel sale', quiet: true });
+    if (r.state === 'cancelled') a.push({ act: 'uncancel', label: r.kind === 'quote' ? 'Restore quote' : 'Undo cancel' });
+    else if (!isVoid && r.docType !== 'internal' && !(r.kind === 'quote' && r.convertedTo)) a.push({ act: 'cancel', label: r.kind === 'quote' ? 'Delete quote' : 'Cancel sale', quiet: true });
     a.push({ act: 'copy', label: 'Copy to new sale', quiet: true });
     if (r.name || r.company) a.push({ act: 'newInvoice', label: 'New invoice for this customer', quiet: true });
     return a;
@@ -642,7 +643,7 @@
         ? '<div class="note-void"><b>VOID.</b> This invoice is void in QuickBooks and does not count as owed.</div>'
         : r.state === 'void'
         ? `<div class="note-void"><b>VOID.</b> This invoice was corrected and does not count as owed. The replacement is <a class="rec" href="#" data-go="${esc(r.replacedBy)}">${esc(r.replacedBy)}</a>.</div>`
-        : r.state === 'cancelled' ? `<div class="note-void">Cancelled ${esc(fmtD(r.cancelledAt))}. Its items went back into stock and it does not count as owed.</div>`
+        : r.state === 'cancelled' ? `<div class="note-void">Cancelled ${esc(fmtD(r.cancelledAt))}. ${r.kind === 'quote' ? 'This quote is deleted. You can restore it.' : 'Its items went back into stock and it does not count as owed.'}</div>`
         : r.replaces ? `<div class="note-plain">Replaces <a class="rec" href="#" data-go="${esc(r.replaces)}">${esc(r.replaces)}</a>, which is now void. Both PDFs are kept.</div>` : '');
       const snap = st.before && st.before.txnId === r.txnId && ((st.marks.before || {})[r.txnId] || [])[st.before.i];
       const old = snap && L.derive(L.parseTransactions(snap.rows), [], st.today)[0];
@@ -781,7 +782,7 @@
       if (k === 'pay') return takePayment(r);
       if (k === 'undoPay') return undoPaid(r.txnId);
       if (k === 'pdf') return host().openPdf(r.number).then(res => { if (!res || !res.ok) toast(PDF_WHY[res && res.reason] || PDF_WHY.missing); }, () => toast(PDF_WHY.offline));
-      if (k === 'reprint') return run('reprint', async () => { await host().reprint(r, st.request || requestFromRecord(r)); return `${r.number} sent to print.`; });
+      if (k === 'reprint') return run('reprint', async () => { const out = await host().reprint(r, st.request || requestFromRecord(r)); return out?.printed === false ? 'Not printed.' : `${r.number} sent to print.`; });
       if (k === 'email') return run('email', async () => {
         await host().emailDraft(r, st.request || requestFromRecord(r));
         st.local.drafts[r.txnId] = st.today;
@@ -830,23 +831,25 @@
     }
     // Cancel sale: one 'cancel' mark on the Payments tab (ledger-data.js CANCEL). A payment must be undone first.
     function confirmCancel(r) {
-      if ((r.paymentsLive || []).length) return toast('This invoice has a payment. Undo the payment first.');
+      if ((r.paymentsLive || []).length) return toast(r.kind === 'quote' ? 'This quote has a deposit. Undo the deposit first.' : 'This invoice has a payment. Undo the payment first.');
+      const quote = r.kind === 'quote';
       const d = $('confirm');
-      $('confirmText').innerHTML = `<b>Cancel sale ${esc(r.number)}?</b><br>The items go back into stock. You can undo this.`;
-      $('confirmNo').textContent = 'Keep sale'; $('confirmOk').textContent = 'Cancel sale';
+      $('confirmText').innerHTML = quote ? `<b>Delete quote ${esc(r.number)}?</b><br>It moves to Deleted quotes. You can restore it.` : `<b>Cancel sale ${esc(r.number)}?</b><br>The items go back into stock. You can undo this.`;
+      $('confirmNo').textContent = quote ? 'Keep quote' : 'Keep sale'; $('confirmOk').textContent = quote ? 'Delete quote' : 'Cancel sale';
       d.returnValue = '';
       d.onclose = () => { if (d.returnValue === 'ok') setCancel(r, 'cancel'); };
-      if (d.showModal) d.showModal(); else if (root.confirm(`Cancel sale ${r.number}? The items go back into stock. You can undo this.`)) setCancel(r, 'cancel');
+      if (d.showModal) d.showModal(); else if (root.confirm(quote ? `Delete quote ${r.number}? You can restore it.` : `Cancel sale ${r.number}? The items go back into stock. You can undo this.`)) setCancel(r, 'cancel');
     }
     function setCancel(r, kind) {
       run(kind, async () => {
         await load();
         const now = recById(r.txnId);
         if (!now) return `${r.number} was not found.`;
-        if (kind === 'cancel' && (now.paymentsLive || []).length) return 'This invoice has a payment. Undo the payment first.';
+        if (isQbo(now) || now.state === 'void' || now.docType === 'internal' || (now.kind === 'quote' && now.convertedTo)) return 'This record cannot be removed.';
+        if (kind === 'cancel' && (now.paymentsLive || []).length) return now.kind === 'quote' ? 'This quote has a deposit. Undo the deposit first.' : 'This invoice has a payment. Undo the payment first.';
         if ((now.state === 'cancelled') === (kind === 'cancel')) return kind === 'cancel' ? `${r.number} is already cancelled.` : `${r.number} is not cancelled.`;
         await host().appendPaymentRows([L.buildMarkRow({ kind, txnId: r.txnId, invoice_number: r.number, place: host().place || '' })]);
-        return kind === 'cancel' ? { text: `${r.number} cancelled. Its items go back into stock.`, undo: () => setCancel(r, 'uncancel') } : `${r.number} is back on the books.`;
+        return kind === 'cancel' ? { text: now.kind === 'quote' ? `${r.number} deleted.` : `${r.number} cancelled. Its items go back into stock.`, undo: () => setCancel(r, 'uncancel') } : now.kind === 'quote' ? `${r.number} restored.` : `${r.number} is back on the books.`;
       });
     }
     // Change to: invoice, receipt or quote, in place (one checked cell on the sheet; stock follows the new type).
@@ -867,7 +870,7 @@
     function rowMenu(r, x, y) {
       if (ui.section === 'customers') return;
       const items = actionsFor(r, !!(host() && host().openPdf)).filter(a => !a.disabled && a.act !== 'retype')
-        .map(a => [a.act, a.act === 'cancel' ? 'Remove (cancel sale)' : a.label]);
+        .map(a => [a.act, a.act === 'cancel' && r.kind !== 'quote' ? 'Remove (cancel sale)' : a.label]);
       const types = typeChoices(r);
       openMenu({ left: x, top: y, bottom: y }, types.length ? items.concat([['hint', 'Change type']], types) : items, k => k.startsWith('type:') ? changeType(r, k.slice(5)) : act(k));
     }
