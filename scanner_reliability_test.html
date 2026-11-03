@@ -1,0 +1,1077 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>POS scanner reliability tests</title>
+<style>
+body { font: 14px/1.45 system-ui, sans-serif; margin: 20px; }
+.pass { color: #176b2c; } .fail { color: #a51d25; font-weight: 700; }
+iframe { position: fixed; width: 1200px; height: 800px; left: -2000px; top: 0; }
+</style>
+<h1>POS scanner reliability tests</h1>
+<div id="summary">Running…</div>
+<ol id="results"></ol>
+<iframe id="pos"></iframe>
+<iframe id="phone"></iframe>
+<script>
+const results = [];
+const pos = document.getElementById('pos');
+const phone = document.getElementById('phone');
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const waitFor = async (check, timeout = 30000) => {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    if (check()) return;
+    await sleep(25);
+  }
+  throw new Error('timed out');
+};
+const record = (name, ok, detail = '') => {
+  results.push({ name, ok, detail });
+  const li = document.createElement('li');
+  li.className = ok ? 'pass' : 'fail';
+  li.textContent = `${ok ? 'PASS' : 'FAIL'} — ${name}${detail ? `: ${detail}` : ''}`;
+  document.getElementById('results').appendChild(li);
+};
+const test = async (name, fn) => {
+  try { await fn(); record(name, true); }
+  catch (error) { record(name, false, error.message); }
+};
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const frameWindow = frame => frame.contentWindow;
+const loaded = frame => /^\d[\d,]* parts(?: loaded)?$/.test(frame.contentDocument.getElementById('partsCount')?.textContent || '');
+const TEST_FEED = {
+  parts: [
+    { pn: 'TEST1001', og: 'TEST1001', desc: 'Scanner test item one', make: 'TEST', list: 10, cost: 5 },
+    { pn: 'TEST2002', og: 'TEST2002', desc: 'Scanner test item two', make: 'TEST', list: 20, cost: 10 },
+    { pn: 'TEST3003', og: 'TEST3003', desc: 'Scanner test item three', make: 'TEST', list: 30, cost: 15 },
+    { pn: '23', og: '23', desc: 'Short scanner test item', make: 'TEST', list: 4, cost: 2 },
+    { pn: '5555', og: '5555', desc: 'Distributor prefix test item', make: 'SCAG', list: 40, cost: 20 },
+    { pn: 'UNIT1', og: 'UNIT1', desc: 'MX100 test unit', make: 'STIHL', list: 100, cost: 50, warranty: true },
+    { pn: '22295', og: '22295', desc: 'Toro QR test mower', make: 'TORO', list: 1200, cost: 800, warranty: true },
+    { pn: '664240', og: '664240', desc: 'EU2200i — Generator', make: 'Honda', list: 1199, cost: 959, warranty: true },
+    { pn: '668790', og: '668790', desc: 'EU2200i (Companion) — Generator', make: 'Honda', list: 1299, cost: 1039, warranty: true },
+    { pn: 'OLD1', og: 'OLD1', sup: 'NEW1', desc: 'Superseded scanner item', make: 'TEST', list: 5, cost: 2 },
+    { pn: 'NEW1', og: 'NEW1', desc: 'Current scanner item', make: 'TEST', list: 6, cost: 3 },
+    { pn: 'AMBIG1', og: 'AMBIG1', desc: 'Ambiguous scanner item A', make: 'TEST A', list: 7, cost: 3 },
+    { pn: 'AMBIG1', og: 'AMBIG1', desc: 'Ambiguous scanner item B', make: 'TEST B', list: 8, cost: 4 },
+    { pn: 'LABOR', og: 'LABOR', desc: 'Labor', make: 'SERVICE', list: 1, cost: 0 },
+    { pn: 'METALHEADSWAP', og: 'METALHEADSWAP', desc: 'Fixed head installation', make: 'SERVICE', list: 1, cost: 0 },
+  ],
+  sales: [], serials: {},
+  codes: {
+    '1234567890123': 'TEST2002',
+    '886661123456': 'UNIT1',
+    '@UNIT-EXACT:SERIAL123': 'UNIT1',
+    '@UNIT-EXACT:SERIAL456': 'UNIT1',
+    '@UNIT-PREFIX:SNX': 'UNIT1',
+    '@UNIT-EXACT:EAMT3283123': '664240',
+    '@UNIT-EXACT:EAMT3203003': '668790',
+    '@UNIT-PREFIX:EAMT': '664240',
+  },
+};
+async function loadFixture(frame, delayMs = 0) {
+  if (delayMs) await sleep(delayMs);
+  const stream = new Blob([JSON.stringify(TEST_FEED)]).stream().pipeThrough(new CompressionStream('gzip'));
+  const bytes = await new Response(stream).arrayBuffer();
+  await frameWindow(frame).loadPosJsonBytes(bytes, 'scanner-test');
+}
+const filledRows = frame => [...frame.contentDocument.querySelectorAll('#searchRows tr[data-row] .part-input')]
+  .filter(input => input.dataset.partPn).map(input => input.dataset.partPn);
+const allProductValues = frame => [...frame.contentDocument.querySelectorAll('#searchRows tr[data-row] .part-input')]
+  .map(input => input.value);
+let acquisitionClock = 0;
+function makeKey(key, stamp, init = {}) {
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+  Object.defineProperty(event, 'timeStamp', { value: stamp });
+  if (init.isComposing) Object.defineProperty(event, 'isComposing', { value: true });
+  return event;
+}
+function applyTextDefault(target, key, event) {
+  if (event.defaultPrevented || key.length !== 1 || !(target instanceof target.ownerDocument.defaultView.HTMLInputElement
+      || target instanceof target.ownerDocument.defaultView.HTMLTextAreaElement) || target.readOnly) return;
+  const start = typeof target.selectionStart === 'number' ? target.selectionStart : target.value.length;
+  const end = typeof target.selectionEnd === 'number' ? target.selectionEnd : start;
+  target.value = target.value.slice(0, start) + key + target.value.slice(end);
+  try { target.setSelectionRange(start + key.length, start + key.length); } catch (error) {}
+  target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: key }));
+}
+async function burst(frame, value, options = {}) {
+  const doc = frame.contentDocument;
+  const target = options.target || doc.body;
+  const step = options.acquisitionStep ?? 5;
+  const deliveryDelay = options.deliveryDelay ?? 0;
+  const suffixGap = options.suffixGap ?? step;
+  acquisitionClock = Math.max(acquisitionClock + (options.burstGap ?? 3000), frameWindow(frame).performance.now());
+  let stamp = acquisitionClock;
+  let lastKeyStamp = stamp;
+  let keyIndex = 0;
+  for (const key of String(value)) {
+    lastKeyStamp = stamp;
+    const event = makeKey(key, stamp, options.keyInit || {});
+    target.dispatchEvent(event);
+    if (options.simulateDefault) applyTextDefault(target, key, event);
+    stamp += options.acquisitionDelays?.[keyIndex++] ?? step;
+    if (deliveryDelay) await sleep(deliveryDelay);
+  }
+  const enter = makeKey(options.terminator || 'Enter', lastKeyStamp + suffixGap, options.enterInit || {});
+  target.dispatchEvent(enter);
+  acquisitionClock = lastKeyStamp + suffixGap;
+  return enter.defaultPrevented;
+}
+function reset(frame, type = 'receipt') {
+  const win = frameWindow(frame);
+  win.clearAll();
+  win.eval("_lastScanCommandAt = 0; _lastScanCommand = ''");
+  win.setDocType(type);
+  win.setScannerModeActive(false);
+}
+function chooseCodes(win) {
+  const preferred = ['TEST1001', 'TEST2002', 'TEST3003', '23', '1106', '1000', '664240', '668790'];
+  const unique = preferred.filter(value => win.resolveScannedValue(value).candidates.length === 1);
+  if (unique.length >= 3) return unique.slice(0, 3);
+  const parts = win.eval('partsArray');
+  const seen = new Set(unique);
+  for (const part of parts) {
+    const value = String(part.og || part.pn || '').trim();
+    if (value && !seen.has(value) && win.resolveScannedValue(value).candidates.length === 1) {
+      unique.push(value); seen.add(value);
+      if (unique.length >= 3) break;
+    }
+  }
+  return unique;
+}
+
+pos.addEventListener('load', async () => {
+  try {
+    await loadFixture(pos, 1);
+    await waitFor(() => loaded(pos));
+    await waitFor(() => typeof frameWindow(phone).loadPosJsonBytes === 'function');
+    await loadFixture(phone, 1);
+    await waitFor(() => frameWindow(phone).eval('loaded'));
+    const win = frameWindow(pos);
+    const [codeA, codeB, codeC] = chooseCodes(win);
+    assert(codeA && codeB && codeC, 'three unique test parts not found');
+
+    await test('phone scanner uses labeled controls and a targeted camera view', async () => {
+      const doc = phone.contentDocument;
+      const phoneWin = frameWindow(phone);
+      assert(!doc.querySelector('.top'), 'retired MPE Scan header still exists');
+      const labels = ['againBtn', 'searchBtn', 'reloadBtn', 'setBtn']
+        .map(id => doc.getElementById(id)?.textContent.trim() || '');
+      for (const label of ['Scan', 'Search', 'Reload', 'Settings']) {
+        assert(labels.some(text => text.startsWith(label)), `${label} control is not visibly labeled`);
+      }
+      assert(doc.getElementById('bindBtn')?.closest('#setSheet'), 'Bind action did not move into Settings');
+      assert(/bind barcodes to parts/i.test(doc.getElementById('bindBtn').closest('.set-row').textContent),
+        'Bind action is not plainly labeled in Settings');
+      assert(!/standalonePhoneApp/.test(phoneWin.phoneBridgeAvailable.toString()),
+        'Home Screen mode still hides the persistent Connect path');
+      doc.body.classList.add('bind');
+      assert(phoneWin.getComputedStyle(doc.getElementById('searchBtn')).display === 'none',
+        'Search remains available during the separate Bind workflow');
+      doc.body.classList.remove('bind');
+      const cameraHeight = doc.querySelector('.cam-wrap').getBoundingClientRect().height;
+      assert(cameraHeight >= 200 && cameraHeight <= 240, `camera view is ${cameraHeight}px tall`);
+      const phoneCss = [...doc.querySelectorAll('style')].map(style => style.textContent).join('\n');
+      assert(/\.cam-wrap video\s*\{[^}]*height:\s*auto/i.test(phoneCss),
+        'camera preview is still forced into the slit ratio');
+      assert(/\.cam-wrap video\s*\{[^}]*position:\s*absolute[^}]*translateY\(-50%\)/i.test(phoneCss),
+        'camera preview is not a centered crop of its normal view');
+      assert(/\.reticle i\s*\{[^}]*width:\s*56%[^}]*height:\s*38%/i.test(phoneCss),
+        'camera target is still too broad to isolate neighbouring barcodes');
+      assert(/\.reticle i::after\s*\{[^}]*left:\s*7%[^}]*right:\s*7%[^}]*top:\s*50%[^}]*height:\s*2px[^}]*var\(--scan-beam\)/i.test(phoneCss),
+        'camera target is not a long horizontal scanner beam');
+      const centred = phoneWin.preferredScanSymbol([
+        { rawValue: 'TEST1001', boundingBox: { x: 10, y: 35, width: 20, height: 20 } },
+        { rawValue: 'TEST2002', boundingBox: { x: 43, y: 42, width: 14, height: 16 } },
+      ], 100, 100);
+      assert(centred?.rawValue === 'TEST2002', 'camera does not prefer the barcode centred in the target');
+      const edgeOnly = phoneWin.preferredScanSymbol([
+        { rawValue: 'TEST1001', boundingBox: { x: 2, y: 35, width: 14, height: 20 } },
+      ], 100, 100);
+      assert(edgeOnly === null, 'camera accepts a neighbouring barcode grazing the target edge');
+      assert(phoneWin.scanTargetRatio().width === 0.56,
+        'decoder crop does not match the visible target width');
+      assert(/scanDetector\.detect\(frame\)/.test(phoneWin.nativeFrame.toString()),
+        'native camera still scans outside the visible target');
+      assert(/fallbackDetector\.detect\(canvas\)/.test(phoneWin.fallbackFrame.toString()),
+        'fallback camera still scans outside the visible target');
+      assert(doc.getElementById('listCount')?.closest('.list-head'), 'list count is not in the sticky List header');
+    });
+
+    await test('phone Reload control calls a real reload without clearing the saved list', async () => {
+      const phoneWin = frameWindow(phone);
+      const beforeSaved = phoneWin.localStorage.getItem('mpeScanList');
+      phoneWin.eval("list = [{ id: 'reload-test', pn: 'TEST1001', desc: 'Reload test', make: 'TEST', qty: 1, price: 10 }]; persistList()");
+      const saved = phoneWin.localStorage.getItem('mpeScanList');
+      assert(/location\.reload\(\)/.test(phoneWin.reloadApp.toString()), 'Reload action is not backed by location.reload()');
+      let loadedAgain = false;
+      phone.addEventListener('load', () => { loadedAgain = true; }, { once: true });
+      phone.contentDocument.getElementById('reloadBtn').click();
+      await waitFor(() => loadedAgain);
+      const reloadedWin = frameWindow(phone);
+      assert(reloadedWin.localStorage.getItem('mpeScanList') === saved, 'Reload control cleared the saved list');
+      assert(reloadedWin.eval("list.length === 1 && list[0].id === 'reload-test'"), 'Reload did not restore the saved list');
+      if (beforeSaved === null) reloadedWin.localStorage.removeItem('mpeScanList');
+      else reloadedWin.localStorage.setItem('mpeScanList', beforeSaved);
+      reloadedWin.eval("list = JSON.parse(localStorage.getItem('mpeScanList') || '[]'); renderList()");
+      await loadFixture(phone, 1);
+      await waitFor(() => reloadedWin.eval('loaded'));
+    });
+
+    await test('phone camera visibility pause keeps a live stream and cancels decode work', async () => {
+      const phoneWin = frameWindow(phone);
+      phoneWin.eval(`
+        window.__visibilityStops = 0;
+        window.__liveVisibilityTrack = { readyState: 'live', stop: () => { window.__visibilityStops += 1; } };
+        scanActive = true;
+        scanPausedForVisibility = false;
+        scanLoopVersion = 7;
+        scanStream = {
+          getVideoTracks: () => [window.__liveVisibilityTrack],
+          getTracks: () => [window.__liveVisibilityTrack]
+        };
+        scanTimer = setTimeout(() => {}, 10000);
+      `);
+      phoneWin.pauseCameraForVisibility();
+      assert(phoneWin.eval('scanPausedForVisibility && scanTimer === null'), 'hidden camera did not pause decode scheduling');
+      assert(phoneWin.eval('scanLoopVersion === 8'), 'hidden camera did not invalidate its in-flight decode loop');
+      assert(phoneWin.__visibilityStops === 0, 'hidden camera stopped its live track');
+      assert(phoneWin.eval('cameraStreamIsUsable(scanStream)'), 'live stream was marked unusable');
+      phoneWin.eval('scanPausedForVisibility = false; startActiveDecodeLoop(true)');
+      assert(phoneWin.eval('scanPausedForVisibility && scanLoopVersion === 9'),
+        'camera startup completed while hidden without entering resumable pause');
+      phoneWin.eval('window.__staleTimer = setTimeout(() => {}, 10000); scanTimer = window.__staleTimer');
+      await phoneWin.nativeFrame(8);
+      assert(phoneWin.eval('scanTimer === window.__staleTimer'), 'stale foreground decode loop changed the active timer');
+      phoneWin.eval('clearTimeout(window.__staleTimer); scanTimer = null');
+      phoneWin.eval("window.__liveVisibilityTrack.readyState = 'ended'");
+      assert(!phoneWin.eval('cameraStreamIsUsable(scanStream)'), 'ended stream was marked reusable');
+      assert(/if \(!cameraStreamIsUsable\(scanStream\)\)/.test(phoneWin.resumeCameraAfterVisibility.toString()),
+        'foreground resume does not gate reacquisition on an unusable stream');
+      phoneWin.eval('scanActive = false; scanPausedForVisibility = false; scanStream = null; scanTimer = null; scanLoopVersion = 0');
+    });
+
+    await test('Scanner Mode idle status does not claim the camera is starting', async () => {
+      win.setScannerModeActive(true);
+      const status = pos.contentDocument.getElementById('scannerModeStatus').textContent.trim();
+      assert(status === 'Ready for the next scan', `idle status was ${status}`);
+      win.setScannerModeActive(false);
+    });
+
+    await test('Scanner Mode commands preserve hierarchy and crisp QR quiet zones', async () => {
+      win.setScannerModeActive(true);
+      const print = pos.contentDocument.getElementById('scannerModePrintCode');
+      const clear = pos.contentDocument.getElementById('scannerModeClearCode');
+      const undo = pos.contentDocument.getElementById('scannerModeUndoCode');
+      const printRect = print.getBoundingClientRect();
+      const clearRect = clear.getBoundingClientRect();
+      const undoRect = undo.getBoundingClientRect();
+      assert(printRect.width > clearRect.width, 'Print is not the strongest scanner target');
+      assert(Math.abs(clearRect.width - undoRect.width) <= 2, 'Next transaction and Undo targets are mismatched');
+      assert(print.compareDocumentPosition(clear) & Node.DOCUMENT_POSITION_FOLLOWING, 'Print is not first in workflow order');
+      assert(clear.compareDocumentPosition(undo) & Node.DOCUMENT_POSITION_FOLLOWING, 'Undo is not last in workflow order');
+      [print, clear, undo].forEach(code => {
+        const rect = code.getBoundingClientRect();
+        assert(code.getAttribute('viewBox') === '0 0 37 37', `QR quiet zone or grid changed (${code.getAttribute('viewBox')})`);
+        assert(Math.abs(rect.width - rect.height) <= 2, `QR is not square (${Math.round(rect.width)} × ${Math.round(rect.height)})`);
+      });
+      assert(/Scan twice to clear/i.test(pos.contentDocument.getElementById('scannerModeNextCommand').textContent), 'Next transaction safety reminder is missing');
+      win.setScannerModeActive(false);
+    });
+
+    await test('Scanner Mode Print, Next transaction, and Undo QRs decode to protected commands', async () => {
+      const decodeQr = async id => {
+        const svg = pos.contentDocument.getElementById(id);
+        const markup = new XMLSerializer().serializeToString(svg);
+        const image = new Image();
+        const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' }));
+        try {
+          image.src = url;
+          await image.decode();
+          const canvas = pos.contentDocument.createElement('canvas');
+          canvas.width = canvas.height = 592;
+          const context = canvas.getContext('2d');
+          context.imageSmoothingEnabled = false;
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          const api = await win.loadWindowsBarcodeDetector();
+          const detector = new api.BarcodeDetector({ formats: ['qr_code'] });
+          return (await detector.detect(canvas))[0]?.rawValue || '';
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      };
+      win.renderScannerModeCommandCodes();
+      assert(await decodeQr('scannerModePrintCode') === '~MPE2:Q7X4:PRINT:8K3N', 'Print QR did not decode to its allowlisted command');
+      assert(await decodeQr('scannerModeClearCode') === '~MPE2:Q7X4:CLEAR:2D9M', 'Next transaction QR did not decode to its allowlisted command');
+      assert(await decodeQr('scannerModeUndoCode') === '~MPE2:Q7X4:UNDO:5R8P', 'Undo QR did not decode to its allowlisted command');
+    });
+
+    await test('Scanner Mode item names and line prices are large without colliding', async () => {
+      reset(pos);
+      win.applyPart(0, {
+        pn: 'LONG-DISPLAY-ITEM',
+        desc: 'Commercial straight-shaft brushcutter with adjustable bicycle handle',
+        make: 'TEST', list: 1234.56, cost: 700
+      }, { skipAddRow: true, skipFocus: true });
+      win.setScannerModeActive(true);
+      const line = pos.contentDocument.querySelector('#scannerModeLines .scanner-mode-line');
+      const description = line.querySelector('.scanner-mode-description');
+      const price = line.querySelector('.scanner-mode-price');
+      const descStyle = win.getComputedStyle(description);
+      const priceStyle = win.getComputedStyle(price);
+      const descRect = description.getBoundingClientRect();
+      const priceRect = price.getBoundingClientRect();
+      assert(parseFloat(descStyle.fontSize) >= 26, `item name is only ${descStyle.fontSize}`);
+      assert(parseFloat(priceStyle.fontSize) >= 28, `line price is only ${priceStyle.fontSize}`);
+      assert(descRect.right + 10 <= priceRect.left, 'long item name collided with its price');
+      assert(line.getBoundingClientRect().height >= 88, 'larger type is cramped into the old row height');
+      reset(pos);
+    });
+
+    await test('unknown phone scan can carry new-item details without setting a price', async () => {
+      const phoneWin = frameWindow(phone);
+      phoneWin.eval('list = []; persistList()');
+      phoneWin.addUnknown('012345678905', '00012345678905', 'ean_13');
+      assert(phone.contentDocument.getElementById('searchSheet').classList.contains('open'), 'unknown scan did not open its decision sheet');
+      phone.contentDocument.getElementById('newItemStart').click();
+      phone.contentDocument.getElementById('newItemName').value = '8 in. pruning shear';
+      phone.contentDocument.getElementById('newItemMake').value = 'Corona';
+      phone.contentDocument.getElementById('newItemPrice').value = '$29.99 shelf';
+      phone.contentDocument.getElementById('newItemNote').value = 'red handle';
+      phone.contentDocument.getElementById('newItemSave').click();
+      const row = phoneWin.eval("bridgeRowForEntry(list[0], '2026-08-14T12:00:00.000Z', 'TEST', 1)");
+      assert(row[3] === '', 'unknown UPC became a Master part number');
+      assert(row[4] === '8 in. pruning shear' && row[5] === 'Corona', 'new-item shorthand was lost');
+      assert(row[7] === '', 'price note became a list price');
+      assert(/new item.*UPC 00012345678905.*price note: \$29\.99 shelf.*red handle/i.test(row[9]), 'Bridge note lost UPC or context');
+    });
+
+    await test('edited Other rows remain separate new Master candidates', async () => {
+      win.savePriceChanges([]);
+      const editOther = (pn, desc, price, cost) => {
+        win.applyPart(0, { pn: 'Other', desc: 'Other', make: 'Other', list: 0, cost: 0 }, { skipAddRow: true, skipFocus: true });
+        const input = pos.contentDocument.querySelector('#searchRows [data-row="0"].part-input');
+        input.value = pn;
+        input.dataset.partPn = pn;
+        pos.contentDocument.getElementById('desc-0').textContent = desc;
+        pos.contentDocument.getElementById('price-0').dataset.price = String(price);
+        pos.contentDocument.getElementById('cost-0').dataset.cost = String(cost);
+        win.logOtherSuggestion(0);
+      };
+      editOther('NEW-ONE', 'First edited Other item', 24.99, 12.5);
+      win.clearAll();
+      editOther('NEW-TWO', 'Second edited Other item', 39.99, 20);
+      const changes = win.getPriceChanges();
+      assert(changes.length === 2, `expected 2 candidates, found ${changes.length}`);
+      assert(new Set(changes.map(c => c.rowKey)).size === 2, 'row reuse overwrote a pending candidate');
+      assert(changes.every(c => c.kind === 'newItem' && c.make === '@NEW'), 'candidate is not eligible for Bridge Pull new-item review');
+      win.renderPriceChanges();
+      assert(pos.contentDocument.querySelectorAll('.pc-new-item-pill').length === 2, 'new Master eligibility is not visible in Uploads');
+      win.savePriceChanges([]);
+      win.clearAll();
+    });
+
+    await test('regular mode accepts a hardware burst', async () => {
+      reset(pos); await burst(pos, codeA);
+      assert(filledRows(pos).length === 1, 'scan did not add one row');
+    });
+
+    await test('prevented page keys cannot silence a hardware burst', async () => {
+      reset(pos); win.eval('scanRecentValues.clear()');
+      const doc = pos.contentDocument;
+      const blocker = event => event.preventDefault();
+      doc.addEventListener('keydown', blocker, true);
+      try { await burst(pos, codeA); }
+      finally { doc.removeEventListener('keydown', blocker, true); }
+      assert(filledRows(pos).length === 1, 'a prevented page key silenced the scanner');
+    });
+
+    await test('browser resume re-arms scanner capture', async () => {
+      reset(pos); win.removeEventListener('keydown', win.onHardwareScanKeydown, true);
+      win.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+      await burst(pos, codeB);
+      assert(filledRows(pos).length === 1, 'scanner listener stayed detached after resume');
+    });
+
+    await test('three idle minutes returns the register to Scanner Mode', async () => {
+      reset(pos);
+      const scheduled = win.eval(`(() => {
+        let idleCallback = null;
+        const nativeSetTimeout = window.setTimeout;
+        window.setTimeout = (callback, delay, ...args) => {
+          if (delay === SCANNER_IDLE_MS) { idleCallback = callback; return 2147483646; }
+          return nativeSetTimeout(callback, delay, ...args);
+        };
+        try { setScannerModeActive(false); }
+        finally { window.setTimeout = nativeSetTimeout; }
+        if (!idleCallback) return false;
+        idleCallback();
+        return true;
+      })()`);
+      assert(scheduled, 'the three-minute Scanner Mode return was not scheduled');
+      assert(pos.contentDocument.body.classList.contains('scanner-mode-active'), 'idle did not return to Scanner Mode');
+    });
+
+    await test('product-field focus is restored', async () => {
+      reset(pos); const input = pos.contentDocument.querySelector('#searchRows .part-input');
+      input.value = 'KEEP'; input.focus(); input.setSelectionRange(2, 2);
+      await burst(pos, codeA, { target: input, simulateDefault: true });
+      assert(input.value === 'KEEP' && input.selectionStart === 2, 'focused product field was changed');
+      assert(filledRows(pos).length === 1, 'focused-field scan did not add');
+    });
+
+    await test('customer-field focus is restored', async () => {
+      reset(pos); const input = pos.contentDocument.getElementById('custName');
+      input.value = 'KEEP CUSTOMER'; input.focus(); input.setSelectionRange(4, 4);
+      await burst(pos, codeB, { target: input, simulateDefault: true });
+      assert(input.value === 'KEEP CUSTOMER' && input.selectionStart === 4, 'customer field was changed');
+      assert(filledRows(pos).length === 1, 'customer-focus scan did not add');
+    });
+
+    await test('history preserves line casing while customer values stay in caps', async () => {
+      reset(pos); const doc = pos.contentDocument;
+      const input = doc.querySelector('#searchRows .part-input');
+      input.value = 'mix-Case'; input.dataset.partPn = 'mix-Case';
+      doc.getElementById('desc-0').textContent = 'Mixed Description';
+      doc.getElementById('price-0').dataset.price = '12.5';
+      doc.getElementById('sub-0').dataset.val = '12.5';
+      doc.getElementById('custName').value = 'Jane Doe';
+      doc.getElementById('custEmail').value = 'Jane@Example.com';
+      const order = win.captureOrder();
+      assert(order.items[0].pn === 'mix-Case', `part saved as ${order.items[0].pn}`);
+      assert(order.items[0].desc === 'Mixed Description', `description saved as ${order.items[0].desc}`);
+      assert(order.customer.name === 'JANE DOE', `customer saved as ${order.customer.name}`);
+      assert(order.customer.email === 'JANE@EXAMPLE.COM', `email saved as ${order.customer.email}`);
+      const emailDoc = win.buildEmailDocHTML(order, 'Sales Receipt', 'TEST-1', 'August 17, 2026');
+      assert(emailDoc.includes('Mixed Description'), 'email/PDF uppercased the line description');
+      assert(emailDoc.includes('Mahalo for your business!'), 'email/PDF uppercased the Mahalo message');
+      assert(emailDoc.includes('JANE DOE') && emailDoc.includes('text-transform:uppercase'), 'email/PDF customer values are not uppercase');
+      const css = doc.querySelector('style').textContent;
+      assert(!/body\s*\{[^}]*text-transform:\s*uppercase/i.test(css), 'print stylesheet still uppercases the whole receipt');
+      assert(/\.print-customer,\s*\.wf-val,\s*\.inv-org\s*\{\s*text-transform:\s*uppercase/i.test(css), 'print customer values lost targeted uppercase styling');
+    });
+
+    await test('ZIP autofills town and state without overwriting a manual town', async () => {
+      reset(pos); const doc = pos.contentDocument;
+      const zip = doc.getElementById('custZip');
+      const city = doc.getElementById('custCity');
+      const state = doc.getElementById('custState');
+      city.value = ''; state.value = ''; zip.value = '96793';
+      win.autofillCityStateFromZip();
+      assert(city.value === 'WAILUKU', `96793 town filled as ${city.value}`);
+      assert(state.value === 'HI', `96793 state filled as ${state.value}`);
+      city.value = 'CUSTOM TOWN'; zip.value = '96732';
+      win.autofillCityStateFromZip();
+      assert(city.value === 'CUSTOM TOWN', 'a manually corrected town was overwritten');
+      assert(state.value === 'HI', `96732 state filled as ${state.value}`);
+    });
+
+    await test('Admin controls form a tight equal-height grid', async () => {
+      const doc = pos.contentDocument;
+      const menu = doc.getElementById('adminMenu');
+      menu.classList.add('open');
+      const controls = Array.from(menu.querySelector('.admin-control-grid').children)
+        .filter(el => pos.contentWindow.getComputedStyle(el).display !== 'none');
+      const heights = controls.map(el => Math.round(el.getBoundingClientRect().height));
+      assert(heights.length >= 7, `only ${heights.length} Admin controls rendered`);
+      assert(Math.max(...heights) - Math.min(...heights) <= 1, `Admin control heights were ${heights.join(',')}`);
+      assert(controls.every(el => pos.contentWindow.getComputedStyle(el).height === '32px'), 'Admin controls are not set to 32px');
+      const widths = controls.map(el => Math.round(el.getBoundingClientRect().width));
+      assert(Math.max(...widths) - Math.min(...widths) <= 1, `Admin control widths were ${widths.join(',')}`);
+      menu.classList.remove('open');
+    });
+
+    await test('published update manifest matches the running POS release', async () => {
+      const response = await fetch('version.json', { cache: 'no-store' });
+      assert(response.ok, `version manifest returned ${response.status}`);
+      const manifest = await response.json();
+      assert(manifest.posRelease === win.eval('POS_RELEASE'),
+        `manifest ${manifest.posRelease} does not match page ${win.eval('POS_RELEASE')}`);
+    });
+
+    await test('new POS release raises a safe Admin update notice', async () => {
+      const doc = pos.contentDocument;
+      win.eval("_posUpdateRelease = '2099.01.01.1'; renderPosUpdateNotice(); updateAdminDot()");
+      const notice = doc.getElementById('posUpdateNotice');
+      const dot = doc.getElementById('adminDot');
+      assert(win.getComputedStyle(notice).display !== 'none', 'update notice stayed hidden');
+      assert(/reload after this sale/i.test(notice.textContent), 'update notice does not protect the current sale');
+      assert(/update ready/i.test(dot.title), `Admin dot did not name the update (${dot.title})`);
+      win.eval("_posUpdateRelease = ''; renderPosUpdateNotice(); updateAdminDot()");
+    });
+
+    await test('textarea focus is restored', async () => {
+      reset(pos); const area = pos.contentDocument.createElement('textarea');
+      area.value = 'KEEP'; pos.contentDocument.body.appendChild(area); area.focus(); area.setSelectionRange(1, 3);
+      await burst(pos, codeC, { target: area, simulateDefault: true });
+      assert(area.value === 'KEEP' && area.selectionStart === 1 && area.selectionEnd === 3, 'textarea changed');
+      assert(filledRows(pos).length === 1, 'textarea-focus scan did not add'); area.remove();
+    });
+
+    await test('select focus is restored', async () => {
+      reset(pos); const select = pos.contentDocument.createElement('select');
+      select.innerHTML = '<option>A</option><option selected>B</option>'; pos.contentDocument.body.appendChild(select); select.focus();
+      await burst(pos, codeA, { target: select });
+      assert(select.selectedIndex === 1 && filledRows(pos).length === 1, 'select state or scan changed'); select.remove();
+    });
+
+    await test('contenteditable focus is restored', async () => {
+      reset(pos); const edit = pos.contentDocument.createElement('div');
+      edit.contentEditable = 'true'; edit.innerHTML = '<b>KEEP</b>'; pos.contentDocument.body.appendChild(edit); edit.focus();
+      await burst(pos, codeB, { target: edit });
+      assert(edit.innerHTML === '<b>KEEP</b>' && filledRows(pos).length === 1, 'contenteditable state or scan changed'); edit.remove();
+    });
+
+    await test('Scanner Mode accepts with a hidden field still focused', async () => {
+      reset(pos); const input = pos.contentDocument.getElementById('custName'); input.value = 'KEEP'; input.focus();
+      win.setScannerModeActive(true); await burst(pos, codeA, { target: input, simulateDefault: true });
+      assert(input.value === 'KEEP', 'hidden focused field changed');
+      assert(pos.contentDocument.body.classList.contains('scanner-mode-active'), 'Scanner Mode exited');
+      assert(filledRows(pos).length === 1, 'Scanner Mode scan did not add');
+      assert(!/Scan an item/.test(pos.contentDocument.getElementById('scannerModeLines').textContent), 'Scanner Mode view did not update');
+    });
+
+    for (const type of ['invoice', 'quote']) {
+      await test(`${type} accepts scans but cannot enter Scanner Mode`, async () => {
+        reset(pos, type); win.setScannerModeActive(true); await burst(pos, codeB);
+        assert(!pos.contentDocument.body.classList.contains('scanner-mode-active'), 'Scanner Mode took over document');
+        assert(filledRows(pos).length === 1, 'regular document scan did not add');
+      });
+    }
+
+    await test('Internal mode cannot be entered without its trusted confirmation', async () => {
+      reset(pos);
+      assert(win.setDocType('internal') === false, 'programmatic Internal switch bypassed confirmation');
+      assert(win.eval('_docType') === 'receipt', 'rejected Internal switch changed the document');
+    });
+
+    await test('browser workload cannot split an acquired scan', async () => {
+      reset(pos); const input = pos.contentDocument.getElementById('custName'); input.value = 'KEEP'; input.focus();
+      await burst(pos, codeC, { target: input, simulateDefault: true, deliveryDelay: 165, acquisitionStep: 5 });
+      assert(input.value === 'KEEP', 'delayed delivery leaked into focused field');
+      assert(filledRows(pos).length === 1, 'delayed delivery scan was discarded');
+    });
+
+    await test('wireless transport pause inside a scan is tolerated', async () => {
+      reset(pos); const delays = Array(codeA.length).fill(5); delays[Math.floor(codeA.length / 2)] = 250;
+      await burst(pos, codeA, { acquisitionDelays: delays });
+      assert(filledRows(pos).length === 1, 'mid-scan transport pause split the code');
+    });
+
+    await test('Tab scanner suffix works like Enter', async () => {
+      reset(pos); const prevented = await burst(pos, codeB, { terminator: 'Tab' });
+      assert(prevented && filledRows(pos).length === 1, 'Tab-suffix scan was dropped');
+    });
+
+    await test('ordinary slow typing is not captured', async () => {
+      reset(pos); const input = pos.contentDocument.getElementById('custName'); input.value = ''; input.focus();
+      const prevented = await burst(pos, 'ABCD', { target: input, simulateDefault: true, acquisitionStep: 100, suffixGap: 100 });
+      assert(!prevented && input.value === 'ABCD' && filledRows(pos).length === 0, 'normal typing was treated as a scan');
+    });
+
+    await test('ordinary Product-field entry still selects a part', async () => {
+      reset(pos); const input = pos.contentDocument.querySelector('#searchRows .part-input'); input.focus();
+      await burst(pos, codeA, { target: input, simulateDefault: true, acquisitionStep: 120, suffixGap: 120 });
+      assert(filledRows(pos).length === 1, 'normal product entry did not select');
+    });
+
+    await test('modifier/composition/repeat events reset capture', async () => {
+      reset(pos);
+      await burst(pos, codeA, { keyInit: { altKey: true } });
+      await burst(pos, codeB, { keyInit: { isComposing: true } });
+      await burst(pos, codeC, { keyInit: { repeat: true } });
+      assert(filledRows(pos).length === 0, 'invalid keyboard state produced a scan');
+    });
+
+    const shortCode = ['23'].find(value => win.resolveScannedValue(value).candidates.length === 1);
+    if (shortCode) await test('two-character real part number scans', async () => {
+      reset(pos); await burst(pos, shortCode, { suffixGap: 5 });
+      assert(filledRows(pos).length === 1, 'short part was dropped');
+    });
+
+    await test('one-digit packaging code gives visible feedback', async () => {
+      reset(pos); await burst(pos, '1', { suffixGap: 5 });
+      assert(filledRows(pos).length === 0, 'packaging code became a part');
+      const flash = pos.contentDocument.getElementById('scanCommandFlash').textContent;
+      assert(/packaging barcode/i.test(flash), 'packaging ignore was silent');
+    });
+
+    await test('Scanner Mode shows packaging feedback without adding', async () => {
+      reset(pos); win.setScannerModeActive(true); await burst(pos, '1', { suffixGap: 5 });
+      assert(filledRows(pos).length === 0, 'Scanner Mode packaging code became a part');
+      assert(/packaging barcode/i.test(pos.contentDocument.getElementById('scannerModeStatus').textContent), 'Scanner Mode hid packaging feedback');
+    });
+
+    await test('different rapid scans both add', async () => {
+      reset(pos); await burst(pos, codeA, { burstGap: 3000 }); await burst(pos, codeB, { burstGap: 20 });
+      assert(filledRows(pos).length === 2, 'different rapid scan was dropped');
+    });
+
+    await test('instant electrical duplicate is collapsed', async () => {
+      reset(pos); await burst(pos, codeA, { burstGap: 3000 }); await burst(pos, codeA, { burstGap: 20 });
+      assert(filledRows(pos).length === 1, 'instant duplicate was added');
+    });
+
+    await test('two deliberate same-item pulls increase one line quantity', async () => {
+      reset(pos); await burst(pos, codeB, { burstGap: 3000 }); await burst(pos, codeB, { burstGap: 120 });
+      assert(filledRows(pos).length === 1, 'same item used a second sale line');
+      assert(pos.contentDocument.getElementById('qty-0').value === '2', 'second trigger pull did not increase quantity');
+    });
+
+    await test('first scan works after the browser event clock resets', async () => {
+      reset(pos); win.eval('scanRecentValues.clear()');
+      win.acceptDecodedScan(codeA, 'hardware', { acceptedAt: 900000 });
+      win.clearAll();
+      win.acceptDecodedScan(codeA, 'hardware', { acceptedAt: 1000 });
+      assert(filledRows(pos).length === 1, 'first post-resume scan stayed locked until refresh');
+      win.acceptDecodedScan(codeA, 'hardware', { acceptedAt: 1050 });
+      assert(filledRows(pos).length === 1, 'post-resume electrical duplicate was not collapsed');
+    });
+
+    await test('rush of repeated same-item pulls loses nothing', async () => {
+      reset(pos);
+      for (let i = 0; i < 20; i++) await burst(pos, codeA, { burstGap: i ? 120 : 3000 });
+      assert(filledRows(pos).length === 1, `expected 1 line, got ${filledRows(pos).length}`);
+      assert(pos.contentDocument.getElementById('qty-0').value === '20', `expected qty 20, got ${pos.contentDocument.getElementById('qty-0').value}`);
+    });
+
+    await test('rush of mixed rapid scans loses nothing', async () => {
+      reset(pos);
+      for (let i = 0; i < 60; i++) {
+        const code = i % 2 ? codeB : codeA;
+        await burst(pos, code, { burstGap: i ? 20 : 3000 });
+      }
+      assert(filledRows(pos).length === 2, `expected 2 lines, got ${filledRows(pos).length}`);
+      assert(pos.contentDocument.getElementById('qty-0').value === '30', `first item qty is ${pos.contentDocument.getElementById('qty-0').value}`);
+      assert(pos.contentDocument.getElementById('qty-1').value === '30', `second item qty is ${pos.contentDocument.getElementById('qty-1').value}`);
+    });
+
+    await test('regular POS keeps the newest rush row visible', async () => {
+      reset(pos);
+      for (let i = 0; i < 20; i++) await burst(pos, i % 2 ? codeB : codeA, { burstGap: i ? 20 : 3000 });
+      await sleep(100);
+      const matches = [...pos.contentDocument.querySelectorAll('#searchRows .part-input.matched')];
+      const rect = matches.at(-1).closest('tr').getBoundingClientRect();
+      assert(rect.top >= 0 && rect.bottom <= win.innerHeight, 'newest regular row landed off-screen');
+    });
+
+    await test('Scanner Mode keeps newest row, status, and totals visible', async () => {
+      reset(pos); win.setScannerModeActive(true);
+      for (let i = 0; i < 20; i++) await burst(pos, i % 2 ? codeB : codeA, { burstGap: i ? 20 : 3000 });
+      await sleep(100);
+      const latest = pos.contentDocument.querySelector('#scannerModeLines .scanner-mode-line:last-child').getBoundingClientRect();
+      const side = pos.contentDocument.querySelector('.scanner-mode-side').getBoundingClientRect();
+      assert(latest.top >= 0 && latest.bottom <= win.innerHeight, 'newest Scanner Mode row landed off-screen');
+      assert(side.top >= 0 && side.bottom <= win.innerHeight,
+        `Scanner Mode status/totals left the viewport (${Math.round(side.top)}–${Math.round(side.bottom)} of ${win.innerHeight}, scroll ${Math.round(win.scrollY)})`);
+    });
+
+    await test('entering Scanner Mode on a long sale shows its newest row', async () => {
+      reset(pos);
+      for (let i = 0; i < 20; i++) await burst(pos, i % 2 ? codeB : codeA, { burstGap: i ? 20 : 3000 });
+      win.setScannerModeActive(true); await sleep(100);
+      const latest = pos.contentDocument.querySelector('#scannerModeLines .scanner-mode-line:last-child').getBoundingClientRect();
+      assert(latest.top >= 0 && latest.bottom <= win.innerHeight, 'existing sale opened above its newest row');
+    });
+
+    await test('camera retains the long same-label guard', async () => {
+      reset(pos); acquisitionClock += 3000;
+      const base = win.performance.timeOrigin + acquisitionClock;
+      win.acceptDecodedScan(codeA, 'code_128', { acceptedAt: base });
+      win.acceptDecodedScan(codeA, 'code_128', { acceptedAt: base + 500 });
+      assert(filledRows(pos).length === 1, 'camera repeat guard failed');
+      win.acceptDecodedScan(codeA, 'code_128', { acceptedAt: base + 2300 });
+      assert(filledRows(pos).length === 1, 'camera rearm used a second sale line');
+      assert(pos.contentDocument.getElementById('qty-0').value === '2', 'camera did not increase quantity after guard');
+      acquisitionClock += 2300;
+    });
+
+    await test('camera accepts different rapid labels', async () => {
+      reset(pos); acquisitionClock += 3000;
+      const base = win.performance.timeOrigin + acquisitionClock;
+      win.acceptDecodedScan(codeA, 'code_128', { acceptedAt: base });
+      win.acceptDecodedScan(codeB, 'code_128', { acceptedAt: base + 20 });
+      assert(filledRows(pos).length === 2, 'different camera label was dropped');
+      acquisitionClock += 20;
+    });
+
+    await test('camera scan updates Scanner Mode', async () => {
+      reset(pos); win.setScannerModeActive(true); acquisitionClock += 3000;
+      win.acceptDecodedScan(codeC, 'code_128', { acceptedAt: win.performance.timeOrigin + acquisitionClock });
+      assert(filledRows(pos).length === 1, 'camera scan did not add in Scanner Mode');
+      assert(pos.contentDocument.getElementById('scannerModeLines').textContent.includes('Scanner test item three'), 'Scanner Mode did not render camera scan');
+    });
+
+    await test('unknown scans remain visible for review', async () => {
+      reset(pos); const unknown = 'ZZZ-NOT-A-REAL-PART-90817';
+      await burst(pos, unknown);
+      assert(pos.contentDocument.querySelectorAll('[data-scan-issue="1"]').length >= 1, 'unknown scan disappeared');
+      assert(/review/i.test(pos.contentDocument.getElementById('scanStatus').textContent), 'review status missing');
+    });
+
+    await test('mapped retail barcode resolves exactly', async () => {
+      reset(pos); await burst(pos, '1234567890123');
+      assert(filledRows(pos)[0] === 'TEST2002', 'mapped barcode chose the wrong part');
+    });
+
+    await test('structured supplier label resolves its embedded part', async () => {
+      reset(pos); await burst(pos, '00HB;;TEST1001;1;LOT77;JAPAN;JP;392;;;;');
+      assert(filledRows(pos)[0] === 'TEST1001', 'structured label did not resolve');
+    });
+
+    await test('distributor-prefixed part resolves within its Make', async () => {
+      reset(pos); await burst(pos, 'SC5555');
+      assert(filledRows(pos)[0] === '5555', 'distributor prefix did not resolve');
+    });
+
+    await test('superseded number selects the current part', async () => {
+      reset(pos); await burst(pos, 'OLD1');
+      assert(filledRows(pos)[0] === 'NEW1', 'superseded scan did not choose current part');
+    });
+
+    await test('ambiguous exact match remains reviewable', async () => {
+      reset(pos); await burst(pos, 'AMBIG1');
+      assert(pos.contentDocument.querySelectorAll('[data-scan-issue="1"]').length >= 1, 'ambiguous scan disappeared');
+      assert(/multiple parts/i.test(pos.contentDocument.querySelector('#searchRows .not-found')?.textContent || ''), 'ambiguity was not explained');
+    });
+
+    await test('warranty model then serial fills one row', async () => {
+      reset(pos); await burst(pos, 'MX100'); await burst(pos, 'ABC12345');
+      assert(filledRows(pos).length === 1 && filledRows(pos)[0] === 'UNIT1', 'model/serial created the wrong lines');
+      const serial = pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value;
+      assert(serial === 'ABC12345', 'second scan did not fill serial');
+    });
+
+    await test('repeated model then serial units merge quantity and keep both serials', async () => {
+      reset(pos);
+      await burst(pos, 'MX100'); await burst(pos, 'ABC12345');
+      await burst(pos, 'MX100'); await burst(pos, 'DEF67890');
+      assert(filledRows(pos).length === 1, `same model used ${filledRows(pos).length} sale lines`);
+      assert(pos.contentDocument.getElementById('qty-0').value === '2', 'same model quantity did not increase');
+      const serials = [...pos.contentDocument.querySelectorAll('tr[data-sn-for="0"] .sn-input')].map(input => input.value);
+      assert(serials.join(',') === 'ABC12345,DEF67890', `serial fields were ${serials.join(',')}`);
+    });
+
+    await test('known unit serial resolves unit and displays serial', async () => {
+      reset(pos); win.setScannerModeActive(true); await burst(pos, 'SERIAL123');
+      assert(filledRows(pos)[0] === 'UNIT1', 'known serial did not resolve unit');
+      assert(/SN SERIAL123/.test(pos.contentDocument.getElementById('scannerModeLines').textContent), 'Scanner Mode omitted serial');
+    });
+
+    await test('same unit serials merge across nonconsecutive scans', async () => {
+      reset(pos); await burst(pos, 'SERIAL123'); await burst(pos, codeA); await burst(pos, 'SERIAL456');
+      assert(filledRows(pos).join(',') === 'UNIT1,TEST1001', 'same unit created another sale line');
+      assert(pos.contentDocument.getElementById('qty-0').value === '2', 'same unit quantity did not increase');
+      const serials = [...pos.contentDocument.querySelectorAll('tr[data-sn-for="0"] .sn-input')].map(input => input.value);
+      assert(serials.join(',') === 'SERIAL123,SERIAL456', `serial fields were ${serials.join(',')}`);
+    });
+
+    await test('rescanning the same unit serial does not increase quantity', async () => {
+      reset(pos); await burst(pos, 'SERIAL123'); await burst(pos, 'SERIAL123');
+      assert(filledRows(pos).length === 1, 'duplicate serial created another sale line');
+      assert(pos.contentDocument.getElementById('qty-0').value === '1', 'duplicate serial increased quantity');
+    });
+
+    await test('unit-prefix serial resolves unit', async () => {
+      reset(pos); await burst(pos, 'SNX0001');
+      assert(filledRows(pos)[0] === 'UNIT1', 'serial prefix did not resolve unit');
+      assert(pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value === 'SNX0001', 'serial prefix value was not kept');
+    });
+
+    await test('EAMT invoice serial resolves standard EU2200i in regular mode', async () => {
+      reset(pos); await burst(pos, 'EAMT-3283123');
+      assert(filledRows(pos)[0] === '664240', 'exact EAMT invoice serial did not resolve standard EU2200i');
+      assert(pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value === 'EAMT-3283123', 'EAMT serial was not kept');
+    });
+
+    await test('EAMT fallback resolves standard EU2200i in Scanner Mode', async () => {
+      reset(pos); win.setScannerModeActive(true); await burst(pos, 'EAMT-3999999');
+      assert(filledRows(pos)[0] === '664240', 'EAMT fallback did not resolve standard EU2200i');
+      assert(/EU2200i/.test(pos.contentDocument.getElementById('scannerModeLines').textContent), 'Scanner Mode did not show EU2200i');
+    });
+
+    await test('exact Companion invoice serial overrides EAMT fallback', async () => {
+      reset(pos); await burst(pos, 'EAMT-3203003');
+      assert(filledRows(pos)[0] === '668790', 'exact Companion serial lost to standard EAMT fallback');
+    });
+
+    await test('phone scanner matches Honda exact, fallback, and Companion precedence', async () => {
+      const phoneWin = frameWindow(phone);
+      assert(phoneWin.resolveScannedValue('EAMT-3283123').candidates[0]?.pn === '664240', 'phone exact standard failed');
+      assert(phoneWin.resolveScannedValue('EAMT-3999999').candidates[0]?.pn === '664240', 'phone EAMT fallback failed');
+      assert(phoneWin.resolveScannedValue('EAMT-3203003').candidates[0]?.pn === '668790', 'phone Companion precedence failed');
+    });
+
+    await test('STIHL Data Matrix resolves unit and serial together', async () => {
+      reset(pos); await burst(pos, '886661123456|448789975|MA01-011-5831|MX 100.0 TC|TEST');
+      assert(filledRows(pos)[0] === 'UNIT1', 'Data Matrix did not resolve unit');
+      assert(pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value === '448789975', 'Data Matrix serial was lost');
+    });
+
+    await test('Toro QR resolves model and serial without learning the unit URL', async () => {
+      const qr = 'HTTPS://QR.TORO.COM/?BRAND=TORO&MODEL=22295&SERIAL=421173038';
+      const resolved = win.resolveScannedValue(qr);
+      assert(resolved.candidates[0]?.pn === '22295', 'Toro QR model did not resolve');
+      assert(resolved.serial === '421173038' && resolved.bindCode === '', 'Toro QR serial or binding policy was wrong');
+      reset(pos); await burst(pos, qr);
+      assert(filledRows(pos)[0] === '22295', 'Toro QR did not add the mower');
+      assert(pos.contentDocument.querySelector('tr[data-sn-for] .sn-input')?.value === '421173038', 'Toro QR serial was lost');
+      const phoneResolved = frameWindow(phone).resolveScannedValue(qr);
+      assert(phoneResolved.candidates[0]?.pn === '22295' && phoneResolved.serial === '421173038', 'phone Toro QR resolution failed');
+    });
+
+    await test('Next Transaction saves before clearing on one pull and Undo reopens the same sale', async () => {
+      reset(pos); await burst(pos, codeC);
+      const clear = '~MPE2:Q7X4:CLEAR:2D9M';
+      const historyBefore = win.getHistory().length;
+      await burst(pos, clear, { burstGap: 3000 });
+      await waitFor(() => !win.eval('_nextTransactionBusy'));
+      assert(filledRows(pos).length === 0, 'one Next Transaction pull did not clear the saved sale');
+      assert(win.getHistory().length === historyBefore + 1, 'sale was not saved before clearing');
+      const txnId = win.getHistory()[0].txnId;
+      await burst(pos, clear, { burstGap: 120 });
+      assert(win.getHistory().length === historyBefore + 1, 'repeat clear duplicated the sale');
+      await burst(pos, '~MPE2:Q7X4:UNDO:5R8P');
+      await waitFor(() => filledRows(pos).length === 1);
+      assert(win.eval('_reprintSource?.txnId') === txnId, 'Undo did not retain the saved transaction identity');
+    });
+
+    await test('Need to Order marks the last scan, repeats safely, and can be unticked', async () => {
+      reset(pos);
+      win.eval("reorderPending = []; localStorage.removeItem('mpeReorderPendingV1')");
+      assert(win.sheetText('00009302535') === "'00009302535", 'leading-zero part is not protected for Sheets');
+      await burst(pos, codeA);
+      const command = '~MPE2:Q7X4:REORDER:9V2J';
+      await burst(pos, command, { burstGap: 3000 });
+      const row = pos.contentDocument.querySelector('#searchRows tr[data-row="0"]');
+      const firstSignal = row?.dataset.reorderSignalId || '';
+      assert(firstSignal, 'command did not create a reorder signal');
+      assert(pos.contentDocument.querySelector('.reorder-toggle[data-reorder-row="0"]')?.checked,
+        'desktop checkbox did not respond');
+      assert(pos.contentDocument.querySelector('#mobileRows .reorder-toggle[data-reorder-row="0"]')?.checked,
+        'mobile checkbox did not mirror the mark');
+      assert(win.eval("reorderPending.filter(item => item.action === 'FLAG').length") === 1,
+        'first command did not queue exactly one flag');
+      await burst(pos, command, { burstGap: 120 });
+      assert(row.dataset.reorderSignalId === firstSignal, 'repeat command replaced the stable signal');
+      assert(win.eval("reorderPending.filter(item => item.action === 'FLAG').length") === 1,
+        'repeat command queued a duplicate flag');
+      assert(/already marked/i.test(pos.contentDocument.getElementById('scanCommandFlash')?.textContent || ''),
+        'repeat command gave no visual response');
+      assert(win.setRowReorder(0, false), 'untick action was rejected');
+      assert(!pos.contentDocument.querySelector('.reorder-toggle[data-reorder-row="0"]')?.checked,
+        'checkbox stayed checked after untick');
+      assert(win.eval("reorderPending.filter(item => item.action === 'UNFLAG').length") === 1,
+        'untick did not queue one matching unflag');
+      win.eval("reorderPending = []; localStorage.removeItem('mpeReorderPendingV1')");
+    });
+
+    await test('Scanner Mode Auto Print keeps sale and emphasizes Next transaction', async () => {
+      reset(pos); await burst(pos, codeA); win.setScannerModeActive(true);
+      const originalFetch = win.fetch;
+      win.fetch = async url => String(url).includes('/pos-print')
+        ? new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        : originalFetch(url);
+      try {
+        await win.autoPrint();
+      } finally {
+        win.fetch = originalFetch;
+      }
+      assert(filledRows(pos).length === 1, 'Auto Print cleared the current sale');
+      assert(pos.contentDocument.getElementById('scannerModeNextCommand')?.classList.contains('is-next'), 'Next transaction was not emphasized');
+      assert(/Print/i.test(pos.contentDocument.querySelector('.scanner-mode-command-primary')?.textContent || ''), 'Print command disappeared after printing');
+      assert(/Undo/i.test(pos.contentDocument.querySelector('[aria-label="Undo command QR code"]')?.textContent || ''), 'Undo command disappeared after printing');
+      assert(/sale kept/i.test(pos.contentDocument.getElementById('scannerModeStatus')?.textContent || ''), 'kept-sale status was not shown');
+      const clear = '~MPE2:Q7X4:CLEAR:2D9M';
+      const historyBefore = win.getHistory().length;
+      await burst(pos, clear, { burstGap: 3000 });
+      await waitFor(() => !win.eval('_nextTransactionBusy'));
+      assert(filledRows(pos).length === 0, 'post-print Next Transaction did not clear the saved sale');
+      assert(win.getHistory().length === historyBefore, 'post-print Next Transaction duplicated the sale');
+      assert(!pos.contentDocument.getElementById('scannerModeNextCommand')?.classList.contains('is-next'), 'Next transaction emphasis did not reset after Clear');
+    });
+
+    await test('Desktop printing queues one guarded native job and saves once', async () => {
+      reset(pos); await burst(pos, codeA); win.setScannerModeActive(true);
+      const historyBefore = win.getHistory().length;
+      const originalFetch = win.fetch;
+      let bridgeCalls = 0;
+      let helperCalls = 0;
+      Object.defineProperty(win, 'mpeDesktop', {
+        configurable: true,
+        value: {
+          printReceipt: async request => {
+            bridgeCalls += 1;
+            assert(Number.isFinite(request?.timing?.prepare_ms), 'desktop timing was not bounded data');
+            return { ok: true };
+          },
+        },
+      });
+      win.fetch = async url => {
+        if (String(url).includes('/pos-print')) helperCalls += 1;
+        return originalFetch(url);
+      };
+      try {
+        await win.autoPrint();
+        await win.autoPrint();
+      } finally {
+        win.fetch = originalFetch;
+        delete win.mpeDesktop;
+      }
+      assert(bridgeCalls === 1, `native bridge was called ${bridgeCalls} times`);
+      assert(helperCalls === 0, `localhost helper was called ${helperCalls} times`);
+      assert(win.getHistory().length === historyBefore + 1, 'desktop print did not save history exactly once');
+      assert(filledRows(pos).length === 1, 'desktop Auto Print cleared the current sale');
+    });
+
+    await test('Desktop Print bypasses the uncontrolled system dialog', async () => {
+      reset(pos); await burst(pos, codeA);
+      const originalPrint = win.print;
+      let bridgeCalls = 0;
+      let dialogCalls = 0;
+      Object.defineProperty(win, 'mpeDesktop', {
+        configurable: true,
+        value: { printReceipt: async () => { bridgeCalls += 1; return { ok: true }; } },
+      });
+      win.print = () => { dialogCalls += 1; };
+      try {
+        await win.printQuote();
+        await win.printQuote();
+      } finally {
+        win.print = originalPrint;
+        delete win.mpeDesktop;
+      }
+      assert(bridgeCalls === 1, `desktop Print queued ${bridgeCalls} jobs`);
+      assert(dialogCalls === 0, `desktop Print opened ${dialogCalls} uncontrolled dialogs`);
+    });
+
+    await test('Scanner Mode shows scan-command feedback', async () => {
+      const status = () => pos.contentDocument.getElementById('scannerModeStatus').textContent;
+      const flashVisible = () => pos.contentDocument.getElementById('scanCommandFlash').offsetParent !== null;
+      reset(pos); await burst(pos, codeA); win.setScannerModeActive(true);
+      assert(!flashVisible(), 'command flash bar is reachable in Scanner Mode after all');
+      await burst(pos, '~MPE2:Q7X4:UNDO:5R8P');
+      assert(/removed/i.test(status()), `Undo was silent: ${status()}`);
+      await burst(pos, '~MPE2:Q7X4:PRINT:8K3N');
+      assert(/nothing to print/i.test(status()), `empty-sale Print was silent: ${status()}`);
+      // Clear last on purpose: PRINT and UNDO ignore a repeat within
+      // SCAN_COMMAND_REPEAT_MS, and the next test opens with its own UNDO.
+      await burst(pos, codeA);
+      await burst(pos, '~MPE2:Q7X4:CLEAR:2D9M');
+      await waitFor(() => !win.eval('_nextTransactionBusy'));
+      assert(filledRows(pos).length === 0, 'Next Transaction did not clear the saved sale');
+      assert(/sale saved/i.test(status()), `Next Transaction save result was silent: ${status()}`);
+      win.setScannerModeActive(false);
+    });
+
+    await test('Undo command removes the last scanned line', async () => {
+      reset(pos); await burst(pos, codeA); await burst(pos, '~MPE2:Q7X4:UNDO:5R8P');
+      assert(filledRows(pos).length === 0, 'Undo did not remove line');
+    });
+
+    await test('service ADD command deliberately stacks', async () => {
+      reset(pos); const add = '~MPE2:Q7X4:ADD-LABOR-30:4H6W';
+      await burst(pos, add); await burst(pos, add, { burstGap: 120 });
+      assert(filledRows(pos)[0] === 'LABOR', 'service command did not add Labor');
+      assert(pos.contentDocument.getElementById('qty-0').value === '60', 'service command did not stack quantity');
+    });
+
+    await test('Scanner Mode click exits without clearing the sale', async () => {
+      reset(pos); await burst(pos, codeB); win.setScannerModeActive(true);
+      pos.contentDocument.getElementById('scannerModeView').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, isPrimary: true }));
+      assert(!pos.contentDocument.body.classList.contains('scanner-mode-active'), 'click did not exit Scanner Mode');
+      assert(filledRows(pos).length === 1, 'Scanner Mode exit cleared sale');
+    });
+
+    await test('Scanner Mode exit cue is large red text pinned below the item rows', async () => {
+      reset(pos); win.setScannerModeActive(true);
+      const lines = pos.contentDocument.getElementById('scannerModeLines');
+      const bar = pos.contentDocument.querySelector('.scanner-mode-exit-bar');
+      assert(bar && lines.nextElementSibling === bar, 'exit bar is not directly below the item rows');
+      const barRect = bar.getBoundingClientRect();
+      const linesRect = lines.getBoundingClientRect();
+      const listRect = pos.contentDocument.querySelector('.scanner-mode-list').getBoundingClientRect();
+      const style = win.getComputedStyle(bar);
+      assert(barRect.height >= 64, `exit bar is only ${Math.round(barRect.height)}px tall`);
+      assert(Math.abs(barRect.width - linesRect.width) <= 1, 'exit bar does not span the item rows');
+      assert(listRect.bottom - barRect.bottom <= 30, 'exit bar is not pinned to the bottom of the item section');
+      assert(style.color === 'rgb(198, 40, 40)', `exit cue text is not red (${style.color})`);
+      assert(style.backgroundColor === 'rgba(0, 0, 0, 0)', `exit cue still has a solid block (${style.backgroundColor})`);
+      assert(/regular pos/i.test(bar.textContent), 'exit bar does not name the destination');
+    });
+
+    await test('fast-repeat rollback restores the long hardware guard', async () => {
+      const rollback = document.createElement('iframe'); rollback.src = 'index.html?fastRepeat=0&scannerFixture=1'; document.body.appendChild(rollback);
+      await new Promise(resolve => rollback.addEventListener('load', resolve, { once: true })); await loadFixture(rollback, 1); await waitFor(() => loaded(rollback));
+      await burst(rollback, codeA, { burstGap: 3000 }); await burst(rollback, codeA, { burstGap: 120 });
+      assert(filledRows(rollback).length === 1, 'rollback did not restore long guard');
+      await burst(rollback, codeA, { burstGap: 2300 });
+      assert(filledRows(rollback).length === 1, 'rollback rearm used a second sale line');
+      assert(rollback.contentDocument.getElementById('qty-0').value === '2', 'rollback guard did not rearm'); rollback.remove();
+    });
+
+    await test('scan received during catalog load is replayed in order', async () => {
+      const fresh = document.createElement('iframe'); fresh.src = 'index.html?fastRepeat=1&scannerFixture=500&fresh=' + Date.now();
+      fresh.style.cssText = pos.style.cssText; document.body.appendChild(fresh);
+      await new Promise(resolve => fresh.addEventListener('load', resolve, { once: true }));
+      const freshWin = frameWindow(fresh);
+      const beforeReady = !loaded(fresh);
+      await burst(fresh, codeA, { burstGap: 3000 });
+      await burst(fresh, codeA, { burstGap: 120 });
+      await loadFixture(fresh, 500);
+      await waitFor(() => loaded(fresh)); await waitFor(() => fresh.contentDocument.getElementById('qty-0')?.value === '2');
+      assert(beforeReady, 'test feed loaded before early-scan check');
+      assert(filledRows(fresh).length === 1, 'held same-item scans used separate sale lines');
+      assert(fresh.contentDocument.getElementById('qty-0').value === '2', 'held scans were not replayed');
+      fresh.remove();
+    });
+
+    await test('startup rush queues every scan without reordering', async () => {
+      const fresh = document.createElement('iframe'); fresh.src = 'index.html?fastRepeat=1&scannerFixture=1000&fresh=' + Date.now();
+      document.body.appendChild(fresh); await new Promise(resolve => fresh.addEventListener('load', resolve, { once: true }));
+      for (let i = 0; i < 25; i++) {
+        const code = i % 2 ? codeB : codeA;
+        await burst(fresh, code, { burstGap: i ? 20 : 3000 });
+      }
+      assert(filledRows(fresh).length === 0, 'startup scans ran before catalog readiness');
+      await loadFixture(fresh, 500); await waitFor(() => fresh.contentDocument.getElementById('qty-0')?.value === '13'
+        && fresh.contentDocument.getElementById('qty-1')?.value === '12');
+      assert(filledRows(fresh).join(',') === `${codeA},${codeB}`, 'startup queue changed first-seen item order');
+      assert(fresh.contentDocument.getElementById('qty-0').value === '13'
+        && fresh.contentDocument.getElementById('qty-1').value === '12', 'startup queue lost scans'); fresh.remove();
+    });
+
+    await test('Scanner Mode holds and then renders a startup scan', async () => {
+      const fresh = document.createElement('iframe'); fresh.src = 'index.html?fastRepeat=1&scannerFixture=500&fresh=' + Date.now();
+      document.body.appendChild(fresh); await new Promise(resolve => fresh.addEventListener('load', resolve, { once: true }));
+      frameWindow(fresh).setScannerModeActive(true); await burst(fresh, codeC, { burstGap: 3000 });
+      assert(/Held 1 scan/.test(fresh.contentDocument.getElementById('scannerModeStatus').textContent), 'held-scan feedback missing');
+      await loadFixture(fresh, 300); await waitFor(() => filledRows(fresh).length === 1);
+      assert(fresh.contentDocument.getElementById('scannerModeLines').textContent.includes('Scanner test item three'), 'held scan did not render'); fresh.remove();
+    });
+
+    await test('license data never becomes a product scan', async () => {
+      reset(pos); const fakeLicense = '@\nANSI 6360000000000000\nDAQTEST000\nDCSDOE\nDACJANE\nDAG123 TEST ST\nDAIANYTOWN\nDAJHI\nDAK967930000';
+      win.acceptDecodedScan(fakeLicense, 'hardware', { acceptedAt: Date.now() + 300000 });
+      assert(/jane/i.test(pos.contentDocument.getElementById('custName').value), 'license did not fill customer');
+      assert(filledRows(pos).length === 0, 'license became a sale line');
+    });
+
+    await test('rows expand when every visible row is full', async () => {
+      reset(pos); await burst(pos, codeA); await burst(pos, codeB); await burst(pos, codeC); await burst(pos, '5555');
+      assert(filledRows(pos).length === 4, 'fourth scan did not add');
+      assert(pos.contentDocument.querySelectorAll('#searchRows tr[data-row]').length >= 4, 'row table did not expand');
+    });
+
+  } catch (error) {
+    record('test harness setup', false, error.message);
+  } finally {
+    const failed = results.filter(result => !result.ok).length;
+    document.getElementById('summary').textContent = `${results.length - failed}/${results.length} passed`;
+    document.body.dataset.done = '1';
+    document.body.dataset.failed = String(failed);
+  }
+});
+phone.src = 'scan.html?scannerFixture=1';
+pos.src = 'index.html?fastRepeat=1&scannerFixture=1';
+</script>

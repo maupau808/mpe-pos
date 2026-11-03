@@ -1,0 +1,509 @@
+/* Ledger tab data logic (pure, no DOM, no network). Browser: window.MPELedgerData. Node: module.exports.
+ *
+ * Transactions A:W (0-based): 0 type, 1 txnId, 2 date, 3 time, 4 name/company, 5 phone, 6 email, 7 addr,
+ *   12 total (TXN) / sub (item), 13 fromQuote (TXN) / serials (item), 14 docType, 15 number (P),
+ *   16-21 name, company, street, city, state, zip (Q-V); item rows: 8 pn, 9 desc, 10 qty, 11 ea, 14 original ea, 15 off per unit.
+ * Only TXN and item rows are read; REORDER, STOCK_SESSION, CUSTOMER_*, blank and unknown rows are ignored.
+ * Duplicate txnId (in-place edit): the first TXN row from the top wins (edits rewrite the topmost row in place).
+ * History's parser (POS/index.html:7118-7426) is to be deleted in T5b so this becomes the only one. Until then
+ * search tokens, haystack and customer fixes (MPETransactionContact.displayRows) agree with History's.
+ *
+ * VOID MARKER (no change to Transactions columns, no extra tab): a corrected invoice is a new invoice whose
+ * "from quote" cell (N) holds the TxnID of the OLD INVOICE. N already means "made from that document"; when
+ * the target is an invoice (not a quote) the target is void. The old record shows state "void" with
+ * replacedBy = the new number. Chains (A->B->C) void A and B. A void invoice owes nothing.
+ *
+ * Payments tab columns (C3, minus taken_by; method only): see PAYMENT_COLUMNS. Undo appends ONE void row for the newest
+ * live payment on the invoice (undoRows; voids = payment_id it undoes); nothing is deleted. A payment_id seen twice
+ * counts once. Live payments on an invoice ADD UP (partial payments, Trevor 2026-11-01); the balance is total minus
+ * that sum, never below 0, so the same payment taken on two computers still leaves the invoice simply paid. A
+ * replacement invoice inherits the live payments of the invoices it replaced (following the void chain).
+ *
+ * Email draft marker: the page passes `drafts` (array of txnIds or numbers, or an object keyed by them).
+ * Record gets draftMade/draftText "Draft made". Never "Sent".
+ *
+ * MARKS live on the Payments tab too: a row with method 'email_draft' (a Gmail draft was made) or 'edit' (the record was
+ * edited in place) and amount 0 (buildMarkRow). parsePayments drops them, so they never count toward paid status;
+ * parseMarks turns them into { drafts: {txnId: date}, edits: {txnId: date} }, newest date per record.
+ *
+ * CANCEL (Cancel sale, append-only, nothing on Transactions changes): marks of kind 'cancel' and 'uncancel' on the Payments tab,
+ * same columns as every mark: id, invoice_number, txnId, date, '0.00', kind, '', place, recorded_at ISO, ''. For one txnId the NEWEST
+ * mark (recorded_at; a later row wins a tie) decides: newest 'cancel' = cancelled. parseMarks gives cancels {txnId: {cancelled, at, date}}.
+ * cancelledIds(paymentRows) -> Set of currently cancelled txnIds is THE CONTRACT the stock poll mirrors. A cancelled receipt or invoice
+ * gets state 'cancelled' (cancelledAt = the mark's date), owes nothing, and stays out of Customers balances and Awaiting pickup.
+ *
+ * CUSTOMERS (buildCustomers): QuickBooks customers (the nightly file's `customers` array), rows of the sheet's Customers tab
+ * (CUSTOMER_COLUMNS: the register's 9 plus J "QBO Id", written only by History) and the customers seen on Transactions / QuickBooks
+ * records, grouped into one customer each. Group = QuickBooks id when known, else the register's key (customerKey). The newest
+ * Customers-tab row of a group (Added date, then row order) wins over QuickBooks for every contact field. The balance is the
+ * existing owed rule over the group's own records (pre-2026 never counts); QuickBooks' own `balance` field is never used.
+ */
+(function(root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.MPELedgerData = api;
+})(typeof globalThis === 'object' ? globalThis : this, function() {
+  'use strict';
+  const NET_DAYS = 30;
+  const COUNT_FROM = '2026-01-01'; // invoices dated earlier never count as owed
+  const SOON_DAYS = 7;
+  const METHODS = Object.freeze(['cash', 'check', 'card_terminal']);
+  const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels' });
+  const PAYMENT_COLUMNS = Object.freeze(['payment_id', 'invoice_number', 'txnId', 'date', 'amount', 'method',
+    'note', 'place', 'recorded_at', 'voids']);
+
+  const s = v => String(v == null ? '' : v).trim();
+  const money = v => { const n = parseFloat(s(v).replace(/[^0-9.\-]/g, '')); return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0; };
+  const cents = n => Math.round(n * 100);
+  const alnum = v => s(v).toLowerCase().replace(/[^a-z0-9]/g, '');
+  // Shop date (Pacific/Honolulu) as YYYY-MM-DD for a Date, ISO string or Date-like; default now.
+  function honoluluToday(d) {
+    const dt = d == null ? new Date() : new Date(d);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Honolulu', year: 'numeric', month: '2-digit', day: '2-digit' }).format(dt);
+  }
+  const todayIso = t => (typeof t === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t)) ? t : honoluluToday(t);
+
+  function isoDate(v) {
+    const t = s(v);
+    let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t);
+    if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(t);
+    return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : '';
+  }
+  const dayNum = iso => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d) / 864e5; };
+  const addDays = (iso, n) => new Date((dayNum(iso) + n) * 864e5).toISOString().slice(0, 10);
+  // ---- Transactions ----
+  function parseTransactions(rows, states) {
+    const out = [], seen = new Set();
+    let cur = null;
+    (rows || []).forEach(r => {
+      const type = s(r && r[0]).toLowerCase();
+      if (type === 'txn') {
+        const id = s(r[1]);
+        if (!id || seen.has(id)) { cur = null; return; } // first row from the top wins; later duplicates dropped
+        seen.add(id);
+        const parts = [r[16], r[17], r[18], r[19], r[20], r[21]].map(s);
+        const e = s(r[4]);
+        const sameAsParts = e === [parts[0], parts[1]].filter(Boolean).join(' / ');
+        const split = e.split(' / ');
+        const st = states && states.get && states.get(id);
+        cur = {
+          txnId: id, number: s(r[15]), docType: s(r[14]).toLowerCase(), date: isoDate(r[2]), time: s(r[3]),
+          name: sameAsParts ? parts[0] : s(split[0]), company: sameAsParts ? parts[1] : s(split.slice(1).join(' / ')),
+          street: parts[2], city: parts[3], region: parts[4], zip: parts[5],
+          addr: s(r[7]), phone: s(r[5]), email: s(r[6]),
+          total: money(r[12]), fromQuote: s(r[13]), items: [],
+          presell: s(r[22]).toUpperCase() === 'PRESELL',
+          completedContact: st && !st.conflict ? st.contact : null,
+          contactConflict: st ? !!st.conflict : (rows || []).some(x => s(x && x[0]) === 'CUSTOMER_UPDATE' && s(x[1]) === id),
+          _ph: s(r[5]).replace(/\D/g, ''),
+          _hayParts: [id, s(r[2]), e, s(r[5]), s(r[6]), s(r[7]), s(r[12]), DOC_TITLES[s(r[14]).toLowerCase()] || s(r[14]), s(r[15])],
+        };
+        out.push(cur);
+      } else if (type === 'item' && cur && s(r[1]) === cur.txnId) {
+        // O, P: original Ea. and the amount off each unit, written only for a discounted line.
+        const off = money(r[15]);
+        cur.items.push({ pn: s(r[8]), desc: s(r[9]), qty: s(r[10]), ea: money(r[11]), sub: money(r[12]),
+          serials: s(r[13]).split(',').map(x => x.trim().toUpperCase()).filter(Boolean),
+          origEa: off > 0 ? money(r[14]) : 0, off: off > 0 ? off : 0 });
+        cur._hayParts.push(s(r[8]), s(r[9]), s(r[13]));
+      } else if (type !== 'item') cur = null; // noise row ends the open group
+    });
+    for (const t of out) { // same haystacks as History's _parseTxnRows
+      t._hay = t._hayParts.filter(Boolean).join(' ').toLowerCase();
+      t._serialHay = t.items.flatMap(i => i.serials).map(alnum).filter(Boolean).join(' ');
+      delete t._hayParts;
+    }
+    return out;
+  }
+  const DOC_TITLES = { receipt: 'Receipt', invoice: 'Invoice', quote: 'Quote', internal: 'Internal' };
+
+  // ---- Payments ----
+  function newPaymentId(now) {
+    return 'pay_' + (now || Date.now()).toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+  function buildPaymentRow(p, now) {
+    if (!METHODS.includes(p.method)) throw new Error('method must be cash, check or card_terminal');
+    const amt = typeof p.amount === 'string' && p.amount.trim() === '' ? NaN : Number(p.amount);
+    if (!Number.isFinite(amt) || amt < 0) throw new Error('amount must be a number, 0 or more');
+    const at = (now ? new Date(now) : new Date()).toISOString();
+    return [p.payment_id || newPaymentId(Date.parse(at)), s(p.invoice_number), s(p.txnId), isoDate(p.date) || honoluluToday(at),
+      amt.toFixed(2), p.method, s(p.note), s(p.place), at, ''];
+  }
+  function buildVoidRow(target, now, place) { // Undo of one payment: append, never delete
+    const at = (now ? new Date(now) : new Date()).toISOString();
+    return [newPaymentId(Date.parse(at)), target.invoice_number, target.txnId, honoluluToday(at), '0.00', target.method,
+      'undo', s(place), at, target.payment_id];
+  }
+  // Undo for an invoice record: one void row for its NEWEST live payment (undo again for the one before).
+  function undoRows(record, now, place) {
+    const last = [...(record.paymentsLive || [])].sort(newestFirst)[0];
+    return last ? [buildVoidRow(last, now, place)] : [];
+  }
+  const paymentRows = rows => (rows || []).filter(r => r && s(r[0]) && s(r[0]) !== PAYMENT_COLUMNS[0]).map(r => { // blank or header out
+    const o = {};
+    PAYMENT_COLUMNS.forEach((c, i) => { o[c] = s(r[i]); });
+    o.amount = money(o.amount);
+    return o;
+  });
+  const parsePayments = rows => paymentRows(rows).filter(o => !MARKS[o.method]);
+  // A mark: kind 'email_draft', 'edit', 'cancel' or 'uncancel', amount 0, never a payment.
+  function buildMarkRow(m, now) {
+    if (!MARKS[m.kind]) throw new Error('mark must be email_draft, edit, cancel or uncancel');
+    const at = (now ? new Date(now) : new Date()).toISOString();
+    return ['mark_' + Date.parse(at).toString(36) + Math.random().toString(36).slice(2, 8), s(m.invoice_number), s(m.txnId),
+      honoluluToday(at), '0.00', m.kind, s(m.note), s(m.place), at, ''];
+  }
+  const BEFORE = 'before:';
+  // The note for an edit mark: the sale's Transactions rows before the edit. Over Sheets' cell limit: no copy (the edit still saves).
+  const beforeNote = rows => { const t = BEFORE + JSON.stringify(rows || []); return t.length <= 45000 ? t : ''; };
+  function parseMarks(rows) {
+    const out = { drafts: {}, edits: {}, cancels: {}, before: {} };
+    for (const o of paymentRows(rows)) {
+      // An edit mark may carry the sale's rows as they were before that edit ("before:" + JSON): History shows that copy.
+      if (o.method === 'edit' && o.txnId && o.note.startsWith(BEFORE)) {
+        try { (out.before[o.txnId] = out.before[o.txnId] || []).push({ date: o.date, at: o.recorded_at, rows: JSON.parse(o.note.slice(BEFORE.length)) }); } catch (_) { /* a cut-off copy is skipped */ }
+      }
+      if (o.method === 'cancel' || o.method === 'uncancel') { // newest recorded_at wins; a later row wins a tie
+        const prev = out.cancels[o.txnId];
+        if (o.txnId && !(prev && prev.at > o.recorded_at)) out.cancels[o.txnId] = { cancelled: o.method === 'cancel', at: o.recorded_at, date: o.date };
+        continue;
+      }
+      const key = o.txnId || o.invoice_number, bucket = out[MARKS[o.method]];
+      if (bucket && key && !(bucket[key] >= o.date)) bucket[key] = o.date;
+    }
+    return out;
+  }
+  // The contract the stock poll mirrors: txnIds whose newest cancel/uncancel mark is a cancel.
+  const cancelledIds = rows => new Set(Object.entries(parseMarks(rows).cancels).filter(([, c]) => c.cancelled).map(([id]) => id));
+  // Live payments: unique payment_id, minus any id a void row points at.
+  function livePayments(payments) {
+    const seen = new Set(), voided = new Set(), uniq = [];
+    for (const p of payments) {
+      if (seen.has(p.payment_id)) continue;
+      seen.add(p.payment_id);
+      uniq.push(p);
+      if (p.voids) voided.add(p.voids);
+    }
+    return uniq.filter(p => !p.voids && !voided.has(p.payment_id));
+  }
+
+  // ---- Status ----
+  const newestFirst = (a, b) => b.recorded_at.localeCompare(a.recorded_at) || b.payment_id.localeCompare(a.payment_id);
+  function derive(txns, payments, today, drafts, cancels) { // cancels: parseMarks(...).cancels
+    today = todayIso(today);
+    const live = livePayments(payments || []);
+    const draftSet = new Set(Array.isArray(drafts) ? drafts : Object.keys(drafts || {}));
+    const byId = new Map(txns.map(t => [t.txnId, t]));
+    const replacedBy = new Map(), replaces = new Map(); // old txnId -> new record ; new txnId -> [old records]
+    for (const t of txns) {
+      const old = byId.get(t.fromQuote);
+      if (t.docType === 'invoice' && old && old.docType === 'invoice' && old !== t) {
+        replacedBy.set(old.txnId, t);
+        if (!replaces.has(t.txnId)) replaces.set(t.txnId, []);
+        replaces.get(t.txnId).push(old);
+      }
+    }
+    const chain = t => { // this invoice plus every invoice it (transitively) replaced
+      const out = [], seen = new Set(), stack = [t];
+      while (stack.length) {
+        const c = stack.pop();
+        if (seen.has(c.txnId)) continue;
+        seen.add(c.txnId); out.push(c);
+        stack.push(...(replaces.get(c.txnId) || []));
+      }
+      return out;
+    };
+    return txns.map(t => {
+      const kind = t.docType === 'invoice' || t.docType === 'quote' ? t.docType : 'receipt';
+      const r = { ...t, kind, draftMade: draftSet.has(t.txnId) || (!!t.number && draftSet.has(t.number)) };
+      r.draftText = r.draftMade ? 'Draft made' : '';
+      const gone = kind !== 'quote' && cancels && cancels[t.txnId] && cancels[t.txnId].cancelled ? cancels[t.txnId] : null;
+      const mine = (ids, nums) => live.filter(p => ids.has(p.txnId) || (!p.txnId && nums.has(p.invoice_number)));
+      if (kind === 'quote') { // a deposit on a quote (Trevor, Nov 1): payment rows on the quote; the sale made from it counts them
+        r.paymentsLive = mine(new Set([t.txnId]), new Set(t.number ? [t.number] : []));
+        r.deposit = Math.min(r.paymentsLive.reduce((a, p) => a + cents(p.amount), 0), cents(t.total)) / 100;
+      }
+      if (kind !== 'invoice') { r.state = gone ? 'cancelled' : kind; if (gone) r.cancelledAt = gone.date; return r; }
+      const ids = new Set(), nums = new Set();
+      for (const c of chain(t)) {
+        ids.add(c.txnId); if (c.number) nums.add(c.number);
+        const q = byId.get(c.fromQuote); // the quote this invoice was made from: its deposit counts here
+        if (q && q.docType === 'quote') { ids.add(q.txnId); if (q.number) nums.add(q.number); }
+      }
+      r.paymentsLive = mine(ids, nums);
+      const latest = [...r.paymentsLive].sort(newestFirst)[0];
+      const sum = r.paymentsLive.reduce((a, p) => a + cents(p.amount), 0); // partial payments add up
+      r.paid = Math.min(sum, cents(t.total)) / 100;
+      r.paidDate = latest ? latest.date : '';
+      r.paidMethod = latest ? latest.method : '';
+      r.balance = Math.max(0, (cents(t.total) - sum) / 100);
+      r.dueDate = t.date ? addDays(t.date, NET_DAYS) : '';
+      const next = replacedBy.get(t.txnId);
+      if (next) { r.state = 'void'; r.replacedBy = next.number || next.txnId; r.balance = 0; return r; }
+      if (gone) { r.state = 'cancelled'; r.cancelledAt = gone.date; r.balance = 0; return r; }
+      if (r.balance <= 0) { r.state = 'paid'; return r; }
+      // Trevor: money owed on invoices dated before 2026 is never tallied or flagged; it shows only on that invoice.
+      if (t.date && t.date < COUNT_FROM) { r.state = 'old'; return r; }
+      const left = r.dueDate ? dayNum(r.dueDate) - dayNum(today) : Infinity;
+      r.daysLate = left < 0 ? -left : 0;
+      r.state = left < 0 ? 'overdue' : left <= SOON_DAYS ? 'dueSoon' : 'unpaid';
+      return r;
+    });
+  }
+
+  // ---- Filters, sort, summary, search ----
+  const byDue = (a, b) => (a.dueDate || '9').localeCompare(b.dueDate || '9') || a.number.localeCompare(b.number);
+  const newest = (a, b) => (b.date || '').localeCompare(a.date || '') || b.number.localeCompare(a.number);
+  const FILTERS = {
+    unpaid: [r => r.state === 'unpaid' || r.state === 'dueSoon' || r.state === 'overdue', byDue],
+    dueSoon: [r => r.state === 'dueSoon', byDue],
+    overdue: [r => r.state === 'overdue', byDue],
+    paid: [r => r.state === 'paid', byDue],
+    quotes: [r => r.kind === 'quote', newest],
+    allSales: [r => r.kind !== 'quote', newest],
+  };
+  function filter(records, name) {
+    const f = FILTERS[name];
+    if (!f) throw new Error('unknown filter ' + name);
+    return records.filter(f[0]).sort(f[1]);
+  }
+  function owedSummary(records) {
+    let cts = 0, overdue = 0;
+    for (const r of records) {
+      if (r.state === 'unpaid' || r.state === 'dueSoon' || r.state === 'overdue') cts += cents(r.balance);
+      if (r.state === 'overdue') overdue++;
+    }
+    return { total: cts / 100, overdue };
+  }
+  // Same rule as History's renderTxnResults: every word matches somewhere, or the space-insensitive serial
+  // matches. Extra: 3+ digits also match phone digits (History has no such match; it is a superset).
+  function search(records, query) {
+    const q = s(query).toLowerCase();
+    const tokens = q.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return records;
+    const qc = q.replace(/[^a-z0-9]/g, ''), qd = q.replace(/\D/g, '');
+    return records.filter(r => tokens.every(tok => r._hay.includes(tok)) ||
+      (qc.length >= 3 && r._serialHay && r._serialHay.includes(qc)) ||
+      (qd.length >= 3 && (r._ph != null ? r._ph : r.phone.replace(/\D/g, '')).includes(qd)));
+  }
+
+  // ---- QuickBooks history (read-only; Drive "MPE QuickBooks History.json.gz") ----
+  // qboRecords(json) maps once per download into History's record shape, source 'qbo', with the lowercase search strings
+  // built here (a search then only calls includes()). addQbo(model, mapped, today) merges and derives the state per load.
+  const QBO_TITLES = { invoice: 'Invoice', quote: 'Quote', receipt: 'Receipt' };
+  function qboRecords(json) {
+    const out = [];
+    for (const q of (json && json.records) || []) {
+      const kind = q.kind === 'invoice' || q.kind === 'quote' ? q.kind : q.kind === 'receipt' ? 'receipt' : '';
+      if (!kind) continue;
+      const lines = (Array.isArray(q.lines) ? q.lines : []).map(s).filter(Boolean);
+      const street = lines.join(', ');
+      const items = (q.items || []).map(i => ({ pn: s(i.pn), desc: s(i.desc), qty: s(i.qty), ea: money(i.ea), sub: money(i.sub),
+        serials: (i.serials || []).map(x => s(x).toUpperCase()).filter(Boolean), origEa: 0, off: 0 }));
+      const number = s(q.number), name = s(q.name), company = s(q.company), phone = s(q.phone), email = s(q.email);
+      const r = {
+        source: 'qbo', txnId: s(q.txnId) || 'qbo:' + s(q.qboId), customerId: s(q.customerId), number, docType: kind, kind, date: isoDate(q.date), time: '',
+        name, company, street, addrLines: lines, city: s(q.city), region: s(q.state), zip: s(q.zip),
+        addr: [street, s(q.city), s(q.state), s(q.zip)].filter(Boolean).join(', '), phone, email,
+        total: money(q.total), tax: money(q.tax), fromQuote: '', items, presell: false, contactConflict: false, completedContact: null,
+        qboStatus: s(q.status).toLowerCase(), qboBalance: money(q.balance), qboDue: isoDate(q.dueDate), qboExpires: isoDate(q.expires),
+        draftMade: false, draftText: '', paymentsLive: [], _ph: phone.replace(/\D/g, ''),
+      };
+      r._hay = [r.txnId, number, r.date, name, company, phone, email, r.addr, s(q.total), QBO_TITLES[kind],
+        ...items.flatMap(i => [i.pn, i.desc, i.serials.join(' ')])].filter(Boolean).join(' ').toLowerCase();
+      r._serialHay = items.flatMap(i => i.serials).map(alnum).filter(Boolean).join(' ');
+      out.push(r);
+    }
+    return out;
+  }
+  // Money owed: only an open QuickBooks invoice dated 2026-01-01 or later counts (state unpaid/dueSoon/overdue, due date = QuickBooks'
+  // dueDate). Earlier ones are 'old' (never tallied, no red). Void is 'void' with no replacement. Nothing here touches Payments.
+  function qboState(r, today) {
+    if (r.kind !== 'invoice') { r.state = r.kind; return r; }
+    const total = cents(r.total), left = Math.max(0, cents(r.qboBalance));
+    r.dueDate = r.qboDue || (r.date ? addDays(r.date, NET_DAYS) : '');
+    r.daysLate = 0; r.paidDate = ''; r.paidMethod = '';
+    if (r.qboStatus === 'void') { r.state = 'void'; r.balance = 0; r.paid = 0; return r; }
+    if (r.qboStatus === 'paid' || left <= 0) { r.state = 'paid'; r.balance = 0; r.paid = r.total; return r; }
+    r.balance = left / 100; r.paid = Math.max(0, (total - left) / 100);
+    if (r.date && r.date < COUNT_FROM) { r.state = 'old'; return r; }
+    const days = r.dueDate ? dayNum(r.dueDate) - dayNum(today) : Infinity;
+    r.daysLate = days < 0 ? -days : 0;
+    r.state = days < 0 ? 'overdue' : days <= SOON_DAYS ? 'dueSoon' : 'unpaid';
+    return r;
+  }
+  // A counter document made before Oct 31 is on the sheet AND in QuickBooks with the same number: keep the sheet one, but an owing
+  // sheet invoice takes QuickBooks' payments (Trevor, Nov 1: paid in QuickBooks showed red). Many counter "invoices" went to
+  // QuickBooks as a paid sales receipt with the same number: that receipt marks the invoice paid and is not shown twice.
+  // Copies, so a re-merge starts clean.
+  const OWING = new Set(['unpaid', 'dueSoon', 'overdue', 'old']);
+  function mergeQbo(sheet, mapped, today) {
+    today = todayIso(today);
+    const key = r => r.kind + '|' + s(r.number).toLowerCase();
+    const have = new Set(sheet.filter(r => r.number).map(key));
+    const qBy = kind => new Map(mapped.filter(r => r.kind === kind && r.number).map(r => [s(r.number).toLowerCase(), r]));
+    const qInv = qBy('invoice'), qRcpt = qBy('receipt'), used = new Set();
+    addQboBuyers(sheet, mapped);
+    const merged = sheet.map(r => {
+      if (r.kind !== 'invoice' || !OWING.has(r.state) || !r.number) return r;
+      const n = s(r.number).toLowerCase(), q = qInv.get(n), rc = q ? null : qRcpt.get(n);
+      if (rc) { used.add(rc); return { ...r, state: 'paid', paidInQbo: true, balance: 0, paid: r.total, daysLate: 0 }; }
+      if (!q) return r;
+      const left = Math.max(0, cents(q.qboBalance));
+      if (q.qboStatus === 'void' || q.qboStatus === 'paid' || left <= 0)
+        return { ...r, state: 'paid', paidInQbo: true, balance: 0, paid: r.total, daysLate: 0 };
+      if (left >= cents(r.balance) || cents(q.total) !== cents(r.total)) return r; // part paid: only the same document (same total)
+      return { ...r, paidInQbo: true, balance: left / 100, paid: Math.max(0, (cents(r.total) - left) / 100) };
+    });
+    const extra = [];
+    for (const r of mapped) if (!used.has(r) && !(r.number && have.has(key(r)))) extra.push(qboState(r, today));
+    return merged.concat(extra);
+  }
+  // Display-only "QuickBooks buyer": a register sale (not a quote) with no buyer, or the Jana Yamashiro placeholder, whose serials
+  // (uppercase letters and digits, 4+ characters) appear in exactly ONE QuickBooks invoice or receipt (never an estimate) gets
+  // r.qboBuyer = { name, customerId } and that name in its search text. Two or more different documents: nothing. One pass builds
+  // serial -> documents; nothing is written anywhere. Idempotent: a reload recomputes from the untouched base search text.
+  const PLACEHOLDER_BUYER = 'jana yamashiro';
+  const snKey = v => s(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  function addQboBuyers(sheet, mapped) {
+    const docs = new Map(); // serial key -> Map(txnId -> record)
+    for (const q of mapped) {
+      if (q.kind === 'quote') continue;
+      for (const i of q.items) for (const x of i.serials) {
+        const k = snKey(x);
+        if (k.length < 4) continue;
+        if (!docs.has(k)) docs.set(k, new Map());
+        docs.get(k).set(q.txnId, q);
+      }
+    }
+    for (const r of sheet) {
+      if (r._hayBase == null) r._hayBase = r._hay;
+      r._hay = r._hayBase;
+      r.qboBuyer = null;
+      if (r.source === 'qbo' || r.kind === 'quote' || !docs.size) continue;
+      if (![r.name, r.company].filter(Boolean).every(x => x.toLowerCase() === PLACEHOLDER_BUYER)) continue; // an entered buyer stays
+      const hit = new Map();
+      for (const i of r.items) for (const x of i.serials) for (const [id, q] of docs.get(snKey(x)) || []) hit.set(id, q);
+      const q = hit.size === 1 ? [...hit.values()][0] : null, name = q && (q.company || q.name);
+      if (!name) continue;
+      r.qboBuyer = { name, customerId: q.customerId };
+      r._hay = r._hayBase + ' ' + name.toLowerCase();
+    }
+  }
+
+  // ---- Customers ----
+  const CUSTOMER_COLUMNS = Object.freeze(['Company', 'Contact', 'Phone', 'Email', 'Street', 'City', 'State', 'Zip', 'Added', 'QBO Id']);
+  // The register's customer key (POS/index.html custIndex(): 'p:' + phone digits, a leading 1 dropped, + '|' + lowercased company-or-name).
+  // Copied, not shared: if the register's rule changes, change this too.
+  const digits10 = v => s(v).replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+  const customerKey = (phone, company, name) => { const pd = digits10(phone); return (pd ? 'p:' + pd : '') + '|' + s(company || name).toLowerCase(); };
+  // "Added" as the register writes it (new Date().toLocaleString(), en-US), read in the shop's own time zone.
+  const addedText = now => new Date(now == null ? Date.now() : now).toLocaleString('en-US', { timeZone: 'Pacific/Honolulu' });
+  // One Customers-tab row from the edit form: the 9 register columns + J. J is the QuickBooks id when the customer has one. A customer
+  // with no QuickBooks id has J blank, except when the edit changes its register key (phone or company): then J holds the customer's
+  // own group id ('k:' + old key, from buildCustomers) so the edited row stays with the same customer and its records.
+  function buildCustomerRow(f, ref, now) {
+    const row = [f.company, f.name, f.phone, f.email, f.street, f.city, f.region, f.zip].map(s);
+    if (!row[0] && !row[1]) throw new Error('A customer needs a name or a company');
+    return [...row, addedText(now), s(ref)];
+  }
+  // Rows (the tab, header allowed) -> { company, name, phone, email, street, city, region, zip, added (ISO), qboId, order }.
+  function parseCustomerRows(rows) {
+    const out = [];
+    (rows || []).forEach((r, order) => {
+      if (!r || (order === 0 && s(r[0]).toLowerCase() === 'company') || !(s(r[0]) || s(r[1]))) return;
+      out.push({ company: s(r[0]), name: s(r[1]), phone: s(r[2]), email: s(r[3]), street: s(r[4]), city: s(r[5]), region: s(r[6]), zip: s(r[7]),
+        added: isoDate(r[8]), ref: s(r[9]), order });
+    });
+    return out;
+  }
+  const newerRow = (a, b) => (b.added > a.added || (b.added === a.added && b.order > a.order) ? b : a);
+  const joinAddr = c => [c.street, [c.city, c.region, c.zip].filter(Boolean).join(' ')].filter(Boolean).join(', '); // display only
+  // qbo: the file's customers array; sheetRows: Customers tab rows; records: model.records (QuickBooks merged in, states derived).
+  // Returns customers, newest activity first: contact fields, addr (display), balance / overdue (owed rule), records (unsorted), edited.
+  function buildCustomers({ qbo, sheetRows, records }) {
+    const groups = new Map(), alias = new Map();
+    const make = (id, qboId) => { let g = groups.get(id); if (!g) { g = { id, qboId, q: null, rows: [], records: [] }; groups.set(id, g); } return g; };
+    const claim = (key, g) => { if (key !== '|' && !alias.has(key)) alias.set(key, g); return g; };
+    const byKey = key => alias.get(key) || claim(key, make('k:' + key, ''));
+    const qLines = q => (Array.isArray(q.lines) ? q.lines : []).map(s).filter(Boolean);
+    for (const q of qbo || []) {
+      const id = s(q.id);
+      if (!id) continue;
+      const g = make('q:' + id, id);
+      g.q = q;
+      claim(customerKey(q.phone || q.mobile, q.company, q.name), g);
+    }
+    const sheet = parseCustomerRows(sheetRows);
+    for (const row of sheet) if (row.ref) {
+      const own = row.ref.startsWith('k:'); // a customer with no QuickBooks id, edited to a new key
+      const g = make(own ? row.ref : 'q:' + row.ref, own ? '' : row.ref);
+      g.rows.push(row);
+      claim(customerKey(row.phone, row.company, row.name), g);
+      if (own) claim(row.ref.slice(2), g);
+    }
+    for (const row of sheet) if (!row.ref) {
+      const key = customerKey(row.phone, row.company, row.name);
+      if (key !== '|') byKey(key).rows.push(row);
+    }
+    for (const r of records || []) {
+      const cid = r.source === 'qbo' ? s(r.customerId) : r.kind === 'receipt' && r.qboBuyer ? s(r.qboBuyer.customerId) : ''; // W3b: a matched register sale joins that customer
+      if (cid) { make('q:' + cid, cid).records.push(r); continue; }
+      if (s(r.name).toLowerCase() === PLACEHOLDER_BUYER && !s(r.company) && !s(r.phone)) continue; // the placeholder buyer is nobody's customer
+      const key = customerKey(r.phone, r.company, r.name);
+      if (key !== '|') byKey(key).records.push(r);
+    }
+    const out = [];
+    for (const g of groups.values()) {
+      let last = '', seen = null, buyer = null;
+      for (const r of g.records) {
+        if (r.date > last) last = r.date;
+        if (r.source !== 'qbo' && r.qboBuyer) { buyer = buyer || r.qboBuyer; continue; } // its own contact is the placeholder: never names a customer
+        if (!seen || (r.date || '') > (seen.date || '')) seen = r;
+      }
+      const row = g.rows.length ? g.rows.reduce(newerRow) : null;
+      for (const r of g.rows) if (r.added > last) last = r.added;
+      const q = g.q;
+      const from = row || (q && { company: s(q.company), name: [s(q.given), s(q.family)].filter(Boolean).join(' ') || (s(q.company) ? '' : s(q.name)),
+        phone: s(q.phone || q.mobile), email: s(q.email), street: qLines(q).join(', '), city: s(q.city), region: s(q.state), zip: s(q.zip) })
+        || (seen && { company: seen.company, name: seen.name, phone: seen.phone, email: seen.email, street: seen.street, city: seen.city,
+          region: s(seen.region) || '', zip: seen.zip }) || (buyer && { name: s(buyer.name) }) || {};
+      if (!(s(from.company) || s(from.name))) continue; // nothing to call it by
+      const c = { id: g.id, txnId: g.id, qboId: g.qboId, company: s(from.company), name: s(from.name), phone: s(from.phone), email: s(from.email),
+        street: s(from.street), city: s(from.city), region: s(from.region), zip: s(from.zip), edited: !!row, inactive: !!(q && q.active === false),
+        last, count: g.records.length, records: g.records };
+      const owed = owedSummary(g.records);
+      c.balance = owed.total; c.overdue = owed.overdue;
+      c.addr = joinAddr(c);
+      c._hay = [c.company, c.name, c.phone, c.email, ...(q ? [q.name, q.company, q.given, q.family, q.phone, q.mobile, q.email] : []),
+        ...g.rows.flatMap(x => [x.company, x.name, x.phone, x.email])].map(s).filter(Boolean).join(' ').toLowerCase();
+      c._ph = [c.phone, q && q.phone, q && q.mobile, ...g.rows.map(x => x.phone)].map(digits10).filter(Boolean).join(' ');
+      out.push(c);
+    }
+    return out.sort((a, b) => lt(b.last, a.last) || lt((a.company || a.name).toLowerCase(), (b.company || b.name).toLowerCase()));
+  }
+  const lt = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+  // One call for the page: rows in, ready model out. displayRows: optional (defaults to the page's
+  // MPETransactionContact.displayRows) so CUSTOMER_UPDATE fixes and conflict flags match History.
+  async function create({ txnRows, paymentRows, drafts, today, displayRows }) {
+    const owner = typeof globalThis === 'object' ? globalThis.MPETransactionContact : null;
+    const fn = displayRows || (owner && owner.displayRows && (rows => owner.displayRows(rows)));
+    let rows = txnRows, states = null;
+    if (fn) { const d = await fn(txnRows); rows = d.rows; states = d.states; }
+    const records = derive(parseTransactions(rows, states), parsePayments(paymentRows), today, drafts, parseMarks(paymentRows).cancels);
+    const model = {
+      records,
+      list: (name, query) => search(filter(model.records, name), query),
+      owedSummary: () => owedSummary(model.records),
+      search: q => search(model.records, q),
+      // Merge mapped QuickBooks records (qboRecords) in; model.records is a new array afterwards.
+      addQbo(mapped, now) { model.records = mergeQbo(records, mapped || [], now || today); return model.records; },
+    };
+    return model;
+  }
+
+  return { NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow,
+    buildVoidRow, beforeNote, undoRows, honoluluToday, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
+});
