@@ -334,7 +334,7 @@
           ledgerTotals: { subtotal: t.subtotal, tax: t.tax, card_fee: t.card_fee, total: t.total },
           items: (record.items || []).map(i => ({ pn: i.pn, desc: i.desc, qty: i.qty, ea: i.ea, sub: i.sub, sn: i.serials })) };
         const day = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
-        return { from: identity.email, signature: identity.signature || '', to: s(record.email), pages: [list[0]], attachment: number + '.pdf',
+        return { from: identity.email, accountEmail: identity.accountEmail || identity.email, signature: identity.signature || '', to: s(record.email), pages: [list[0]], attachment: number + '.pdf',
           subject: `${title} ${number} - Maui Power Equipment`, message: w.buildEmailBody(order, title, number, day, '').text, canSend: !!env.sendMail };
       },
       // Send: only from the email window's Send button. Then one 'email_sent' mark (note = who it went to) for the timeline.

@@ -2,12 +2,18 @@
  * open(opts) shows To / Cc / Bcc / Subject / Message on the left and, on the right, the email as the customer sees it with the
  * document below it. Send runs opts.send(fields) only when a person presses it (Trevor, 2026-11-04; Claude never sends).
  * Save draft keeps the version in progress on this computer (localStorage), not in Gmail; Send clears it.
- *   opts: { key, heading, from, to, subject, message, signature, pages: [html], attachment, send: async fields => void }
+ *   opts: { key, heading, from, accountEmail, to, subject, message, signature, pages: [html], attachment, send: async fields => void }
  *   fields: { to, cc, bcc, subject, message, text, html }   resolves { sent: true, to } or null when closed.
  * Needs email-draft.js (buildTypedEmail, parseEmailList). Test: node POS/test_email_window.cjs */
 (function (root) {
   'use strict';
   const PREFIX = 'mpeEmailDraftV1:';
+  // Failsafe (Trevor, 2026-11-04): Send works only when the signed-in Google account AND the From address are the shop's.
+  const SHOP = 'info@mauipowerequipment.com';
+  const wrongAccount = o => {
+    const bad = [o.accountEmail, o.from].map(v => String(v || '').trim().toLowerCase()).find(v => v !== SHOP);
+    return bad === undefined ? '' : `Send only works from ${SHOP}. This computer is signed in as ${bad || 'an unknown account'}. Sign in to Google with ${SHOP}, then press Email again.`;
+  };
   const CSS = `
 .mew,dialog.mew{width:min(1180px,calc(100% - 24px));max-width:none;height:calc(100% - 24px);max-height:none;margin:auto;padding:0;border:1px solid #c9d2c7;border-radius:8px;
   background:#fffdfa;color:#202c24;font:14px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.25)}
@@ -60,6 +66,7 @@
   }
 
   function open(opts) {
+    opts = { ...opts, cannotSend: wrongAccount(opts) || opts.cannotSend || '' };
     const doc = root.document;
     if (!doc.getElementById('mewStyle')) { const st = doc.createElement('style'); st.id = 'mewStyle'; st.textContent = CSS; doc.head.append(st); }
     const d = doc.createElement('dialog');
@@ -141,7 +148,7 @@
           clean = JSON.stringify(values()); savedNote(at); err('');
         }
         if (a === 'send') {
-          const v = values(), why = check(v);
+          const v = values(), why = wrongAccount(opts) || check(v);
           if (why) return err(why);
           const mail = root.buildTypedEmail(v.message, opts.signature || '');
           const list = k => root.parseEmailList(v[k]).list.join(', ');
@@ -166,5 +173,5 @@
       field(field('to').value ? 'message' : 'to').focus();
     });
   }
-  root.MPEEmailWindow = { open, check, PREFIX };
+  root.MPEEmailWindow = { open, check, wrongAccount, PREFIX, SHOP };
 })(typeof window === 'object' ? window : globalThis);

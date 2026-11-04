@@ -23,4 +23,9 @@ const mime = ctx._buildEmailMime('kai@example.test', 'S', 't', 'a.pdf', 'QUJD', 
 assert.match(mime, /\r\nCc: b@y\.com\r\n/);
 assert.match(mime, /\r\nBcc: c@z\.org\r\n/);
 assert.doesNotMatch(ctx._buildEmailMime('k@x.co', 'S', 't', 'a.pdf', 'QUJD'), /Cc:|Bcc:/);
-console.log('PASS: email window checks, typed message, Cc/Bcc headers');
+const shop = 'info@mauipowerequipment.com';
+assert.equal(W.wrongAccount({ from: shop, accountEmail: 'INFO@mauipowerequipment.com' }), '');
+assert.match(W.wrongAccount({ from: shop, accountEmail: 'trevor.kudo@example.test' }), /signed in as trevor\.kudo@example\.test/);
+assert.match(W.wrongAccount({ from: 'sales@mauipowerequipment.com', accountEmail: shop }), /sales@/);
+assert.match(W.wrongAccount({ from: shop }), /unknown account/);
+console.log('PASS: shop-account failsafe; email window checks, typed message, Cc/Bcc headers');
