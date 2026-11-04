@@ -93,7 +93,7 @@ test('no Payments tab: the page says so, everything else loads, Mark paid keeps 
   const host = K.createHost(env, { document: { getElementById: id => (id === 'hostNote' ? note : null) } });
   const [pays, marks] = await Promise.all([host.readPayments(), host.readMarks()]);
   assert.deepEqual(pays, [L.PAYMENT_COLUMNS.slice()]);
-  assert.deepEqual(marks, { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {} });
+  assert.deepEqual(marks, { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {} });
   assert.equal(note.textContent, 'Payments tab not set up yet');
   assert.equal(note.hidden, false);
   await assert.rejects(host.appendPaymentRows([pay('pay_e')]), e => e.code === 'payments_missing');
@@ -109,7 +109,7 @@ test('marks: email_draft and edit rows never count as payments; readMarks return
   assert.throws(() => L.buildMarkRow({ kind: 'cash', txnId: 'T-1' }));
   const rows = [L.PAYMENT_COLUMNS.slice(), draft, edit];
   assert.deepEqual(L.parsePayments(rows), []);
-  assert.deepEqual(L.parseMarks(rows), { drafts: { 'T-1': '2026-10-20' }, edits: { 'T-1': '2026-10-25' }, cancels: {}, before: {}, prints: {}, pdfs: {}, sent: {},
+  assert.deepEqual(L.parseMarks(rows), { drafts: { 'T-1': '2026-10-20' }, edits: { 'T-1': '2026-10-25' }, cancels: {}, before: {}, prints: {}, pdfs: {}, sent: {}, paylinks: {},
     log: { 'T-1': [{ kind: 'email_draft', date: '2026-10-20', at: '2026-10-20T20:00:00.000Z', place: '9', note: '' }] } });
   // Prints, PDFs and PDF opens: never payments, one timeline entry each, oldest stays first.
   const out = [L.buildMarkRow({ kind: 'print', txnId: 'T-1', invoice_number: 'L21001', place: '2' }, Date.parse('2026-10-21T20:00:00Z')),

@@ -30,13 +30,14 @@
   const TAX_RATE = 0.04712; // POS/index.html TAX_RATE
   const QUOTE_DAYS = 30;
   const PLACES = { 1: 'Mac', 2: 'PC Left', 3: 'PC Right', 9: 'Web' };
-  const METHOD_LABEL = { cash: 'Cash', check: 'Check', card_terminal: 'Card terminal' };
+  const METHOD_LABEL = { cash: 'Cash', check: 'Check', card_terminal: 'Card terminal', helcim_card: 'Card online', helcim_ach: 'Bank transfer' };
   const KIND_LABEL = { invoice: 'Invoice', quote: 'Quote', receipt: 'Sale' };
   const STORE_KEY = 'mpe.ledger.ui';
   const UNPAID = new Set(['unpaid', 'dueSoon', 'overdue']);
   const PAGE = 400; // rows drawn at a time; "Show more" adds another page (25,000 rows at once would freeze the list)
   const SEARCH_HINT = { recent: 'Search all sales', invoices: 'Search invoices', quotes: 'Search quotes', sales: 'Search register sales', customers: 'Search customers' };
   const QBO_RECHECK_MS = 10 * 60 * 1000;
+  const HELCIM_RECHECK_MS = 10 * 60 * 1000;
 
   const s = v => String(v == null ? '' : v).trim();
   const cents = n => Math.round(n * 100) / 100;
@@ -47,7 +48,7 @@
   const addDays = (iso, n) => new Date((dayNum(iso) + n) * 864e5).toISOString().slice(0, 10);
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   // Timeline words for an output mark (ledger-data.js log). note 'reprint' = from History's Reprint.
-  const OUTPUT_LABEL = m => ({ print: m.note === 'reprint' ? 'Reprinted' : 'Printed', pdf: 'PDF saved', pdf_open: 'PDF opened', email_draft: 'Email draft made', email_sent: m.note ? 'Emailed to ' + m.note : 'Emailed' }[m.kind] || m.kind);
+  const OUTPUT_LABEL = m => ({ print: m.note === 'reprint' ? 'Reprinted' : 'Printed', pdf: 'PDF saved', pdf_open: 'PDF opened', email_draft: 'Email draft made', paylink: 'Pay link added', email_sent: m.note ? 'Emailed to ' + m.note : 'Emailed' }[m.kind] || m.kind);
   const timeOf = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('en-US', { timeZone: 'Pacific/Honolulu', hour: 'numeric', minute: '2-digit' }); };
   const fmtD = iso => { if (!iso) return ''; const [, mo, d] = iso.split('-').map(Number); return `${MONTHS[mo - 1]} ${d}`; };
   const fmtDY = iso => iso ? `${fmtD(iso)}, ${iso.slice(0, 4)}` : '';
@@ -222,7 +223,7 @@
   }
 
   // Buttons for one record, strongest first. Each: { act, label, primary?, quiet?, menu?, disabled?, why? }.
-  function actionsFor(r, canPdf) {
+  function actionsFor(r, canPdf, helcim) { // helcim: { connected, link } for Add pay link (only when History runs in the app with Helcim set up)
     const a = [];
     if (isQbo(r)) { // read-only copy from QuickBooks: no Payments tab, edit, PDF or email draft
       if (qboOpenQuote(r) && !r.convertedTo) a.push({ act: 'toSale', label: 'Turn quote into sale', primary: true });
@@ -234,6 +235,7 @@
     if (r.kind === 'quote' && !r.convertedTo && !isVoid) a.push({ act: 'toSale', label: 'Turn quote into sale', primary: true });
     if (r.kind === 'quote' && !r.convertedTo && !isVoid && cents(r.total - (r.deposit || 0)) > 0) a.push({ act: 'pay', label: r.deposit > 0 ? `Take more deposit · ${money(r.deposit)} paid` : 'Take deposit' });
     if (r.kind === 'invoice' && UNPAID.has(r.state)) a.push({ act: 'pay', label: r.paid > 0 ? `Take payment · ${money(r.balance)} left` : 'Take payment', primary: true });
+    if (r.kind === 'invoice' && UNPAID.has(r.state) && cents(r.balance) === cents(r.total) && helcim && helcim.connected && !helcim.link) a.push({ act: 'payLink', label: 'Add pay link' });
     a.push({ act: 'reprint', label: 'Reprint' });
     if (r.kind === 'invoice' && canPdf) a.push({ act: 'pdf', label: 'Open PDF' });
     if (r.kind !== 'receipt' && !isVoid) a.push(r.email ? { act: 'email', label: 'Email' } : { act: 'email', label: 'Email' });
@@ -366,6 +368,51 @@
     return { amount: n };
   }
 
+  // Add pay link: Helcim makes the invoice, then ONE 'paylink' mark (note = url|helcimInvoiceId) goes on the Payments tab so every
+  // computer shows the link. Resolves { ok, url } or { ok: false, message }; nothing is written on a Helcim error.
+  async function addPayLink(h, r) {
+    let out;
+    try { out = await h.helcim.payLink({ txnId: r.txnId, number: r.number, total: Number(r.total), name: s(r.name).slice(0, 120), company: s(r.company).slice(0, 120) }); } // main rejects bad input (thrown): caught below
+    catch (_) { out = null; }
+    if (!out || !out.ok || !s(out.url)) return { ok: false, message: s(out && out.message) || 'Helcim did not answer. Try again.' };
+    await h.appendPaymentRows([L.buildMarkRow({ kind: 'paylink', txnId: r.txnId, invoice_number: r.number, note: `${out.url}|${out.helcimInvoiceId}`, place: h.place || '' })]);
+    return { ok: true, url: out.url };
+  }
+  // Ask Helcim about the open invoices that have a link, once; record what it reports. Called only on opening the Invoices list
+  // (throttled: state.at, one check per HELCIM_RECHECK_MS per register) and on the Check Helcim button (force). No timer anywhere.
+  // Returns { skipped } or { looks: {txnId: sentence}, added: rows written }; a number or amount that does not fit is a "look", never written.
+  async function helcimPickup(h, records, payRows, paylinks, state, now, force) {
+    if (!h || !h.helcim) return { skipped: true, looks: {}, added: 0 };
+    if (!force && state.at && now - state.at < HELCIM_RECHECK_MS) return { skipped: true, looks: {}, added: 0 };
+    const open = records.filter(r => r.kind === 'invoice' && UNPAID.has(r.state) && !isQbo(r) && (paylinks[r.txnId] || paylinks[r.number]));
+    if (!open.length) return { looks: {}, added: 0 };
+    const idOf = r => (paylinks[r.txnId] || paylinks[r.number]).helcimInvoiceId;
+    state.at = now;
+    let res;
+    try { res = await h.helcim.status([...new Set(open.map(idOf))]); } catch (_) { res = null; }
+    if (!res || !res.ok) { state.at = 0; return { looks: {}, added: 0, error: s(res && res.message) || 'Helcim did not answer.' }; }
+    // Fresh copy of the sheet right before deciding: another register may have recorded part of this already, and the amount
+    // and the balance must come from what is on the Payments tab now, not from the last load.
+    // ponytail: two registers checking in the same sub-second can still both write; add a re-read after append if it ever happens.
+    let fresh;
+    try {
+      const freshRows = await h.readPayments();
+      const fm = await L.create({ txnRows: await h.readTransactions(), paymentRows: freshRows, today: h.honoluluToday ? h.honoluluToday() : undefined });
+      fresh = { rows: freshRows, byId: new Map(fm.records.map(x => [x.txnId, x])) };
+    } catch (_) { state.at = 0; return { looks: {}, added: 0, error: 'Could not read the Payments tab.' }; }
+    const rows = [], looks = {};
+    for (const old of open) {
+      const r = fresh.byId.get(old.txnId);
+      if (!r || !UNPAID.has(r.state)) continue; // paid or cancelled meanwhile
+      const id = idOf(old), got = (res.results || {})[id];
+      const out = L.helcimPaymentRows(r, got && got.ok ? { ...got, helcimInvoiceId: id } : got || { ok: false }, fresh.rows, h.place || '', now);
+      rows.push(...out.rows);
+      looks[r.txnId] = out.needsLook;
+    }
+    if (rows.length) { try { await h.appendPaymentRows(rows); } catch (e) { state.at = 0; throw e; } }
+    return { looks, added: rows.length };
+  }
+
   // UI memory: in memory for tab switches, sessionStorage for a reload. Storage may be missing or throw.
   const DEFAULT_UI = Object.freeze({ section: 'recent', invSub: 'unpaid', quoteSub: 'open', when: '', src: '', cShow: '', cSort: '', q: '', sel: '', scroll: 0, closed: [] });
   function loadUi(storage) {
@@ -452,7 +499,7 @@
   }
 
   const pure = { qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
-    buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest, documentPages, paymentRowsFor, loadUi, saveUi, placeOf, money, fmtD };
+    buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest, documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
   function boot() {
@@ -462,7 +509,7 @@
     const ui = store ? loadUi(store) : { ...DEFAULT_UI, closed: [] };
     const st = { phase: 'loading', model: null, records: [], payRows: [], custRows: [], qboCustomers: [], cust: null, custRev: 0, recLimit: 100, backTo: '', marks: { drafts: {}, edits: {} }, local: { drafts: {} },
       today: '', busy: '', template: null, docKey: '', pages: null, docErr: '',
-      qbo: null, qboVersion: '', qboAt: 0, qboBusy: false, qboWarned: false, qboAgain: false, qboRun: null, qboTried: false, qboGenerated: '', refreshing: false, refreshFailed: false, rev: 0, limit: PAGE, view: null };
+      qbo: null, qboVersion: '', qboAt: 0, qboBusy: false, qboWarned: false, qboAgain: false, helcimOk: false, helcimP: null, helcimAt: { at: 0 }, helcimBusy: false, helcimWhen: 0, looks: {}, linkErr: {}, qboRun: null, qboTried: false, qboGenerated: '', refreshing: false, refreshFailed: false, rev: 0, limit: PAGE, view: null };
     const host = () => root.MPELedgerHost;
     const remember = () => { if (store) saveUi(store, ui); };
     const recById = id => st.records.find(r => r.txnId === id);
@@ -487,7 +534,7 @@
         st.custRows = cu || []; st.custRev++;
         st.today = (h.honoluluToday && h.honoluluToday()) || L.honoluluToday();
         st.payRows = pay || [];
-        st.marks = { drafts: { ...((mk && mk.drafts) || {}), ...st.local.drafts }, edits: { ...((mk && mk.edits) || {}) }, before: (mk && mk.before) || {}, log: (mk && mk.log) || {}, sent: (mk && mk.sent) || {} };
+        st.marks = { drafts: { ...((mk && mk.drafts) || {}), ...st.local.drafts }, edits: { ...((mk && mk.edits) || {}) }, before: (mk && mk.before) || {}, log: (mk && mk.log) || {}, sent: (mk && mk.sent) || {}, paylinks: (mk && mk.paylinks) || {} };
         st.model = await L.create({ txnRows: tx || [], paymentRows: st.payRows, drafts: st.marks.drafts, today: st.today });
         if (st.qbo) st.model.addQbo(st.qbo, st.today); // QuickBooks copy already downloaded: merge before the first draw
         setRecords(st.model.records);
@@ -498,6 +545,7 @@
       }
       draw();
       loadQbo();
+      if (st.phase === 'ready') { helcimReady(); helcimCheck(false); }
     }
     function setRecords(list) { st.records = decorate(list); st.rev++; st.view = null; }
 
@@ -508,6 +556,57 @@
       failed: () => toast('QuickBooks history could not load. Showing the sales sheet only.'),
       done: () => { if (st.phase === 'ready') draw(); },
     });
+
+    // Helcim (app only): ask once on load whether the app has a Helcim token; History shows no Helcim buttons otherwise.
+    const linkFor = r => { const p = (st.marks.paylinks || {})[r.txnId] || (st.marks.paylinks || {})[r.number]; return p ? p.url : ''; };
+    const helcimState = r => ({ connected: st.helcimOk, link: linkFor(r) });
+    function helcimReady() {
+      const h = host();
+      if (!h || !h.helcim) { st.helcimOk = false; st.helcimP = null; st.helcimHost = null; return Promise.resolve(false); }
+      if (st.helcimHost !== h) { st.helcimHost = h; st.helcimP = null; st.helcimOk = false; } // a different host (fixture) asks again
+      if (!st.helcimP) st.helcimP = Promise.resolve().then(() => h.helcim.ready()).then(x => !!(x && x.connected), () => false).then(ok => { st.helcimOk = ok; if (ok && st.phase === 'ready') draw(); return ok; });
+      return st.helcimP;
+    }
+    // On opening the Invoices list (force = false, at most once per 10 minutes) and on Check Helcim (force): record what Helcim reports.
+    async function helcimCheck(force) {
+      if (ui.section !== 'invoices' || st.helcimBusy || !(await helcimReady())) return;
+      st.helcimBusy = true; drawHelcimBar();
+      try {
+        const out = await helcimPickup(host(), st.records, st.payRows, st.marks.paylinks || {}, st.helcimAt, Date.now(), force);
+        if (!out.skipped) {
+          st.helcimWhen = Date.now();
+          Object.assign(st.looks, out.looks);
+          if (out.error) toast('Helcim could not be checked. ' + out.error);
+          else if (out.added) { st.helcimBusy = false; await load(); toast(`Helcim payment recorded on ${out.added} invoice${out.added === 1 ? '' : 's'}.`); }
+          else if (force) toast('Helcim checked. Nothing new.');
+        }
+      } catch (_) { toast('Helcim could not be checked. Nothing was recorded.'); }
+      st.helcimBusy = false; draw();
+    }
+    function drawHelcimBar() {
+      const el = $('hcBar');
+      el.hidden = !(st.helcimOk && ui.section === 'invoices');
+      if (el.hidden) return;
+      const min = st.helcimWhen ? Math.floor((Date.now() - st.helcimWhen) / 60000) : -1;
+      el.innerHTML = `<button class="btn quiet" data-act="hcCheck"${st.helcimBusy ? ' disabled' : ''}>${st.helcimBusy ? 'Checking Helcim…' : 'Check Helcim'}</button>`
+        + (min >= 0 && !st.helcimBusy ? `<span>${min < 1 ? 'Checked just now' : `Checked ${min} min ago`}</span>` : '');
+    }
+    async function copyLink(url) {
+      try { await root.navigator.clipboard.writeText(url); }
+      catch (_) {
+        const ta = doc.createElement('textarea'); ta.value = url; ta.style.cssText = 'position:fixed;left:-10000px'; doc.body.append(ta); ta.select();
+        try { doc.execCommand('copy'); } finally { ta.remove(); }
+      }
+      toast('Pay link copied.');
+    }
+    function addLink(r) {
+      run('payLink', async () => {
+        delete st.linkErr[r.txnId];
+        const out = await addPayLink(host(), r);
+        if (!out.ok) { st.linkErr[r.txnId] = out.message; return ''; }
+        return 'Pay link added. It goes in the email message.';
+      });
+    }
 
     // The "QuickBooks as of" line, amber when stale, with the Mac's Refresh button or "Refresh on the Mac" on the others.
     function drawQbo() {
@@ -541,7 +640,7 @@
         return;
       }
       $('main').hidden = false; $('state').hidden = true;
-      drawQbo();
+      drawQbo(); drawHelcimBar();
       const sum = st.model.owedSummary();
       // Footer, the same on every section, so nothing above the list moves.
       $('owed').innerHTML = `Owed <span class="num">${money(sum.total)}</span> · <span class="${sum.overdue ? 'late' : ''}">${sum.overdue} overdue</span>`;
@@ -661,7 +760,7 @@
       drawDocument(old || r);
       const draft = st.marks.drafts[r.txnId] || st.marks.drafts[r.number];
       const sent = (st.marks.sent || {})[r.txnId] || (st.marks.sent || {})[r.number];
-      const acts = actionsFor(r, !!(host() && host().openPdf)).filter(a => a.act !== 'retype' || typeChoices(r).length);
+      const acts = actionsFor(r, !!(host() && host().openPdf), helcimState(r)).filter(a => a.act !== 'retype' || typeChoices(r).length);
       const qn = qboNote(r);
       const btn = a => `<button class="btn${a.primary ? ' primary' : ''}${a.quiet ? ' quiet' : ''}" data-act="${a.act}"${a.disabled || st.busy ? ' disabled' : ''}${a.why ? ` title="${esc(a.why)}"` : ''}>${ICON[a.act] || ''}<span>${st.busy === a.act ? 'Saving…' : esc(a.label)}</span>${a.menu ? ICON.down : ''}</button>${a.disabled && a.why ? `<span class="why">${esc(a.why)}</span>` : ''}`;
       const addr = [r.street, [r.city, regionOf(r), r.zip].filter(Boolean).join(' ')].filter(Boolean);
@@ -670,8 +769,15 @@
         <div><h3>${esc(KIND_LABEL[r.kind])} ${esc(r.number)}</h3><div class="big num">${money(r.total)}</div>
           <div class="state"><span class="pill ${t.tone}">${['paid'].includes(t.key) ? ICON.check : ''}${esc(t.pill)}</span>${awaitingPickup(r) ? '<span class="pill soon">Presold, awaiting pickup</span>' : ''}${qn ? `<span class="pill muted">${esc(qn)}</span>` : ''}${sent ? `<span class="pill draft">${ICON.email}Emailed ${esc(fmtD(sent))}</span>` : draft ? `<span class="pill draft">${ICON.email}Draft made ${esc(fmtD(draft))}</span>` : ''}</div></div>
         ${r.name || r.company || r.phone || r.qboBuyer ? `<button class="who" data-act="${r.state === 'void' || r.state === 'cancelled' || isQbo(r) ? 'noop' : 'edit'}" title="${isQbo(r) ? '' : 'Edit customer'}"><h3>Customer ${r.state === 'void' || r.state === 'cancelled' || isQbo(r) ? '' : ICON.edit}</h3><b${r.qboBuyer ? ' class="muted"' : ''}>${esc(r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : r.company || r.name)}</b>${!r.qboBuyer && r.company && r.name ? esc(r.name) + '<br>' : ''}${r.phone ? esc(r.phone) + '<br>' : ''}${r.email ? esc(r.email) : '<span class="muted">No email on file</span>'}${addr.length ? '<br>' + addr.map(esc).join('<br>') : ''}</button>` : ''}
-        <div class="acts">${acts.map(btn).join('')}</div>
+        <div class="acts">${acts.map(btn).join('')}</div>${payLinkHtml(r)}
         <div><h3>History</h3><ol>${hist.map(e => `<li>${esc(e.t)}<span>${esc([fmtD(e.d), e.at].filter(Boolean).join(' · '))}</span>${e.before != null ? `<a class="rec" href="#" data-before="${e.before}">See it before this edit</a>` : ''}</li>`).join('')}</ol></div>`;
+    }
+
+    // The record's Helcim bits under the buttons: the pay link with Copy, a plain Helcim error, or what needs a look.
+    function payLinkHtml(r) {
+      const url = r.kind === 'invoice' ? linkFor(r) : '', err = st.linkErr[r.txnId], look = r.kind === 'invoice' && UNPAID.has(r.state) ? st.looks[r.txnId] : '';
+      return (url ? `<div class="paylink"><h3>Pay link</h3><div class="url">${esc(url)}</div><button class="btn" data-act="copyLink">Copy</button></div>` : '')
+        + (err ? `<div class="note-void">${esc(err)}</div>` : '') + (look ? `<div class="note-void">Needs a look: ${esc(look)}</div>` : '');
     }
 
     // The document, filled from document-template.html exactly as the app prints it, scaled to the middle column.
@@ -774,7 +880,7 @@
     function emailWindow(r) {
       const request = st.request || requestFromRecord(r);
       run('email', async () => {
-        const prep = await host().emailPrepare(r, request);
+        const prep = await host().emailPrepare(r, request, r.kind === 'invoice' ? linkFor(r) : '');
         st.busy = ''; draw();
         const out = await root.MPEEmailWindow.open({ ...prep, pages: prep.pages || (st.pages || []).slice(0, 1), key: r.txnId, heading: `Email ${KIND_LABEL[r.kind].toLowerCase()} ${r.number}`,
           cannotSend: prep.canSend ? '' : 'This app needs its update before it can send. The update installs by itself when the register is idle.',
@@ -789,6 +895,7 @@
       const r = byId(ui.sel);
       if (k === 'retry') return load();
       if (k === 'qboRefresh') return refreshQbo();
+      if (k === 'hcCheck') return helcimCheck(true);
       if (k === 'clearSearch') { ui.q = ''; $('q').value = ''; return draw(); }
       if (k === 'clearFilters') { ui.when = ui.src = ui.cShow = ui.cSort = ''; ui.sel = ''; return draw(); }
       if (k === 'more') { st.limit += PAGE; return draw(); }
@@ -803,6 +910,8 @@
       if (!r) return;
       if (k === 'pay') return takePayment(r);
       if (k === 'undoPay') return undoPaid(r.txnId);
+      if (k === 'payLink') return addLink(r);
+      if (k === 'copyLink') return copyLink(linkFor(r));
       if (k === 'pdf') return host().openPdf(r.number, r).then(res => { if (!res || !res.ok) toast(PDF_WHY[res && res.reason] || PDF_WHY.missing); else load(); }, () => toast(PDF_WHY.offline));
       if (k === 'reprint') return run('reprint', async () => { const out = await host().reprint(r, st.request || requestFromRecord(r)); return out?.printed === false ? 'Not printed.' : `${r.number} sent to print.`; });
       if (k === 'email') return emailWindow(r);
@@ -887,7 +996,7 @@
     // Right-click a row: the same actions as the panel on the right, plus Change to.
     function rowMenu(r, x, y) {
       if (ui.section === 'customers') return;
-      const items = actionsFor(r, !!(host() && host().openPdf)).filter(a => !a.disabled && a.act !== 'retype')
+      const items = actionsFor(r, !!(host() && host().openPdf), helcimState(r)).filter(a => !a.disabled && a.act !== 'retype')
         .map(a => [a.act, a.act === 'cancel' && r.kind !== 'quote' ? 'Remove (cancel sale)' : a.label]);
       const types = typeChoices(r);
       openMenu({ left: x, top: y, bottom: y }, types.length ? items.concat([['hint', 'Change type']], types) : items, k => k.startsWith('type:') ? changeType(r, k.slice(5)) : act(k));
@@ -947,7 +1056,7 @@
       const bf = t.closest('[data-before]'); if (bf) { e.preventDefault(); st.before = { txnId: ui.sel, i: Number(bf.dataset.before) }; return draw(); }
       const a = t.closest('[data-act]'); if (a && !a.disabled) { e.preventDefault(); return act(a.dataset.act, a); }
       const o = t.closest('[data-open]'); if (o) return openRecord(o.dataset.open);
-      const sec = t.closest('[data-section]'); if (sec) { st.backTo = ''; ui.section = sec.dataset.section; ui.q = ''; ui.sel = ''; $('q').value = ''; ui.scroll = 0; $('list').scrollTop = 0; return draw(); }
+      const sec = t.closest('[data-section]'); if (sec) { st.backTo = ''; ui.section = sec.dataset.section; ui.q = ''; ui.sel = ''; $('q').value = ''; ui.scroll = 0; $('list').scrollTop = 0; draw(); return helcimCheck(false); }
       const sub = t.closest('[data-sub]'); if (sub) { st.backTo = ''; const [key, v] = sub.dataset.sub.split(':'); ui[key] = v; ui.sel = ''; $('list').scrollTop = 0; return draw(); }
       const row = t.closest('.row[data-id]'); if (row) { st.backTo = ''; return select(row.dataset.id); }
     });
@@ -1019,6 +1128,7 @@
     pdf: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2.5h8l4 4v15H6z"/><path d="M14 2.5v4h4"/></svg>',
     right: '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
     down: '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+    payLink: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
     pay: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m4.5 12.5 4.5 4.5 10.5-11"/></svg>',
     check: '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m4.5 12.5 4.5 4.5 10.5-11"/></svg>',
     reprint: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3.5h10V9"/><rect x="3.5" y="9" width="17" height="8" rx="1.5"/><path d="M7 14h10v6.5H7z"/></svg>',

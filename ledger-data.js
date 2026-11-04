@@ -49,9 +49,9 @@
   const NET_DAYS = 30;
   const COUNT_FROM = '2026-01-01'; // invoices dated earlier never count as owed
   const SOON_DAYS = 7;
-  const METHODS = Object.freeze(['cash', 'check', 'card_terminal']);
-  const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs', email_sent: 'sent' });
-  const LOGGED = new Set(['email_draft', 'email_sent', 'print', 'pdf', 'pdf_open']); // each one shows in History's timeline
+  const METHODS = Object.freeze(['cash', 'check', 'card_terminal', 'helcim_card', 'helcim_ach']); // helcim_*: payments Helcim reported (helcimPaymentRows)
+  const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs', email_sent: 'sent', paylink: 'paylinks' }); // paylink: note = url|helcimInvoiceId (parseMarks.paylinks)
+  const LOGGED = new Set(['email_draft', 'email_sent', 'print', 'pdf', 'pdf_open', 'paylink']); // each one shows in History's timeline
   const PAYMENT_COLUMNS = Object.freeze(['payment_id', 'invoice_number', 'txnId', 'date', 'amount', 'method',
     'note', 'place', 'recorded_at', 'voids']);
 
@@ -126,7 +126,7 @@
     return 'pay_' + (now || Date.now()).toString(36) + Math.random().toString(36).slice(2, 8);
   }
   function buildPaymentRow(p, now) {
-    if (!METHODS.includes(p.method)) throw new Error('method must be cash, check or card_terminal');
+    if (!METHODS.includes(p.method)) throw new Error('method must be cash, check, card_terminal, helcim_card or helcim_ach');
     const amt = typeof p.amount === 'string' && p.amount.trim() === '' ? NaN : Number(p.amount);
     if (!Number.isFinite(amt) || amt < 0) throw new Error('amount must be a number, 0 or more');
     const at = (now ? new Date(now) : new Date()).toISOString();
@@ -152,7 +152,7 @@
   const parsePayments = rows => paymentRows(rows).filter(o => !MARKS[o.method]);
   // A mark: kind 'email_draft', 'edit', 'cancel', 'uncancel', 'print', 'pdf' (saved/downloaded) or 'pdf_open', amount 0, never a payment.
   function buildMarkRow(m, now) {
-    if (!MARKS[m.kind]) throw new Error('mark must be email_draft, email_sent, edit, cancel, uncancel, print, pdf or pdf_open');
+    if (!MARKS[m.kind]) throw new Error('mark must be email_draft, email_sent, edit, cancel, uncancel, print, pdf, pdf_open or paylink');
     const at = (now ? new Date(now) : new Date()).toISOString();
     return ['mark_' + Date.parse(at).toString(36) + Math.random().toString(36).slice(2, 8), s(m.invoice_number), s(m.txnId),
       honoluluToday(at), '0.00', m.kind, s(m.note), s(m.place), at, ''];
@@ -161,7 +161,7 @@
   // The note for an edit mark: the sale's Transactions rows before the edit. Over Sheets' cell limit: no copy (the edit still saves).
   const beforeNote = rows => { const t = BEFORE + JSON.stringify(rows || []); return t.length <= 45000 ? t : ''; };
   function parseMarks(rows) {
-    const out = { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {} };
+    const out = { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {} };
     for (const o of paymentRows(rows)) {
       // An edit mark may carry the sale's rows as they were before that edit ("before:" + JSON): History shows that copy.
       if (o.method === 'edit' && o.txnId && o.note.startsWith(BEFORE)) {
@@ -173,6 +173,12 @@
         continue;
       }
       const key = o.txnId || o.invoice_number, bucket = out[MARKS[o.method]];
+      if (o.method === 'paylink') { // newest recorded_at wins; the timeline lists each one
+        const i = o.note.lastIndexOf('|'), prev = out.paylinks[key];
+        if (key && i > 0 && !(prev && prev.recorded_at > o.recorded_at)) out.paylinks[key] = { url: o.note.slice(0, i), helcimInvoiceId: o.note.slice(i + 1), recorded_at: o.recorded_at };
+        if (key) (out.log[key] = out.log[key] || []).push({ kind: o.method, date: o.date, at: o.recorded_at, place: o.place, note: o.note });
+        continue;
+      }
       // Every print, PDF and email draft, one entry each, for the timeline (log[key] = [{ kind, date, at, place, note }]).
       if (key && LOGGED.has(o.method)) (out.log[key] = out.log[key] || []).push({ kind: o.method, date: o.date, at: o.recorded_at, place: o.place, note: o.note });
       if (bucket && key && !(bucket[key] >= o.date)) bucket[key] = o.date;
@@ -181,6 +187,30 @@
   }
   // The contract the stock poll mirrors: txnIds whose newest cancel/uncancel mark is a cancel.
   const cancelledIds = rows => new Set(Object.entries(parseMarks(rows).cancels).filter(([, c]) => c.cancelled).map(([id]) => id));
+  // What Helcim reports paid on an invoice that has a pay link, as at most one new Payments row (Trevor's rulings, 2026-11-04).
+  // record: the derived invoice (needs balance, total, number, txnId). statusResult: one entry of the app's helcim.status results.
+  // allPaymentRows: every Payments row (raw), live or voided, so a payment Trevor undid is never recorded again.
+  // payment_id helcim_<helcimInvoiceId>_<appliedCents> is the same on every register, so two registers add it once (livePayments).
+  // Returns { rows, needsLook }: needsLook is a plain sentence for the invoice, never written.
+  function helcimPaymentRows(record, statusResult, allPaymentRows, place, now) {
+    const none = { rows: [], needsLook: '' };
+    if (!statusResult || !statusResult.ok) return { rows: [], needsLook: s(statusResult && statusResult.message) || 'Helcim could not be checked' };
+    const hid = s(statusResult.helcimInvoiceId != null ? statusResult.helcimInvoiceId : record.helcimInvoiceId);
+    const applied = Math.min(cents(Number(statusResult.amountPaid) || 0), cents(record.total));
+    const prefix = `helcim_${hid}_`;
+    const mine = paymentRows(allPaymentRows).filter(o => o.payment_id.startsWith(prefix));
+    const prev = mine.reduce((a, o) => Math.max(a, parseInt(o.payment_id.slice(prefix.length), 10) || 0), 0);
+    if (applied <= prev) return none;
+    if (s(statusResult.invoiceNumber) !== s(record.number)) return { rows: [], needsLook: 'Helcim number does not match' };
+    const amount = applied - prev;
+    if (amount > cents(record.balance)) return { rows: [], needsLook: 'Helcim paid more than the balance' };
+    const named = new Set(mine.flatMap(o => o.note.split(/[^A-Za-z0-9]+/)));
+    const fresh = (statusResult.cardTxns || []).map(c => s(c && c.id)).filter(id => id && !named.has(id));
+    const card = fresh.length > 0;
+    const note = `${card ? 'Card ' + fresh.join(', ') : 'Bank transfer'}. Helcim invoice ${hid}`;
+    return { rows: [buildPaymentRow({ payment_id: prefix + applied, invoice_number: record.number, txnId: record.txnId, amount: amount / 100,
+      method: card ? 'helcim_card' : 'helcim_ach', note, place }, now)], needsLook: '' };
+  }
   // Live payments: unique payment_id, minus any id a void row points at.
   function livePayments(payments) {
     const seen = new Set(), voided = new Set(), uniq = [];
@@ -509,6 +539,6 @@
     return model;
   }
 
-  return { NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow,
+  return { NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow, helcimPaymentRows,
     buildVoidRow, beforeNote, undoRows, honoluluToday, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });

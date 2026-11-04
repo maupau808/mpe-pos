@@ -164,6 +164,8 @@
         identity: () => d.google.gmailIdentity(),
         sendMail: typeof d.google.sendGmail === 'function' ? raw => d.google.sendGmail(raw) : undefined, // app 0.3.61+
         printDocument: request => d.printDocument(request),
+        // Helcim pay links (app only; the Ledger tab's preload adds it once the app can talk to Helcim). Never on the website.
+        helcim: d.helcim && typeof d.helcim.payLink === 'function' ? d.helcim : undefined,
         openSale: async request => { const r = await d.openSale(request); if (!r || !r.ok) throw new Error('The sale tab did not open'); },
         scan: typeof d.scan === 'function' ? value => d.scan(value) : undefined, // app 0.3.49+
         setType: typeof d.setType === 'function' ? (id, num, from, to) => d.setType(id, num, from, to) : undefined, // app 0.3.57+
@@ -326,11 +328,11 @@
         await quietMark('print', record, 'reprint');
       },
       // The email window's starting fields and the document pages it shows (and attaches). Nothing is sent here.
-      async emailPrepare(record, request) {
+      async emailPrepare(record, request, payLink) { // payLink (optional): the invoice's Helcim pay page, from its 'paylink' mark
         const title = TITLES[request.type] || 'Receipt', number = request.number;
         const [identity, list] = await Promise.all([guard(env.identity()), pages(request)]);
         const t = request.totals;
-        const order = { customer: { name: record.name }, toggles: { cardFee: Number(t.card_fee) > 0 },
+        const order = { payLink: s(payLink), customer: { name: record.name }, toggles: { cardFee: Number(t.card_fee) > 0 },
           ledgerTotals: { subtotal: t.subtotal, tax: t.tax, card_fee: t.card_fee, total: t.total },
           items: (record.items || []).map(i => ({ pn: i.pn, desc: i.desc, qty: i.qty, ea: i.ea, sub: i.sub, sn: i.serials })) };
         const day = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
@@ -356,6 +358,7 @@
       // Change a sale's type in place (invoice, receipt, quote). Missing on app 0.3.56 and older.
       setType: env.setType ? (record, to) => guard(env.setType(record.txnId, record.number, record.kind, to)) : undefined,
       refreshQbo: env.refreshQbo,
+      helcim: env.helcim, // { ready, payLink, status } or undefined
       readQboHistory: env.qboHistory ? known => guard(env.qboHistory(known)) : undefined,
       // One-time, by hand, after Trevor's go (website only: the app's Ledger tab has no tab-adding permission).
       setupPaymentsTab: env.batchUpdate ? () => setupPaymentsTab(env) : undefined,

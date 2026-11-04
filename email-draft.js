@@ -101,9 +101,13 @@ function buildEmailBody(order, title, number, dateStr, signature = '') {
       `<td style="${cell}${label === 'Total' ? ';font-weight:bold' : ''}">${esc(value)}</td></tr>`).join('') + `</table>`;
   // The summary sits before the signature, so Gmail swapping the signature never touches it.
   const signatureHtml = _signatureHtml(signature);
+  // Invoices only (History passes order.payLink): the Helcim pay page, bank transfer first. Absent = output exactly as before.
+  const payLink = kind === 'invoice' ? String(order.payLink || '').trim() : '';
+  const payText = payLink ? `Pay online: ${payLink}\nBank transfer has no card fee, and card payments carry a surcharge.` : '';
+  const payHtml = payLink ? `<p>Pay online: <a href="${esc(payLink)}">${esc(payLink)}</a><br>Bank transfer has no card fee, and card payments carry a surcharge.</p>` : '';
   const html = `<div dir="ltr" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111">` +
-    `<p>${esc(greeting)}</p><p>${esc(intro)}</p>${table}${signatureHtml}</div>`;
-  const text = [greeting, intro, shown.map(([label, value]) => `${label}: ${value}`).join('\n'),
+    `<p>${esc(greeting)}</p><p>${esc(intro)}</p>${table}${payHtml}${signatureHtml}</div>`;
+  const text = [greeting, intro, shown.map(([label, value]) => `${label}: ${value}`).join('\n'), payText,
     _signatureText(signature)].filter(Boolean).join('\n\n');
   return { html, text };
 }
