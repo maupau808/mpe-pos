@@ -21,7 +21,8 @@ function _buildEmailMime(to, subject, bodyText, filename, pdfB64, bodyHtml = '',
   return [
     'MIME-Version: 1.0',
     'To: ' + header(to),
-    ...(from ? ['From: ' + header(from)] : []),
+    // The shop address carries its name, as Gmail's own setting does ("Maui Power Equipment"); a bare address shows as "info".
+    ...(from ? ['From: ' + (/^info@mauipowerequipment\.com$/i.test(String(from).trim()) ? '"Maui Power Equipment" <info@mauipowerequipment.com>' : header(from))] : []),
     ...(cc ? ['Cc: ' + header(cc)] : []),
     ...(bcc ? ['Bcc: ' + header(bcc)] : []), // Gmail delivers to Bcc and strips the header
     'Subject: =?UTF-8?B?' + _bytesToB64(new TextEncoder().encode(header(subject))) + '?=',

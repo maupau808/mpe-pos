@@ -22,6 +22,7 @@ assert.match(mail.html, /<p>Aloha Kai,<\/p><p>Line one<br>line &lt;two&gt;<\/p>/
 const mime = ctx._buildEmailMime('kai@example.test', 'S', 't', 'a.pdf', 'QUJD', '', 'shop@example.test', 'b@y.com', 'c@z.org');
 assert.match(mime, /\r\nCc: b@y\.com\r\n/);
 assert.match(mime, /\r\nBcc: c@z\.org\r\n/);
+assert.match(ctx._buildEmailMime('k@x.co', 'S', 't', 'a.pdf', 'QUJD', '', 'info@mauipowerequipment.com'), /\r\nFrom: "Maui Power Equipment" <info@mauipowerequipment\.com>\r\n/);
 assert.doesNotMatch(ctx._buildEmailMime('k@x.co', 'S', 't', 'a.pdf', 'QUJD'), /Cc:|Bcc:/);
 const shop = 'info@mauipowerequipment.com';
 assert.equal(W.wrongAccount({ from: shop, accountEmail: 'INFO@mauipowerequipment.com' }), '');
