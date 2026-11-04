@@ -123,14 +123,14 @@
   const QUOTE_SUBS = [['open', 'Open'], ['converted', 'Turned into sale'], ['closed', 'Closed in QuickBooks'], ['deleted', 'Deleted']];
   // Filters under the search box. Records: when and where from. Customers: who to show and the order.
   const FILTERS = {
-    when: [['', 'Any date'], ['30', 'Last 30 days'], ['year', 'This year'], ['lastYear', 'Last year']],
+    when: [['', 'Any date'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['year', 'This year'], ['lastYear', 'Last year']],
     src: [['', 'All sources'], ['register', 'Register only'], ['qbo', 'QuickBooks only']],
     cShow: [['', 'All customers'], ['owes', 'Owes money'], ['overdue', 'Overdue'], ['year', 'Bought this year']],
     cSort: [['', 'Newest activity'], ['name', 'Name A–Z'], ['balance', 'Most owed']],
   };
   function filterRecords(records, ui, today) {
-    const y = today.slice(0, 4), from30 = addDays(today, -30);
-    const when = { '30': r => (r.date || '') >= from30, year: r => (r.date || '').startsWith(y), lastYear: r => (r.date || '').startsWith(String(y - 1)) }[ui.when];
+    const y = today.slice(0, 4), from30 = addDays(today, -30), from90 = addDays(today, -90);
+    const when = { '30': r => (r.date || '') >= from30, '90': r => (r.date || '') >= from90, year: r => (r.date || '').startsWith(y), lastYear: r => (r.date || '').startsWith(String(y - 1)) }[ui.when];
     const src = { register: r => !isQbo(r), qbo: isQbo }[ui.src];
     return when || src ? records.filter(r => (!when || when(r)) && (!src || src(r))) : records;
   }
