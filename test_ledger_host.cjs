@@ -93,7 +93,7 @@ test('no Payments tab: the page says so, everything else loads, Mark paid keeps 
   const host = K.createHost(env, { document: { getElementById: id => (id === 'hostNote' ? note : null) } });
   const [pays, marks] = await Promise.all([host.readPayments(), host.readMarks()]);
   assert.deepEqual(pays, [L.PAYMENT_COLUMNS.slice()]);
-  assert.deepEqual(marks, { drafts: {}, edits: {}, cancels: {}, before: {} });
+  assert.deepEqual(marks, { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {} });
   assert.equal(note.textContent, 'Payments tab not set up yet');
   assert.equal(note.hidden, false);
   await assert.rejects(host.appendPaymentRows([pay('pay_e')]), e => e.code === 'payments_missing');
@@ -109,7 +109,16 @@ test('marks: email_draft and edit rows never count as payments; readMarks return
   assert.throws(() => L.buildMarkRow({ kind: 'cash', txnId: 'T-1' }));
   const rows = [L.PAYMENT_COLUMNS.slice(), draft, edit];
   assert.deepEqual(L.parsePayments(rows), []);
-  assert.deepEqual(L.parseMarks(rows), { drafts: { 'T-1': '2026-10-20' }, edits: { 'T-1': '2026-10-25' }, cancels: {}, before: {} });
+  assert.deepEqual(L.parseMarks(rows), { drafts: { 'T-1': '2026-10-20' }, edits: { 'T-1': '2026-10-25' }, cancels: {}, before: {}, prints: {}, pdfs: {},
+    log: { 'T-1': [{ kind: 'email_draft', date: '2026-10-20', at: '2026-10-20T20:00:00.000Z', place: '9', note: '' }] } });
+  // Prints, PDFs and PDF opens: never payments, one timeline entry each, oldest stays first.
+  const out = [L.buildMarkRow({ kind: 'print', txnId: 'T-1', invoice_number: 'L21001', place: '2' }, Date.parse('2026-10-21T20:00:00Z')),
+    L.buildMarkRow({ kind: 'print', txnId: 'T-1', invoice_number: 'L21001', place: '1', note: 'reprint' }, Date.parse('2026-10-22T20:00:00Z')),
+    L.buildMarkRow({ kind: 'pdf', txnId: 'T-1', invoice_number: 'L21001', place: '3' }, Date.parse('2026-10-23T20:00:00Z')),
+    L.buildMarkRow({ kind: 'pdf_open', txnId: 'T-1', invoice_number: 'L21001', place: '1' }, Date.parse('2026-10-24T20:00:00Z'))];
+  assert.deepEqual(L.parsePayments([...rows, ...out]), []);
+  assert.deepEqual(L.parseMarks([...rows, ...out]).log['T-1'].map(m => m.kind + ':' + m.note), ['email_draft:', 'print:', 'print:reprint', 'pdf:', 'pdf_open:']);
+  assert.deepEqual([...L.cancelledIds([...rows, ...out])], []);
   const txn = [['TXN', 'T-1', '10/01/2026', '9:00 AM', 'A', '', '', '', '', '', '', '', '100.00', '', 'invoice', 'L21001']];
   const [rec] = L.derive(L.parseTransactions(txn), L.parsePayments(rows), '2026-10-31', L.parseMarks(rows).drafts);
   assert.equal(rec.state, 'dueSoon', 'still owed: a mark is not a payment');

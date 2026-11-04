@@ -1167,7 +1167,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.03.8';
+const POS_RELEASE = '2026.11.04.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -6925,12 +6925,20 @@ async function writeTransactionToSheet(order) {
 // Ledger's 'edit' mark (a Payments-tab row, amount 0) after a record opened from Ledger's Edit is rewritten
 // in place. Durable like every Bridge write (MPELedgerHostKit); it never blocks or fails the sale's own save.
 function queueLedgerEditMark(order, txnId, beforeRows) {
+  const data = window.MPELedgerData;
+  if (data) queueLedgerMark('edit', txnId, order.docNumber, beforeRows ? data.beforeNote(beforeRows) : '');
+}
+function queueLedgerMark(kind, txnId, number, note) {
   const kit = window.MPELedgerHostKit, data = window.MPELedgerData;
-  if (!kit || !data) return;
+  if (!kit || !data || !txnId) return;
   const place = registerDigit() || (window.mpeDesktop ? '' : '9');
   kit.createPaymentsStore({ get: range => sheetsGet(range, { retryThrottle: false }), append: sheetsAppend, storage: localStorage })
-    .appendRows([data.buildMarkRow({ kind: 'edit', txnId, invoice_number: order.docNumber, place, note: beforeRows ? data.beforeNote(beforeRows) : '' })])
-    .catch(error => console.warn('[MPE] Ledger edit mark deferred:', error.message));
+    .appendRows([data.buildMarkRow({ kind, txnId, invoice_number: number || '', place, note: note || '' })])
+    .catch(error => console.warn('[MPE] Ledger ' + kind + ' mark deferred:', error.message));
+}
+// History's timeline: this sale was printed, saved as a PDF or emailed (an Internal copy is never in history).
+function queueOutputMark(kind) {
+  if (_docType !== 'internal') queueLedgerMark(kind, _currentTxnId, activeDocNumber());
 }
 
 async function parseTransactionsWithContacts(rows) {
@@ -9056,7 +9064,7 @@ async function manualPrint() {
     // App 0.3.55+: show a preview first; Print in it opens the system print dialog (Trevor, Nov 1).
     if (typeof window.mpeDesktop?.printPreview === 'function') {
       // Invoices and quotes: app 0.3.59+ previews and prints the History layout; older apps ignore the request.
-      try { const result = await window.mpeDesktop.printPreview(ledgerDocumentRequest()); if (result?.printed) showPrintBanner(); }
+      try { const result = await window.mpeDesktop.printPreview(ledgerDocumentRequest()); if (result?.printed) { queueOutputMark('print'); showPrintBanner(); } }
       finally { cleanupPrint(); _printPrepared = false; }
       return;
     }
@@ -9165,6 +9173,7 @@ async function autoPrint() {
       agent: result.timings || null,
     });
     printedByService = true;
+    queueOutputMark('print');
     _lastDirectPrintTxnId = _currentTxnId || '';
     _lastDirectPrintFingerprint = _currentTxnId ? historyContentFingerprint(captureOrder()) : '';
     _lastDirectPrintAt = Date.now();
@@ -9468,6 +9477,7 @@ async function exportPdf() {
     updateScreenDocTitle();
     holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
     await _renderPdf(holder.firstElementChild, `MPE_${title}_${number}.pdf`, 'save');
+    queueOutputMark('pdf');
     holder.innerHTML = '';
     setBtn('✓', false);
     showPrintBanner();
@@ -9552,6 +9562,7 @@ async function emailDoc() {
     if (msgId) window.open('https://mail.google.com/mail/u/' + encodeURIComponent(identity.accountEmail || identity.email) + '/#drafts?compose=' + encodeURIComponent(msgId), '_blank');
     setBtn('✓', false);
     saveToHistory();            // record the transaction (local + Drive), same as printing
+    queueOutputMark('email_draft');
     updatePriceChangesBadge();
     setTimeout(() => setBtn('✉', false), 4000);
   } catch (e) {

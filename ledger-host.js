@@ -248,6 +248,11 @@
       try { await store.appendRows([L.buildMarkRow({ kind, txnId: record.txnId, invoice_number: record.number, place: env.place })]); }
       catch (e) { if (e.code !== 'payments_missing') throw e; }
     }
+    // A timeline mark for an output (print, PDF): never blocks or fails the print itself.
+    async function quietMark(kind, record, note) {
+      try { await store.appendRows([L.buildMarkRow({ kind, txnId: record.txnId, invoice_number: record.number, place: env.place, note })]); }
+      catch (e) { if (w && w.console) w.console.warn('[MPE] History mark skipped:', e && e.message); }
+    }
     function pages(request) {
       const R = w.MPEDocumentRenderer, P = w.MPELedger;
       return readTemplate().then(t => P.documentPages(request, R, t, host.documentSettings));
@@ -314,10 +319,11 @@
         // Every type, receipts too: the app prints the filled template to the counter printer (browser print is a no-op there).
         if (env.printDocument) {
           const r = await env.printDocument(request);
-          if (r && r.ok) return r;   // { printed: false } when the print window was closed without printing
+          if (r && r.ok) { if (r.printed !== false) await quietMark('print', record, 'reprint'); return r; } // { printed: false }: closed without printing
           if (!(r && r.fallback)) throw new Error('The printer did not take it');
         }
         await printPages(await pages(request));
+        await quietMark('print', record, 'reprint');
       },
       async emailDraft(record, request) {
         if (!s(record.email)) throw new Error('No email on file');
@@ -338,7 +344,11 @@
       openInNewSale: ({ kind, txn }) => env.openSale(saleRequest(kind, txn)),
       // A keyboard-style scan caught on this page goes to the last sale tab (app only; the website's register catches its own).
       scan: env.scan,
-      openPdf: env.openPdf,
+      openPdf: env.openPdf ? async (number, record) => {
+        const res = await env.openPdf(number);
+        if (res && res.ok && record) await quietMark('pdf_open', record);
+        return res;
+      } : undefined,
       // Change a sale's type in place (invoice, receipt, quote). Missing on app 0.3.56 and older.
       setType: env.setType ? (record, to) => guard(env.setType(record.txnId, record.number, record.kind, to)) : undefined,
       refreshQbo: env.refreshQbo,

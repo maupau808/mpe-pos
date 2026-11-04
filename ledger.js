@@ -45,6 +45,9 @@
   const dayNum = iso => { const [y, mo, d] = iso.split('-').map(Number); return Date.UTC(y, mo - 1, d) / 864e5; };
   const addDays = (iso, n) => new Date((dayNum(iso) + n) * 864e5).toISOString().slice(0, 10);
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Timeline words for an output mark (ledger-data.js log). note 'reprint' = from History's Reprint.
+  const OUTPUT_LABEL = m => ({ print: m.note === 'reprint' ? 'Reprinted' : 'Printed', pdf: 'PDF saved', pdf_open: 'PDF opened', email_draft: 'Email draft made' }[m.kind] || m.kind);
+  const timeOf = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('en-US', { timeZone: 'Pacific/Honolulu', hour: 'numeric', minute: '2-digit' }); };
   const fmtD = iso => { if (!iso) return ''; const [, mo, d] = iso.split('-').map(Number); return `${MONTHS[mo - 1]} ${d}`; };
   const fmtDY = iso => iso ? `${fmtD(iso)}, ${iso.slice(0, 4)}` : '';
   const placeOf = number => (/^[A-Z]/.test(s(number)) && PLACES[s(number).charAt(1)]) || ''; // QuickBooks numbers are digits: no place
@@ -255,8 +258,13 @@
     const befores = (marks && marks.before && marks.before[r.txnId]) || [];
     if (befores.length) befores.forEach((b, i) => ev.push({ t: 'Edited', d: b.date, at: '', before: i }));
     else if (edited) ev.push({ t: 'Edited', d: edited, at: '' });
-    const draft = marks && marks.drafts && (marks.drafts[r.txnId] || marks.drafts[r.number]);
-    if (draft) ev.push({ t: 'Email draft made', d: draft, at: '' });
+    const log = marks && marks.log && [...(marks.log[r.txnId] || []), ...(r.number && r.number !== r.txnId ? marks.log[r.number] || [] : [])];
+    if (log && log.length) {
+      for (const m of log.sort((a, b) => a.at.localeCompare(b.at))) ev.push({ t: OUTPUT_LABEL(m), d: m.date, at: [timeOf(m.at), PLACES[m.place] || ''].filter(Boolean).join(' · ') });
+    } else {
+      const draft = marks && marks.drafts && (marks.drafts[r.txnId] || marks.drafts[r.number]);
+      if (draft) ev.push({ t: 'Email draft made', d: draft, at: '' });
+    }
     if ((r.kind === 'invoice' || r.kind === 'quote') && !isQbo(r)) {
       const from = (records || []).find(x => x.txnId === r.fromQuote && x.kind === 'quote'); // its deposit shows on the sale made from it
       const ids = new Set([r.txnId, from && from.txnId].filter(Boolean)), nums = new Set([r.number, from && from.number].filter(Boolean));
@@ -478,7 +486,7 @@
         st.custRows = cu || []; st.custRev++;
         st.today = (h.honoluluToday && h.honoluluToday()) || L.honoluluToday();
         st.payRows = pay || [];
-        st.marks = { drafts: { ...((mk && mk.drafts) || {}), ...st.local.drafts }, edits: { ...((mk && mk.edits) || {}) }, before: (mk && mk.before) || {} };
+        st.marks = { drafts: { ...((mk && mk.drafts) || {}), ...st.local.drafts }, edits: { ...((mk && mk.edits) || {}) }, before: (mk && mk.before) || {}, log: (mk && mk.log) || {} };
         st.model = await L.create({ txnRows: tx || [], paymentRows: st.payRows, drafts: st.marks.drafts, today: st.today });
         if (st.qbo) st.model.addQbo(st.qbo, st.today); // QuickBooks copy already downloaded: merge before the first draw
         setRecords(st.model.records);
@@ -781,7 +789,7 @@
       if (!r) return;
       if (k === 'pay') return takePayment(r);
       if (k === 'undoPay') return undoPaid(r.txnId);
-      if (k === 'pdf') return host().openPdf(r.number).then(res => { if (!res || !res.ok) toast(PDF_WHY[res && res.reason] || PDF_WHY.missing); }, () => toast(PDF_WHY.offline));
+      if (k === 'pdf') return host().openPdf(r.number, r).then(res => { if (!res || !res.ok) toast(PDF_WHY[res && res.reason] || PDF_WHY.missing); else load(); }, () => toast(PDF_WHY.offline));
       if (k === 'reprint') return run('reprint', async () => { const out = await host().reprint(r, st.request || requestFromRecord(r)); return out?.printed === false ? 'Not printed.' : `${r.number} sent to print.`; });
       if (k === 'email') return run('email', async () => {
         await host().emailDraft(r, st.request || requestFromRecord(r));
