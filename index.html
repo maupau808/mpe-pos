@@ -876,7 +876,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="toolbar-right">
       <div class="tr-row">
         <button class="icon-btn" id="phoneListBtn" type="button" onclick="openPhoneLists()" aria-label="Phone list" title="Phone list — pick a list sent from MPE Scan on the phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><line x1="10.6" y1="5.4" x2="13.4" y2="5.4" stroke-width="1.4" stroke-linecap="round"/><line x1="10.4" y1="18.6" x2="13.6" y2="18.6" stroke-width="1.4" stroke-linecap="round"/></svg><span class="admin-dot phone-list-dot" id="phoneListDot" style="display:none" aria-hidden="true"></span></button>
-        <button class="icon-btn" id="emailDocBtn" onclick="emailDoc()" title="Email — attach the colour PDF to a Gmail draft">✉</button>
+        <button class="icon-btn" id="emailDocBtn" onclick="emailDoc()" title="Email — review it, then send it with the colour PDF">✉</button>
         <button class="icon-btn" id="exportPdfBtn" onclick="exportPdf()" title="Export PDF — download the colour copy">⬇</button>
         <div class="menu-wrap">
           <button class="menu-btn" id="adminMenuBtn" onclick="openAdminMenu(event)" title="Reconnect and refresh">Admin<span class="admin-dot" id="adminDot" style="display:none"></span> <span class="caret">▾</span></button>
@@ -1155,6 +1155,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   <script src="ledger-numbering.js"></script>
   <script src="ledger-tab.js"></script>
   <script src="email-draft.js"></script>
+  <script src="email-window.js"></script>
   <script src="ledger-data.js"></script>
   <script src="ledger-host.js"></script>
   <script src="print-relay.js"></script>
@@ -1167,7 +1168,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.04.1';
+const POS_RELEASE = '2026.11.04.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -6937,8 +6938,8 @@ function queueLedgerMark(kind, txnId, number, note) {
     .catch(error => console.warn('[MPE] Ledger ' + kind + ' mark deferred:', error.message));
 }
 // History's timeline: this sale was printed, saved as a PDF or emailed (an Internal copy is never in history).
-function queueOutputMark(kind) {
-  if (_docType !== 'internal') queueLedgerMark(kind, _currentTxnId, activeDocNumber());
+function queueOutputMark(kind, note) {
+  if (_docType !== 'internal') queueLedgerMark(kind, _currentTxnId, activeDocNumber(), note ? String(note).slice(0, 300) : '');
 }
 
 async function parseTransactionsWithContacts(rows) {
@@ -9496,77 +9497,72 @@ async function exportPdf() {
   }
 }
 
+// Email: the shared email window (email-window.js, the same one History uses). It sends only when a person presses
+// Send (Trevor, 2026-11-04; Claude never sends), from the Google account this register is signed in with.
 async function emailDoc() {
   const btn = document.getElementById('emailDocBtn');
   const order = captureOrder();
   if (!order || !order.items.length) { alert('Add at least one item before emailing.'); return; }
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
-  if (typeof html2pdf === 'undefined') {
-    noteToolFailure('Email draft', new Error('html2pdf library did not load'));
+  if (typeof html2pdf === 'undefined' || !window.MPEEmailWindow) {
+    noteToolFailure('Email', new Error('The email window or PDF maker did not load'));
     setBtn('✕', false); setTimeout(() => setBtn('✉', false), 4000);
     return;
   }
-
-  let token = accessToken || localStorage.getItem('gToken');
   if (!googleSessionAvailable()) { _pendingAction = () => emailDoc(); handleSignIn(); return; }
 
   clearToolFailure();
   setBtn('⏳', true);
+  const holder = document.getElementById('emailPdfHolder');
   try {
     await reserveDocNumber();
     const now    = (reserveDocDate() || new Date());
     const number = activeDocNumber() || formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
-
-    const identity = await _emailIdentity(token);
-
-    // Render PDF from an offscreen, fully inline-styled copy (print CSS isn't active for html2canvas)
-    const holder = document.getElementById('emailPdfHolder');
-    holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
-    const blob = await _renderPdf(holder.firstElementChild, number + '.pdf', 'blob');
-    holder.innerHTML = '';
-    const pdfB64 = await _blobToB64(blob);
-
-    const to = (order.customer && order.customer.email) || '';
-    const subject = `${title} ${number} - Maui Power Equipment`;
-    const body = buildEmailBody(order, title, number, _pdfDateStr(now), identity.signature);
-    const raw = _b64UrlUtf8(_buildEmailMime(to, subject, body.text, number + '.pdf', pdfB64, body.html, identity.email));
-
-    setBtn('⏳', true);
-    let data;
-    if (desktopGoogleAvailable()) {
-      data = await window.mpeDesktop.google.createGmailDraft(raw);
-    } else {
-      const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: { raw } }),
-      });
-      // 401 = token expired; 403 = token lacks the Gmail permission (first use after the
-      // new scope was added). Both: re-request consent once, then auto-retry via _pendingAction.
-      if ((resp.status === 401 || resp.status === 403) && !_emailScopeRetried) {
-        _emailScopeRetried = true;
-        accessToken = null; localStorage.removeItem('gToken');
-        _pendingAction = () => emailDoc();
-        setBtn('✉', false);
-        handleSignIn();
-        return;
-      }
-      data = await resp.json();
-      if (!resp.ok) throw new Error(data.error?.message || ('HTTP ' + resp.status));
-    }
+    const identity = await _emailIdentity(accessToken || localStorage.getItem('gToken'));
     _emailScopeRetried = false;
-
-    const msgId = data.messageId || data.message?.id;
-    if (msgId) window.open('https://mail.google.com/mail/u/' + encodeURIComponent(identity.accountEmail || identity.email) + '/#drafts?compose=' + encodeURIComponent(msgId), '_blank');
-    setBtn('✓', false);
+    const docHtml = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
+    const opened = historyContentFingerprint(order);
+    const desktop = desktopGoogleAvailable();
+    const canSend = !desktop || typeof window.mpeDesktop.google.sendGmail === 'function';
+    setBtn('✉', false);
+    const out = await window.MPEEmailWindow.open({
+      key: 'reg:' + number, heading: `Email ${title.toLowerCase()} ${number}`, from: identity.email, signature: identity.signature || '',
+      to: (order.customer && order.customer.email) || '', subject: `${title} ${number} - Maui Power Equipment`,
+      message: buildEmailBody(order, title, number, _pdfDateStr(now), '').text, pages: [docHtml], attachment: number + '.pdf',
+      cannotSend: canSend ? '' : 'This app needs its update before it can send. The update installs by itself when the register is idle.',
+      send: async f => {
+        // A scan while the window is open can change the sale: then the PDF would not match what gets saved.
+        if (historyContentFingerprint(captureOrder()) !== opened) throw new Error('The sale changed while this window was open. Close it and press Email again.');
+        holder.innerHTML = docHtml;
+        let pdfB64;
+        try { pdfB64 = await _blobToB64(await _renderPdf(holder.firstElementChild, number + '.pdf', 'blob')); } finally { holder.innerHTML = ''; }
+        const raw = _b64UrlUtf8(_buildEmailMime(f.to, f.subject, f.text, number + '.pdf', pdfB64, f.html, identity.email, f.cc, f.bcc));
+        if (desktop) { await window.mpeDesktop.google.sendGmail(raw); return; }
+        const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + (accessToken || localStorage.getItem('gToken')), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw }),
+        });
+        if (resp.status === 401 || resp.status === 403) {
+          accessToken = null; localStorage.removeItem('gToken');
+          handleSignIn();
+          throw new Error('Google sign-in ran out. Sign in again, then press Send.');
+        }
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.id) throw new Error(data.error?.message || ('HTTP ' + resp.status));
+      },
+    });
+    if (!out || !out.sent) return;
     saveToHistory();            // record the transaction (local + Drive), same as printing
-    queueOutputMark('email_draft');
+    queueOutputMark('email_sent', out.to);
     updatePriceChangesBadge();
+    flashScanCommand(`Sent to ${out.to}.`, 'ok');
+    setBtn('✓', false);
     setTimeout(() => setBtn('✉', false), 4000);
   } catch (e) {
-    document.getElementById('emailPdfHolder').innerHTML = '';
+    holder.innerHTML = '';
     if (e.emailConsentRequired && !_emailScopeRetried) {
       _emailScopeRetried = true;
       accessToken = null; localStorage.removeItem('gToken');
@@ -9575,7 +9571,7 @@ async function emailDoc() {
       handleSignIn();
       return;
     }
-    noteToolFailure('Email draft', e);
+    noteToolFailure('Email', e);
     setBtn('✕', false);
     setTimeout(() => setBtn('✉', false), 4000);
   }

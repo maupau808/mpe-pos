@@ -50,8 +50,8 @@
   const COUNT_FROM = '2026-01-01'; // invoices dated earlier never count as owed
   const SOON_DAYS = 7;
   const METHODS = Object.freeze(['cash', 'check', 'card_terminal']);
-  const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs' });
-  const LOGGED = new Set(['email_draft', 'print', 'pdf', 'pdf_open']); // each one shows in History's timeline
+  const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs', email_sent: 'sent' });
+  const LOGGED = new Set(['email_draft', 'email_sent', 'print', 'pdf', 'pdf_open']); // each one shows in History's timeline
   const PAYMENT_COLUMNS = Object.freeze(['payment_id', 'invoice_number', 'txnId', 'date', 'amount', 'method',
     'note', 'place', 'recorded_at', 'voids']);
 
@@ -152,7 +152,7 @@
   const parsePayments = rows => paymentRows(rows).filter(o => !MARKS[o.method]);
   // A mark: kind 'email_draft', 'edit', 'cancel', 'uncancel', 'print', 'pdf' (saved/downloaded) or 'pdf_open', amount 0, never a payment.
   function buildMarkRow(m, now) {
-    if (!MARKS[m.kind]) throw new Error('mark must be email_draft, edit, cancel, uncancel, print, pdf or pdf_open');
+    if (!MARKS[m.kind]) throw new Error('mark must be email_draft, email_sent, edit, cancel, uncancel, print, pdf or pdf_open');
     const at = (now ? new Date(now) : new Date()).toISOString();
     return ['mark_' + Date.parse(at).toString(36) + Math.random().toString(36).slice(2, 8), s(m.invoice_number), s(m.txnId),
       honoluluToday(at), '0.00', m.kind, s(m.note), s(m.place), at, ''];
@@ -161,7 +161,7 @@
   // The note for an edit mark: the sale's Transactions rows before the edit. Over Sheets' cell limit: no copy (the edit still saves).
   const beforeNote = rows => { const t = BEFORE + JSON.stringify(rows || []); return t.length <= 45000 ? t : ''; };
   function parseMarks(rows) {
-    const out = { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {} };
+    const out = { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {} };
     for (const o of paymentRows(rows)) {
       // An edit mark may carry the sale's rows as they were before that edit ("before:" + JSON): History shows that copy.
       if (o.method === 'edit' && o.txnId && o.note.startsWith(BEFORE)) {

@@ -8,7 +8,8 @@
  *   renderDocument(request)   (optional) -> Promise<html pages>; without it the page fills document-template.html itself
  *                                with window.MPEDocumentRenderer (POSDesktop/src/document-renderer.js), the same filler the app prints with
  *   reprint(record, request)  -> Promise; prints `request` (the exact document shown) via printDocument
- *   emailDraft(record, request) -> Promise; makes a Gmail draft, never sends
+ *   emailPrepare(record, request) -> Promise<{ from, signature, to, subject, message, pages, attachment, canSend }>; sends nothing
+ *   sendEmail(record, prep, fields) -> Promise; sends ONE email. Called only by the email window's Send button (a person presses it)
  *   openInNewSale({ kind: 'quote' | 'copy' | 'newInvoice' | 'edit', txn: record }) -> Promise; opens a NEW sale tab
  *   refreshQbo() (optional, Mac app only) -> Promise<{ ok, reason? }>; rebuilds the QuickBooks file and resolves once it changed.
  *                                Without it History says "Refresh on the Mac".
@@ -46,7 +47,7 @@
   const addDays = (iso, n) => new Date((dayNum(iso) + n) * 864e5).toISOString().slice(0, 10);
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   // Timeline words for an output mark (ledger-data.js log). note 'reprint' = from History's Reprint.
-  const OUTPUT_LABEL = m => ({ print: m.note === 'reprint' ? 'Reprinted' : 'Printed', pdf: 'PDF saved', pdf_open: 'PDF opened', email_draft: 'Email draft made' }[m.kind] || m.kind);
+  const OUTPUT_LABEL = m => ({ print: m.note === 'reprint' ? 'Reprinted' : 'Printed', pdf: 'PDF saved', pdf_open: 'PDF opened', email_draft: 'Email draft made', email_sent: m.note ? 'Emailed to ' + m.note : 'Emailed' }[m.kind] || m.kind);
   const timeOf = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('en-US', { timeZone: 'Pacific/Honolulu', hour: 'numeric', minute: '2-digit' }); };
   const fmtD = iso => { if (!iso) return ''; const [, mo, d] = iso.split('-').map(Number); return `${MONTHS[mo - 1]} ${d}`; };
   const fmtDY = iso => iso ? `${fmtD(iso)}, ${iso.slice(0, 4)}` : '';
@@ -235,7 +236,7 @@
     if (r.kind === 'invoice' && UNPAID.has(r.state)) a.push({ act: 'pay', label: r.paid > 0 ? `Take payment · ${money(r.balance)} left` : 'Take payment', primary: true });
     a.push({ act: 'reprint', label: 'Reprint' });
     if (r.kind === 'invoice' && canPdf) a.push({ act: 'pdf', label: 'Open PDF' });
-    if (r.kind !== 'receipt' && !isVoid) a.push(r.email ? { act: 'email', label: 'Email draft' } : { act: 'email', label: 'Email draft', disabled: true, why: 'No email on file' });
+    if (r.kind !== 'receipt' && !isVoid) a.push(r.email ? { act: 'email', label: 'Email' } : { act: 'email', label: 'Email' });
     if (!isVoid) a.push({ act: 'edit', label: 'Edit' });
     if (r.kind === 'invoice' && !isVoid && (r.paymentsLive || []).length) a.push({ act: 'undoPay', label: r.paymentsLive.length > 1 ? 'Undo last payment' : r.state === 'paid' ? 'Undo paid' : 'Undo payment' });
     if (r.kind === 'quote' && !r.convertedTo && (r.paymentsLive || []).length) a.push({ act: 'undoPay', label: 'Undo last deposit' });
@@ -486,7 +487,7 @@
         st.custRows = cu || []; st.custRev++;
         st.today = (h.honoluluToday && h.honoluluToday()) || L.honoluluToday();
         st.payRows = pay || [];
-        st.marks = { drafts: { ...((mk && mk.drafts) || {}), ...st.local.drafts }, edits: { ...((mk && mk.edits) || {}) }, before: (mk && mk.before) || {}, log: (mk && mk.log) || {} };
+        st.marks = { drafts: { ...((mk && mk.drafts) || {}), ...st.local.drafts }, edits: { ...((mk && mk.edits) || {}) }, before: (mk && mk.before) || {}, log: (mk && mk.log) || {}, sent: (mk && mk.sent) || {} };
         st.model = await L.create({ txnRows: tx || [], paymentRows: st.payRows, drafts: st.marks.drafts, today: st.today });
         if (st.qbo) st.model.addQbo(st.qbo, st.today); // QuickBooks copy already downloaded: merge before the first draw
         setRecords(st.model.records);
@@ -659,6 +660,7 @@
       else st.before = null;
       drawDocument(old || r);
       const draft = st.marks.drafts[r.txnId] || st.marks.drafts[r.number];
+      const sent = (st.marks.sent || {})[r.txnId] || (st.marks.sent || {})[r.number];
       const acts = actionsFor(r, !!(host() && host().openPdf)).filter(a => a.act !== 'retype' || typeChoices(r).length);
       const qn = qboNote(r);
       const btn = a => `<button class="btn${a.primary ? ' primary' : ''}${a.quiet ? ' quiet' : ''}" data-act="${a.act}"${a.disabled || st.busy ? ' disabled' : ''}${a.why ? ` title="${esc(a.why)}"` : ''}>${ICON[a.act] || ''}<span>${st.busy === a.act ? 'Saving…' : esc(a.label)}</span>${a.menu ? ICON.down : ''}</button>${a.disabled && a.why ? `<span class="why">${esc(a.why)}</span>` : ''}`;
@@ -666,7 +668,7 @@
       const hist = historyFor(r, st.payRows, st.marks, st.records);
       $('rail').innerHTML = `
         <div><h3>${esc(KIND_LABEL[r.kind])} ${esc(r.number)}</h3><div class="big num">${money(r.total)}</div>
-          <div class="state"><span class="pill ${t.tone}">${['paid'].includes(t.key) ? ICON.check : ''}${esc(t.pill)}</span>${awaitingPickup(r) ? '<span class="pill soon">Presold, awaiting pickup</span>' : ''}${qn ? `<span class="pill muted">${esc(qn)}</span>` : ''}${draft ? `<span class="pill draft">${ICON.email}Draft made ${esc(fmtD(draft))}</span>` : ''}</div></div>
+          <div class="state"><span class="pill ${t.tone}">${['paid'].includes(t.key) ? ICON.check : ''}${esc(t.pill)}</span>${awaitingPickup(r) ? '<span class="pill soon">Presold, awaiting pickup</span>' : ''}${qn ? `<span class="pill muted">${esc(qn)}</span>` : ''}${sent ? `<span class="pill draft">${ICON.email}Emailed ${esc(fmtD(sent))}</span>` : draft ? `<span class="pill draft">${ICON.email}Draft made ${esc(fmtD(draft))}</span>` : ''}</div></div>
         ${r.name || r.company || r.phone || r.qboBuyer ? `<button class="who" data-act="${r.state === 'void' || r.state === 'cancelled' || isQbo(r) ? 'noop' : 'edit'}" title="${isQbo(r) ? '' : 'Edit customer'}"><h3>Customer ${r.state === 'void' || r.state === 'cancelled' || isQbo(r) ? '' : ICON.edit}</h3><b${r.qboBuyer ? ' class="muted"' : ''}>${esc(r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : r.company || r.name)}</b>${!r.qboBuyer && r.company && r.name ? esc(r.name) + '<br>' : ''}${r.phone ? esc(r.phone) + '<br>' : ''}${r.email ? esc(r.email) : '<span class="muted">No email on file</span>'}${addr.length ? '<br>' + addr.map(esc).join('<br>') : ''}</button>` : ''}
         <div class="acts">${acts.map(btn).join('')}</div>
         <div><h3>History</h3><ol>${hist.map(e => `<li>${esc(e.t)}<span>${esc([fmtD(e.d), e.at].filter(Boolean).join(' · '))}</span>${e.before != null ? `<a class="rec" href="#" data-before="${e.before}">See it before this edit</a>` : ''}</li>`).join('')}</ol></div>`;
@@ -768,6 +770,18 @@
         return r.kind === 'quote' ? `Last deposit on ${r.number} undone.` : `${r.number} is unpaid again.`;
       });
     }
+    // Email: the shared email window (email-window.js). It sends only when a person presses Send.
+    function emailWindow(r) {
+      const request = st.request || requestFromRecord(r);
+      run('email', async () => {
+        const prep = await host().emailPrepare(r, request);
+        st.busy = ''; draw();
+        const out = await root.MPEEmailWindow.open({ ...prep, pages: prep.pages || (st.pages || []).slice(0, 1), key: r.txnId, heading: `Email ${KIND_LABEL[r.kind].toLowerCase()} ${r.number}`,
+          cannotSend: prep.canSend ? '' : 'This app needs its update before it can send. The update installs by itself when the register is idle.',
+          send: f => host().sendEmail(r, prep, f) });
+        return out && out.sent ? `Sent to ${out.to}.` : '';
+      });
+    }
     function openSale(kind, r, what) {
       run(kind, async () => { await host().openInNewSale({ kind, txn: withDeposit(r) }); return `${what} opened in a new sale tab. The sale in progress is unchanged.`; });
     }
@@ -791,11 +805,7 @@
       if (k === 'undoPay') return undoPaid(r.txnId);
       if (k === 'pdf') return host().openPdf(r.number, r).then(res => { if (!res || !res.ok) toast(PDF_WHY[res && res.reason] || PDF_WHY.missing); else load(); }, () => toast(PDF_WHY.offline));
       if (k === 'reprint') return run('reprint', async () => { const out = await host().reprint(r, st.request || requestFromRecord(r)); return out?.printed === false ? 'Not printed.' : `${r.number} sent to print.`; });
-      if (k === 'email') return run('email', async () => {
-        await host().emailDraft(r, st.request || requestFromRecord(r));
-        st.local.drafts[r.txnId] = st.today;
-        return `Gmail draft made for ${r.email}. Open Gmail to send it.`;
-      });
+      if (k === 'email') return emailWindow(r);
       if (k === 'toSale') return r.deposit > 0
         ? run('quote', async () => { await host().openInNewSale({ kind: 'quote', txn: withDeposit(r) }); return `Quote ${r.number} opened in a new sale tab. Deposit ${money(r.deposit)} already paid: collect ${money(cents(r.total - r.deposit))}.`; })
         : openSale('quote', r, `Quote ${r.number}`);

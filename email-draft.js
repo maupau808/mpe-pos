@@ -13,7 +13,7 @@ function _b64UrlUtf8(str) {
 function _blobToB64(blob) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(blob); });
 }
-function _buildEmailMime(to, subject, bodyText, filename, pdfB64, bodyHtml = '', from = '') {
+function _buildEmailMime(to, subject, bodyText, filename, pdfB64, bodyHtml = '', from = '', cc = '', bcc = '') {
   const boundary = 'mpe_' + Date.now();
   const alternative = boundary + '_body';
   const header = value => String(value || '').replace(/[\r\n]/g, ' ');
@@ -22,6 +22,8 @@ function _buildEmailMime(to, subject, bodyText, filename, pdfB64, bodyHtml = '',
     'MIME-Version: 1.0',
     'To: ' + header(to),
     ...(from ? ['From: ' + header(from)] : []),
+    ...(cc ? ['Cc: ' + header(cc)] : []),
+    ...(bcc ? ['Bcc: ' + header(bcc)] : []), // Gmail delivers to Bcc and strips the header
     'Subject: =?UTF-8?B?' + _bytesToB64(new TextEncoder().encode(header(subject))) + '?=',
     'Content-Type: multipart/mixed; boundary="' + boundary + '"',
     '', '--' + boundary,
@@ -97,11 +99,31 @@ function buildEmailBody(order, title, number, dateStr, signature = '') {
     shown.map(([label, value]) => `<tr><td style="${cell};color:#555">${esc(label)}</td>` +
       `<td style="${cell}${label === 'Total' ? ';font-weight:bold' : ''}">${esc(value)}</td></tr>`).join('') + `</table>`;
   // The summary sits before the signature, so Gmail swapping the signature never touches it.
-  const signatureHtml = signature ? `<br clear="all"><div><br></div><span class="gmail_signature_prefix">-- </span><br><div dir="ltr" class="gmail_signature" data-smartmail="gmail_signature">${signature}</div>` : '';
+  const signatureHtml = _signatureHtml(signature);
   const html = `<div dir="ltr" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111">` +
     `<p>${esc(greeting)}</p><p>${esc(intro)}</p>${table}${signatureHtml}</div>`;
-  const signatureDoc = new DOMParser().parseFromString(signature.replace(/<br\s*\/?\s*>/gi, '\n').replace(/<\/(?:div|p|tr)>/gi, '\n'), 'text/html');
   const text = [greeting, intro, shown.map(([label, value]) => `${label}: ${value}`).join('\n'),
-    signatureDoc.body.textContent.trim()].filter(Boolean).join('\n\n');
+    _signatureText(signature)].filter(Boolean).join('\n\n');
   return { html, text };
+}
+function _signatureHtml(signature) {
+  return signature ? `<br clear="all"><div><br></div><span class="gmail_signature_prefix">-- </span><br><div dir="ltr" class="gmail_signature" data-smartmail="gmail_signature">${signature}</div>` : '';
+}
+function _signatureText(signature) {
+  if (!signature) return '';
+  return new DOMParser().parseFromString(signature.replace(/<br\s*\/?\s*>/gi, '\n').replace(/<\/(?:div|p|tr)>/gi, '\n'), 'text/html').body.textContent.trim();
+}
+// The email window's message as typed, plus the Gmail signature: { text, html } for the MIME builder.
+function buildTypedEmail(message, signature = '') {
+  const esc = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const paras = String(message || '').replace(/\r/g, '').trim().split(/\n{2,}/).filter(Boolean);
+  const html = `<div dir="ltr" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111">` +
+    paras.map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') + _signatureHtml(signature) + `</div>`;
+  const text = [String(message || '').trim(), _signatureText(signature)].filter(Boolean).join('\n\n');
+  return { html, text };
+}
+// "a@x.com, b@y.com; c@z.com" -> { list, bad } (bad = the first entry that is not an email address).
+function parseEmailList(value) {
+  const list = String(value || '').split(/[,;\s]+/).map(v => v.trim()).filter(Boolean);
+  return { list, bad: list.find(v => !/^[^@\s<>()"]+@[^@\s<>()"]+\.[a-z]{2,}$/i.test(v)) || '' };
 }

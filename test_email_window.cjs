@@ -1,0 +1,26 @@
+// The email window's checks, typed message and Cc/Bcc headers. Run: node POS/test_email_window.cjs
+const assert = require('node:assert');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const ctx = { TextEncoder, btoa, window: {} };
+ctx.globalThis = ctx;
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname, 'email-draft.js'), 'utf8'), ctx);
+Object.assign(ctx.window, { parseEmailList: ctx.parseEmailList, buildTypedEmail: ctx.buildTypedEmail });
+vm.runInContext(fs.readFileSync(path.join(__dirname, 'email-window.js'), 'utf8'), ctx);
+const W = ctx.window.MPEEmailWindow;
+const ok = { to: 'kai@example.test', cc: '', bcc: '', subject: 'Invoice L21001', message: 'Aloha' };
+assert.equal(W.check(ok), '');
+assert.match(W.check({ ...ok, to: '' }), /To/);
+assert.match(W.check({ ...ok, cc: 'kai@example.test, nope' }), /nope/);
+assert.match(W.check({ ...ok, subject: ' ' }), /subject/);
+assert.deepEqual([...ctx.parseEmailList('a@x.co; b@y.com ,c@z.org').list], ['a@x.co', 'b@y.com', 'c@z.org']);
+const mail = ctx.buildTypedEmail('Aloha Kai,\n\nLine one\nline <two>', '');
+assert.equal(mail.text, 'Aloha Kai,\n\nLine one\nline <two>');
+assert.match(mail.html, /<p>Aloha Kai,<\/p><p>Line one<br>line &lt;two&gt;<\/p>/);
+const mime = ctx._buildEmailMime('kai@example.test', 'S', 't', 'a.pdf', 'QUJD', '', 'shop@example.test', 'b@y.com', 'c@z.org');
+assert.match(mime, /\r\nCc: b@y\.com\r\n/);
+assert.match(mime, /\r\nBcc: c@z\.org\r\n/);
+assert.doesNotMatch(ctx._buildEmailMime('k@x.co', 'S', 't', 'a.pdf', 'QUJD'), /Cc:|Bcc:/);
+console.log('PASS: email window checks, typed message, Cc/Bcc headers');

@@ -162,7 +162,7 @@
         get: range => d.google.sheetsGet(range),
         append: (range, rows) => d.google.sheetsAppend(range, rows),
         identity: () => d.google.gmailIdentity(),
-        createDraft: raw => d.google.createGmailDraft(raw),
+        sendMail: typeof d.google.sendGmail === 'function' ? raw => d.google.sendGmail(raw) : undefined, // app 0.3.61+
         printDocument: request => d.printDocument(request),
         openSale: async request => { const r = await d.openSale(request); if (!r || !r.ok) throw new Error('The sale tab did not open'); },
         scan: typeof d.scan === 'function' ? value => d.scan(value) : undefined, // app 0.3.49+
@@ -198,14 +198,14 @@
           return { ok: true };
         } : undefined,
         identity: () => p._emailIdentity(token()),
-        async createDraft(raw) {
-          const resp = await w.fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+        async sendMail(raw) { // the email window's Send (a person presses it)
+          const resp = await w.fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
             method: 'POST', headers: { Authorization: 'Bearer ' + token(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: { raw } }),
+            body: JSON.stringify({ raw }),
           });
           if (resp.status === 401 || resp.status === 403) throw notSignedIn();
           const data = await resp.json();
-          if (!resp.ok) throw new Error((data.error && data.error.message) || 'HTTP ' + resp.status);
+          if (!resp.ok || !data.id) throw new Error((data.error && data.error.message) || 'HTTP ' + resp.status);
           return data;
         },
         openSale: async request => { p.postMessage(request, w.location.origin); },
@@ -325,21 +325,25 @@
         await printPages(await pages(request));
         await quietMark('print', record, 'reprint');
       },
-      async emailDraft(record, request) {
-        if (!s(record.email)) throw new Error('No email on file');
+      // The email window's starting fields and the document pages it shows (and attaches). Nothing is sent here.
+      async emailPrepare(record, request) {
         const title = TITLES[request.type] || 'Receipt', number = request.number;
         const [identity, list] = await Promise.all([guard(env.identity()), pages(request)]);
-        const pdf = await pdfB64(list[0]);
         const t = request.totals;
         const order = { customer: { name: record.name }, toggles: { cardFee: Number(t.card_fee) > 0 },
           ledgerTotals: { subtotal: t.subtotal, tax: t.tax, card_fee: t.card_fee, total: t.total },
           items: (record.items || []).map(i => ({ pn: i.pn, desc: i.desc, qty: i.qty, ea: i.ea, sub: i.sub, sn: i.serials })) };
         const day = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
-        const body = w.buildEmailBody(order, title, number, day, identity.signature || '');
-        const raw = w._b64UrlUtf8(w._buildEmailMime(record.email, `${title} ${number} - Maui Power Equipment`, body.text,
-          number + '.pdf', pdf, body.html, identity.email));
-        await guard(env.createDraft(raw));
-        await mark('email_draft', record);
+        return { from: identity.email, signature: identity.signature || '', to: s(record.email), pages: [list[0]], attachment: number + '.pdf',
+          subject: `${title} ${number} - Maui Power Equipment`, message: w.buildEmailBody(order, title, number, day, '').text, canSend: !!env.sendMail };
+      },
+      // Send: only from the email window's Send button. Then one 'email_sent' mark (note = who it went to) for the timeline.
+      async sendEmail(record, prep, f) {
+        if (!env.sendMail) throw new Error('This app needs its update to send email.');
+        const pdf = await pdfB64(prep.pages[0]);
+        const raw = w._b64UrlUtf8(w._buildEmailMime(f.to, f.subject, f.text, prep.attachment, pdf, f.html, prep.from, f.cc, f.bcc));
+        await guard(env.sendMail(raw));
+        await quietMark('email_sent', record, [f.to, f.cc].filter(Boolean).join(', ').slice(0, 300));
       },
       openInNewSale: ({ kind, txn }) => env.openSale(saleRequest(kind, txn)),
       // A keyboard-style scan caught on this page goes to the last sale tab (app only; the website's register catches its own).
