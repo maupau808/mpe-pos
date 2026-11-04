@@ -1167,7 +1167,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.03.6';
+const POS_RELEASE = '2026.11.03.7';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1678,12 +1678,17 @@ function clearToolFailure() {}
 // A failed Drive push is not red: the sale stays local and retries later.
 function adminAlertLevel() {
   if (!(typeof loaded !== 'undefined' && loaded && partsArray && partsArray.length)) return 'err';
-  if (_posUpdateRelease || authState() !== 'in' || registerDigitMissing()) return 'warn';
+  if (_posUpdateRelease || authState() !== 'in' || registerDigitMissing() || appNumberingMissing()) return 'warn';
   return '';
 }
 // Only the counter app asks; a phone or browser tab keeps plain numbers.
 function registerDigitMissing() {
   return !!window.mpeDesktop && !registerDigit();
+}
+// A counter app older than 0.3.48 has no numbering bridge: it numbers as a browser (R9…) and
+// downloads the sales sheet before every print. Only an update fixes it.
+function appNumberingMissing() {
+  return !!window.mpeDesktop && !window.mpeDesktop.placeNumbering;
 }
 function updateAdminDot() {
   const dot = document.getElementById('adminDot');
@@ -1695,6 +1700,7 @@ function updateAdminDot() {
     ? 'No parts loaded — open Admin'
     : _posUpdateRelease ? 'POS update ready — open Admin after the current sale'
     : registerDigitMissing() ? 'Choose which register this is — open Admin'
+    : appNumberingMissing() ? 'Counter app out of date — update it in Settings (receipts print slower until then)'
     : 'Not signed in to Google — open Admin';
 }
 
@@ -8665,14 +8671,14 @@ function preparePrint() {
     tbody.querySelectorAll('tr[data-sn-for]').forEach(tr => tr.classList.add('print-hide'));
   }
   applyPrintMoneyFormatting();
-  // Two-copy logic: RECEIPTS ONLY, and only when the sale carries a serialized unit
-  // (a warranty row or a filled serial field). Every other receipt is the single
-  // customer copy. Quotes and invoices never get the duplicate copy — invoices carry
-  // their own "our copy" format via the invoice sig block.
+  // Two-copy logic: RECEIPTS ONLY, and only when a serial number was actually typed
+  // (Trevor, 2026-11-03: a unit with its serial box left blank prints one copy). Every
+  // other receipt is the single customer copy. Quotes and invoices never get the
+  // duplicate copy — invoices carry their own "our copy" format via the invoice sig block.
   const _warrantyActive = !!tbody.querySelector('tr[data-warranty="1"]');
   const _hasSNEntered = Array.from(tbody.querySelectorAll('.sn-input')).some(inp => inp.value.trim());
   const copy2 = document.getElementById('printCopy2');
-  const copy2On = _docType === 'receipt' && (_hasSNEntered || _warrantyActive);
+  const copy2On = _docType === 'receipt' && _hasSNEntered;
   // A single-page receipt is the customer copy, so it carries any filled customer fields.
   const custEl = document.getElementById('printCustomer');
   if (custEl) {
@@ -9724,6 +9730,7 @@ function nextRegisterDocNumber(d) { return formatDocNumber(d, _docType); }
 // uses the sheet maximum for digit 9. If numbering cannot run, the counter keeps working on the old minute number.
 const _docNumbering = typeof MPELedgerNumbering === 'object' ? MPELedgerNumbering.create({
   place: window.mpeDesktop?.placeNumbering,
+  chosen: registerDigit,   // the app's digit is set from this register's Admin choice if the load-time sync missed
   readRows: () => sheetsGet(TXN_SHEET + '!A:P'),
   writeNumber: (sheetRow, number) => sheetsUpdate(TXN_SHEET + '!P' + sheetRow, [[number]]),
   localNumbers: () => { try { return getHistory().map(entry => entry?.docNumber); } catch (e) { return []; } },

@@ -40,7 +40,8 @@
   // place: { digit() -> 0|1|2|3, next({ letter, floor? }) -> { ok, count } | { needFloor } } (Desktop main process), or absent in a browser.
   // readRows() -> Transactions A:P rows. writeNumber(sheetRowNumber, number) writes column P of that 1-based row.
   // localNumbers() -> numbers saved on this device but maybe not on the sheet yet.
-  function create({ place = null, readRows, writeNumber, localNumbers = () => [], log = () => {}, sleep = defaultSleep, timeoutMs = 3000 } = {}) {
+  // chosen() -> the register digit picked in Admin ('2' or '3'), or ''; an app with no digit adopts it at numbering time.
+  function create({ place = null, chosen = () => '', readRows, writeNumber, localNumbers = () => [], log = () => {}, sleep = defaultSleep, timeoutMs = 3000 } = {}) {
     const issued = new Map(); // browser only: last count handed out by this page, per letter
 
     async function floorFor(letter, digit) {
@@ -53,6 +54,9 @@
       let digit = 0;
       if (place) {
         try { digit = Number(await place.digit()) || 0; } catch (error) { log('place digit unavailable', error); }
+        if (!digit) {
+          try { if (await syncDigit({ place, chosen: chosen() })) digit = Number(chosen()); } catch (error) { log('place digit sync failed', error); }
+        }
         if (!digit) log('this app has no place digit set; numbering as a browser (digit 9)');
       }
       if (digit) {
