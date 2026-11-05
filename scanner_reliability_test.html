@@ -49,6 +49,9 @@ const TEST_FEED = {
     { pn: '22295', og: '22295', desc: 'Toro QR test mower', make: 'TORO', list: 1200, cost: 800, warranty: true },
     { pn: '664240', og: '664240', desc: 'EU2200i — Generator', make: 'Honda', list: 1199, cost: 959, warranty: true },
     { pn: '668790', og: '668790', desc: 'EU2200i (Companion) — Generator', make: 'Honda', list: 1299, cost: 1039, warranty: true },
+    { pn: '463524', og: '463524', sup: '485211, 486056, 486590', desc: 'Seat assembly test', make: 'SCAG', list: 20, cost: 10 },
+    { pn: '485211', og: '485211', desc: 'NLA REPLACED BY 486056', make: 'SCAG', list: 8, cost: 4, f: 999 },
+    { pn: '486590', og: '486590', desc: 'NLA REPLACED BY 463524', make: 'SCAG', list: 9 },
     { pn: 'OLD1', og: 'OLD1', sup: 'NEW1', desc: 'Superseded scanner item', make: 'TEST', list: 5, cost: 2 },
     { pn: 'NEW1', og: 'NEW1', desc: 'Current scanner item', make: 'TEST', list: 6, cost: 3 },
     { pn: 'AMBIG1', og: 'AMBIG1', desc: 'Ambiguous scanner item A', make: 'TEST A', list: 7, cost: 3 },
@@ -727,6 +730,19 @@ pos.addEventListener('load', async () => {
     await test('superseded number selects the current part', async () => {
       reset(pos); await burst(pos, 'OLD1');
       assert(filledRows(pos)[0] === 'NEW1', 'superseded scan did not choose current part');
+    });
+
+    await test('SCAG obsolete rows select the current part with replacement marker', async () => {
+      for (const old of ['485211', '486056', '486590']) {
+        reset(pos); await burst(pos, old);
+        assert(filledRows(pos)[0] === '463524', old + ' did not select current seat');
+        const input = pos.contentDocument.querySelector('#searchRows .part-input');
+        assert(input.title.includes('replaces ' + old), 'replacement explanation missing');
+        assert(pos.contentDocument.getElementById('supmark-0').classList.contains('visible'), 'asterisk missing');
+      }
+      reset(pos); await burst(pos, '463524');
+      assert(filledRows(pos)[0] === '463524', 'current seat changed');
+      assert(!pos.contentDocument.getElementById('supmark-0').classList.contains('visible'), 'current number marked as replaced');
     });
 
     await test('ambiguous exact match remains reviewable', async () => {

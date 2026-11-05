@@ -1168,7 +1168,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.04.6';
+const POS_RELEASE = '2026.11.04.7';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -3064,6 +3064,34 @@ function buildScanExactIndex() {
     if (nPN && !nonAliasByKey.has(nPN)) nonAliasByKey.set(nPN, p);
     if (nOG && !nonAliasByKey.has(nOG)) nonAliasByKey.set(nOG, p);
   }
+  // These brands store old numbers on the current row. Resolve them even when
+  // a separate discontinued row for the old number still exists in Master.
+  const replacementOwners = new Map();
+  const replacementKey = (p, n) => String(p.make || '').trim().toUpperCase() + '|' + normalizePN(n);
+  for (const p of partsArray) {
+    if (p._supersedeAlias) continue;
+    for (const old of supersededNumbers(p) || []) {
+      const key = replacementKey(p, old), owners = replacementOwners.get(key) || [];
+      if (!owners.includes(p)) owners.push(p);
+      replacementOwners.set(key, owners);
+    }
+  }
+  const reverseReplacement = (p, key) => {
+    let owners = replacementOwners.get(replacementKey(p, key));
+    if (!owners || owners.length !== 1) return null;
+    let current = owners[0];
+    const seen = new Set();
+    while (current) {
+      if (seen.has(current)) return null;
+      seen.add(current);
+      owners = (replacementOwners.get(replacementKey(current, current.pn)) || []).filter(x => x !== current);
+      if (!owners.length) break;
+      if (owners.length !== 1) return null;
+      current = owners[0];
+    }
+    if (current === p) return null;
+    return { ...current, _supersededFrom: p._supersededFrom || p.og || p.pn };
+  };
   const push = (key, record) => {
     // The old code filtered searchParts' output down to records that still
     // carried the scanned number. Apply that same filter here, not at scan time.
@@ -3078,6 +3106,8 @@ function buildScanExactIndex() {
     const keys = nPN && nOG && nPN !== nOG ? [nPN, nOG] : [nPN || nOG];
     for (const key of keys) {
       if (!key) continue;
+      const replacement = reverseReplacement(p, key);
+      if (replacement) { push(key, replacement); continue; }
       if (p._supersedeAlias) {
         // The original obsolete row answers lookups by its old number, and a
         // real row for the new number always outranks its alias.
@@ -7692,40 +7722,16 @@ function searchParts(val) {
   const qCollapsed = lowerVal.replace(/[\s\-\.\/,]/g, '');
   const useCollapsed = qCollapsed.length >= 4 && /[a-z]\d|\d[a-z]/.test(qCollapsed);
 
-  const exact = [], startsWith = [], wordMatch = [], more = [];
+  const exact = exactScanParts(raw).slice(), startsWith = [], wordMatch = [], more = [];
   for (let p of partsArray) {
     // Normalizing both numbers for every row was two regex passes per part per
     // keystroke. Cached once with the catalog (see buildScanExactIndex).
     const normPN = p._nPN !== undefined ? p._nPN : (p._nPN = normalizePN(p.pn));
     const normOG = p._nOG !== undefined ? p._nOG : (p._nOG = normalizePN(p.og));
     // 1) Part-number first — typing a PN (or its start) stays the priority workflow.
-    if (normVal && (normPN === normVal || normOG === normVal)) {
-      if (p._supersedeAlias) {
-        // The original obsolete row handles lookups by its old number. For a
-        // direct lookup of the new number, prefer its own physical Master row.
-        if (normOG === normVal || partsArray.some(candidate =>
-          !candidate._supersedeAlias &&
-          (normalizePN(candidate.pn) === normPN || normalizePN(candidate.og) === normPN)
-        )) continue;
-      }
-      // An exact obsolete PN should select the real current row, not the alias row
-      // carrying the obsolete item's old price/description.
-      if (!p._supersedeAlias && p.sup && normalizePN(p.sup) !== normPN && !supersededNumbers(p)) {
-        const currentPN = normalizePN(p.sup);
-        const current = partsArray.find(candidate =>
-          !candidate._supersedeAlias &&
-          (normalizePN(candidate.pn) === currentPN || normalizePN(candidate.og) === currentPN)
-        );
-        exact.push({
-          ...(current || p),
-          pn: current ? current.pn : p.sup,
-          og: current ? current.og : p.sup,
-          _supersededFrom: p.og || p.pn
-        });
-        continue;
-      }
-      exact.push(p); continue;
-    }
+    // Typed exact lookups and hardware/phone scans use the same replacement index.
+    if (normVal && (normPN === normVal || normOG === normVal)) continue;
+    if (p._supersedeAlias || /\bNLA\b|\bDISCONTINUED\b|\bOBSOLETE\b|\bREPLACED BY\b/i.test(p.desc || '')) continue;
     if (normVal && (normPN.startsWith(normVal) || normOG.startsWith(normVal))) { startsWith.push(p); continue; }
     const hiddenSaw = hideStihlSawFromTextSearch(p);
 
@@ -7785,6 +7791,7 @@ function searchParts(val) {
   //    words (≤3) must still match exactly to avoid noise.
   const fuzzy = [];
   for (let p of partsArray) {
+    if (p._supersedeAlias || /\bNLA\b|\bDISCONTINUED\b|\bOBSOLETE\b|\bREPLACED BY\b/i.test(p.desc || '')) continue;
     if (hideStihlSawFromTextSearch(p)) continue;
     let hayWords = p._hayWords;
     if (hayWords === undefined) {

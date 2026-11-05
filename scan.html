@@ -1668,6 +1668,34 @@ function buildScanExactIndex() {
     if (nPN && !nonAliasByKey.has(nPN)) nonAliasByKey.set(nPN, p);
     if (nOG && !nonAliasByKey.has(nOG)) nonAliasByKey.set(nOG, p);
   }
+  // These brands store old numbers on the current row. Resolve them even when
+  // a separate discontinued row for the old number still exists in Master.
+  const replacementOwners = new Map();
+  const replacementKey = (p, n) => String(p.make || '').trim().toUpperCase() + '|' + normalizePN(n);
+  for (const p of partsArray) {
+    if (p._supersedeAlias) continue;
+    for (const old of supersededNumbers(p) || []) {
+      const key = replacementKey(p, old), owners = replacementOwners.get(key) || [];
+      if (!owners.includes(p)) owners.push(p);
+      replacementOwners.set(key, owners);
+    }
+  }
+  const reverseReplacement = (p, key) => {
+    let owners = replacementOwners.get(replacementKey(p, key));
+    if (!owners || owners.length !== 1) return null;
+    let current = owners[0];
+    const seen = new Set();
+    while (current) {
+      if (seen.has(current)) return null;
+      seen.add(current);
+      owners = (replacementOwners.get(replacementKey(current, current.pn)) || []).filter(x => x !== current);
+      if (!owners.length) break;
+      if (owners.length !== 1) return null;
+      current = owners[0];
+    }
+    if (current === p) return null;
+    return { ...current, _supersededFrom: p._supersededFrom || p.og || p.pn };
+  };
   const push = (key, record) => {
     if (normalizePN(record.pn) !== key && normalizePN(record.og) !== key
       && normalizePN(record._supersededFrom) !== key) return;
@@ -1680,6 +1708,8 @@ function buildScanExactIndex() {
     const keys = nPN && nOG && nPN !== nOG ? [nPN, nOG] : [nPN || nOG];
     for (const key of keys) {
       if (!key) continue;
+      const replacement = reverseReplacement(p, key);
+      if (replacement) { push(key, replacement); continue; }
       if (p._supersedeAlias) {
         if (key === nOG || nonAliasByKey.has(nPN)) continue;
         push(key, p);
