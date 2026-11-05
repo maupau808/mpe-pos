@@ -287,7 +287,7 @@
   }
 
   // The print request, built from a Ledger record the way POS/index.html saleScreenDocumentRequest() builds it from the sale
-  // screen. The sheet has no PO or brand, so those print empty; a line discount comes from item columns O and P.
+  // screen. The sheet keeps the invoice PO (column X) but no brand, so brand prints empty; a line discount comes from item columns O and P.
   // A quote with a deposit carries one note line saying so, on screen, on every print and in the sale made from it (Trevor, Nov 1).
   // Added once: a sale that already has a "Deposit paid" note (saved from an earlier conversion) is left as it is.
   function withDeposit(r) {
@@ -307,7 +307,7 @@
       ? { billing_address: { lines: r.addrLines || (r.street ? [r.street] : []), city: r.city, region: regionOf(r), postal_code: r.zip, country: '' } }
       : { address: r.addr || '' };
     return {
-      po: '', type: r.kind, number: r.number || r.txnId, completionAt: completion.toISOString(),
+      po: r.kind === 'invoice' ? s(r.po) : '', type: r.kind, number: r.number || r.txnId, completionAt: completion.toISOString(),
       ...(r.kind === 'invoice' && r.paid > 0 ? { paid: m2(r.paid) } : {}), // part or full payments print as Amount paid / Balance due
       dueDate: r.kind === 'invoice' ? (r.dueDate || null) : null,
       customer: { name: r.name, company: r.company, phone: r.phone, email: r.email, ...billing },

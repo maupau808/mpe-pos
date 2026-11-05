@@ -1,6 +1,6 @@
 /* Ledger tab data logic (pure, no DOM, no network). Browser: window.MPELedgerData. Node: module.exports.
  *
- * Transactions A:W (0-based): 0 type, 1 txnId, 2 date, 3 time, 4 name/company, 5 phone, 6 email, 7 addr,
+ * Transactions A:X (0-based; 23 = invoice PO number): 0 type, 1 txnId, 2 date, 3 time, 4 name/company, 5 phone, 6 email, 7 addr,
  *   12 total (TXN) / sub (item), 13 fromQuote (TXN) / serials (item), 14 docType, 15 number (P),
  *   16-21 name, company, street, city, state, zip (Q-V); item rows: 8 pn, 9 desc, 10 qty, 11 ea, 14 original ea, 15 off per unit.
  * Only TXN and item rows are read; REORDER, STOCK_SESSION, CUSTOMER_*, blank and unknown rows are ignored.
@@ -96,7 +96,7 @@
           street: parts[2], city: parts[3], region: parts[4], zip: parts[5],
           addr: s(r[7]), phone: s(r[5]), email: s(r[6]),
           total: money(r[12]), fromQuote: s(r[13]), items: [],
-          presell: s(r[22]).toUpperCase() === 'PRESELL',
+          presell: s(r[22]).toUpperCase() === 'PRESELL', po: s(r[23]),
           completedContact: st && !st.conflict ? st.contact : null,
           contactConflict: st ? !!st.conflict : (rows || []).some(x => s(x && x[0]) === 'CUSTOMER_UPDATE' && s(x[1]) === id),
           _ph: s(r[5]).replace(/\D/g, ''),

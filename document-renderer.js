@@ -264,6 +264,8 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
   const billLines = extra.bill_to !== undefined ? bill
     : billToLines({ ...customer, phone: '', email: '', ...(wordsOf(customer.company).size ? { name: '' } : {}) });
   const contactLines = [contactName, customer.phone, customer.email].filter(Boolean);
+  // The PO # leads the Ordered by block, bold like the Bill to name. Invoices only.
+  const poLine = kind === 'invoice' && extra.po ? `<div class="bill-name">PO # ${escape(extra.po)}</div>` : '';
   const box = [];
   if (kind === 'invoice') {
     box.push(['Invoice #', number]);
@@ -281,7 +283,7 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
   const address = [cfg.address_1, cfg.address_2].filter(Boolean).map(escape).join(piece('sep.dot'));
   const contactHtml = escape(contact).split(' · ').join(piece('sep.dot'));
   const infoBlocks = (billLines.length ? fill('counter.bill', { name: escape(billLines[0]), rest: lines(billLines.slice(1)) }) : '')
-    + (contactLines.length ? fill('counter.ordered', { label: kind === 'quote' ? 'Requested by' : 'Ordered by', lines: lines(contactLines) }) : '')
+    + (contactLines.length || poLine ? fill('counter.ordered', { label: kind === 'quote' ? 'Requested by' : 'Ordered by', lines: poLine + lines(contactLines) }) : '')
     + fill('counter.box', { rows: box.map(([label, value]) => fill('counter.boxrow', { label: escape(label), value: escape(value) })).join('') });
   return fill('counter.page', {
     ...page,
@@ -295,8 +297,6 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
     after: bill.length && kind === 'receipt' ? fill('counter.cust', { lines: lines(bill) }) : '',
     pay: footers.length ? fill('counter.pay', { paragraphs: paragraphs(footers) }) : '',
     sig: (kind === 'invoice' && copy !== 'customer' ? fill('counter.sig', { po: escape(extra.po || '') }) : '')
-      // The customer copy keeps the PO (when there is one) without the signature lines.
-      + (kind === 'invoice' && copy === 'customer' && extra.po && pieces.has('counter.po') ? fill('counter.po', { po: escape(extra.po) }) : '')
       + (copy && pieces.has('counter.copy') ? fill('counter.copy', { label: copy === 'customer' ? 'Customer copy' : 'Merchant copy' }) : ''),
   });
 }

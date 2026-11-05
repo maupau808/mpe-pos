@@ -28,7 +28,7 @@
   }
 })(typeof globalThis === 'object' ? globalThis : this, function (root, L) {
   'use strict';
-  const TXN_RANGE = 'Transactions!A:W';
+  const TXN_RANGE = 'Transactions!A:X';
   const PAY_RANGE = 'Payments!A:J';
   const PAY_APPEND = 'Payments!A1';
   const CUST_RANGE = 'Customers!A:J';
@@ -308,7 +308,8 @@
       environment: env.kind,
       place: env.place,
       honoluluToday: () => L.honoluluToday(),
-      async readTransactions() { await signedIn(); return guard(env.get(TXN_RANGE)); },
+      // An app older than the PO column refuses A:X; fall back to A:W so History still opens (PO # blank) until it updates.
+      async readTransactions() { await signedIn(); try { return await guard(env.get(TXN_RANGE)); } catch (e) { if (e && e.code === 'not_signed_in') throw e; return guard(env.get('Transactions!A:W')); } },
       readPayments: () => payments(),
       async readMarks() { return L.parseMarks(await payments()); },
       appendPaymentRows: rows => store.appendRows(rows),
