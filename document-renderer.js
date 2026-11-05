@@ -263,9 +263,11 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
   const contactName = extra.ordered_by || customer.name;
   const billLines = extra.bill_to !== undefined ? bill
     : billToLines({ ...customer, phone: '', email: '', ...(wordsOf(customer.company).size ? { name: '' } : {}) });
-  const contactLines = [contactName, customer.phone, customer.email].filter(Boolean);
+  // Ordered by shows at most one name, phone, email and PO #: the first of several. Print-only; the saved customer is untouched.
+  const firstOf = (value, splitter) => String(value || '').split(splitter).map((part) => part.trim()).find(Boolean) || '';
+  const contactLines = [firstOf(contactName, /[;\n]/), firstOf(customer.phone, /[,;\/\n]|\s+or\s+/i), firstOf(customer.email, /[,;\s]+/)].filter(Boolean);
   // The PO # leads the Ordered by block, bold like the Bill to name. Invoices only.
-  const poLine = kind === 'invoice' && extra.po ? `<div class="bill-name">PO # ${escape(extra.po)}</div>` : '';
+  const poLine = kind === 'invoice' && firstOf(extra.po, /[,;\n]/) ? `<div class="bill-name">PO # ${escape(firstOf(extra.po, /[,;\n]/))}</div>` : '';
   const box = [];
   if (kind === 'invoice') {
     box.push(['Invoice #', number]);
@@ -296,7 +298,7 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
     closing: escape(cfg.closing),
     after: bill.length && kind === 'receipt' ? fill('counter.cust', { lines: lines(bill) }) : '',
     pay: footers.length ? fill('counter.pay', { paragraphs: paragraphs(footers) }) : '',
-    sig: (kind === 'invoice' && copy !== 'customer' ? fill('counter.sig', { po: escape(extra.po || '') }) : '')
+    sig: (kind === 'invoice' && copy !== 'customer' ? fill('counter.sig', { po: escape(firstOf(extra.po, /[,;\n]/)) }) : '')
       + (copy && pieces.has('counter.copy') ? fill('counter.copy', { label: copy === 'customer' ? 'Customer copy' : 'Merchant copy' }) : ''),
   });
 }
