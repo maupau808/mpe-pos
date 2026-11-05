@@ -1,8 +1,8 @@
 {
-  "posRelease": "2026.11.05.1",
+  "posRelease": "2026.11.05.2",
   "forceRelease": "2026.10.17.1",
   "desktopRelease": "0.3.66",
-  "publishedAt": "2026-11-05T22:10:06Z",
+  "publishedAt": "2026-11-05T23:50:55Z",
   "desktop": {
     "windows": {
       "version": "0.3.66",

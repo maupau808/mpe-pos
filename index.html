@@ -1171,7 +1171,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.05.1';
+const POS_RELEASE = '2026.11.05.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -11192,9 +11192,9 @@ function custSuggest(kind) {
       matches = starts.concat(contains).slice(0, CUST_MAX);
     }
   }
-  renderCustDD(matches);
+  renderCustDD(matches, document.getElementById(kind === 'phone' ? 'custPhone' : kind === 'co' ? 'custCompany' : 'custName'));
 }
-function renderCustDD(list) {
+function renderCustDD(list, anchor) {
   const dd = document.getElementById('custDD');
   _custDDItems = list; _custDDActive = -1;
   if (!list.length) { dd.style.display = 'none'; dd.classList.remove('open'); dd.innerHTML = ''; return; }
@@ -11206,7 +11206,10 @@ function renderCustDD(list) {
       <div class="dd-co">${_esch(title)}</div>${sub ? `<div class="dd-sub">${_esch(sub)}</div>` : ''}
     </div>`;
   }).join('');
-  dd.style.display = 'block'; dd.classList.add('open');
+  // Open right under the box being typed in (name at the top, phone lower down), not under the whole customer panel.
+  dd.style.display = 'block'; dd.classList.add('open');   // shown first: a hidden box has no offsetParent to measure against
+  const at = anchor || document.activeElement;
+  dd.style.top = at && at !== dd && at.offsetParent === dd.offsetParent && at.closest('#custPanel') ? (at.offsetTop + at.offsetHeight + 2) + 'px' : '';
 }
 function custPick(i) {
   const c = _custDDItems[i]; if (!c) return;
