@@ -182,8 +182,14 @@
   // The note for an edit mark: the sale's Transactions rows before the edit. Over Sheets' cell limit: no copy (the edit still saves).
   const beforeNote = rows => { const t = BEFORE + JSON.stringify(rows || []); return t.length <= 45000 ? t : ''; };
   function parseMarks(rows) {
-    const out = { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {} };
+    const out = { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {}, editLog: {} };
     for (const o of paymentRows(rows)) {
+      // Every edit mark with its time and the rows before it (null when it has no readable copy): the pay-link check (payLinkStale).
+      if (o.method === 'edit' && o.txnId) {
+        let before = null;
+        if (o.note.startsWith(BEFORE)) { try { before = JSON.parse(o.note.slice(BEFORE.length)); } catch (_) { /* cut off: no copy */ } }
+        (out.editLog[o.txnId] = out.editLog[o.txnId] || []).push({ at: o.recorded_at, date: o.date, rows: Array.isArray(before) ? before : null });
+      }
       // An edit mark may carry the sale's rows as they were before that edit ("before:" + JSON): History shows that copy.
       if (o.method === 'edit' && o.txnId && o.note.startsWith(BEFORE)) {
         try { (out.before[o.txnId] = out.before[o.txnId] || []).push({ date: o.date, at: o.recorded_at, rows: JSON.parse(o.note.slice(BEFORE.length)) }); } catch (_) { /* a cut-off copy is skipped */ }
@@ -291,12 +297,13 @@
       const latest = [...r.paymentsLive].sort(newestFirst)[0];
       const sum = r.paymentsLive.reduce((a, p) => a + cents(p.amount), 0); // partial payments add up
       r.paid = Math.min(sum, cents(t.total)) / 100;
+      r.overpaid = Math.max(0, sum - cents(t.total)) / 100; // more taken than the total (an edit lowered it): Refund due
       r.paidDate = latest ? latest.date : '';
       r.paidMethod = latest ? latest.method : '';
       r.balance = Math.max(0, (cents(t.total) - sum) / 100);
       r.dueDate = t.date ? addDays(t.date, NET_DAYS) : '';
       const next = replacedBy.get(t.txnId);
-      if (next) { r.state = 'void'; r.replacedBy = next.number || next.txnId; r.balance = 0; return r; }
+      if (next) { r.state = 'void'; r.replacedBy = next.number || next.txnId; r.balance = 0; r.overpaid = 0; return r; }
       if (gone) { r.state = 'cancelled'; r.cancelledAt = gone.date; r.balance = 0; return r; }
       if (r.balance <= 0) { r.state = 'paid'; return r; }
       // Trevor: money owed on invoices dated before 2026 is never tallied or flagged; it shows only on that invoice.
@@ -560,6 +567,78 @@
     return model;
   }
 
-  return { transactionRowsFingerprint, transactionBlockEnd, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow, helcimPaymentRows,
+  // ---- Missing info (F02): register sales that sold a serial-numbered item but lack a buyer or one contact field. Read-only; writes nothing.
+  // field: 'any' | 'name' | 'phone' | 'address' | 'email'. Quotes, void/cancelled and QuickBooks-only records never qualify.
+  // A name is missing when name and company are blank, or the register's stand-in buyer (D10) with no company or phone.
+  const isPlaceholderBuyer = r => s(r.name).toLowerCase() === PLACEHOLDER_BUYER && !s(r.company) && !s(r.phone);
+  const MISSING_TESTS = {
+    name: r => isPlaceholderBuyer(r) || !(s(r.name) || s(r.company)),
+    phone: r => !s(r.phone), email: r => !s(r.email), address: r => !s(r.street) && !s(r.city),
+  };
+  function missingInfo(records, field) {
+    const tests = field && MISSING_TESTS[field] ? [MISSING_TESTS[field]] : Object.values(MISSING_TESTS);
+    return records.filter(r => r.source !== 'qbo' && r.kind !== 'quote' && r.state !== 'void' && r.state !== 'cancelled'
+      && (r.items || []).some(i => (i.serials || []).some(x => s(x))) && tests.some(t => t(r)));
+  }
+  // F04 / C4: "Emailed <date>, changed since". Returns the email's date (YYYY-MM-DD) when the newest edit is newer than the newest email_sent, else ''.
+  // Full recorded_at on both sides: compare them. Either side date-only (older marks): changed only if the edit's date is later than the email's.
+  // Ties, missing marks, an email_draft alone and any malformed time or date: no label. Marks keyed by the old document number still count.
+  const DAY = /^\d{4}-\d{2}-\d{2}$/;
+  function emailedChangedSince(r, marks) {
+    const m = marks || {}, keys = [r.txnId, r.number].filter(Boolean);
+    const pick = (src) => keys.flatMap(k => (src && src[k]) || []);
+    const sent = pick(m.log).filter(e => e.kind === 'email_sent').map(e => ({ at: s(e.at), date: s(e.date) || s(e.at).slice(0, 10) }));
+    if (!sent.length) for (const k of keys) if (m.sent && m.sent[k]) sent.push({ at: '', date: s(m.sent[k]) }); // legacy: date only
+    const edits = pick(m.before).map(e => ({ at: s(e.at), date: s(e.date) || s(e.at).slice(0, 10) }));
+    for (const k of keys) if (m.edits && m.edits[k]) edits.push({ at: '', date: s(m.edits[k]) });
+    if (!sent.length || !edits.length) return '';
+    const bad = e => (e.at && Number.isNaN(Date.parse(e.at))) || !DAY.test(e.date);
+    if (sent.some(bad) || edits.some(bad)) return '';
+    const newest = list => list.reduce((a, b) => (!a || (a.at && b.at ? Date.parse(b.at) > Date.parse(a.at) : b.date > a.date) ? b : a), null);
+    const mail = newest(sent), edit = newest(edits);
+    const changed = mail.at && edit.at ? Date.parse(edit.at) > Date.parse(mail.at) : edit.date > mail.date;
+    return changed ? mail.date : '';
+  }
+  // ---- Item edits in History (F03, C3 money; integer cents) ----
+  const usd = c => '$' + (Math.abs(c) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const liveCents = r => (r.paymentsLive || []).reduce((a, p) => a + cents(p.amount), 0);
+  // The panel's line for an invoice that took more than its total: 'Refund due $X', else ''.
+  const refundDue = r => (r && r.kind === 'invoice' && r.state !== 'void' && r.state !== 'cancelled' && cents(r.overpaid || 0) > 0 ? 'Refund due ' + usd(cents(r.overpaid)) : '');
+  // The Editing bar's money line for record (as loaded, before the edit) at a new total. Paid before the edit is the record's own paid
+  // (QuickBooks-recognized paid included) plus anything already over the total (R7); it is never recomputed from the new total.
+  // Returns { kind, cents, text }; the same wording as refundDue, so the bar and the panel after Save agree.
+  function editMoney(r, newTotalCents, originalTotalCents) {
+    const now = Math.round(Number(newTotalCents)), was = Number.isFinite(Number(originalTotalCents)) ? Math.round(Number(originalTotalCents)) : cents(r.total);
+    if (!Number.isFinite(now)) return { kind: 'unknown', cents: 0, text: '' };
+    if (r.kind === 'invoice') {
+      const paid = cents(r.paid || 0) + cents(r.overpaid || 0);
+      if (paid <= 0) return { kind: 'newTotal', cents: now, text: 'New total ' + usd(now) };
+      if (paid > now) return { kind: 'refund', cents: paid - now, text: 'Refund due ' + usd(paid - now) };
+      return now === paid ? { kind: 'paid', cents: 0, text: 'Paid in full' } : { kind: 'owed', cents: now - paid, text: 'Still owed ' + usd(now - paid) };
+    }
+    if (r.kind === 'quote') {
+      const dep = liveCents(r);
+      if (dep <= 0) return { kind: 'newTotal', cents: now, text: 'New total ' + usd(now) };
+      return dep > now ? { kind: 'depositExceeds', cents: dep - now, text: 'Deposit exceeds total, ' + usd(dep - now) } : { kind: 'balance', cents: now - dep, text: 'Balance due ' + usd(now - dep) };
+    }
+    const d = now - was;
+    return { kind: 'difference', cents: d, text: 'Difference ' + (d > 0 ? '+' : d < 0 ? '-' : '') + usd(d) };
+  }
+  // R5 / A5: a pay link is stale when an edit after it changed the total. The total when the link was made is the before-rows TXN
+  // total (column M) of the FIRST edit after the link; it is compared with the current total. An edit after the link with no readable
+  // copy (or a date-only legacy edit dated after the link's day) counts as stale: the total cannot be proved.
+  function payLinkStale(r, marks) {
+    const m = marks || {}, link = (m.paylinks || {})[r.txnId] || (m.paylinks || {})[r.number];
+    if (!link) return false;
+    const linkAt = Date.parse(link.recorded_at);
+    if (!Number.isFinite(linkAt)) return false;
+    const log = (m.editLog || {})[r.txnId] || [];
+    if (log.some(e => !Number.isFinite(Date.parse(e.at)) && s(e.date) > honoluluToday(linkAt))) return true; // date-only edit after the link's day
+    const after = log.filter(e => Date.parse(e.at) > linkAt).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    if (!after.length) return !log.length && !!(m.edits && m.edits[r.txnId] > honoluluToday(linkAt));
+    const txn = (after[0].rows || []).find(row => s(row && row[0]).toUpperCase() === 'TXN');
+    return !txn || cents(money(txn[12])) !== cents(r.total);
+  }
+  return { refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionBlockEnd, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow, helcimPaymentRows,
     buildVoidRow, beforeNote, undoRows, honoluluToday, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });

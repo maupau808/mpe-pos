@@ -811,8 +811,11 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
  body.counter-view .hist-modal{z-index:100}
  .cv-results{position:fixed!important;z-index:200!important;background:#fffdfa;color:#202c24;border:1px solid #8da18b;border-radius:6px;padding:6px;box-shadow:0 6px 20px #20382024;overflow:auto;max-height:320px;font:16px -apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}.cv-results button{display:flex;align-items:center;justify-content:space-between;gap:20px;width:100%;padding:10px;border:0;border-radius:4px;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}.cv-results button:hover,.cv-results button.active{background:#e8eee3}.cv-results small{display:block;font-size:13px;color:#59665c;margin-top:3px}.cv-results strong{font-variant-numeric:tabular-nums;white-space:nowrap}
  body.dark #counterView{background:#1d241f;color:#eff3ed}body.dark #counterView .cv-top,body.dark #counterView .cv-head{background:#1d241f;border-color:#48544a}body.dark #counterView .cv-checkout,body.dark #counterView .cv-deck,body.dark #counterView .cv-quote{background:#252f27;border-color:#48544a}body.dark #counterView .cv-article:nth-child(even){background:#29362b}body.dark #counterView input,body.dark #counterView button{background:#273229;color:#eff3ed;border-color:#48544a}body.dark #counterView .cv-desc input.cv-description,body.dark #counterView .cv-line>input{background:transparent}body.dark #counterView .cv-line>input.cv-qty{background:#273229}body.dark #counterView .sum-row,body.dark #counterView .cv-cost,body.dark #counterView .cv-margin,body.dark #counterView .cv-discount{color:#e1e8dd!important}body.dark #counterView #txnHistoryBtn{background:#36513b;color:#eef6ec}body.dark #counterView .cv-discount-head,body.dark #counterView .cv-line>input.cv-discount.cv-on{color:#ff8a80!important}body.dark #counterView .cv-pn{color:#aab6ad}body.dark #counterView .cv-desc input.cv-description,body.dark #counterView .cv-line .cv-qty,body.dark #counterView .cv-line .cv-sub,body.dark #counterView .cv-ea{color:#eff3ed}body.dark #counterView .cv-command.print{background:#2b5c8f;color:#fff}body.dark #counterView .cv-command.undo{background:#736437;color:#fff7db}body.dark #counterView .cv-command.delete{background:#8e2e25;color:#fff}body.dark #counterView .cv-command.next{background:#315e41;color:#fff}body.dark .cv-results{background:#273229;color:#eff3ed}body.dark .cv-results button:hover,body.dark .cv-results button.active{background:#3e5942}
- @media(max-width:1100px) and (min-width:900px){#counterView .cv-body{grid-template-columns:minmax(0,1fr) 321px}#counterView .cv-top{gap:4px;padding-left:10px;padding-right:10px}#counterView #docTypeSel button{padding:7px}#counterView #txnHistoryBtn{font-size:15px;padding:9px 10px;margin-left:14px}#counterView .cv-top .cv-icon,#counterView .cv-top .icon-btn{width:32px}}
- @media(max-width:899px){body.counter-view{overflow:auto}body.counter-view #counterView{position:relative;min-height:100dvh;height:auto}#counterView .cv-top{height:auto;flex-wrap:wrap;padding:8px 12px}#counterView .cv-docs{margin-left:0}#counterView #txnHistoryBtn{margin-left:8px;font-size:15px;padding:8px}#counterView .cv-body{display:flex;flex-direction:column}#counterView .cv-work{overflow:visible;padding:10px 12px;min-height:400px}#counterView .cv-head,#counterView .cv-line{grid-template-columns:18px minmax(95px,1fr) 52px 34px 65px 22px;gap:4px}#counterView .cv-head>.cv-support,#counterView .cv-line>.cv-support,#counterView .cv-reorder-label{display:none}#counterView .cv-desc input.cv-description{font-size:16px}#counterView .cv-head>span:nth-child(7){text-align:center}#counterView .cv-checkout{border-left:0;border-top:1px solid #d5ddd3;padding:16px}#counterView .cv-deck{gap:6px;padding:8px}#counterView .cv-command{flex-direction:column;gap:8px;padding:8px 2px;min-height:100px;font-size:18px}#counterView .cv-command.next{font-size:16px}#counterView .cv-command.next svg,#counterView .cv-command.print svg{order:0}#counterView .cv-command.next span{white-space:normal}#counterView .cv-command.print{display:flex;font-size:18px}#counterView .cv-command.print .cv-mirror{display:none}#counterView .cv-feedback{bottom:16px}#counterView .cv-command svg{width:58px;height:58px;flex-basis:58px}#counterView .cv-sn{flex-basis:126px}#counterView .cv-sn input{width:92px;max-width:92px;flex-basis:92px}#counterView .cv-summary{margin-top:6px}}
+ @media(max-width:1100px) and (min-width:900px){:where(body:not(.embedded-edit)) #counterView .cv-body{grid-template-columns:minmax(0,1fr) 321px}:where(body:not(.embedded-edit)) #counterView .cv-top{gap:4px;padding-left:10px;padding-right:10px}:where(body:not(.embedded-edit)) #counterView #docTypeSel button{padding:7px}:where(body:not(.embedded-edit)) #counterView #txnHistoryBtn{font-size:15px;padding:9px 10px;margin-left:14px}:where(body:not(.embedded-edit)) #counterView .cv-top .cv-icon,:where(body:not(.embedded-edit)) #counterView .cv-top .icon-btn{width:32px}}
+ @media(max-width:899px){body.counter-view:where(:not(.embedded-edit)){overflow:auto}body.counter-view:where(:not(.embedded-edit)) #counterView{position:relative;min-height:100dvh;height:auto}:where(body:not(.embedded-edit)) #counterView .cv-top{height:auto;flex-wrap:wrap;padding:8px 12px}:where(body:not(.embedded-edit)) #counterView .cv-docs{margin-left:0}:where(body:not(.embedded-edit)) #counterView #txnHistoryBtn{margin-left:8px;font-size:15px;padding:8px}:where(body:not(.embedded-edit)) #counterView .cv-body{display:flex;flex-direction:column}:where(body:not(.embedded-edit)) #counterView .cv-work{overflow:visible;padding:10px 12px;min-height:400px}:where(body:not(.embedded-edit)) #counterView .cv-head,:where(body:not(.embedded-edit)) #counterView .cv-line{grid-template-columns:18px minmax(95px,1fr) 52px 34px 65px 22px;gap:4px}:where(body:not(.embedded-edit)) #counterView .cv-head>.cv-support,:where(body:not(.embedded-edit)) #counterView .cv-line>.cv-support,:where(body:not(.embedded-edit)) #counterView .cv-reorder-label{display:none}:where(body:not(.embedded-edit)) #counterView .cv-desc input.cv-description{font-size:16px}:where(body:not(.embedded-edit)) #counterView .cv-head>span:nth-child(7){text-align:center}:where(body:not(.embedded-edit)) #counterView .cv-checkout{border-left:0;border-top:1px solid #d5ddd3;padding:16px}:where(body:not(.embedded-edit)) #counterView .cv-deck{gap:6px;padding:8px}:where(body:not(.embedded-edit)) #counterView .cv-command{flex-direction:column;gap:8px;padding:8px 2px;min-height:100px;font-size:18px}:where(body:not(.embedded-edit)) #counterView .cv-command.next{font-size:16px}:where(body:not(.embedded-edit)) #counterView .cv-command.next svg,:where(body:not(.embedded-edit)) #counterView .cv-command.print svg{order:0}:where(body:not(.embedded-edit)) #counterView .cv-command.next span{white-space:normal}:where(body:not(.embedded-edit)) #counterView .cv-command.print{display:flex;font-size:18px}:where(body:not(.embedded-edit)) #counterView .cv-command.print .cv-mirror{display:none}:where(body:not(.embedded-edit)) #counterView .cv-feedback{bottom:16px}:where(body:not(.embedded-edit)) #counterView .cv-command svg{width:58px;height:58px;flex-basis:58px}:where(body:not(.embedded-edit)) #counterView .cv-sn{flex-basis:126px}:where(body:not(.embedded-edit)) #counterView .cv-sn input{width:92px;max-width:92px;flex-basis:92px}:where(body:not(.embedded-edit)) #counterView .cv-summary{margin-top:6px}}
+ /* History edit (embedded in History's middle column): always the desktop layout, no tab row, History button, command deck or output icons. */
+ #counterView #cvEditTitle,#counterView #cvEditType{display:none}body.embedded-edit #counterView #cvEditTitle{display:block;font-size:17px;font-weight:700;white-space:nowrap}body.embedded-edit #counterView #cvEditType{display:block;font-size:16px;white-space:nowrap;margin-right:auto;padding-left:4px}body.embedded-edit #counterView #docTypeSel{display:none!important}body.embedded-edit #counterView .cv-tabs,body.embedded-edit #counterView #cvNew,body.embedded-edit #counterView .cv-history,body.embedded-edit #counterView .cv-deck,body.embedded-edit #counterView .cv-top .icon-btn,body.embedded-edit #counterView .cv-top .menu-wrap,body.embedded-edit #counterView #cvOptions,body.embedded-edit #counterView #cvFullScreen,body.embedded-edit #counterView #cvFrontLock,body.embedded-edit #counterView #themeToggle,body.embedded-edit #counterView #printBtn,body.embedded-edit #counterView #chargeCardBtn{display:none!important}body.embedded-edit #counterView .cv-top{padding-left:12px;padding-right:12px}body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 300px}body.embedded-edit #counterView .cv-work{padding:8px 10px}body.embedded-edit #counterView .cv-checkout{padding:12px}body.embedded-edit #counterView .sum-row.total .sum-val{font-size:32px}
+ @media(max-width:1060px){body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 250px}body.embedded-edit #counterView .cv-reorder,body.embedded-edit #counterView .cv-reorder-label{display:none}body.embedded-edit #counterView .cv-desc input.cv-description{font-size:16px}body.embedded-edit #counterView .cv-checkout{gap:8px}body.embedded-edit #counterView .cv-head>.cv-support:not(.cv-discount-head),body.embedded-edit #counterView .cv-line>.cv-cost,body.embedded-edit #counterView .cv-line>.cv-margin{display:none}body.embedded-edit #counterView .cv-head,body.embedded-edit #counterView .cv-line{grid-template-columns:20px minmax(150px,1fr) 62px 80px 44px 88px 26px;gap:5px}}
 }
 @media screen{#counterView #cvFullScreen[aria-pressed="true"],#counterView #cvFrontLock[aria-pressed="true"]{background:#dce8dc;border-color:#8ca28b}body.dark #counterView #cvFullScreen[aria-pressed="true"],body.dark #counterView #cvFrontLock[aria-pressed="true"]{background:#3e5942;color:#eff5ec;border-color:#779379}}
 @media print{#counterView,.cv-results{display:none!important}tr[data-order-discount] td,tr[data-order-discount] input,tr.cv-order-print td,tr.cv-order-print input{font-weight:800!important;color:#000!important}}
@@ -1168,7 +1171,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.04.10';
+const POS_RELEASE = '2026.11.05.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1328,6 +1331,7 @@ function newChargeExternalId() {
 }
 
 async function chargeCardOnTerminal() {
+  if (editSessionRefuses()) return;
   if (_cardChargeInFlight || !cardTerminalAvailable()) return;
   const btn = document.getElementById('chargeCardBtn');
   const { subtotal, hasAny } = currentSubtotal();
@@ -1753,6 +1757,7 @@ function claimPosAutoReload(release) {
 }
 
 async function checkForPosUpdate() {
+  if (MPE_EDIT_SESSION_PAGE) return;   // a History edit page never reloads itself for an update
   try {
     const response = await fetch(new URL('version.json', location.href), { cache: 'no-store' });
     if (!response.ok) return;
@@ -1833,7 +1838,9 @@ async function maybeAutoRefresh() {
     _checkingCatalog = false;
   }
 }
-if (!MPE_EDIT_SESSION_PAGE) document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); flushStockSessionQueue(); retryTransactionSync(); } });
+document.addEventListener('visibilitychange', () => { if (!MPE_EDIT_SESSION_PAGE && !document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); flushStockSessionQueue(); retryTransactionSync(); } });
+// An edit-session page never changes the document type (History has Change type).
+if (MPE_EDIT_SESSION_PAGE) document.addEventListener('click', e => { if (e.target.closest && e.target.closest('#docTypeSel .doc-type-btn')) { e.preventDefault(); e.stopImmediatePropagation(); editSessionRefuses(); } }, true);
 if (!MPE_EDIT_SESSION_PAGE) {
 setInterval(() => { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); }, 60 * 1000);
 setInterval(checkForPosUpdate, 5 * 60 * 1000);
@@ -4897,6 +4904,7 @@ function captureSaleLines() {
 // Next Transaction completes through the existing Save seam before wiping any rows.
 // Local durability is required; Drive delivery remains queued safely when offline.
 async function saveAndClearTransaction() {
+  if (editSessionRefuses()) return;
   if (_nextTransactionBusy) return false;
   if (_docType === 'internal') {
     flashScanCommand('Switch to Receipt, Invoice, or Quote before saving the sale', 'warn');
@@ -4937,6 +4945,7 @@ function runScanCommand(raw) {
   const payload = String(raw || '').trim().toUpperCase();
   const body = SCAN_COMMANDS.get(payload);
   if (!body) return;
+  if (/^(PRINT|SAVE|SAVENEW|DELETE)$/.test(body) && editSessionRefuses()) return;
   const now = Date.now();
   // Print, Undo, Save and New, and Delete ignore an electrical double-read.
   // ADD commands deliberately stack on repeat.
@@ -8388,6 +8397,7 @@ function refreshBulkPricing() {
 }
 
 function updateSummary() {
+  scheduleEditState();   // returns at once unless this page is an open History edit
   refreshBulkPricing();
   const { subtotal, hasAny } = currentSubtotal();
   const feeRow = document.getElementById('cardFeeRow');
@@ -8416,6 +8426,7 @@ function updateSummary() {
 }
 
 function clearAll() {
+  if (editSessionRefuses()) return false;
   commitActiveBridgeDraft();
   // Snapshot scanner-origin tracked rows for Unit Stock BEFORE the table is
   // wiped. Only emits when this cart never completed an authoritative output.
@@ -9047,6 +9058,7 @@ function recordOutgoingDocument() {
 
 let _saveFeedbackTimer = null;
 async function saveOnly() {
+  if (editSessionRefuses()) return;
   if (_docType === 'internal') {
     alert('Internal copies cannot be saved to transaction history because they contain private cost and margin information. Switch to Receipt, Invoice, or Quote first.');
     return;
@@ -9169,6 +9181,7 @@ function serializedPrintDocument() {
 }
 
 async function manualPrint() {
+  if (editSessionRefuses()) return;
   if (_manualPrintInFlight) return;
   const physicalOutputOwner = claimPhysicalOutput();
   if (!physicalOutputOwner) return;
@@ -9213,6 +9226,7 @@ let _lastDirectPrintTxnId = '';
 let _lastDirectPrintFingerprint = '';
 let _lastDirectPrintAt = 0;
 async function autoPrint() {
+  if (editSessionRefuses()) return;
   if (_directPrintInFlight || _physicalOutputInFlight) return;
   if (_currentTxnId && _currentTxnId === _lastDirectPrintTxnId
       && historyContentFingerprint(captureOrder()) === _lastDirectPrintFingerprint && Date.now() - _lastDirectPrintAt < AUTO_PRINT_REPEAT_GUARD_MS) {
@@ -9571,6 +9585,7 @@ async function _renderPdf(el, filename, mode) {
 // separate button is the only way to get a colour file without putting colour on
 // the sheets that come off the shop printer. Needs no Google sign-in.
 async function exportPdf() {
+  if (editSessionRefuses()) return;
   const btn = document.getElementById('exportPdfBtn');
   let order = captureOrder();
   if (!order || !order.items.length) { alert('Add at least one item before exporting.'); return; }
@@ -9616,6 +9631,7 @@ async function exportPdf() {
 // Email: the shared email window (email-window.js, the same one History uses). It sends only when a person presses
 // Send (Trevor, 2026-11-04; Claude never sends), from the Google account this register is signed in with.
 async function emailDoc() {
+  if (editSessionRefuses()) return;
   const btn = document.getElementById('emailDocBtn');
   const order = captureOrder();
   if (!order || !order.items.length) { alert('Add at least one item before emailing.'); return; }
@@ -9934,6 +9950,7 @@ function updateScreenDocTitle() {
   if (!el) return;
   const num = activeDocNumber();
   const converted = _quoteSource && _docType !== 'quote' ? '   ·   From quote ' + _quoteSource.docNumber : '';
+  if (_embeddedEdit) { el.textContent = 'Editing ' + (num || ''); return; }   // History edit: no Reprint tag (the date stays the original)
   el.textContent = DOC_TITLES[_docType] + (num ? '   ·   No. ' + num : '')
     + converted + (_reprintSource ? '   ·   Reprint' : '');
 }
@@ -10525,6 +10542,7 @@ function renderPhoneLists() {
 }
 
 async function openPhoneLists(refresh) {
+  if (editSessionRefuses()) return;
   const btn = document.getElementById('phoneListBtn');
   if (!googleSessionAvailable()) { _pendingAction = openPhoneLists; handleSignIn(); return; }
   if (!loaded) { alert('Prices are still loading — try again in a moment.'); return; }
@@ -10731,12 +10749,13 @@ function openLedgerSale({ kind, txn }) {
 const EDIT_PATCH_FIELDS = { company: 'custCompany', name: 'custName', phone: 'custPhone', email: 'custEmail', street: 'custAddr', city: 'custCity', region: 'custState', zip: 'custZip' };
 const EDIT_PATCH_MAX = 120;
 function editSessionRequest(data) {
-  if (!data || typeof data !== 'object' || Array.isArray(data) || data.v !== 1 || data.kind !== 'edit' || data.mode !== 'silent') return null;
+  if (!data || typeof data !== 'object' || Array.isArray(data) || data.v !== 1 || data.kind !== 'edit' || !['silent', 'embedded'].includes(data.mode)) return null;
   if (typeof data.sessionId !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(data.sessionId)) return null;
   const txn = data.txn, patch = data.patch, fp = data.loaded && data.loaded.fingerprint;
   if (!txn || typeof txn !== 'object' || typeof txn.txnId !== 'string' || !txn.txnId.trim()) return null;
   if (!['receipt', 'invoice', 'quote'].includes(txn.docType)) return null;
   if (typeof fp !== 'string' || !fp || fp.length > 200000) return null;
+  if (data.mode === 'embedded') return { mode: 'embedded', sessionId: data.sessionId, txn, loaded: fp, patch: null };   // no patch: the person edits
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return null;
   const clean = {};
   for (const [key, value] of Object.entries(patch)) {
@@ -10744,7 +10763,7 @@ function editSessionRequest(data) {
     if (!EDIT_PATCH_FIELDS[key] || typeof value !== 'string') return null;
     clean[key] = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, EDIT_PATCH_MAX);
   }
-  return { sessionId: data.sessionId, txn, loaded: fp, patch: clean };
+  return { mode: 'silent', sessionId: data.sessionId, txn, loaded: fp, patch: clean };
 }
 function editSessionRows() {   // the rows this page would save for the document on screen, built exactly as the save builds them
   const order = captureOrder();
@@ -10754,43 +10773,48 @@ function editSessionRows() {   // the rows this page would save for the document
   if (_reprintSource.fromQuote) order.fromQuote = { txnId: _reprintSource.fromQuote.txnId, docNumber: _reprintSource.fromQuote.docNumber };
   return transactionRowsForOrder(order, order.txnId, new Date(order.date));
 }
-async function runEditSession(raw) {
-  const req = editSessionRequest(raw);
-  const base = { v: 1, sessionId: String(raw && raw.sessionId || '').slice(0, 64), txnId: String(raw && raw.txn && raw.txn.txnId || '').slice(0, 80) };
-  const fail = (code, message, extra) => ({ ...base, ok: false, code, message, ...extra });
-  if (!req) return fail('invalid', 'That edit request was not valid. Nothing was changed.');
-  if (_editSession) return fail('busy', 'Another edit is saving. Try again in a moment.');
+function editSessionBase(raw) {
+  return { v: 1, sessionId: String(raw && raw.sessionId || '').slice(0, 64), txnId: String(raw && raw.txn && raw.txn.txnId || '').slice(0, 80) };
+}
+const editSessionFail = base => (code, message, extra) => ({ ...base, ok: false, code, message, ...extra });
+// Shared load and proof (silent and embedded): returns a refusal result, or null once the screen holds exactly the saved document.
+async function editSessionLoad(req, fail, stop = () => null) {   // stop(): a result that ends the load early (History's Cancel), or null
   const txn = req.txn;
+  if (!ledgerDraftTabIsEmpty()) return fail('not_empty', 'This page is not empty. Nothing was changed.');
+  if (txn.contactConflict) return fail('contact_conflict', 'Customer changes for this sale need review first. Nothing was changed.');
+  // A fresh page reads the catalog from this computer's saved copy. Give it a few seconds: a part found there supplies the make for the
+  // PDF. The saved rows never depend on it (the proof below compares them), so a missing catalog only leaves the brand off the PDF.
+  for (let waited = 0; !stop() && !(Array.isArray(partsArray) && partsArray.length) && waited < 8000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
+  // The page may still be reading its saved Google sign-in: give it a moment so an online save is not mistaken for an offline one.
+  for (let waited = 0; !stop() && !googleSessionAvailable() && waited < 6000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
+  if (stop()) return stop();
+  fillTxnIntoPOS(txn);
+  _reprintSource.ledgerEdit = true;
+  // Prove the sale screen reproduces the saved document exactly before touching it (card fee, deposit note, quote link, serials,
+  // discounts, PO #). Any difference means the save would change more than the person asked for, so it is refused.
+  const loadedRows = editSessionRows();
+  if (!loadedRows || transactionRowsFingerprint(loadedRows) !== req.loaded) {
+    let where = '';   // only where the first difference is (row and column), never the values
+    try {
+      const a = JSON.parse(req.loaded), b = loadedRows ? JSON.parse(transactionRowsFingerprint(loadedRows)) : [];
+      outer: for (let r = 0; r < Math.max(a.length, b.length); r++) for (let c = 0; c < 24; c++) if (((a[r] || [])[c]) !== ((b[r] || [])[c])) { where = `row ${r} column ${c}`; break outer; }
+      if (!where && a.length !== b.length) where = `${a.length} saved rows, ${b.length} on screen`;
+    } catch (_error) { where = 'unreadable'; }
+    return fail('open_sale_screen', 'This one has to be changed on the sale screen. Nothing was changed.', { detail: where });
+  }
+  return null;
+}
+// Shared save and report (silent and embedded): saves the screen through the one save path and answers the one result.
+async function editSessionSave(req, base, updateInfo) {
+  const fail = editSessionFail(base), txn = req.txn;
   try {
-    if (!ledgerDraftTabIsEmpty()) return fail('not_empty', 'This page is not empty. Nothing was changed.');
-    if (txn.contactConflict) return fail('contact_conflict', 'Customer changes for this sale need review first. Nothing was changed.');
-    // A fresh page reads the catalog from this computer's saved copy. Give it a few seconds: a part found there supplies the make for the
-    // PDF. The saved rows never depend on it (the proof below compares them), so a missing catalog only leaves the brand off the PDF.
-    for (let waited = 0; !(Array.isArray(partsArray) && partsArray.length) && waited < 8000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
-    // The page may still be reading its saved Google sign-in: give it a moment so an online save is not mistaken for an offline one.
-    for (let waited = 0; !googleSessionAvailable() && waited < 6000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
-    fillTxnIntoPOS(txn);
-    _reprintSource.ledgerEdit = true;
-    // Prove the sale screen reproduces the saved document exactly before touching it (card fee, deposit note, quote link, serials,
-    // discounts, PO #). Any difference means the save would change more than the customer, so it is refused.
-    const loadedRows = editSessionRows();
-    if (!loadedRows || transactionRowsFingerprint(loadedRows) !== req.loaded) {
-      let where = '';   // only where the first difference is (row and column), never the values
-      try {
-        const a = JSON.parse(req.loaded), b = loadedRows ? JSON.parse(transactionRowsFingerprint(loadedRows)) : [];
-        outer: for (let r = 0; r < Math.max(a.length, b.length); r++) for (let c = 0; c < 24; c++) if (((a[r] || [])[c]) !== ((b[r] || [])[c])) { where = `row ${r} column ${c}`; break outer; }
-        if (!where && a.length !== b.length) where = `${a.length} saved rows, ${b.length} on screen`;
-      } catch (_error) { where = 'unreadable'; }
-      return fail('open_sale_screen', 'This one has to be changed on the sale screen. Nothing was changed.', { detail: where });
-    }
-    for (const [key, id] of Object.entries(EDIT_PATCH_FIELDS)) if (key in req.patch) document.getElementById(id).value = req.patch[key];
     const after = captureOrder();
     if (!after) return fail('open_sale_screen', 'This one has to be changed on the sale screen. Nothing was changed.');
     if (historyContentFingerprint(after) === _historyContentBaseline) return { ...base, ok: true, unchanged: true, number: _reprintSource.docNumber || '' };
     const history = getHistory();
     const previous = history.find(entry => entry.txnId === txn.txnId);
     const previousCopy = previous ? JSON.parse(JSON.stringify(previous)) : null;
-    _editSession = { id: req.sessionId, loadedFingerprint: req.loaded, updateInfo: !!req.patch.updateInfo,
+    _editSession = { id: req.sessionId, loadedFingerprint: req.loaded, updateInfo: !!updateInfo,
       customerRef: document.getElementById('custPanel').dataset.customerRef || '' };
     try {
       await prepareAndSaveForPrint('save_snapshot', { prepareOutput: false });
@@ -10805,10 +10829,10 @@ async function runEditSession(raw) {
       const all = getHistory(), at = all.findIndex(entry => entry.txnId === txn.txnId);
       if (previousCopy) { if (at >= 0) all[at] = previousCopy; else all.unshift(previousCopy); } else if (at >= 0) all.splice(at, 1);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(all));
-      return fail(outcome.stale ? 'stale' : 'refused', outcome.stale ? 'Changed on another register since you opened it. Your edits are kept in the box.' : outcome.error);
+      return fail(outcome.stale ? 'stale' : 'refused', outcome.stale ? (req.mode === 'embedded' ? 'Changed on another register since you opened it. Nothing was saved. Open it again to redo the change.' : 'Changed on another register since you opened it. Your edits are kept in the box.') : outcome.error);
     }
     if (!outcome.ok || outcome.pending || (mine && mine.historySyncPending)) {
-      return { ...base, ok: true, pending: true, localSaved: true, number, customer: req.patch.updateInfo ? 'waiting' : 'none' };
+      return { ...base, ok: true, pending: true, localSaved: true, number, customer: updateInfo ? 'waiting' : 'none' };
     }
     let pdf = 'none';
     if (_docType === 'invoice') {
@@ -10819,19 +10843,160 @@ async function runEditSession(raw) {
       }
     }
     // The customer record is queued in this computer's list; give it a few seconds to reach the sheet before this page is closed.
-    if (req.patch.updateInfo) await Promise.race([Promise.resolve(syncCustomersFromSheet()).catch(() => {}), new Promise(resolve => setTimeout(resolve, 8000))]);
-    return { ...base, ok: true, verified: true, number, pdf, customer: req.patch.updateInfo ? 'queued' : 'none' };
+    if (updateInfo) await Promise.race([Promise.resolve(syncCustomersFromSheet()).catch(() => {}), new Promise(resolve => setTimeout(resolve, 8000))]);
+    return { ...base, ok: true, verified: true, number, pdf, customer: updateInfo ? 'queued' : 'none' };
   } catch (error) {
     return fail('error', 'The edit stopped part-way. Check History before trying again.', { detail: String(error && error.message || error).slice(0, 120) });
   } finally {
     _editSession = null;
   }
 }
-async function runEditSessionAndReport(raw) {
-  const result = await runEditSession(raw);
+async function runEditSession(raw) {
+  const req = editSessionRequest(raw);
+  const base = editSessionBase(raw), fail = editSessionFail(base);
+  if (!req || req.mode !== 'silent') return fail('invalid', 'That edit request was not valid. Nothing was changed.');
+  if (_editSession || _embeddedEdit) return fail('busy', 'Another edit is saving. Try again in a moment.');
+  try {
+    const refused = await editSessionLoad(req, fail);
+    if (refused) return refused;
+    for (const [key, id] of Object.entries(EDIT_PATCH_FIELDS)) if (key in req.patch) document.getElementById(id).value = req.patch[key];
+  } catch (error) {
+    return fail('error', 'The edit stopped part-way. Check History before trying again.', { detail: String(error && error.message || error).slice(0, 120) });
+  }
+  return editSessionSave(req, base, !!req.patch.updateInfo);
+}
+function reportEditResult(result) {
   if (window.mpeDesktop && typeof window.mpeDesktop.editSessionResult === 'function') window.mpeDesktop.editSessionResult(result);
   else if (window.parent !== window) window.parent.postMessage({ type: 'edit-result', result }, location.origin);
+}
+async function runEditSessionAndReport(raw) {
+  if (raw && raw.mode === 'embedded') {   // stays open for the person; reports once now only if it could not load
+    const refused = await startEmbeddedEdit(raw);
+    if (refused) reportEditResult(refused);
+    return refused;
+  }
+  const result = await runEditSession(raw);
+  reportEditResult(result);
   return result;
+}
+
+// ── History's embedded edit (item changes on this real sale screen inside History's middle column) ────────────────────
+// Loads and proves exactly as silent, then stays open: sends `state` as the person edits and answers History's `save` / `cancel`
+// commands with the one result. Everything that prints, clears, charges or changes the type is refused on this page.
+var _embeddedEdit = null;   // var, not let: updateSummary reads it while the page is still starting
+var _embeddedLoading = null;   // { sessionId, cancelled } while the request is loading
+var _embeddedEarlyCancel = '';   // a Cancel that came before its request
+function editSessionRefuses() {   // the Print, Save, Clear, Next, PDF, email, charge and type controls on an edit-session page
+  if (!MPE_EDIT_SESSION_PAGE) return false;
+  flashScanCommand('Use Save or Cancel in History', 'warn');
+  return true;
+}
+function hasUnsavedEdit() {
+  const order = captureOrder();
+  return _historyContentBaseline !== (order ? historyContentFingerprint(order) : null);
+}
+function orderTotalCents(order) {
+  const value = Number(String(order && order.total || '').replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(value) ? Math.round(value * 100) : 0;
+}
+function editScreenLines() {   // what captureOrder reads per line, before it drops the unpriced ones
+  return rowOrder().map(i => {
+    const priceEl = document.getElementById(`price-${i}`);
+    if (!priceEl) return null;
+    const pInput = priceEl.querySelector('.price-edit');
+    return { pn: document.querySelector(`[data-row="${i}"].part-input`)?.value.trim() || '',
+      ea: parseFloat(pInput ? pInput.value.replace(/[$,]/g, '').replace(/^-\s+/, '-') : priceEl.dataset.price) || 0,
+      discountPerUnit: parseFloat(priceEl.dataset.discountPerUnit) || 0 };
+  }).filter(Boolean);
+}
+function editSaveProblem() {   // '' or the first line captureOrder would silently leave out
+  const lines = editScreenLines().filter(line => line.pn);
+  if (!lines.length) return 'Add at least one line';
+  const at = lines.findIndex(line => !line.ea && line.pn !== 'Note' && !(line.discountPerUnit > 0));
+  return at < 0 ? '' : `Line ${at + 1} has no price`;
+}
+function editStateNow() {
+  const e = _embeddedEdit, problem = editSaveProblem(), dirty = hasUnsavedEdit(), customer = {};
+  for (const [key, id] of Object.entries(EDIT_PATCH_FIELDS)) customer[key] = String(document.getElementById(id)?.value || '').slice(0, EDIT_PATCH_MAX);
+  return { v: 1, sessionId: e.req.sessionId, seq: ++e.seq, ready: true, dirty, totalCents: orderTotalCents(captureOrder()),
+    originalTotalCents: e.originalTotalCents, canSave: dirty && !problem && !e.saving, saving: e.saving, problem, customer };
+}
+function postEditState() {
+  const e = _embeddedEdit;
+  if (!e || e.done) return;
+  const state = editStateNow();
+  if (window.mpeDesktop && typeof window.mpeDesktop.editSessionState === 'function') window.mpeDesktop.editSessionState(state);
+  else if (window.parent !== window) window.parent.postMessage({ type: 'edit-state', state }, location.origin);
+}
+function scheduleEditState() {   // returns at once unless this page is an open embedded edit (nothing on the normal Print path)
+  const e = _embeddedEdit;
+  if (!e || e.done || e.timer) return;
+  e.timer = setTimeout(() => { e.timer = null; postEditState(); }, 200);
+}
+function finishEmbeddedEdit(result) {
+  const e = _embeddedEdit;
+  if (!e || e.done) return null;
+  e.done = true; clearTimeout(e.timer); e.timer = null;
+  reportEditResult(result);
+  return result;
+}
+async function startEmbeddedEdit(raw) {
+  const req = editSessionRequest(raw);
+  const base = editSessionBase(raw), fail = editSessionFail(base);
+  if (!req || req.mode !== 'embedded') return fail('invalid', 'That edit request was not valid. Nothing was changed.');
+  if (_editSession || _embeddedEdit || _embeddedLoading) return fail('busy', 'Another edit is saving. Try again in a moment.');
+  const cancelled = { ...base, ok: true, cancelled: true, unchanged: true };
+  if (_embeddedEarlyCancel === req.sessionId) { _embeddedEarlyCancel = ''; return cancelled; }
+  const loading = _embeddedLoading = { sessionId: req.sessionId, cancelled: false };
+  try {
+    const refused = await editSessionLoad(req, fail, () => loading.cancelled ? cancelled : null);
+    if (refused) return refused;
+    if (loading.cancelled) return cancelled;   // nothing was written: the load only fills this page
+  } catch (error) {
+    return fail('error', 'The edit stopped part-way. Check History before trying again.', { detail: String(error && error.message || error).slice(0, 120) });
+  } finally {
+    _embeddedLoading = null;
+  }
+  _embeddedEdit = { req, base, seq: 0, saving: false, done: false, timer: null, originalTotalCents: orderTotalCents(captureOrder()) };
+  if (typeof document.body?.classList?.add === 'function') document.body.classList.add('embedded-edit');
+  if (typeof document.addEventListener === 'function') { document.addEventListener('input', scheduleEditState, true); document.addEventListener('change', scheduleEditState, true); }
+  const title = document.getElementById('cvEditTitle'), type = document.getElementById('cvEditType');
+  if (title) title.textContent = 'Editing ' + (_reprintSource.docNumber || '');
+  if (type) type.textContent = '· ' + (DOC_TITLES[_docType] || '');   // the type as plain text (History has Change type)
+  updateScreenDocTitle();
+  postEditState();
+  return null;
+}
+// A key History did not use while this edit is open (website): fed to the scanner path only, never typed into a field.
+function runEditKey(data) {
+  const e = _embeddedEdit;
+  if (!e || e.done || !data || typeof data.key !== 'string' || !data.key || data.key.length > 20) return false;
+  const noop = () => {};
+  onHardwareScanKeydown({ key: data.key, code: typeof data.code === 'string' ? data.code.slice(0, 40) : '', shiftKey: data.shiftKey === true, ctrlKey: data.ctrlKey === true,
+    altKey: data.altKey === true, metaKey: data.metaKey === true, isComposing: false, repeat: false, timeStamp: performance.now(), target: document.body,
+    preventDefault: noop, stopPropagation: noop });
+  return true;
+}
+async function runEditCommand(command) {   // History's Save / Cancel for the open embedded edit
+  const e = _embeddedEdit;
+  if (!command || typeof command !== 'object' || command.v !== 1 || typeof command.sessionId !== 'string') return null;
+  if (!e && command.cmd === 'cancel' && /^[A-Za-z0-9_-]{8,64}$/.test(command.sessionId)) {   // Cancel while loading, or before the request came
+    if (_embeddedLoading) { if (_embeddedLoading.sessionId === command.sessionId) _embeddedLoading.cancelled = true; }
+    else _embeddedEarlyCancel = command.sessionId;
+    return null;   // the load answers with the one cancelled result
+  }
+  if (!e || e.done || command.sessionId !== e.req.sessionId) return null;
+  if (command.cmd === 'cancel') {
+    if (e.saving) return null;
+    return finishEmbeddedEdit({ ...e.base, ok: true, cancelled: true, unchanged: true });
+  }
+  if (command.cmd !== 'save' || e.saving) return null;
+  const problem = editSaveProblem();
+  if (problem) { postEditState(); return null; }   // History shows the problem from state; nothing is written
+  e.saving = true; postEditState();
+  const result = await editSessionSave(e.req, e.base, command.updateInfo === true);
+  e.saving = false;
+  return finishEmbeddedEdit(result);
 }
 
 function toggleSignature() {
@@ -11688,7 +11853,7 @@ const plain=n=>Number(n||0).toFixed(2);
 let mounted=false,printing=false,frame=0,busy=false,lastIds=null,lastCount=0,searchTarget=null,searchMatches=[],searchActive=0,dragId=null,focusSnapshot=null;
 const originals=[];
 const root=document.createElement('section');root.id='counterView';root.setAttribute('aria-label','Counter POS');
-root.innerHTML=`<header class="cv-top"><div class="cv-tabs" id="cvTabs"></div><button class="cv-new" id="cvNew" type="button" title="New sale" aria-label="New sale">+</button><div class="cv-docs"></div><div class="cv-history"></div><button class="cv-icon" id="cvOptions" type="button">Options</button><button class="cv-icon" id="cvFullScreen" type="button" title="Full screen" aria-label="Full screen" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button><button class="cv-icon" id="cvFrontLock" type="button" title="Keep POS in front" aria-label="Keep POS in front" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 3 8 0-1 6 4 4v2H5v-2l4-4-1-6zM12 15v7"/></svg></button></header>
+root.innerHTML=`<header class="cv-top"><strong class="cv-edit-title" id="cvEditTitle"></strong><span class="cv-edit-type" id="cvEditType"></span><div class="cv-tabs" id="cvTabs"></div><button class="cv-new" id="cvNew" type="button" title="New sale" aria-label="New sale">+</button><div class="cv-docs"></div><div class="cv-history"></div><button class="cv-icon" id="cvOptions" type="button">Options</button><button class="cv-icon" id="cvFullScreen" type="button" title="Full screen" aria-label="Full screen" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button><button class="cv-icon" id="cvFrontLock" type="button" title="Keep POS in front" aria-label="Keep POS in front" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 3 8 0-1 6 4 4v2H5v-2l4-4-1-6zM12 15v7"/></svg></button></header>
 <div class="cv-quote" hidden><label><input type="checkbox" data-cv-toggle="Signature">Signature</label><label><input type="checkbox" data-cv-toggle="Review">Review request</label><label><input type="checkbox" data-cv-toggle="SalesView">Sales View</label></div>
 <div class="cv-body"><div class="cv-work"><div class="cv-head"><span></span><span><span>Description</span><span class="cv-reorder-label">Need to reorder?</span></span><span class="cv-support">Cost</span><span class="cv-support">Margin %</span><span class="cv-support cv-discount-head">Discount</span><span>Ea.</span><span>Qty</span><span>Price</span><span></span></div><div id="cvItems"></div><div class="cv-entry"><input id="cvEntry" autocomplete="off" aria-label="New item" placeholder="Part number or description…"></div><div id="cvReview"></div></div>
 <aside class="cv-checkout"><div class="cv-customer-label">Customer</div><div id="cvCustomer"></div><button class="cv-note" id="cvNote" type="button">Add note</button><div id="cvPo"></div><div id="cvLedger"></div><div class="cv-summary"><div class="cv-order"><button id="cvOrderToggle" type="button" aria-expanded="true">Order discount</button><div class="cv-discount-mode" role="group" aria-label="Order discount type"><button id="cvOrderMoney" type="button" aria-pressed="true">$</button><button id="cvOrderPercent" type="button" aria-pressed="false">%</button></div><input id="cvOrderValue" aria-label="Whole order discount" type="text" inputmode="decimal" value="0.00" autocomplete="off"></div><div id="cvTotals"></div></div><label class="cv-fee"><input id="cvCardFee" type="checkbox">Card fee · 3%</label><div id="cvFinalize"></div><div id="cvCharge"></div></aside></div>
@@ -11831,11 +11996,14 @@ function closeBrowserTab(id){
  if(id===activeTab){const other=ids.find(n=>n!==id);if(other===undefined)addTab();else activateTab(other);}
  browserTabs.delete(id);q(`[data-cv-tab="${id}"]`)?.closest('.cv-tab-group')?.remove();
 }
-function addTab(){const id=nextTab++,b=document.createElement('button');b.type='button';b.className='cv-tab';b.dataset.cvTab=id;b.textContent='Sale '+id;b.onclick=()=>activateTab(id);const group=document.createElement('div');group.className='cv-tab-group';const close=document.createElement('button');close.type='button';close.className='cv-close-tab';close.textContent='×';close.setAttribute('aria-label','Close sale '+id);close.title='Close sale '+id;close.onclick=()=>closeBrowserTab(id);group.append(b,close);q('#cvTabs').append(group);if(id!==1)activateTab(id);else b.classList.add('active');}
+// A History edit frame (website) sits over History: the sale tabs wait until it is saved or cancelled.
+function editFrameOpen(){if(!document.querySelector('iframe[data-mpe-embed]'))return false;flashScanCommand('Finish or cancel the edit first','warn');return true;}
+function addTab(){if(editFrameOpen())return;const id=nextTab++,b=document.createElement('button');b.type='button';b.className='cv-tab';b.dataset.cvTab=id;b.textContent='Sale '+id;b.onclick=()=>{if(!editFrameOpen())activateTab(id);};const group=document.createElement('div');group.className='cv-tab-group';const close=document.createElement('button');close.type='button';close.className='cv-close-tab';close.textContent='×';close.setAttribute('aria-label','Close sale '+id);close.title='Close sale '+id;close.onclick=()=>{if(!editFrameOpen())closeBrowserTab(id);};group.append(b,close);q('#cvTabs').append(group);if(id!==1)activateTab(id);else b.classList.add('active');}
 // Ledger tab: first, never closed. The app shows it in its native tab strip instead.
 let ledgerTab=null;
-if(window.mpeDesktop){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;window.mpeDesktop.onLedgerSale?.(openLedgerSale);window.mpeDesktop.onEditSession?.(runEditSessionAndReport);}else{if(MPE_EDIT_SESSION_PAGE){window.addEventListener('message',e=>{if(e.source!==window.parent||e.origin!==location.origin||!e.data||e.data.type!=='edit-session')return;void runEditSessionAndReport(e.data.request);});window.parent.postMessage({type:'edit-ready'},location.origin);}nextTab=1;addTab();q('#cvNew').onclick=addTab;ledgerTab=MPE_EDIT_SESSION_PAGE?null:window.MPELedgerTab?.install({document,window,tabs:q('#cvTabs'),header:q('.cv-top'),host:root,onShow:()=>qa('#cvTabs .cv-tab[data-cv-tab]').forEach(b=>b.classList.remove('active')),onOpenSale:sale=>{addTab();openLedgerSale(sale);},scanKeydown:onHardwareScanKeydown,onScan:()=>activateTab(activeTab)})||null;}
-const oldIdle=posRegisterIsIdleAndEmpty;posRegisterIsIdleAndEmpty=function(){if(q('#cvEntry').value.trim())return false;for(const [id,state] of browserTabs){if(id!==activeTab&&(state.entry.trim()||state.customer.some(Boolean)||state.rows.some(row=>row.nodeType===1&&row.querySelector('.part-input')?.value.trim())))return false;}return oldIdle();};
+if(window.mpeDesktop){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;window.mpeDesktop.onLedgerSale?.(openLedgerSale);window.mpeDesktop.onEditSession?.(runEditSessionAndReport);}else{if(MPE_EDIT_SESSION_PAGE){window.addEventListener('message',e=>{if(e.source!==window.parent||e.origin!==location.origin||!e.data)return;if(e.data.type==='edit-session')void runEditSessionAndReport(e.data.request);else if(e.data.type==='edit-command')void runEditCommand(e.data.command);else if(e.data.type==='edit-key')runEditKey(e.data);});window.parent.postMessage({type:'edit-ready'},location.origin);}nextTab=1;addTab();q('#cvNew').onclick=addTab;ledgerTab=MPE_EDIT_SESSION_PAGE?null:window.MPELedgerTab?.install({document,window,tabs:q('#cvTabs'),header:q('.cv-top'),host:root,onShow:()=>qa('#cvTabs .cv-tab[data-cv-tab]').forEach(b=>b.classList.remove('active')),onOpenSale:sale=>{addTab();openLedgerSale(sale);},scanKeydown:onHardwareScanKeydown,onScan:()=>activateTab(activeTab)})||null;}
+if(window.mpeDesktop){if(MPE_EDIT_SESSION_PAGE&&typeof window.mpeDesktop.onEditCommand==='function')window.mpeDesktop.onEditCommand(c=>void runEditCommand(c));}else if(!MPE_EDIT_SESSION_PAGE)root.addEventListener('load',e=>{if(e.target.classList?.contains('cv-ledger-frame'))qa('iframe[data-mpe-embed]').forEach(f=>f.remove());},true);   // A4: a (re)loaded History frame drops any orphaned edit frame
+const oldIdle=posRegisterIsIdleAndEmpty;posRegisterIsIdleAndEmpty=function(){if(document.querySelector('iframe[data-mpe-embed]')||q('#cvEntry').value.trim())return false;for(const [id,state] of browserTabs){if(id!==activeTab&&(state.entry.trim()||state.customer.some(Boolean)||state.rows.some(row=>row.nodeType===1&&row.querySelector('.part-input')?.value.trim())))return false;}return oldIdle();};
 q('#cvClassic').checked=localStorage.getItem(VIEW_KEY)==='1';if(!q('#cvClassic').checked)mount();
 })();
 

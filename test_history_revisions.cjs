@@ -191,7 +191,7 @@ function nextTransactionHarness() {
  s.lines=[{pn:'0000131',desc:'FS 131',qty:1,ea:529.99}];s.messages=[];s.clears=0;s.saves=0;
  s.captureSaleLines=()=>clone(s.lines);s.flashScanCommand=(...args)=>s.messages.push(args);
  s.lockLedgerOutputUi=()=>{s.locked=true;};s.releaseLedgerOutputUi=()=>{s.locked=false;};
- s.commitActiveBridgeDraft=()=>{};s.noteToolFailure=()=>{};
+ s.commitActiveBridgeDraft=()=>{};s.noteToolFailure=()=>{};s.editSessionRefuses=()=>false;
  s.prepareAndSaveForPrint=async(action,opts)=>{assert.equal(action,'save_snapshot');assert.equal(opts.prepareOutput,false);s.saves++;if(s.gate)await s.gate;assert.equal(c.save(),true);};
  s.clearAll=()=>{if(s.refuseClear)return false;assert.ok(s.getHistory().length,'save must precede clear');s.clears++;s.draft=null;s._currentTxnId=null;return true;};
  const at=html.indexOf('async function saveAndClearTransaction()');
@@ -546,4 +546,158 @@ test('F01 session: if the mark reached the sheet but this computer forgot to dro
  c.storage.set('history', JSON.stringify(history));
  await c.flush(); await flush2(); await c.flush(); await flush2();
  assert.equal(c.marks().length, 1, 'still one mark');
+});
+
+// ── F03 embedded edit (the register side of item changes in History's middle column) ─────────────────────
+async function embeddedEdit() {
+ const c = await savedInvoice(); c.results = []; c.states = [];
+ Object.assign(c.s, {MPE_EDIT_SESSION_PAGE: true, clearTimeout, navigator: {userAgent: ''}, updateScreenDocTitle() {}, flashes: [], flashScanCommand: (m, k) => c.s.flashes.push(m)});
+ c.s.window.mpeDesktop = {editSessionResult: r => c.results.push(r), editSessionState: s => c.states.push(clone(s))};
+ c.s.document.body = {classList: {added: [], add(x) { this.added.push(x); }}};
+ c.s.editScreenLines = () => c.s.draft.items.map(i => ({pn: i.pn, ea: i.ea, discountPerUnit: i.discountPerUnit || 0}));   // what the rows hold
+ const req = c.request({}); delete req.patch; req.mode = 'embedded'; c.req = req;
+ c.cmd = (cmd, extra) => c.s.runEditCommand({v: 1, sessionId: req.sessionId, cmd, ...extra});
+ c.twoLines = () => { c.s.draft.items[0].qty = 2; c.s.draft.items[0].sub = 1059.98; c.s.draft.total = '1109.93'; };
+ assert.equal(await c.s.runEditSessionAndReport(req), null, 'a loaded embedded edit reports nothing yet');
+ return c;
+}
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+test('F03 embedded request: needs no patch; silent still needs one; the silent runner refuses an embedded request', async () => {
+ const c = sessionHarness(), base = {v: 1, kind: 'edit', sessionId: 'abcdefgh', txn: {txnId: 'T', docType: 'invoice'}, loaded: {fingerprint: 'x'}};
+ assert.equal(c.s.editSessionRequest({...base, mode: 'embedded'}).mode, 'embedded');
+ assert.equal(c.s.editSessionRequest({...base, mode: 'silent'}), null);
+ assert.equal(c.s.editSessionRequest({...base, mode: 'other'}), null);
+ assert.equal((await c.s.runEditSession({...base, mode: 'embedded'})).code, 'invalid');
+});
+test('F03 embedded: loads and proves, marks the page, sends a ready state, then a qty change saves in place with one edit mark', async () => {
+ const c = await embeddedEdit(), before = rowsOf(c.sheet());
+ assert.deepEqual(c.s.document.body.classList.added, ['embedded-edit']);
+ const first = c.states[0];
+ assert.equal(first.v, 1); assert.equal(first.sessionId, c.req.sessionId); assert.equal(first.seq, 1); assert.equal(first.ready, true);
+ assert.equal(first.dirty, false); assert.equal(first.canSave, false); assert.equal(first.saving, false); assert.equal(first.problem, '');
+ assert.equal(first.totalCents, 55496); assert.equal(first.originalTotalCents, 55496); assert.equal(first.customer.company, 'TEST LANDFILL');
+ assert.deepEqual(Object.keys(first.customer), ['company', 'name', 'phone', 'email', 'street', 'city', 'region', 'zip']);
+ c.twoLines(); c.s.scheduleEditState(); c.s.scheduleEditState(); await wait(260);
+ assert.equal(c.states.length, 2, 'two calls inside 200 ms send one state');
+ const next = c.states[1]; assert.equal(next.seq, 2); assert.equal(next.dirty, true); assert.equal(next.canSave, true); assert.equal(next.totalCents, 110993);
+ assert.equal(next.originalTotalCents, 55496);
+ const r = await c.cmd('save', {updateInfo: false}); await flush2();
+ assert.equal(c.states.at(-1).saving, true, 'History hears saving before the write');
+ assert.equal(r.ok, true); assert.equal(r.verified, true); assert.equal(r.number, before[0][15]); assert.deepEqual(c.results, [r]);
+ const after = rowsOf(c.sheet()); assert.equal(after.length, before.length); assert.equal(Number(after[1][10]), 2);
+ assert.equal(after.filter(row => row[0] === 'TXN').length, 1); assert.equal(c.marks().length, 1); assert.deepEqual(JSON.parse(c.marks()[0][6].slice(7)), before);
+ assert.equal(vm.runInContext('_editSession', c.s), null);
+ assert.equal(await c.cmd('save', {updateInfo: false}), null, 'the result is sent once'); assert.equal(c.results.length, 1);
+});
+test('F03 embedded: offline the save stays here and reports pending, like silent', async () => {
+ const c = await embeddedEdit(), before = rowsOf(c.sheet()); c.fail(true); c.twoLines();
+ const r = await c.cmd('save', {updateInfo: true}); await flush2();
+ assert.equal(r.pending, true); assert.equal(r.localSaved, true); assert.equal(r.customer, 'waiting');
+ assert.deepEqual(rowsOf(c.sheet()), before); assert.equal(c.s.getHistory()[0].historySyncPending, true);
+});
+test('F03 embedded: Cancel answers at once, writes nothing and leaves this computer\'s history as it was', async () => {
+ const c = await embeddedEdit(), sheet = c.sheet(), history = clone(c.s.getHistory()), writes = c.batches(); c.twoLines();
+ const r = await c.cmd('cancel');
+ assert.deepEqual({ok: r.ok, cancelled: r.cancelled, unchanged: r.unchanged, sessionId: r.sessionId, txnId: r.txnId, v: r.v}, {ok: true, cancelled: true, unchanged: true, sessionId: c.req.sessionId, txnId: c.stored.txnId, v: 1});
+ await flush2(); assert.deepEqual(c.sheet(), sheet); assert.equal(c.batches(), writes); assert.deepEqual(c.s.getHistory(), history); assert.equal(c.marks().length, 0);
+ assert.equal(await c.cmd('save', {updateInfo: false}), null); assert.equal(c.results.length, 1);
+ assert.equal(await c.s.runEditCommand({v: 1, sessionId: 'someone-else', cmd: 'cancel'}), null, 'a foreign session is ignored');
+});
+test('F03 embedded: Save with no change answers unchanged and writes nothing', async () => {
+ const c = await embeddedEdit(), sheet = c.sheet();
+ const r = await c.cmd('save', {updateInfo: false}); assert.equal(r.ok, true); assert.equal(r.unchanged, true);
+ await flush2(); assert.deepEqual(c.sheet(), sheet); assert.equal(c.marks().length, 0);
+});
+test('F03 embedded: a line with no price is refused by name, Save stays off and nothing is written', async () => {
+ const c = await embeddedEdit(), sheet = c.sheet(); c.twoLines();
+ const lines = c.s.editScreenLines; c.s.editScreenLines = () => [...lines(), {pn: 'CUSTOM', ea: 0, discountPerUnit: 0}, {pn: 'Note', ea: 0, discountPerUnit: 0}, {pn: 'FREE', ea: 0, discountPerUnit: 5}];
+ assert.equal(await c.cmd('save', {updateInfo: false}), null);
+ const st = c.states.at(-1); assert.equal(st.problem, 'Line 2 has no price'); assert.equal(st.canSave, false); assert.equal(st.dirty, true);
+ await flush2(); assert.deepEqual(c.sheet(), sheet); assert.deepEqual(c.results, []);
+ c.s.editScreenLines = () => []; c.s.postEditState(); assert.equal(c.states.at(-1).problem, 'Add at least one line');
+});
+test('F03 embedded: a second edit while one is open is busy; a proof mismatch answers open_sale_screen', async () => {
+ const c = await embeddedEdit();
+ assert.equal((await c.s.runEditSession(c.request({phone: '1'}))).code, 'busy');
+ const d = await savedInvoice(); d.s.window.mpeDesktop = {editSessionResult() {}, editSessionState() {}}; d.s.MPE_EDIT_SESSION_PAGE = true;
+ const req = d.request({}); delete req.patch; req.mode = 'embedded'; d.s.draft.items[0].qty = 5;
+ const r = await d.s.runEditSessionAndReport(req); assert.equal(r.code, 'open_sale_screen'); assert.equal(vm.runInContext('_embeddedEdit', d.s), null);
+});
+test('F03 embedded: hasUnsavedEdit is null-safe', () => {
+ const c = sessionHarness(); vm.runInContext('_historyContentBaseline = null', c.s); c.s.draft = null;
+ assert.equal(c.s.hasUnsavedEdit(), false); vm.runInContext("_historyContentBaseline = 'x'", c.s); assert.equal(c.s.hasUnsavedEdit(), true);
+});
+test('F03 edit-session page: Print, Ctrl/Cmd+P, Save, Auto print, PDF, email, charge, clear and the print/save/clear commands do nothing but flash', async () => {
+ const fn = name => { const at = html.search(new RegExp(`\\n(async )?function ${name}\\(`)); return html.slice(at, html.indexOf('\n}\n', at) + 3); };
+ const calls = [], flashes = [];
+ const s = vm.createContext({MPE_EDIT_SESSION_PAGE: true, flashScanCommand: m => flashes.push(m), prepareAndSaveForPrint: async () => calls.push('save'),
+  commitActiveBridgeDraft: () => calls.push('clear'), _nextTransactionBusy: false, SCAN_COMMANDS: new Map([['P', 'PRINT'], ['S', 'SAVE'], ['N', 'SAVENEW'], ['D', 'DELETE'], ['Q', 'QTY+1']]),
+  autoPrint: () => calls.push('auto'), saveOnly: () => calls.push('saveOnly'), saveAndClearTransaction: () => calls.push('next'), sheetHasContent: () => true, latestScannedItemRow: () => -1});
+ const at = html.indexOf('function editSessionRefuses()'); vm.runInContext(html.slice(at, html.indexOf('\n}\n', at) + 3), s);
+ for (const name of ['manualPrint', 'saveOnly', 'exportPdf', 'emailDoc', 'chargeCardOnTerminal', 'saveAndClearTransaction', 'openPhoneLists']) {
+  vm.runInContext(fn(name), s); assert.equal(await s[name](), undefined, name);
+ }
+ vm.runInContext(fn('clearAll'), s); assert.equal(s.clearAll(), false);
+ vm.runInContext(fn('autoPrint'), s); await s.autoPrint();
+ vm.runInContext(fn('runScanCommand'), s); for (const p of ['P', 'S', 'N', 'D']) s.runScanCommand(p);
+ assert.deepEqual(calls, []); assert.equal(flashes.length, 13); assert.ok(flashes.every(m => m === 'Use Save or Cancel in History'));
+ s.runScanCommand('Q'); assert.equal(flashes.at(-1), 'Scan a part first — no scanned line to change', 'quantity commands still work');
+ assert.match(html, /\(e\.metaKey \|\| e\.ctrlKey\) && e\.key === 'p'\) \{ e\.preventDefault\(\); manualPrint\(\); \}/, 'Ctrl/Cmd+P goes through manualPrint');
+ assert.match(html, /if \(MPE_EDIT_SESSION_PAGE\) document\.addEventListener\('click', e => \{ if \(e\.target\.closest && e\.target\.closest\('#docTypeSel \.doc-type-btn'\)\) \{ e\.preventDefault\(\); e\.stopImmediatePropagation\(\); editSessionRefuses\(\); \} \}, true\);/);
+ s.MPE_EDIT_SESSION_PAGE = false; assert.equal(s.editSessionRefuses(), false, 'an ordinary register is untouched');
+});
+test('F03 wiring: updateSummary feeds the state hook, the page never reloads for an update, website frame and tab rules hold', () => {
+ assert.match(html, /function updateSummary\(\) \{\n  scheduleEditState\(\);/);
+ assert.match(html, /async function checkForPosUpdate\(\) \{\n  if \(MPE_EDIT_SESSION_PAGE\) return;/);
+ assert.match(html, /posRegisterIsIdleAndEmpty=function\(\)\{if\(document\.querySelector\('iframe\[data-mpe-embed\]'\)/);
+ assert.match(html, /b\.onclick=\(\)=>\{if\(!editFrameOpen\(\)\)activateTab\(id\);\};/); assert.match(html, /function addTab\(\)\{if\(editFrameOpen\(\)\)return;/);
+ assert.match(html, /e\.data\.type==='edit-command'\)void runEditCommand\(e\.data\.command\)/);
+ assert.match(html, /window\.mpeDesktop\.onEditCommand==='function'\)window\.mpeDesktop\.onEditCommand\(c=>void runEditCommand\(c\)\)/);
+ assert.match(html, /qa\('iframe\[data-mpe-embed\]'\)\.forEach\(f=>f\.remove\(\)\)/);
+ const phone = html.slice(html.indexOf(' @media(max-width:899px){'), html.indexOf('\n', html.indexOf(' @media(max-width:899px){')));
+ for (const rule of phone.slice(25).match(/[^{}]+(?=\{)/g)) for (const sel of rule.split(',')) assert.match(sel, /^(body\.counter-view:where\(:not\(\.embedded-edit\)\)|:where\(body:not\(\.embedded-edit\)\) #counterView)/, sel);
+});
+async function embeddedReady() {   // an embedded harness that has not started its request yet
+ const c = await savedInvoice(); c.results = []; c.states = [];
+ Object.assign(c.s, {MPE_EDIT_SESSION_PAGE: true, clearTimeout, navigator: {userAgent: ''}, updateScreenDocTitle() {}, flashScanCommand() {}});
+ c.s.window.mpeDesktop = {editSessionResult: r => c.results.push(r), editSessionState: s => c.states.push(clone(s))};
+ c.s.document.body = {classList: {add() {}}};
+ c.s.editScreenLines = () => c.s.draft.items.map(i => ({pn: i.pn, ea: i.ea, discountPerUnit: i.discountPerUnit || 0}));
+ const fill = c.s.fillTxnIntoPOS; c.fills = 0; c.s.fillTxnIntoPOS = t => { c.fills++; return fill(t); };
+ const req = c.request({}); delete req.patch; req.mode = 'embedded'; c.req = req;
+ c.cancel = id => c.s.runEditCommand({v: 1, sessionId: id || req.sessionId, cmd: 'cancel'});
+ return c;
+}
+test('F03 embedded: Cancel while the page is still loading stops the load and answers once, with nothing written', async () => {
+ const c = await embeddedReady(), sheet = c.sheet(), history = clone(c.s.getHistory());
+ c.s.partsArray = [];   // the page is still waiting for its catalog
+ const started = Date.now(), running = c.s.runEditSessionAndReport(c.req);
+ await wait(150); assert.equal(await c.cancel('someone-else'), null); assert.equal(await c.cancel(), null);
+ const r = await running;
+ assert.ok(Date.now() - started < 1500, 'the wait stopped early');
+ assert.equal(r.cancelled, true); assert.equal(r.unchanged, true); assert.equal(r.ok, true); assert.equal(r.sessionId, c.req.sessionId); assert.equal(r.txnId, c.stored.txnId);
+ assert.deepEqual(c.results, [r]); assert.equal(c.fills, 0); assert.deepEqual(c.states, []);
+ assert.equal(vm.runInContext('_embeddedEdit', c.s), null); assert.equal(vm.runInContext('_embeddedLoading', c.s), null);
+ await flush2(); assert.deepEqual(c.sheet(), sheet); assert.deepEqual(c.s.getHistory(), history); assert.equal(c.marks().length, 0);
+});
+test('F03 embedded: a Cancel that comes before its request is answered when the request arrives; a different session is not cancelled', async () => {
+ const c = await embeddedReady();
+ assert.equal(await c.cancel(), null); assert.deepEqual(c.results, [], 'nothing is answered before the request');
+ const r = await c.s.runEditSessionAndReport(c.req);
+ assert.equal(r.cancelled, true); assert.deepEqual(c.results, [r]); assert.equal(c.fills, 0);
+ const d = await embeddedReady(); await d.cancel('other-session-1');
+ assert.equal(await d.s.runEditSessionAndReport(d.req), null, 'a cancel for another session does not stop this one'); assert.equal(d.states.length, 1);
+});
+test('F03 embedded: History\'s forwarded keys reach the scanner path only, as keydown-like events, and only while an edit is open', async () => {
+ const c = await embeddedReady(), keys = []; c.s.onHardwareScanKeydown = e => keys.push(e); c.s.performance = {now: () => 1234};
+ assert.equal(c.s.runEditKey({type: 'edit-key', key: '1'}), false, 'no edit open yet');
+ await c.s.runEditSessionAndReport(c.req);
+ assert.equal(c.s.runEditKey({type: 'edit-key', key: '1', code: 'Digit1', shiftKey: false}), true);
+ assert.equal(c.s.runEditKey({type: 'edit-key', key: 'Enter', code: 'Enter'}), true);
+ assert.equal(c.s.runEditKey({type: 'edit-key', key: 5}), false); assert.equal(c.s.runEditKey({type: 'edit-key', key: 'x'.repeat(30)}), false);
+ assert.deepEqual(keys.map(k => [k.key, k.code, k.ctrlKey, k.repeat, k.isComposing, k.timeStamp]), [['1', 'Digit1', false, false, false, 1234], ['Enter', 'Enter', false, false, false, 1234]]);
+ assert.equal(keys[0].target, c.s.document.body, 'never a focused field'); keys[0].preventDefault(); keys[0].stopPropagation();
+ assert.match(html, /else if\(e\.data\.type==='edit-key'\)runEditKey\(e\.data\);\}/, 'website: only from window.parent with the origin check');
+ assert.match(html, /body\.embedded-edit #counterView #docTypeSel\{display:none!important\}/, 'type buttons hidden in an embedded edit');
+ assert.match(html, /type\.textContent = '· ' \+ \(DOC_TITLES\[_docType\] \|\| ''\)/);
 });

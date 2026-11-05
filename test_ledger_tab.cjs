@@ -113,3 +113,45 @@ test('register: Presold is captured, shown and restored for every document type 
   assert.match(html, /presellWrap\.hidden = t === 'internal';/, 'checkbox visible on quote, receipt and invoice');
   assert.match(html, /id="presellChk"> Presold<\/label>/);
 });
+
+test('A1: while History has an item edit open, a key History is not using goes to the edit frame (edit-key), the frame is focused, and no sale tab is shown', () => {
+  let keydown = null, frame = null, scans = 0, shown = 0, focused = 0;
+  const posted = [];
+  const win = { addEventListener: (type, fn) => { if (type === 'keydown') keydown = fn; }, document: { activeElement: null }, Event: class {} };
+  LedgerTab.forwardScans(win, (e) => { scans += 1; e.defaultPrevented = true; }, () => { shown += 1; }, () => frame, 'https://x.test');
+  const key = (k, o = {}) => ({ key: k, code: 'Key' + k, defaultPrevented: false, target: { tagName: 'BODY' }, preventDefault() { this.defaultPrevented = true; }, ...o });
+  keydown(key('1')); keydown(key('Enter'));
+  assert.equal(scans, 2, 'no edit: every key passes the register scanner test');
+  assert.equal(shown, 1, 'a proven scan shows the sale tab');
+  frame = { focus: () => { focused += 1; }, contentWindow: { postMessage: (m, o) => posted.push([m, o]) } };
+  const first = key('2', { shiftKey: true });
+  keydown(first); keydown(key('Enter'));
+  assert.equal(scans, 2, 'edit open: the History copy of the scanner test is skipped');
+  assert.equal(shown, 1, 'edit open: activateTab is never called');
+  assert.equal(focused, 2, 'the edit frame gets the focus');
+  assert.equal(first.defaultPrevented, true, 'History does not also act on it');
+  assert.deepEqual(posted, [
+    [{ type: 'edit-key', key: '2', code: 'Key2', shiftKey: true, ctrlKey: false, altKey: false, metaKey: false }, 'https://x.test'],
+    [{ type: 'edit-key', key: 'Enter', code: 'KeyEnter', shiftKey: false, ctrlKey: false, altKey: false, metaKey: false }, 'https://x.test'],
+  ], 'the first key of a burst is not lost; target origin is the register origin');
+  posted.length = 0;
+  for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON']) keydown(key('x', { target: { tagName } }));
+  keydown(key('w', { metaKey: true })); keydown(key('w', { ctrlKey: true })); keydown(key('a', { altKey: true }));
+  keydown(key('z', { target: { tagName: 'DIV', isContentEditable: true } }));
+  assert.deepEqual(posted, [], 'typing in a field, a button key and shortcuts stay in History');
+  assert.equal(scans, 2); assert.equal(shown, 1);
+});
+
+test('A1: install looks for the edit frame in the register document (iframe[data-mpe-embed]) and posts with the register origin', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'ledger-tab.js'), 'utf8');
+  assert.match(src, /forwardScans\(frame\.contentWindow, scanKeydown, onScan, \(\) => document\.querySelector\('iframe\[data-mpe-embed\]'\), window\.location\.origin\)/);
+});
+
+test('A1: the edit-key listener is created in the register window, so the frame sees event.source === its window.parent', () => {
+  // postMessage stamps event.source with the window whose code calls it (the incumbent). forwardScans is loaded by index.html
+  // (this script) and only attaches its listener to History's window, so the poster is the register window = the frame's parent.
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  assert.match(html, /<script src="ledger-tab\.js"><\/script>/, 'ledger-tab.js runs in the register document');
+  const ledger = fs.readFileSync(path.join(__dirname, 'ledger.html'), 'utf8');
+  assert.doesNotMatch(ledger, /ledger-tab\.js/, 'History never loads it, so the poster is never History');
+});

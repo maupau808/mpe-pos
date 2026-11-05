@@ -178,6 +178,59 @@
     });
   }
 
+  // ---- Item edit on the website: the register's real sale screen in a visible frame over History's middle column ----
+  // p: the register window (parent), w: History's window. The frame lives in p's document (data-mpe-embed), position:fixed at
+  // History's frame rect + the slot rect History sends (CSS px in History's viewport), above the History frame. Messages both ways
+  // by postMessage, checked by source and origin. 60 s to the first ready state, then no timeout. Removed on the one result and
+  // when History's page goes away (pagehide, A4). handlers: { onState(state) } (the website has no Cmd/Ctrl+W close).
+  const EMBED_READY_MS = 60000;
+  function webEmbedSession(p, w, request, handlers) {
+    const doc = p.document, origin = p.location.origin, id = request.sessionId;
+    const base = { v: 1, sessionId: id, txnId: request.txn.txnId, ok: false };
+    const frame = doc.createElement('iframe');
+    frame.setAttribute('data-mpe-embed', '1');
+    frame.title = 'Editing ' + s(request.txn.docNumber);
+    frame.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;border:0;background:#fff;z-index:20;visibility:hidden';
+    let slot = null, rectSeq = -Infinity, ready = false, done = false, timer = null, finish;
+    const place = () => {
+      if (done) return;
+      if (!slot || slot.hidden || !(slot.width > 0 && slot.height > 0)) { frame.style.visibility = 'hidden'; return; }
+      const at = w.frameElement && w.frameElement.getBoundingClientRect ? w.frameElement.getBoundingClientRect() : { left: 0, top: 0 };
+      Object.assign(frame.style, { left: Math.round(at.left + slot.x) + 'px', top: Math.round(at.top + slot.y) + 'px',
+        width: Math.round(slot.width) + 'px', height: Math.round(slot.height) + 'px', visibility: 'visible' });
+    };
+    const onMessage = event => {
+      if (event.source !== frame.contentWindow || event.origin !== origin || !event.data) return;
+      const d = event.data;
+      if (d.type === 'edit-ready') frame.contentWindow.postMessage({ type: 'edit-session', request }, origin);
+      else if (d.type === 'edit-state' && d.state && d.state.sessionId === id) {
+        if (!ready && d.state.ready) { ready = true; clearTimeout(timer); frame.focus(); }
+        if (handlers && handlers.onState) handlers.onState(d.state);
+      } else if (d.type === 'edit-result' && d.result && d.result.sessionId === id) finish(d.result);
+    };
+    const onHide = () => finish({ ...base, code: 'closed', message: 'History closed before the edit finished. Nothing was changed.' });
+    const result = new Promise(resolve => {
+      finish = out => {
+        if (done) return;
+        done = true; clearTimeout(timer);
+        p.removeEventListener('message', onMessage); p.removeEventListener('resize', place); w.removeEventListener('pagehide', onHide);
+        frame.remove();
+        resolve(out);
+      };
+    });
+    p.addEventListener('message', onMessage);
+    p.addEventListener('resize', place);
+    w.addEventListener('pagehide', onHide);
+    timer = setTimeout(() => finish({ ...base, code: 'timeout', message: 'The sale screen did not open. Nothing was changed.' }), EMBED_READY_MS);
+    frame.src = new URL('index.html?mpeEditSession=1&mpeEmbedded=1', p.location.href).href;
+    doc.body.append(frame);
+    return {
+      result,
+      rect(m) { if (!m || !(Number(m.seq) > rectSeq)) return; rectSeq = Number(m.seq); slot = m.hidden ? { hidden: true } : m.rect; place(); },
+      command(c) { if (!done && frame.contentWindow) frame.contentWindow.postMessage({ type: 'edit-command', command: c }, origin); },
+    };
+  }
+
   // ---- Environment ----
   function storageOf(w) { try { return w.localStorage; } catch (_) { return null; } }
   function environment(w) {
@@ -200,6 +253,13 @@
         openSale: async request => { const r = await d.openSale(request); if (!r || !r.ok) throw new Error('The sale tab did not open'); },
         // App 0.3.64+: save customer fields through a hidden register page. Present only when the app says it can (never guessed from a method).
         editSession: d.editCapabilities && d.editCapabilities.silentEdit && typeof d.editSession === 'function' ? request => d.editSession(request) : undefined,
+        // App 0.3.66+: the register's sale screen in History's middle column. Only when the app says it can and every method is there.
+        embedEdit: d.editCapabilities && d.editCapabilities.embedEdit && ['editEmbed', 'editRect', 'editCommand', 'onEditState'].every(k => typeof d[k] === 'function') ? (request, handlers) => {
+          const off = [d.onEditState(m => handlers.onState && handlers.onState(m)), typeof d.onEditClose === 'function' ? d.onEditClose(m => handlers.onClose && handlers.onClose(m)) : null];
+          const result = Promise.resolve().then(() => d.editEmbed(request));
+          result.then(() => off.forEach(u => typeof u === 'function' && u()), () => off.forEach(u => typeof u === 'function' && u()));
+          return { result, rect: m => d.editRect(m), command: m => d.editCommand(m) };
+        } : undefined,
         pdfRefresh: !!(d.editCapabilities && d.editCapabilities.pdfSave),
         scan: typeof d.scan === 'function' ? value => d.scan(value) : undefined, // app 0.3.49+
         setType: typeof d.setType === 'function' ? (id, num, from, to) => d.setType(id, num, from, to) : undefined, // app 0.3.57+
@@ -247,6 +307,7 @@
         openSale: async request => { p.postMessage(request, w.location.origin); },
         // The website saves an edit in a hidden copy of the register (same origin, same saved data), so the sale on screen is never touched.
         editSession: request => webEditSession(p, request),
+        embedEdit: (request, handlers) => webEmbedSession(p, w, request, handlers),
         pdfRefresh: false,
         // The page's own Google token (drive.readonly) reads the file; kept in memory for the life of the page.
         qboHistory: typeof w.DecompressionStream === 'function' ? async known => {
@@ -261,6 +322,7 @@
     return null;
   }
 
+  const newSessionId = () => 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   // ---- The host the page uses (contract: POS/ledger.js header) ----
   function createHost(env, w) {
     const doc = w && w.document;
@@ -392,9 +454,22 @@
         const fingerprint = s(record.fingerprint);
         const base = { v: 1, ok: false, txnId: s(record.txnId) };
         if (!fingerprint) return { ...base, code: 'open_sale_screen', message: 'This one has to be changed on the sale screen. Nothing was changed.' };
-        const id = 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        const id = newSessionId();
         const out = await env.editSession({ v: 1, kind: 'edit', mode: 'silent', sessionId: id, txn: { ...toHistory(record), cardFee: !!(extra && extra.cardFee) }, loaded: { fingerprint }, patch });
         return out && typeof out === 'object' ? out : { ...base, sessionId: id, code: 'closed', message: 'The edit closed before it finished. Check History before trying again.' };
+      } : undefined,
+      // Item edit (F03): the register's sale screen in History's middle column. RAW record, never withDeposit (R11); History writes
+      // nothing to Transactions, the register's one save path does. handlers: { onState(state), onClose(msg) }. Returns at once
+      // { sessionId, result: Promise<the one result>, rect(msg), command(msg) }.
+      editEmbed: env.embedEdit ? (record, extra, handlers) => {
+        const fingerprint = s(record.fingerprint), sessionId = newSessionId();
+        const base = { v: 1, ok: false, txnId: s(record.txnId), sessionId };
+        const closed = { ...base, code: 'closed', message: 'The edit closed before it finished. Check History before trying again.' };
+        if (!fingerprint) return { sessionId, rect() {}, command() {}, result: Promise.resolve({ ...base, code: 'open_sale_screen', message: 'This one has to be changed on the sale screen. Nothing was changed.' }) };
+        const request = { v: 1, kind: 'edit', mode: 'embedded', sessionId, txn: { ...toHistory(record), cardFee: !!(extra && extra.cardFee) }, loaded: { fingerprint } };
+        const one = env.embedEdit(request, handlers || {});
+        return { sessionId, rect: one.rect, command: one.command,
+          result: Promise.resolve(one.result).then(out => (out && typeof out === 'object' ? out : closed), () => closed) };
       } : undefined,
       // Transactions saved on THIS computer and not yet on the sheet (History reads the sheet, so it must say so). A set of txnIds.
       pendingTxnIds() {
@@ -427,5 +502,5 @@
     return host;
   }
 
-  return { QBO_FILE_ID, SALE_KINDS, PENDING_KEY, MISSING_TEXT, CUST_PENDING_KEY, createPaymentsStore, createRowStore, CUST_TAB, setupPaymentsTab, toHistory, saleRequest, environment, createHost };
+  return { QBO_FILE_ID, SALE_KINDS, PENDING_KEY, MISSING_TEXT, CUST_PENDING_KEY, createPaymentsStore, createRowStore, CUST_TAB, setupPaymentsTab, toHistory, saleRequest, webEmbedSession, EMBED_READY_MS, environment, createHost };
 });

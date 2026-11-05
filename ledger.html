@@ -182,6 +182,34 @@ dialog.edit .row2{display:grid;grid-template-columns:1fr 70px 100px;gap:8px}
 dialog.edit .err{min-height:18px;font-size:13px;color:var(--red)}
 @media (min-width:1700px){.main{grid-template-columns:minmax(400px,26%) minmax(0,1fr) 300px}}
 @media (max-width:1250px){.main{grid-template-columns:320px minmax(0,1fr) 230px}}
+/* Editing the customer widens the right panel (the preview shrinks). One number to tune: --rail-edit. */
+:root{--rail-edit:400px}
+.main.cust-editing{grid-template-columns:minmax(350px,28%) minmax(0,1fr) var(--rail-edit)}
+@media (min-width:1700px){.main.cust-editing{grid-template-columns:minmax(400px,26%) minmax(0,1fr) var(--rail-edit)}}
+@media (max-width:1250px){:root{--rail-edit:360px}.main.cust-editing{grid-template-columns:320px minmax(0,1fr) var(--rail-edit)}}
+.rail .cedit label{display:block;margin-bottom:8px;font-size:13px;font-weight:600;color:var(--ink-2)}
+.rail .cedit input:not([type=checkbox]){display:block;width:100%;height:34px;margin-top:3px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:14px;font-weight:400;color:var(--ink)}
+.rail .cedit input:disabled{opacity:.6}
+.rail .cedit .row2{display:grid;grid-template-columns:1fr 64px 90px;gap:8px}
+.rail .cedit .chk{display:flex;align-items:center;gap:8px;margin-top:4px}
+.rail .cedit .hint{font-size:12.5px;color:var(--ink-3);min-height:16px}
+.rail .cedit .err{min-height:18px;font-size:13px;color:var(--red)}
+.rail .cedit .btns{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+/* Item edit (F03): History's Editing bar over the register's sale screen, which the app or the website places over .mid-edit-slot. */
+.ebar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:10px 18px;background:var(--paper);border-bottom:1px solid var(--line)}
+.ebar .etitle{font-size:15px;font-weight:700}
+.ebar .etot{font-size:14px;color:var(--ink-2)}
+.ebar .emoney{font-size:14px;font-weight:700}
+.ebar .emoney.late{color:var(--red)}
+.ebar .eprob{font-size:13px;font-weight:600;color:var(--red)}
+.ebar .ehint{font-size:12.5px;font-weight:400;color:var(--ink-3)}
+.ebar .ebtns{display:flex;gap:8px;margin-left:auto}
+.ebar .ewarn{flex-basis:100%;font-size:13px;font-weight:600;color:var(--amber)}
+.ebar .chk{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:13.5px;font-weight:600;color:var(--ink-2)}
+.mid-edit-slot{flex:1;min-height:0;background:#fff}
+.edit-lock{font-size:13px;font-weight:600;color:var(--amber);background:var(--amber-bg);border:1px solid #e8cf9c;border-radius:5px;padding:6px 10px}
+.edit-lock[hidden]{display:none}
+.main.editing .left .list,.main.editing .left .filters,.main.editing .left .seg,.main.editing .left .search{opacity:.55}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 <script src="ledger-data.js"></script>
@@ -208,6 +236,7 @@ else {
 <div class="main" id="main" hidden>
   <section class="left">
     <div class="lt">
+      <div class="edit-lock" id="editLock" role="status" hidden>Finish or cancel the edit first</div>
       <div class="seg" id="sections" role="group" aria-label="Show"></div>
       <label class="search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
         <input id="q" type="search" placeholder="Search all sales" aria-label="Search all sales" autocomplete="off" spellcheck="false"></label>
@@ -223,6 +252,8 @@ else {
   </section>
   <section class="mid">
     <div id="note"></div>
+    <div id="editBar" hidden></div>
+    <div class="mid-edit-slot" id="editSlot" hidden></div>
     <div class="paper" id="paper"></div>
   </section>
   <aside class="rail" id="rail" aria-label="Selected sale"></aside>
@@ -238,18 +269,6 @@ else {
   <label>Street<input id="ceStreet" autocomplete="off"></label>
   <div class="row2"><label>City<input id="ceCity" autocomplete="off"></label><label>State<input id="ceState" autocomplete="off"></label><label>Zip<input id="ceZip" autocomplete="off"></label></div>
   <div class="err" id="ceErr" role="alert"></div>
-  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn quiet" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="save">Save</button></div>
-</form></dialog>
-<dialog id="docCustEdit" class="edit"><form method="dialog"><h2>Customer on this document</h2>
-  <label>Company<input id="dcCompany" autocomplete="off"></label>
-  <label>Contact<input id="dcName" autocomplete="off"></label>
-  <label>Phone<input id="dcPhone" autocomplete="off"></label>
-  <label>Email<input id="dcEmail" autocomplete="off"></label>
-  <label>Street<input id="dcStreet" autocomplete="off"></label>
-  <div class="row2"><label>City<input id="dcCity" autocomplete="off"></label><label>State<input id="dcState" autocomplete="off"></label><label>Zip<input id="dcZip" autocomplete="off"></label></div>
-  <label style="flex-direction:row;align-items:center;gap:8px;margin-top:6px"><input type="checkbox" id="dcUpdate" style="width:auto"> Also update this customer's info</label>
-  <div class="hint" id="dcHint"></div>
-  <div class="err" id="dcErr" role="alert"></div>
   <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn quiet" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="save">Save</button></div>
 </form></dialog>
 <dialog id="payDlg" class="pay"><form method="dialog"><h2 id="payTitle">Take payment</h2>

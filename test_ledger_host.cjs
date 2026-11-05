@@ -93,7 +93,7 @@ test('no Payments tab: the page says so, everything else loads, Mark paid keeps 
   const host = K.createHost(env, { document: { getElementById: id => (id === 'hostNote' ? note : null) } });
   const [pays, marks] = await Promise.all([host.readPayments(), host.readMarks()]);
   assert.deepEqual(pays, [L.PAYMENT_COLUMNS.slice()]);
-  assert.deepEqual(marks, { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {} });
+  assert.deepEqual(marks, { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {}, editLog: {} });
   assert.equal(note.textContent, 'Payments tab not set up yet');
   assert.equal(note.hidden, false);
   await assert.rejects(host.appendPaymentRows([pay('pay_e')]), e => e.code === 'payments_missing');
@@ -109,7 +109,7 @@ test('marks: email_draft and edit rows never count as payments; readMarks return
   assert.throws(() => L.buildMarkRow({ kind: 'cash', txnId: 'T-1' }));
   const rows = [L.PAYMENT_COLUMNS.slice(), draft, edit];
   assert.deepEqual(L.parsePayments(rows), []);
-  assert.deepEqual(L.parseMarks(rows), { drafts: { 'T-1': '2026-10-20' }, edits: { 'T-1': '2026-10-25' }, cancels: {}, before: {}, prints: {}, pdfs: {}, sent: {}, paylinks: {},
+  assert.deepEqual(L.parseMarks(rows), { drafts: { 'T-1': '2026-10-20' }, edits: { 'T-1': '2026-10-25' }, cancels: {}, before: {}, prints: {}, pdfs: {}, sent: {}, paylinks: {}, editLog: { 'T-1': [{ at: '2026-10-25T20:00:00.000Z', date: '2026-10-25', rows: null }] },
     log: { 'T-1': [{ kind: 'email_draft', date: '2026-10-20', at: '2026-10-20T20:00:00.000Z', place: '9', note: '' }] } });
   // Prints, PDFs and PDF opens: never payments, one timeline entry each, oldest stays first.
   const out = [L.buildMarkRow({ kind: 'print', txnId: 'T-1', invoice_number: 'L21001', place: '2' }, Date.parse('2026-10-21T20:00:00Z')),
@@ -435,4 +435,143 @@ test('website edit session: a hidden same-origin frame is sent the request once 
   say(frameWin, 'https://x.test', { type: 'edit-result', result: { v: 1, sessionId: 'abcdefgh', ok: true, verified: true } });
   assert.deepEqual(await pending, { v: 1, sessionId: 'abcdefgh', ok: true, verified: true });
   assert.equal(removed, true); assert.equal(listeners.length, 0);
+});
+
+// ---- F03 item edit in History's middle column ----
+const deskEmbed = (over = {}) => {
+  const calls = { embed: [], rect: [], command: [] }, subs = {};
+  const d = { role: 'ledger', google: { getStatus: async () => ({ connected: true }) }, editCapabilities: { silentEdit: 1, embedEdit: 1 },
+    editEmbed: req => { calls.embed.push(req); return new Promise(ok => { calls.finish = ok; }); },
+    editRect: m => calls.rect.push(m), editCommand: m => calls.command.push(m),
+    onEditState: cb => { subs.state = cb; return () => { subs.state = null; }; }, onEditClose: cb => { subs.close = cb; return () => { subs.close = null; }; }, ...over };
+  return { d, calls, subs };
+};
+const EMBED_RECORD = { txnId: 'TX-Q', date: '2026-11-04', time: '9:00 AM', name: 'JO', company: '', phone: '', email: '', addr: '', total: 300, kind: 'quote', number: 'Q21001',
+  deposit: 100, fromQuote: '', po: '', fingerprint: '["fp"]', items: [{ pn: 'A', desc: 'Saw', qty: '1', ea: 300, sub: 300, serials: [] }] };
+test('app editEmbed: one embedded envelope with the RAW record (no deposit note), the card-fee hint and the fingerprint; History writes no Transactions', async () => {
+  const { d, calls, subs } = deskEmbed();
+  const sheet = fakeSheet({ payments: true });
+  const env = K.environment({ mpeDesktop: d, navigator: { userAgent: 'Macintosh' } });
+  const host = K.createHost({ ...env, get: sheet.get, append: async (range, rows) => { sheet.calls.ranges = (sheet.calls.ranges || []).concat(range); return sheet.append(range, rows); } }, {});
+  const states = [], closes = [];
+  const s = host.editEmbed(EMBED_RECORD, { cardFee: true }, { onState: m => states.push(m), onClose: m => closes.push(m) });
+  await Promise.resolve();
+  const req = calls.embed[0];
+  assert.deepEqual([req.v, req.kind, req.mode, req.sessionId], [1, 'edit', 'embedded', s.sessionId]);
+  assert.equal(req.patch, undefined, 'no patch in embedded mode');
+  assert.equal(req.txn.cardFee, true); assert.equal(req.loaded.fingerprint, '["fp"]');
+  assert.deepEqual(req.txn.items.map(i => i.pn), ['A'], 'raw record: no "Deposit paid" note (R11)');
+  assert.deepEqual(req.txn, { ...K.toHistory(EMBED_RECORD), cardFee: true });
+  if (typeof ledgerEditRequest === 'function') assert.ok(ledgerEditRequest(req), 'main accepts the embedded shape');
+  s.rect({ v: 1, sessionId: s.sessionId, seq: 1, rect: { x: 1, y: 2, width: 3, height: 4 } });
+  s.command({ v: 1, sessionId: s.sessionId, cmd: 'cancel' });
+  assert.deepEqual(calls.rect, [{ v: 1, sessionId: s.sessionId, seq: 1, rect: { x: 1, y: 2, width: 3, height: 4 } }]);
+  assert.deepEqual(calls.command, [{ v: 1, sessionId: s.sessionId, cmd: 'cancel' }]);
+  subs.state({ v: 1, sessionId: s.sessionId, seq: 1, ready: true });
+  subs.close({ v: 1, sessionId: s.sessionId, cmd: 'cancel-request' });
+  assert.equal(states.length, 1); assert.equal(closes.length, 1);
+  calls.finish({ v: 1, sessionId: s.sessionId, ok: true, cancelled: true, unchanged: true });
+  assert.deepEqual(await s.result, { v: 1, sessionId: s.sessionId, ok: true, cancelled: true, unchanged: true });
+  assert.equal(subs.state, null, 'listeners are removed after the result'); assert.equal(subs.close, null);
+  assert.ok(!(sheet.calls.ranges || []).some(r => /^Transactions/.test(r)), 'History never writes Transactions');
+  const src = fs.readFileSync(path.join(__dirname, 'ledger-host.js'), 'utf8') + fs.readFileSync(path.join(__dirname, 'ledger.js'), 'utf8');
+  assert.deepEqual(src.match(/(sheetsAppend|sheetsUpdate|append)\(\s*['`]Transactions[^'`]*/g), ['sheetsUpdate(`Transactions!O${at + 1}'], 'the only Transactions write is Change type\'s one checked cell');
+});
+test('app editEmbed: missing without the capability or a method; no fingerprint answers open_sale_screen without opening anything; a broken answer is "closed"', async () => {
+  assert.equal(K.createHost(K.environment({ mpeDesktop: deskEmbed({ editCapabilities: { silentEdit: 1 } }).d, navigator: {} }), {}).editEmbed, undefined);
+  assert.equal(K.createHost(K.environment({ mpeDesktop: deskEmbed({ editRect: undefined }).d, navigator: {} }), {}).editEmbed, undefined);
+  const { d, calls } = deskEmbed();
+  const host = K.createHost(K.environment({ mpeDesktop: d, navigator: {} }), {});
+  const none = host.editEmbed({ ...EMBED_RECORD, fingerprint: '' }, {}, {});
+  assert.equal((await none.result).code, 'open_sale_screen'); assert.equal(calls.embed.length, 0);
+  const bad = host.editEmbed(EMBED_RECORD, {}, {});
+  await Promise.resolve(); calls.finish(null);
+  assert.equal((await bad.result).code, 'closed');
+  const busy = host.editEmbed(EMBED_RECORD, {}, {});
+  await Promise.resolve(); calls.finish({ v: 1, sessionId: busy.sessionId, ok: false, code: 'busy', message: 'Another edit is open.' });
+  assert.equal((await busy.result).code, 'busy');
+});
+
+// A fake register window with one visible edit frame, for webEmbedSession.
+function webEmbedFixture() {
+  const listeners = { message: [], resize: [] }, hListeners = {}, posted = [];
+  let removed = 0, appended = null, focused = 0;
+  const frameWin = { postMessage: (message, origin) => posted.push([message, origin]) };
+  const frame = { style: {}, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, remove() { removed += 1; }, focus() { focused += 1; }, get contentWindow() { return frameWin; } };
+  const p = { location: { origin: 'https://x.test', href: 'https://x.test/pos/index.html' },
+    document: { createElement: () => frame, body: { append: f => { appended = f; } } },
+    addEventListener: (t, fn) => (listeners[t] = listeners[t] || []).push(fn), removeEventListener: (t, fn) => { const l = listeners[t] || []; const i = l.indexOf(fn); if (i >= 0) l.splice(i, 1); } };
+  const w = { frameElement: { getBoundingClientRect: () => ({ left: 0, top: 54 }) },
+    addEventListener: (t, fn) => { hListeners[t] = fn; }, removeEventListener: (t, fn) => { if (hListeners[t] === fn) delete hListeners[t]; } };
+  const say = (source, origin, data) => listeners.message.slice().forEach(fn => fn({ source, origin, data }));
+  return { p, w, frame, frameWin, posted, listeners, hListeners, say, removed: () => removed, appended: () => appended, focused: () => focused };
+}
+const REQ = { v: 1, kind: 'edit', mode: 'embedded', sessionId: 'abcdefgh', txn: { txnId: 'T', docNumber: 'L21001' }, loaded: { fingerprint: 'x' } };
+test('website embed: a visible same-origin frame (data-mpe-embed) at History frame + slot, re-placed on rect and resize; newest rect wins', () => {
+  const f = webEmbedFixture(), states = [];
+  const s = K.webEmbedSession(f.p, f.w, REQ, { onState: m => states.push(m) });
+  assert.equal(f.appended(), f.frame);
+  assert.equal(f.frame.attrs['data-mpe-embed'], '1');
+  assert.equal(f.frame.src, 'https://x.test/pos/index.html?mpeEditSession=1&mpeEmbedded=1');
+  assert.match(f.frame.style.cssText, /position:fixed/); assert.match(f.frame.style.cssText, /z-index:20/);
+  assert.equal(f.frame.style.visibility, undefined, 'hidden until History says where (cssText)');
+  s.rect({ v: 1, sessionId: 'abcdefgh', seq: 2, rect: { x: 400.4, y: 60, width: 700, height: 600.6 } });
+  assert.deepEqual([f.frame.style.left, f.frame.style.top, f.frame.style.width, f.frame.style.height, f.frame.style.visibility], ['400px', '114px', '700px', '601px', 'visible']);
+  s.rect({ v: 1, sessionId: 'abcdefgh', seq: 1, rect: { x: 0, y: 0, width: 10, height: 10 } });
+  assert.equal(f.frame.style.left, '400px', 'an older seq is dropped');
+  f.w.frameElement.getBoundingClientRect = () => ({ left: 10, top: 60 });
+  f.listeners.resize.forEach(fn => fn());
+  assert.deepEqual([f.frame.style.left, f.frame.style.top], ['410px', '120px'], 'window resize re-places it');
+  s.rect({ v: 1, sessionId: 'abcdefgh', seq: 3, hidden: true });
+  assert.equal(f.frame.style.visibility, 'hidden');
+});
+test('website embed: messages checked by source, origin and session; focus after the first ready state; removed on the one result', async () => {
+  const f = webEmbedFixture(), states = [];
+  const s = K.webEmbedSession(f.p, f.w, REQ, { onState: m => states.push(m) });
+  f.say({}, 'https://x.test', { type: 'edit-ready' });
+  f.say(f.frameWin, 'https://evil.test', { type: 'edit-ready' });
+  assert.equal(f.posted.length, 0);
+  f.say(f.frameWin, 'https://x.test', { type: 'edit-ready' });
+  assert.deepEqual(f.posted, [[{ type: 'edit-session', request: REQ }, 'https://x.test']]);
+  f.say(f.frameWin, 'https://x.test', { type: 'edit-state', state: { v: 1, sessionId: 'other', seq: 1, ready: true } });
+  f.say({}, 'https://x.test', { type: 'edit-state', state: { v: 1, sessionId: 'abcdefgh', seq: 1, ready: true } });
+  assert.equal(states.length, 0); assert.equal(f.focused(), 0);
+  f.say(f.frameWin, 'https://x.test', { type: 'edit-state', state: { v: 1, sessionId: 'abcdefgh', seq: 1, ready: true } });
+  f.say(f.frameWin, 'https://x.test', { type: 'edit-state', state: { v: 1, sessionId: 'abcdefgh', seq: 2, ready: true } });
+  assert.equal(states.length, 2); assert.equal(f.focused(), 1, 'focused once, after the first ready state');
+  s.command({ v: 1, sessionId: 'abcdefgh', cmd: 'save', updateInfo: false });
+  assert.deepEqual(f.posted[1], [{ type: 'edit-command', command: { v: 1, sessionId: 'abcdefgh', cmd: 'save', updateInfo: false } }, 'https://x.test']);
+  f.say(f.frameWin, 'https://x.test', { type: 'edit-result', result: { sessionId: 'other', ok: true } });
+  assert.equal(f.removed(), 0);
+  f.say(f.frameWin, 'https://x.test', { type: 'edit-result', result: { v: 1, sessionId: 'abcdefgh', ok: true, verified: true } });
+  assert.deepEqual(await s.result, { v: 1, sessionId: 'abcdefgh', ok: true, verified: true });
+  assert.equal(f.removed(), 1);
+  assert.deepEqual([f.listeners.message.length, f.listeners.resize.length, Object.keys(f.hListeners).length], [0, 0, 0], 'every listener is gone');
+});
+test('website embed: History going away (pagehide) removes the frame and answers closed (A4); 60 s to the first ready state, then no timeout', async () => {
+  const f = webEmbedFixture();
+  const s = K.webEmbedSession(f.p, f.w, REQ, {});
+  f.hListeners.pagehide();
+  assert.equal((await s.result).code, 'closed'); assert.equal(f.removed(), 1);
+  assert.equal(K.EMBED_READY_MS, 60000);
+  const realSet = global.setTimeout, realClear = global.clearTimeout, timers = [];
+  global.setTimeout = (fn, ms) => { timers.push({ fn, ms, on: true }); return timers.length - 1; };
+  global.clearTimeout = i => { if (timers[i]) timers[i].on = false; };
+  try {
+    const g = webEmbedFixture(), late = K.webEmbedSession(g.p, g.w, REQ, {});
+    assert.equal(timers[0].ms, 60000);
+    timers[0].fn();
+    assert.equal((await late.result).code, 'timeout'); assert.equal(g.removed(), 1);
+    const h = webEmbedFixture(), live = K.webEmbedSession(h.p, h.w, REQ, {});
+    h.say(h.frameWin, 'https://x.test', { type: 'edit-state', state: { v: 1, sessionId: 'abcdefgh', seq: 1, ready: true } });
+    assert.equal(timers[1].on, false, 'the timer stops once the sale screen is ready');
+    h.say(h.frameWin, 'https://x.test', { type: 'edit-result', result: { v: 1, sessionId: 'abcdefgh', ok: true, cancelled: true } });
+    assert.equal((await live.result).cancelled, true);
+  } finally { global.setTimeout = realSet; global.clearTimeout = realClear; }
+});
+test('website environment offers embedEdit through webEmbedSession', () => {
+  const p = { sheetsGet() {}, googleSessionAvailable: () => true, localStorage: memoryStorage() };
+  const env = K.environment({ parent: p, location: { origin: 'https://x.test' }, localStorage: memoryStorage(), navigator: {} });
+  assert.equal(typeof env.embedEdit, 'function');
+  assert.equal(typeof K.createHost(env, {}).editEmbed, 'function');
 });

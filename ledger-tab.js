@@ -7,6 +7,11 @@
 // Scanner: a keyboard-wedge scan typed while Ledger shows goes through the register's own burst test
 // (scanKeydown = onHardwareScanKeydown, attached in the frame), lands on the last sale tab, and onScan shows
 // that tab; Ledger's search box gets its old text back. Ordinary typing stays in Ledger.
+// While History has an item edit open (an iframe[data-mpe-embed] in this document, ledger-host.js webEmbedSession), a key typed
+// in History is not tested here and never shows a sale tab: a key History is not using (no field, button or shortcut) is posted
+// to the edit frame as { type:'edit-key', key, code, shiftKey, ctrlKey, altKey, metaKey } and the frame is focused, so its own
+// register's scan path gets the whole burst, first key included (A1). This listener's code runs in the register's window, so the
+// frame sees event.source === its window.parent.
 // Test: node POS/test_ledger_tab.cjs
 (function (root, factory) {
   const api = factory();
@@ -46,7 +51,7 @@
         frame.className = 'cv-ledger-frame';
         frame.title = 'History';
         frame.src = src;
-        if (scanKeydown) frame.addEventListener('load', () => forwardScans(frame.contentWindow, scanKeydown, onScan));
+        if (scanKeydown) frame.addEventListener('load', () => forwardScans(frame.contentWindow, scanKeydown, onScan, () => document.querySelector('iframe[data-mpe-embed]'), window.location.origin));
         host.append(frame);
       }
       place();
@@ -73,9 +78,20 @@
 
   // Every key in the Ledger frame passes the register's scanner test first. A proven scan ends with the register
   // preventing its Enter/Tab; then the field it restored tells Ledger, and the sale tab is shown.
-  function forwardScans(win, scanKeydown, onScan) {
+  const FIELDS = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON']);
+  function forwardScans(win, scanKeydown, onScan, editFrame, origin) {
     if (!win) return;
     win.addEventListener('keydown', (event) => {
+      const edit = editFrame && editFrame();
+      if (edit) {
+        const t = event.target, busy = (t && (FIELDS.has(t.tagName) || t.isContentEditable)) || event.ctrlKey || event.metaKey || event.altKey;
+        if (!busy && edit.contentWindow && origin) {
+          if (event.preventDefault) event.preventDefault();
+          edit.contentWindow.postMessage({ type: 'edit-key', key: event.key, code: event.code, shiftKey: !!event.shiftKey, ctrlKey: false, altKey: false, metaKey: false }, origin);
+        }
+        edit.focus();
+        return;
+      }
       const before = event.defaultPrevented;
       scanKeydown(event);
       if (before || !event.defaultPrevented || (event.key !== 'Enter' && event.key !== 'Tab')) return;
