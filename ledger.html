@@ -175,6 +175,7 @@ dialog form{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 dialog.edit form{display:block;margin-top:0}
 dialog.edit{width:min(460px,calc(100% - 32px))}
 dialog.edit h2{font-size:16px;margin-bottom:12px}
+dialog.edit .hint{font-size:12.5px;color:var(--ink-3);min-height:16px}
 dialog.edit label{display:block;margin-bottom:9px;font-size:13px;font-weight:600;color:var(--ink-2)}
 dialog.edit input{display:block;width:100%;height:34px;margin-top:3px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:14px;font-weight:400;color:var(--ink)}
 dialog.edit .row2{display:grid;grid-template-columns:1fr 70px 100px;gap:8px}
@@ -237,6 +238,18 @@ else {
   <label>Street<input id="ceStreet" autocomplete="off"></label>
   <div class="row2"><label>City<input id="ceCity" autocomplete="off"></label><label>State<input id="ceState" autocomplete="off"></label><label>Zip<input id="ceZip" autocomplete="off"></label></div>
   <div class="err" id="ceErr" role="alert"></div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn quiet" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="save">Save</button></div>
+</form></dialog>
+<dialog id="docCustEdit" class="edit"><form method="dialog"><h2>Customer on this document</h2>
+  <label>Company<input id="dcCompany" autocomplete="off"></label>
+  <label>Contact<input id="dcName" autocomplete="off"></label>
+  <label>Phone<input id="dcPhone" autocomplete="off"></label>
+  <label>Email<input id="dcEmail" autocomplete="off"></label>
+  <label>Street<input id="dcStreet" autocomplete="off"></label>
+  <div class="row2"><label>City<input id="dcCity" autocomplete="off"></label><label>State<input id="dcState" autocomplete="off"></label><label>Zip<input id="dcZip" autocomplete="off"></label></div>
+  <label style="flex-direction:row;align-items:center;gap:8px;margin-top:6px"><input type="checkbox" id="dcUpdate" style="width:auto"> Also update this customer's info</label>
+  <div class="hint" id="dcHint"></div>
+  <div class="err" id="dcErr" role="alert"></div>
   <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn quiet" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="save">Save</button></div>
 </form></dialog>
 <dialog id="payDlg" class="pay"><form method="dialog"><h2 id="payTitle">Take payment</h2>

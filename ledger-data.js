@@ -102,8 +102,10 @@
           _ph: s(r[5]).replace(/\D/g, ''),
           _hayParts: [id, s(r[2]), e, s(r[5]), s(r[6]), s(r[7]), s(r[12]), DOC_TITLES[s(r[14]).toLowerCase()] || s(r[14]), s(r[15])],
         };
+        cur._raw = [r];
         out.push(cur);
       } else if (type === 'item' && cur && s(r[1]) === cur.txnId) {
+        cur._raw.push(r);
         // O, P: original Ea. and the amount off each unit, written only for a discounted line.
         const off = money(r[15]);
         cur.items.push({ pn: s(r[8]), desc: s(r[9]), qty: s(r[10]), ea: money(r[11]), sub: money(r[12]),
@@ -115,9 +117,28 @@
     for (const t of out) { // same haystacks as History's _parseTxnRows
       t._hay = t._hayParts.filter(Boolean).join(' ').toLowerCase();
       t._serialHay = t.items.flatMap(i => i.serials).map(alnum).filter(Boolean).join(' ');
-      delete t._hayParts;
+      t.fingerprint = transactionRowsFingerprint(t._raw); // the saved rows as read: an edit is refused if the sheet no longer matches
+      delete t._hayParts; delete t._raw;
     }
     return out;
+  }
+  // The token for "the saved rows of one document" (Transactions A:X). The register's save and History's edit request use this one
+  // function: an in-place rewrite is refused when the sheet block no longer has the fingerprint it was loaded or last verified with.
+  function transactionRowsFingerprint(rows) {
+    return JSON.stringify(rows.map(row => Array.from({ length: 24 }, (_, col) => {
+      let value = String(row[col] ?? '').trim().replace(/^'/, '');
+      if (col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11, 14, 15].includes(col))) {
+        return value === '' ? '' : Number(value.replace(/[$,]/g, '')).toFixed(2);
+      }
+      if (col === 3) value = value.replace(/^0(?=\d:)/, '').toUpperCase();
+      if (col === 2) value = value.replace(/^0(?=\d\/)/, '').replace(/\/0(?=\d\/)/, '/'); // 11/04/2026 and 11/4/2026 are the same day (Sheets shows either)
+      return value;
+    })));
+  }
+  function transactionBlockEnd(rows, start, id) {
+    let end = start + 1;
+    while (end < rows.length && String(rows[end][0]).toLowerCase() === 'item' && String(rows[end][1]) === id) end++;
+    return end;
   }
   const DOC_TITLES = { receipt: 'Receipt', invoice: 'Invoice', quote: 'Quote', internal: 'Internal' };
 
@@ -154,7 +175,7 @@
   function buildMarkRow(m, now) {
     if (!MARKS[m.kind]) throw new Error('mark must be email_draft, email_sent, edit, cancel, uncancel, print, pdf, pdf_open or paylink');
     const at = (now ? new Date(now) : new Date()).toISOString();
-    return ['mark_' + Date.parse(at).toString(36) + Math.random().toString(36).slice(2, 8), s(m.invoice_number), s(m.txnId),
+    return [m.id ? s(m.id) : 'mark_' + Date.parse(at).toString(36) + Math.random().toString(36).slice(2, 8), s(m.invoice_number), s(m.txnId),
       honoluluToday(at), '0.00', m.kind, s(m.note), s(m.place), at, ''];
   }
   const BEFORE = 'before:';
@@ -539,6 +560,6 @@
     return model;
   }
 
-  return { NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow, helcimPaymentRows,
+  return { transactionRowsFingerprint, transactionBlockEnd, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow, helcimPaymentRows,
     buildVoidRow, beforeNote, undoRows, honoluluToday, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });

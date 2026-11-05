@@ -1168,7 +1168,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.04.9';
+const POS_RELEASE = '2026.11.04.10';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1397,10 +1397,15 @@ function googleSessionAvailable() {
     : !!(accessToken || localStorage.getItem('gToken'));
 }
 
+// A hidden page opened only to save one History edit (app: a session view; website: a hidden frame). It reads the catalog and
+// saves that one document; it never runs the queues the user's own sale tab runs, so nothing is sent twice.
+const MPE_EDIT_SESSION_PAGE = !!(window.mpeDesktop && window.mpeDesktop.editSessionPage)
+  || (window.parent !== window && /(?:^|[?&])mpeEditSession=1(?:&|$)/.test(location.search));
 function googleConnectedActions() {
   setSignedInUI();
   scheduleTokenRefresh();
   fetchFromDrive();
+  if (MPE_EDIT_SESSION_PAGE) return;
   syncCustomersFromSheet();
   flushPendingPartCodes();
   flushPendingReorders();
@@ -1466,6 +1471,7 @@ function initTokenClient() {
       accessToken = cached;
       scheduleTokenRefresh();
       fetchFromDrive();
+      if (MPE_EDIT_SESSION_PAGE) return;
       syncCustomersFromSheet();
       flushPendingPartCodes();
       flushPendingReorders();
@@ -1827,7 +1833,8 @@ async function maybeAutoRefresh() {
     _checkingCatalog = false;
   }
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); flushStockSessionQueue(); retryTransactionSync(); } });
+if (!MPE_EDIT_SESSION_PAGE) document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); schedulePhoneListNotice(1000); flushPendingReorders(); flushPendingPriceChanges(); flushStockSessionQueue(); retryTransactionSync(); } });
+if (!MPE_EDIT_SESSION_PAGE) {
 setInterval(() => { refreshStatusUI(); syncQboCustomerCache(); maybeAutoRefresh(); }, 60 * 1000);
 setInterval(checkForPosUpdate, 5 * 60 * 1000);
 setInterval(flushPendingPriceChanges, PRICE_CHANGE_RETRY_MS);
@@ -1836,6 +1843,7 @@ setInterval(flushStockSessionQueue, PRICE_CHANGE_RETRY_MS);
 setInterval(retryTransactionSync, 60 * 1000);
 setInterval(syncCustomersFromSheet, 60 * 1000);
 window.addEventListener('online', retryTransactionSync);
+}
 
 async function fetchFromDrive(options = {}) {
   if (desktopGoogleAvailable()) {
@@ -6683,6 +6691,7 @@ async function retryTransactionSync() {
 }
 async function reconcileUnpushedTxns() {
   if (!googleSessionAvailable()) return;
+  if (getHistory().some(entry => entry.editBefore !== undefined && !entry.historySyncPending)) await flushEditMarks();
   const pushed = getPushedTxnIds();
   const queue = getHistory().filter(o => o.txnId && !pushed.has(o.txnId))
     .sort((a, b) => (Date.parse(a.date) || 0) - (Date.parse(b.date) || 0));
@@ -6699,10 +6708,22 @@ async function reconcileUnpushedTxns() {
   const existingIds = new Set(sheetRows
     .filter(row => String(row[0] || '').trim().toUpperCase() === 'TXN' && row[1])
     .map(row => String(row[1]).trim()));
-  const alreadyPresent = queue.filter(order => !order.historySyncPending && existingIds.has(String(order.txnId).trim()));
+  // An edit parked as "needs a look" (another register changed the document first) lets go once the sheet has the document:
+  // the sheet copy wins, this computer's copy stops pretending to be newer, and the counter is told once.
+  const letGo = queue.filter(order => order.needsLook && order.historySyncPending && existingIds.has(String(order.txnId).trim()));
+  if (letGo.length) {
+    const history = getHistory();
+    for (const entry of history) if (letGo.some(o => o.txnId === entry.txnId)) {
+      entry.historySyncPending = false; delete entry.loadedFingerprint; delete entry.updateInfo; delete entry.customerRef; delete entry.editBefore; delete entry.editAt;
+    }
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    addPushedTxnIds(letGo.map(order => order.txnId));
+    try { flashScanCommand('A change saved offline was not sent: another register changed that document first. The sheet copy was kept.', 'warn'); } catch (_e) { /* no screen */ }
+  }
+  const alreadyPresent = queue.filter(order => !order.historySyncPending && !letGo.includes(order) && existingIds.has(String(order.txnId).trim()));
   if (alreadyPresent.length) addPushedTxnIds(alreadyPresent.map(order => order.txnId));
 
-  const missing = queue.filter(order => order.historySyncPending || !existingIds.has(String(order.txnId).trim()))
+  const missing = queue.filter(order => !order.needsLook && (order.historySyncPending || !existingIds.has(String(order.txnId).trim())))
     .sort((a, b) => (_txnPushFailures.get(a.txnId)?.count || 0) - (_txnPushFailures.get(b.txnId)?.count || 0));
   let n = 0, failed = 0;
   for (const order of missing) {
@@ -6767,22 +6788,9 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
 }
 
 // Compare all saved fields, tolerating only Sheets' number/date display formatting.
-function transactionRowsFingerprint(rows) {
-  return JSON.stringify(rows.map(row => Array.from({ length: 24 }, (_, col) => {
-    let value = String(row[col] ?? '').trim().replace(/^'/, '');
-    if (col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11, 14, 15].includes(col))) {
-      return value === '' ? '' : Number(value.replace(/[$,]/g, '')).toFixed(2);
-    }
-    if (col === 3) value = value.replace(/^0(?=\d:)/, '').toUpperCase();
-    return value;
-  })));
-}
-function transactionBlockEnd(rows, start, id) {
-  let end = start + 1;
-  while (end < rows.length && String(rows[end][0]).toLowerCase() === 'item'
-      && String(rows[end][1]) === id) end++;
-  return end;
-}
+// One shared function with History (ledger-data.js), so an edit's "loaded" token and the register's check always agree.
+function transactionRowsFingerprint(rows) { return window.MPELedgerData.transactionRowsFingerprint(rows); }
+function transactionBlockEnd(rows, start, id) { return window.MPELedgerData.transactionBlockEnd(rows, start, id); }
 function transactionUserEnteredRows(rows) {
   return rows.map(row => row.map((value, col) => [8, 13, 15].includes(col) || col >= 16 ? sheetText(value) : value));
 }
@@ -6854,15 +6862,40 @@ async function writeTransactionToSheet(order) {
       throw new Error('This transaction has saved customer updates. Open it in Ledger before changing its saved contents.');
     }
     if (existingTxnIdx >= 0) {
+      // Another register may insert rows above this document after the read above. Every step below works at the old
+      // offset, so before each one confirm the document's first row is still there; if not, stop and let the retry
+      // re-read (Sheets has no compare-and-set, so only the time of one small read stays open).
+      const anchor = async () => {
+        const first = (await sheetsGet(`${TXN_SHEET}!A${existingTxnIdx + 1}:B${existingTxnIdx + 1}`))[0] || [];
+        if (String(first[0] || '').trim().toUpperCase() !== 'TXN' || String(first[1] || '') !== txnId) {
+          throw new Error('Transactions changed while saving; will retry');
+        }
+      };
       const end = transactionBlockEnd(existingRows, existingTxnIdx, txnId);
       const savedRows = existingRows.slice(existingTxnIdx, end);
       const changed = transactionRowsFingerprint(savedRows) !== transactionRowsFingerprint(rows);
       if (order.historySyncPending && changed) {
+        // A History edit was made on rows the sheet no longer has: another register changed this document since it was opened.
+        if (order.loadedFingerprint && transactionRowsFingerprint(savedRows) !== order.loadedFingerprint) {
+          const stale = new Error('Changed on another register since you opened it');
+          stale.stale = true; stale.permanent = true; throw stale;
+        }
         beforeRows = savedRows.map(row => row.map(value => String(value ?? '')));
+        if (order.ledgerEdit) {
+          // Keep the true original on this computer before the first destructive step, so a crash after the rows are written
+          // can still leave the edit mark. A retry never replaces it with half-written rows.
+          const note = window.MPELedgerData.beforeNote(beforeRows);
+          if (order.loadedFingerprint && !note) {
+            const big = new Error('This document is too large to edit here. Nothing was changed.');
+            big.permanent = true; throw big;
+          }
+          keepEditBefore(txnId, note);
+        }
         // MPE POS Desktop permits only row insert/delete and value writes on Transactions
         // (never updateCells), so grow the block, write it in place, then drop leftovers.
         // The read-back below catches a pass that stopped part-way; the next pass redoes it.
         const delta = rows.length - savedRows.length;
+        await anchor();
         if (delta > 0) {
           // Reuse blank rows an interrupted earlier pass may have left after this block.
           let spare = 0;
@@ -6873,7 +6906,9 @@ async function writeTransactionToSheet(order) {
             inheritFromBefore: false,
           } }]);
         }
+        if (delta > 0) await anchor();
         await sheetsUpdate(`${TXN_SHEET}!A${existingTxnIdx + 1}`, transactionUserEnteredRows(rows));
+        if (delta < 0) await anchor();
         if (delta < 0) await sheetsBatchUpdate([{ deleteDimension: {
           range: { sheetId, dimension: 'ROWS', startIndex: existingTxnIdx + rows.length, endIndex: end },
         } }]);
@@ -6936,7 +6971,15 @@ async function writeTransactionToSheet(order) {
     }
     await settleDocNumber(order);
     acknowledgeTransactionSnapshot(order);
-    if (order.ledgerEdit && writeMode === '(updated existing)') queueLedgerEditMark(order, txnId, beforeRows);
+    if (order.ledgerEdit) {
+      const kept = peekEditBefore(txnId);
+      if (writeMode === '(updated existing)' || kept !== null) {
+        const note = kept !== null ? kept : (beforeRows ? window.MPELedgerData.beforeNote(beforeRows) : '');
+        // The held copy is dropped only once the mark is on the sheet; until then the minute retry (flushEditMarks) tries again.
+        queueLedgerEditMark(order, txnId, note, editMarkId(txnId, rows)).then(done => { if (done) takeEditBefore(txnId); });
+      }
+    }
+    if (order.updateInfo) { try { queueCustomerFromOrder(order); } catch (error) { console.warn('[MPE] customer info not queued:', error.message); } }
     _txns = null;
     try { await _idbPut('txnCache', null); } catch {}
     try { updatePriceChangesBadge(); } catch (e) {}   // un-synced count just dropped
@@ -6951,23 +6994,74 @@ async function writeTransactionToSheet(order) {
       ? 'the Drive sheet has no "Transactions" tab'
       : e.message;
     console.warn('[MPE] Transaction export failed —', why, '· stays queued for the next sync');
-    throw new Error(why);
+    const out = new Error(why);
+    if (e.stale) out.stale = true;
+    if (e.permanent) { out.permanent = true; parkTransaction(txnId, why); }
+    throw out;
   }
 }
 
 // Ledger's 'edit' mark (a Payments-tab row, amount 0) after a record opened from Ledger's Edit is rewritten
 // in place. Durable like every Bridge write (MPELedgerHostKit); it never blocks or fails the sale's own save.
-function queueLedgerEditMark(order, txnId, beforeRows) {
-  const data = window.MPELedgerData;
-  if (data) queueLedgerMark('edit', txnId, order.docNumber, beforeRows ? data.beforeNote(beforeRows) : '');
+function queueLedgerEditMark(order, txnId, note, id) {
+  return queueLedgerMark('edit', txnId, order.docNumber, note || '', id, peekEditAt(txnId));
 }
-function queueLedgerMark(kind, txnId, number, note) {
+function peekEditBefore(txnId) {
+  const entry = getHistory().find(e => e.txnId === txnId);
+  return entry && entry.editBefore !== undefined ? entry.editBefore : null;
+}
+// An edit that reached the sheet but whose mark did not: send the mark again (same id, so never twice).
+async function flushEditMarks() {
+  for (const entry of getHistory()) {
+    if (entry.editBefore === undefined || entry.historySyncPending || !entry.ledgerEdit) continue;
+    try {
+      const rows = transactionRowsForOrder(entry, entry.txnId, new Date(entry.date));
+      if (await queueLedgerEditMark(entry, entry.txnId, entry.editBefore, editMarkId(entry.txnId, rows))) takeEditBefore(entry.txnId);
+    } catch (error) { console.warn('[MPE] edit mark retry deferred:', error.message); }
+  }
+}
+// The before rows of an edit that has started writing, held on this computer until its mark is queued.
+function keepEditBefore(txnId, note) {
+  const history = getHistory(), entry = history.find(e => e.txnId === txnId);
+  if (!entry || entry.editBefore !== undefined) return;   // already kept by an earlier attempt: that is the real original
+  entry.editBefore = note;
+  entry.editAt = new Date().toISOString();   // the mark keeps this time on every retry, so a retry is the same row
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+function takeEditBefore(txnId) {
+  const history = getHistory(), entry = history.find(e => e.txnId === txnId);
+  if (!entry || entry.editBefore === undefined) return null;
+  const note = entry.editBefore;
+  delete entry.editBefore; delete entry.editAt;
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch (_) { /* the mark below still carries it */ }
+  return note;
+}
+// One edit gives one mark: the same document and the same final rows always make the same mark id, so a retry after a crash is a no-op.
+function editMarkId(txnId, rows) {
+  const text = txnId + '|' + transactionRowsFingerprint(rows);
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return 'mark_edit_' + String(txnId).replace(/[^A-Za-z0-9-]/g, '') + '_' + h.toString(36) + text.length.toString(36);
+}
+function peekEditAt(txnId) {
+  const entry = getHistory().find(e => e.txnId === txnId);
+  return entry && entry.editAt ? entry.editAt : undefined;
+}
+// A refused edit that can never succeed as saved: stop the retry loop, keep the entry so History shows "needs a look".
+function parkTransaction(txnId, why) {
+  try {
+    const history = getHistory(), entry = history.find(e => e.txnId === txnId);
+    if (entry && !entry.needsLook) { entry.needsLook = why; localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); }
+  } catch (_) { /* best effort */ }
+}
+function queueLedgerMark(kind, txnId, number, note, id, at) {
   const kit = window.MPELedgerHostKit, data = window.MPELedgerData;
-  if (!kit || !data || !txnId) return;
+  if (!kit || !data || !txnId) return Promise.resolve(false);
   const place = registerDigit() || (window.mpeDesktop ? '' : '9');
-  kit.createPaymentsStore({ get: range => sheetsGet(range, { retryThrottle: false }), append: sheetsAppend, storage: localStorage })
-    .appendRows([data.buildMarkRow({ kind, txnId, invoice_number: number || '', place, note: note || '' })])
-    .catch(error => console.warn('[MPE] Ledger ' + kind + ' mark deferred:', error.message));
+  return kit.createPaymentsStore({ get: range => sheetsGet(range, { retryThrottle: false }), append: sheetsAppend, storage: localStorage })
+    .appendRows([data.buildMarkRow({ id, kind, txnId, invoice_number: number || '', place, note: note || '' }, at)])
+    .then(() => true)
+    .catch(error => { console.warn('[MPE] Ledger ' + kind + ' mark deferred:', error.message); return false; });
 }
 // History's timeline: this sale was printed, saved as a PDF or emailed (an Internal copy is never in history).
 function queueOutputMark(kind, note) {
@@ -7239,6 +7333,10 @@ function fillTxnIntoPOS(t, convertTo = null) {
     // duplicate Drive push.
     const _od = new Date(((t.date || '') + ' ' + (t.time || '')).trim());
     _reprintSource = { txnId: t.txnId || '', date: isNaN(_od.getTime()) ? new Date().toISOString() : _od.toISOString(), docType: t.docType || 'receipt', docNumber: t.docNumber || null };
+    // The quote this sale was made from (column N) comes back as a txnId string from the sheet; keep it so a computer
+    // with no local copy still writes it again on a changed save.
+    const quoteId = String(t.fromQuote?.txnId ?? t.fromQuote ?? '').trim();
+    if (quoteId) _reprintSource.fromQuote = { txnId: quoteId, docNumber: String(t.fromQuote?.docNumber || '') };
     setDocType(DOC_TITLES[t.docType] ? t.docType : 'receipt');
     const presellChk = document.getElementById('presellChk');
     if (presellChk) presellChk.checked = t.docType !== 'internal' && !!t.presell;
@@ -7309,6 +7407,12 @@ function fillTxnIntoPOS(t, convertTo = null) {
       const snInputs = tbody.querySelectorAll(`tr[data-sn-for="${r}"] .sn-input`);
       serials.forEach((s, idx) => { if (snInputs[idx]) snInputs[idx].value = s; });
     }
+  }
+  // The card fee is not in the saved rows: take it from this computer's saved copy of the sale, else from History's guess,
+  // so the total does not drop by the fee. A reprint or edit only; a conversion is a new sale.
+  if (!convertTo) {
+    const mine = t.txnId ? getHistory().find(entry => entry.txnId === t.txnId) : null;
+    if (mine ? mine.toggles?.cardFee : t.cardFee) toggleCardFee(true);
   }
   updateSummary();
   // A conversion is a new, unsaved sale; only a reprint starts from a saved baseline.
@@ -8923,6 +9027,8 @@ function releasePhysicalOutput(owner) {
 }
 
 function recordOutgoingDocument() {
+  // A History edit session saves only the document: no price proposals, reorder drafts or stock event (customer fields only).
+  if (typeof _editSession !== 'undefined' && _editSession) return saveToHistory();
   commitActiveBridgeDraft();
   // Renew before the flush so this proposal and any older local entries can
   // leave together even after a quiet hour at the register.
@@ -9853,6 +9959,9 @@ function historyContentFingerprint(order, docType = _docType) {
     ...(String(order.po || '').trim() ? { po: String(order.po).trim() } : {}),
   });
 }
+// The outcome of the newest saveToHistory push, for a History edit session to wait on.
+let _lastPushOutcome = null;
+let _editSession = null;
 function saveToHistory() {
   if (_docType === 'internal') return false;
   const order = captureOrder();
@@ -9867,6 +9976,11 @@ function saveToHistory() {
     order.docType = _docType;
     order.docNumber = identity.docNumber || previous?.docNumber || formatDocNumber(new Date(identity.date), _docType);
     if (identity.ledgerEdit) order.ledgerEdit = true;   // opened from Ledger's Edit: the in-place save leaves an 'edit' mark
+    if (_editSession) {   // a History edit session: remember what the editor loaded and the customer choice until the sheet shows it
+      order.loadedFingerprint = _editSession.loadedFingerprint;
+      order.sessionId = _editSession.id;
+      if (_editSession.updateInfo) { order.updateInfo = true; order.customerRef = _editSession.customerRef || ''; }
+    }
   } else {
     const pad = n => String(n).padStart(2, '0');
     const base = 'TX-' + pad(now.getMonth()+1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + '-' + pad(now.getSeconds())
@@ -9879,7 +9993,7 @@ function saveToHistory() {
     order.docNumber = (_pendingTxnDate && _pendingDocNumber) || nextRegisterDocNumber(now);
   }
   const quoteSource = typeof _quoteSource !== 'undefined' ? _quoteSource : null;
-  const fromQuote = quoteSource && ['receipt', 'invoice'].includes(order.docType) ? quoteSource : previous?.fromQuote;
+  const fromQuote = quoteSource && ['receipt', 'invoice'].includes(order.docType) ? quoteSource : (previous?.fromQuote || (_reprintSource && _reprintSource.fromQuote));
   if (fromQuote) order.fromQuote = { txnId: fromQuote.txnId, docNumber: fromQuote.docNumber };
   const fingerprint = historyContentFingerprint(order, order.docType);
   const baseline = _historyContentBaseline
@@ -9895,7 +10009,7 @@ function saveToHistory() {
     const retained = getHistory().find(entry => entry.txnId === order.txnId);
     if (JSON.stringify(retained) !== JSON.stringify(order)) return false;
   } catch (error) { return false; }
-  try{maybeSaveCustomer();}catch(error){flashScanCommand('Sale saved, but customer details were not saved. Try Save again.','err');}
+  if (!_editSession) try{maybeSaveCustomer();}catch(error){flashScanCommand('Sale saved, but customer details were not saved. Try Save again.','err');}
   _currentTxnId = order.txnId;
   _currentTxnDate = order.date;
   _currentDocNumber = order.docNumber;
@@ -9904,10 +10018,11 @@ function saveToHistory() {
   _historyContentBaseline = fingerprint;
   _lastPrintedOrder = order;
   _lastPushStatus = googleSessionAvailable() ? 'pending' : 'skipped';
+  _lastPushOutcome = Promise.resolve({ ok: true, pending: true, offline: true });
   if (googleSessionAvailable()) {
-    pushTransactionToSheet(order)
-      .then(() => { _lastPushStatus = 'ok'; updatePrintBanner(); })
-      .catch(() => { _lastPushStatus = 'fail'; updatePrintBanner(); });
+    _lastPushOutcome = pushTransactionToSheet(order)
+      .then(() => { _lastPushStatus = 'ok'; updatePrintBanner(); return { ok: true }; })
+      .catch(error => { _lastPushStatus = 'fail'; updatePrintBanner(); return { ok: false, error: String(error?.message || error), stale: !!error?.stale, permanent: !!error?.permanent }; });
   }
   return true;
 }
@@ -10608,6 +10723,117 @@ function openLedgerSale({ kind, txn }) {
   }
 }
 
+// ── History's silent edit session (customer fields typed in the History panel) ───────────────────────────────
+// History sends { v:1, kind:'edit', mode:'silent', sessionId, txn, loaded:{fingerprint}, patch } to a fresh hidden register page
+// (app: a session view; website: a hidden frame). This page loads the saved document the way Edit does, proves it can write the
+// very same rows back, applies the typed customer fields and saves through the one save path (prepareAndSaveForPrint), then
+// reports one result. It never shows a tab, prints, takes a number, flushes another page's queues or touches the user's sale.
+const EDIT_PATCH_FIELDS = { company: 'custCompany', name: 'custName', phone: 'custPhone', email: 'custEmail', street: 'custAddr', city: 'custCity', region: 'custState', zip: 'custZip' };
+const EDIT_PATCH_MAX = 120;
+function editSessionRequest(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || data.v !== 1 || data.kind !== 'edit' || data.mode !== 'silent') return null;
+  if (typeof data.sessionId !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(data.sessionId)) return null;
+  const txn = data.txn, patch = data.patch, fp = data.loaded && data.loaded.fingerprint;
+  if (!txn || typeof txn !== 'object' || typeof txn.txnId !== 'string' || !txn.txnId.trim()) return null;
+  if (!['receipt', 'invoice', 'quote'].includes(txn.docType)) return null;
+  if (typeof fp !== 'string' || !fp || fp.length > 200000) return null;
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return null;
+  const clean = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (key === 'updateInfo') { clean.updateInfo = value === true; continue; }
+    if (!EDIT_PATCH_FIELDS[key] || typeof value !== 'string') return null;
+    clean[key] = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, EDIT_PATCH_MAX);
+  }
+  return { sessionId: data.sessionId, txn, loaded: fp, patch: clean };
+}
+function editSessionRows() {   // the rows this page would save for the document on screen, built exactly as the save builds them
+  const order = captureOrder();
+  if (!order || !_reprintSource) return null;
+  order.txnId = _reprintSource.txnId; order.date = _reprintSource.date; order.docType = _docType;
+  order.docNumber = _reprintSource.docNumber || '';
+  if (_reprintSource.fromQuote) order.fromQuote = { txnId: _reprintSource.fromQuote.txnId, docNumber: _reprintSource.fromQuote.docNumber };
+  return transactionRowsForOrder(order, order.txnId, new Date(order.date));
+}
+async function runEditSession(raw) {
+  const req = editSessionRequest(raw);
+  const base = { v: 1, sessionId: String(raw && raw.sessionId || '').slice(0, 64), txnId: String(raw && raw.txn && raw.txn.txnId || '').slice(0, 80) };
+  const fail = (code, message, extra) => ({ ...base, ok: false, code, message, ...extra });
+  if (!req) return fail('invalid', 'That edit request was not valid. Nothing was changed.');
+  if (_editSession) return fail('busy', 'Another edit is saving. Try again in a moment.');
+  const txn = req.txn;
+  try {
+    if (!ledgerDraftTabIsEmpty()) return fail('not_empty', 'This page is not empty. Nothing was changed.');
+    if (txn.contactConflict) return fail('contact_conflict', 'Customer changes for this sale need review first. Nothing was changed.');
+    // A fresh page reads the catalog from this computer's saved copy. Give it a few seconds: a part found there supplies the make for the
+    // PDF. The saved rows never depend on it (the proof below compares them), so a missing catalog only leaves the brand off the PDF.
+    for (let waited = 0; !(Array.isArray(partsArray) && partsArray.length) && waited < 8000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
+    // The page may still be reading its saved Google sign-in: give it a moment so an online save is not mistaken for an offline one.
+    for (let waited = 0; !googleSessionAvailable() && waited < 6000; waited += 100) await new Promise(resolve => setTimeout(resolve, 100));
+    fillTxnIntoPOS(txn);
+    _reprintSource.ledgerEdit = true;
+    // Prove the sale screen reproduces the saved document exactly before touching it (card fee, deposit note, quote link, serials,
+    // discounts, PO #). Any difference means the save would change more than the customer, so it is refused.
+    const loadedRows = editSessionRows();
+    if (!loadedRows || transactionRowsFingerprint(loadedRows) !== req.loaded) {
+      let where = '';   // only where the first difference is (row and column), never the values
+      try {
+        const a = JSON.parse(req.loaded), b = loadedRows ? JSON.parse(transactionRowsFingerprint(loadedRows)) : [];
+        outer: for (let r = 0; r < Math.max(a.length, b.length); r++) for (let c = 0; c < 24; c++) if (((a[r] || [])[c]) !== ((b[r] || [])[c])) { where = `row ${r} column ${c}`; break outer; }
+        if (!where && a.length !== b.length) where = `${a.length} saved rows, ${b.length} on screen`;
+      } catch (_error) { where = 'unreadable'; }
+      return fail('open_sale_screen', 'This one has to be changed on the sale screen. Nothing was changed.', { detail: where });
+    }
+    for (const [key, id] of Object.entries(EDIT_PATCH_FIELDS)) if (key in req.patch) document.getElementById(id).value = req.patch[key];
+    const after = captureOrder();
+    if (!after) return fail('open_sale_screen', 'This one has to be changed on the sale screen. Nothing was changed.');
+    if (historyContentFingerprint(after) === _historyContentBaseline) return { ...base, ok: true, unchanged: true, number: _reprintSource.docNumber || '' };
+    const history = getHistory();
+    const previous = history.find(entry => entry.txnId === txn.txnId);
+    const previousCopy = previous ? JSON.parse(JSON.stringify(previous)) : null;
+    _editSession = { id: req.sessionId, loadedFingerprint: req.loaded, updateInfo: !!req.patch.updateInfo,
+      customerRef: document.getElementById('custPanel').dataset.customerRef || '' };
+    try {
+      await prepareAndSaveForPrint('save_snapshot', { prepareOutput: false });
+    } catch (error) {
+      return fail('save_failed', 'The edit could not be saved here. Nothing was changed.', { detail: ledgerErrorCode(error) || '' });
+    }
+    const outcome = await (_lastPushOutcome || Promise.resolve({ ok: true, pending: true }));
+    const mine = getHistory().find(entry => entry.txnId === txn.txnId);
+    const number = (mine && mine.docNumber) || _reprintSource.docNumber || '';
+    if (!outcome.ok && outcome.permanent) {
+      // Refused for good (another register changed it, or it is too big to keep a before copy): put this computer's copy back as it was.
+      const all = getHistory(), at = all.findIndex(entry => entry.txnId === txn.txnId);
+      if (previousCopy) { if (at >= 0) all[at] = previousCopy; else all.unshift(previousCopy); } else if (at >= 0) all.splice(at, 1);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(all));
+      return fail(outcome.stale ? 'stale' : 'refused', outcome.stale ? 'Changed on another register since you opened it. Your edits are kept in the box.' : outcome.error);
+    }
+    if (!outcome.ok || outcome.pending || (mine && mine.historySyncPending)) {
+      return { ...base, ok: true, pending: true, localSaved: true, number, customer: req.patch.updateInfo ? 'waiting' : 'none' };
+    }
+    let pdf = 'none';
+    if (_docType === 'invoice') {
+      pdf = 'website';
+      if (window.mpeDesktop && typeof window.mpeDesktop.invoiceDriveSave === 'function') {
+        try { const saved = await window.mpeDesktop.invoiceDriveSave(ledgerDocumentRequest()); pdf = saved && saved.ok ? (saved.queued ? 'queued' : 'saved') : 'unavailable'; }
+        catch (_error) { pdf = 'unavailable'; }
+      }
+    }
+    // The customer record is queued in this computer's list; give it a few seconds to reach the sheet before this page is closed.
+    if (req.patch.updateInfo) await Promise.race([Promise.resolve(syncCustomersFromSheet()).catch(() => {}), new Promise(resolve => setTimeout(resolve, 8000))]);
+    return { ...base, ok: true, verified: true, number, pdf, customer: req.patch.updateInfo ? 'queued' : 'none' };
+  } catch (error) {
+    return fail('error', 'The edit stopped part-way. Check History before trying again.', { detail: String(error && error.message || error).slice(0, 120) });
+  } finally {
+    _editSession = null;
+  }
+}
+async function runEditSessionAndReport(raw) {
+  const result = await runEditSession(raw);
+  if (window.mpeDesktop && typeof window.mpeDesktop.editSessionResult === 'function') window.mpeDesktop.editSessionResult(result);
+  else if (window.parent !== window) window.parent.postMessage({ type: 'edit-result', result }, location.origin);
+  return result;
+}
+
 function toggleSignature() {
   const btn = document.getElementById('signatureBtn');
   btn.classList.toggle('active');
@@ -10989,14 +11215,32 @@ function maybeSaveCustomer(){
   if (_docType === 'internal') return;
   const rec=currentCustomerRecord();if(!rec)return;
   const panel=document.getElementById('custPanel');
-  rec.ref=panel.dataset.customerRef||customerRefFor(rec)||'k:'+window.MPELedgerData.customerKey(rec.ph,rec.co,rec.nm);
+  const ref=queueCustomerRecord(rec,panel.dataset.customerRef);
+  if(ref)panel.dataset.customerRef=ref;
+}
+// Queue one customer record for the Customers tab (the same durable list checkout uses). Returns its ref, or '' when nothing changed.
+function queueCustomerRecord(rec,hintRef){
+  rec.ref=hintRef||customerRefFor(rec)||'k:'+window.MPELedgerData.customerKey(rec.ph,rec.co,rec.nm);
   const prior=custIndex().find(e=>e.c.ref===rec.ref)?.c;
-  if(prior&&customerFieldsSignature(prior)===customerFieldsSignature(rec))return;
+  if(prior&&customerFieldsSignature(prior)===customerFieldsSignature(rec))return '';
+  if(_custPending.some(p=>customerFieldsSignature(p)===customerFieldsSignature(rec)&&p.ref===rec.ref))return rec.ref;   // already waiting: never a second row
   rec.added=window.MPELedgerData.buildCustomerRow({company:rec.co,name:rec.nm},rec.ref,Date.now())[8];
   const before=_custPending;_custPending=[...before,rec];
   try{_persistCustPending();}catch(error){_custPending=before;throw error;}
-  panel.dataset.customerRef=rec.ref;_custBust();
+  _custBust();
   void syncCustomersFromSheet();
+  return rec.ref;
+}
+// History's "Also update this customer's info" box: run only after the document read back from the sheet, from the saved order
+// (there is no sale screen at a replay). The ref is the customer the document had when it was opened, so a changed phone updates them.
+function queueCustomerFromOrder(order){
+  const up=v=>upperText(v||'').trim(), c=order.customer||{};
+  const rec={co:up(c.company),nm:up(c.name),ph:up(c.phone),em:up(c.email),st:up(c.addr),ci:up(c.city),sta:up(c.state),z:up(c.zip)};
+  if(!(rec.co||rec.nm))return;
+  rec.pd=_digits10(rec.ph);
+  queueCustomerRecord(rec,order.customerRef||'');
+  const history=getHistory(),entry=history.find(e=>e.txnId===order.txnId);
+  if(entry&&entry.updateInfo){delete entry.updateInfo;delete entry.customerRef;localStorage.setItem(HISTORY_KEY,JSON.stringify(history));}
 }
 let _customerSyncWarning=false;
 function customerStore(){
@@ -11011,6 +11255,8 @@ async function syncCustomersFromSheet(){
   }
   const attempt=(async()=>{
     try{
+      // Another page of this register (a hidden edit page) may have queued a record since this page loaded its list: keep it.
+      try{for(const rec of JSON.parse(localStorage.getItem('mpeCustPending')||'[]'))if(!_custPending.some(p=>p.ref===rec.ref&&customerFieldsSignature(p)===customerFieldsSignature(rec)))_custPending.push(rec);}catch(_e){}
       const store=customerStore();
       let rows=await store.readAll();
       // Migrate old locally queued additions without losing their saved contents.
@@ -11588,7 +11834,7 @@ function closeBrowserTab(id){
 function addTab(){const id=nextTab++,b=document.createElement('button');b.type='button';b.className='cv-tab';b.dataset.cvTab=id;b.textContent='Sale '+id;b.onclick=()=>activateTab(id);const group=document.createElement('div');group.className='cv-tab-group';const close=document.createElement('button');close.type='button';close.className='cv-close-tab';close.textContent='×';close.setAttribute('aria-label','Close sale '+id);close.title='Close sale '+id;close.onclick=()=>closeBrowserTab(id);group.append(b,close);q('#cvTabs').append(group);if(id!==1)activateTab(id);else b.classList.add('active');}
 // Ledger tab: first, never closed. The app shows it in its native tab strip instead.
 let ledgerTab=null;
-if(window.mpeDesktop){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;window.mpeDesktop.onLedgerSale?.(openLedgerSale);}else{nextTab=1;addTab();q('#cvNew').onclick=addTab;ledgerTab=window.MPELedgerTab?.install({document,window,tabs:q('#cvTabs'),header:q('.cv-top'),host:root,onShow:()=>qa('#cvTabs .cv-tab[data-cv-tab]').forEach(b=>b.classList.remove('active')),onOpenSale:sale=>{addTab();openLedgerSale(sale);},scanKeydown:onHardwareScanKeydown,onScan:()=>activateTab(activeTab)})||null;}
+if(window.mpeDesktop){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;window.mpeDesktop.onLedgerSale?.(openLedgerSale);window.mpeDesktop.onEditSession?.(runEditSessionAndReport);}else{if(MPE_EDIT_SESSION_PAGE){window.addEventListener('message',e=>{if(e.source!==window.parent||e.origin!==location.origin||!e.data||e.data.type!=='edit-session')return;void runEditSessionAndReport(e.data.request);});window.parent.postMessage({type:'edit-ready'},location.origin);}nextTab=1;addTab();q('#cvNew').onclick=addTab;ledgerTab=MPE_EDIT_SESSION_PAGE?null:window.MPELedgerTab?.install({document,window,tabs:q('#cvTabs'),header:q('.cv-top'),host:root,onShow:()=>qa('#cvTabs .cv-tab[data-cv-tab]').forEach(b=>b.classList.remove('active')),onOpenSale:sale=>{addTab();openLedgerSale(sale);},scanKeydown:onHardwareScanKeydown,onScan:()=>activateTab(activeTab)})||null;}
 const oldIdle=posRegisterIsIdleAndEmpty;posRegisterIsIdleAndEmpty=function(){if(q('#cvEntry').value.trim())return false;for(const [id,state] of browserTabs){if(id!==activeTab&&(state.entry.trim()||state.customer.some(Boolean)||state.rows.some(row=>row.nodeType===1&&row.querySelector('.part-input')?.value.trim())))return false;}return oldIdle();};
 q('#cvClassic').checked=localStorage.getItem(VIEW_KEY)==='1';if(!q('#cvClassic').checked)mount();
 })();

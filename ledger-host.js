@@ -94,7 +94,8 @@
       // Resolves only after every row reads back exactly.
       appendRows: rows => serial(async () => {
         const sheet = await read(); // a missing tab or signed-out stops here, before anything is kept
-        keep([...pending(), ...rows]);
+        const waiting = new Set(pending().map(idOf)); // the same row sent again (a retry after a crash) is never queued twice
+        keep([...pending(), ...rows.filter(r => !waiting.has(idOf(r)))]);
         await flush(sheet);
       }),
       // Sheet rows plus anything still waiting on this computer (so the screen matches what will land).
@@ -133,7 +134,7 @@
     return {
       txnId: s(r.txnId), date: /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}` : d,
       time: s(r.time), name: [s(r.name), s(r.company)].filter(Boolean).join(' / '), phone: s(r.phone), email: s(r.email),
-      addr: s(r.addr), total: m2(r.total), docType: s(r.docType), docNumber: s(r.number), fromQuote: s(r.fromQuote),
+      addr: s(r.addr), total: m2(r.total), docType: s(r.docType), docNumber: s(r.number), fromQuote: s(r.fromQuote), po: s(r.po),
       customer: customer.some(Boolean) ? customer : null, presell: !!r.presell, contactConflict: !!r.contactConflict,
       completedContact: Array.isArray(r.completedContact) ? r.completedContact.slice() : null,
       items: (r.items || []).map(i => ({ pn: s(i.pn), desc: s(i.desc), qty: s(i.qty), ea: i.pn === 'Note' ? '' : m2(i.ea),
@@ -145,6 +146,36 @@
     const k = SALE_KINDS[kind];
     if (!k) throw new Error('unknown Ledger action ' + kind);
     return { kind: k, txn: toHistory(record) };
+  }
+
+  // ---- Edit session on the website: a hidden frame running the register page, answering once ----
+  const EDIT_TIMEOUT_MS = 120000;
+  function webEditSession(p, request) {
+    return new Promise(resolve => {
+      const doc = p.document, base = { v: 1, sessionId: request.sessionId, txnId: request.txn.txnId, ok: false };
+      const frame = doc.createElement('iframe');
+      frame.setAttribute('aria-hidden', 'true');
+      frame.tabIndex = -1;
+      frame.title = 'Saving an edit';
+      frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:1024px;height:768px;border:0';
+      let timer = null, done = false;
+      const finish = result => {
+        if (done) return;
+        done = true; clearTimeout(timer);
+        p.removeEventListener('message', onMessage);
+        frame.remove();
+        resolve(result);
+      };
+      const onMessage = event => {
+        if (event.source !== frame.contentWindow || event.origin !== p.location.origin || !event.data) return;
+        if (event.data.type === 'edit-ready') frame.contentWindow.postMessage({ type: 'edit-session', request }, p.location.origin);
+        else if (event.data.type === 'edit-result' && event.data.result && event.data.result.sessionId === request.sessionId) finish(event.data.result);
+      };
+      p.addEventListener('message', onMessage);
+      timer = setTimeout(() => finish({ ...base, code: 'timeout', message: 'The edit took too long. Check History before trying again.' }), EDIT_TIMEOUT_MS);
+      frame.src = new URL('index.html?mpeEditSession=1', p.location.href).href;
+      doc.body.append(frame);
+    });
   }
 
   // ---- Environment ----
@@ -167,6 +198,9 @@
         // Helcim pay links (app only; the Ledger tab's preload adds it once the app can talk to Helcim). Never on the website.
         helcim: d.helcim && typeof d.helcim.payLink === 'function' ? d.helcim : undefined,
         openSale: async request => { const r = await d.openSale(request); if (!r || !r.ok) throw new Error('The sale tab did not open'); },
+        // App 0.3.64+: save customer fields through a hidden register page. Present only when the app says it can (never guessed from a method).
+        editSession: d.editCapabilities && d.editCapabilities.silentEdit && typeof d.editSession === 'function' ? request => d.editSession(request) : undefined,
+        pdfRefresh: !!(d.editCapabilities && d.editCapabilities.pdfSave),
         scan: typeof d.scan === 'function' ? value => d.scan(value) : undefined, // app 0.3.49+
         setType: typeof d.setType === 'function' ? (id, num, from, to) => d.setType(id, num, from, to) : undefined, // app 0.3.57+
         openPdf: typeof d.openPdf === 'function' ? number => d.openPdf(number) : undefined, // app 0.3.52+
@@ -211,6 +245,9 @@
           return data;
         },
         openSale: async request => { p.postMessage(request, w.location.origin); },
+        // The website saves an edit in a hidden copy of the register (same origin, same saved data), so the sale on screen is never touched.
+        editSession: request => webEditSession(p, request),
+        pdfRefresh: false,
         // The page's own Google token (drive.readonly) reads the file; kept in memory for the life of the page.
         qboHistory: typeof w.DecompressionStream === 'function' ? async known => {
           if (known === 'web') return { unchanged: true };
@@ -349,6 +386,29 @@
         await quietMark('email_sent', record, [f.to, f.cc].filter(Boolean).join(', ').slice(0, 300));
       },
       openInNewSale: ({ kind, txn }) => env.openSale(saleRequest(kind, txn)),
+      // Customer fields on one saved document, saved by the register in the background. Missing on an older app (fields stay read-only).
+      // patch: only the fields that changed (a cleared field is ''), plus updateInfo. Resolves with the register's one result.
+      editSession: env.editSession ? async (record, patch, extra) => {
+        const fingerprint = s(record.fingerprint);
+        const base = { v: 1, ok: false, txnId: s(record.txnId) };
+        if (!fingerprint) return { ...base, code: 'open_sale_screen', message: 'This one has to be changed on the sale screen. Nothing was changed.' };
+        const id = 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        const out = await env.editSession({ v: 1, kind: 'edit', mode: 'silent', sessionId: id, txn: { ...toHistory(record), cardFee: !!(extra && extra.cardFee) }, loaded: { fingerprint }, patch });
+        return out && typeof out === 'object' ? out : { ...base, sessionId: id, code: 'closed', message: 'The edit closed before it finished. Check History before trying again.' };
+      } : undefined,
+      // Transactions saved on THIS computer and not yet on the sheet (History reads the sheet, so it must say so). A set of txnIds.
+      pendingTxnIds() {
+        try {
+          const list = JSON.parse((env.storage && env.storage.getItem('mpe_print_history')) || '[]');
+          return new Set((Array.isArray(list) ? list : []).filter(o => o && o.historySyncPending && !o.needsLook).map(o => s(o.txnId)));
+        } catch (_) { return new Set(); }
+      },
+      parkedTxnIds() {
+        try {
+          const list = JSON.parse((env.storage && env.storage.getItem('mpe_print_history')) || '[]');
+          return new Set((Array.isArray(list) ? list : []).filter(o => o && o.needsLook && o.historySyncPending).map(o => s(o.txnId)));
+        } catch (_) { return new Set(); }
+      },
       // A keyboard-style scan caught on this page goes to the last sale tab (app only; the website's register catches its own).
       scan: env.scan,
       openPdf: env.openPdf ? async (number, record) => {

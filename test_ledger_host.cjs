@@ -11,7 +11,7 @@ const L = require('./ledger-data.js');
 const K = require('./ledger-host.js');
 const LedgerTab = require('./ledger-tab.js');
 const { createFixtureHost } = require('./ledger-host-fixture.js');
-const { ledgerSaleRequest } = require('../POSDesktop/src/pos-tabs.js');
+const { ledgerSaleRequest, ledgerEditRequest } = require('../POSDesktop/src/pos-tabs.js');
 
 // A fake sheet that behaves like Sheets USER_ENTERED: a leading ' keeps the text and is not stored.
 function fakeSheet({ payments = true, signedIn = true } = {}) {
@@ -287,7 +287,8 @@ test('register: edit keeps the record in place and flags it; copy and new invoic
 test('register: an in-place save of a Ledger edit leaves an edit mark; nothing else does', () => {
   const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   assert.match(html, /if \(identity\.ledgerEdit\) order\.ledgerEdit = true;/);
-  assert.match(html, /if \(order\.ledgerEdit && writeMode === '\(updated existing\)'\) queueLedgerEditMark\(order, txnId, beforeRows\);/);
+  assert.match(html, /if \(order\.ledgerEdit\) \{\s*const kept = peekEditBefore\(txnId\);\s*if \(writeMode === '\(updated existing\)' \|\| kept !== null\)/);
+  assert.match(html, /queueLedgerEditMark\(order, txnId, note, editMarkId\(txnId, rows\)\)/);
   assert.match(html, /<script src="ledger-data\.js"><\/script>\s*<script src="ledger-host\.js"><\/script>/);
 });
 
@@ -389,4 +390,49 @@ test('the register page never loads or writes the QuickBooks file, and History c
   assert.equal((host.match(/QBO_FILE_ID/g) || []).length, 3, 'one constant, two uses (website read, export)');
   assert.ok(!/method:\s*'(PUT|PATCH|DELETE)'/.test(host));
   assert.ok(!fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8').includes('1TVEYXRKC8E_Db'));
+});
+
+test('host.editSession builds one silent request: raw record, the card-fee hint, the loaded fingerprint and only the changed fields', async () => {
+  const sent = [];
+  const sheet = fakeSheet({ payments: true });
+  const host = K.createHost({ kind: 'app', place: '1', storage: memoryStorage(), signedIn: async () => true, get: sheet.get, append: sheet.append, editSession: async req => { sent.push(req); return { v: 1, ok: true, verified: true, sessionId: req.sessionId }; } }, {});
+  const record = { txnId: 'TX-1', date: '2026-11-04', time: '9:00 AM', name: 'JO', company: '', phone: '', email: '', addr: '', total: 100, kind: 'invoice', number: 'L21001', fromQuote: 'TX-Q', po: 'PO-9', fingerprint: '["fp"]', items: [{ pn: 'A', desc: 'Saw', qty: '1', ea: 100, sub: 100, serials: [] }] };
+  const out = await host.editSession(record, { phone: '808', updateInfo: true }, { cardFee: true });
+  assert.equal(out.ok, true);
+  const req = sent[0];
+  assert.deepEqual([req.v, req.kind, req.mode], [1, 'edit', 'silent']); assert.match(req.sessionId, /^[A-Za-z0-9_-]{8,64}$/);
+  assert.equal(req.txn.po, 'PO-9'); assert.equal(req.txn.fromQuote, 'TX-Q'); assert.equal(req.txn.cardFee, true); assert.equal(req.loaded.fingerprint, '["fp"]');
+  assert.deepEqual(req.patch, { phone: '808', updateInfo: true });
+  assert.ok(ledgerEditRequest(req), 'main accepts exactly this shape');
+  assert.ok(!req.txn.items.some(i => i.pn === 'Note'), 'the raw record: no synthetic deposit note');
+  const none = await host.editSession({ ...record, fingerprint: '' }, { phone: '1' }, {});
+  assert.equal(none.ok, false); assert.equal(none.code, 'open_sale_screen'); assert.equal(sent.length, 1, 'nothing is sent without a fingerprint');
+  const old = K.createHost({ kind: 'app', place: '1', storage: memoryStorage(), signedIn: async () => true, get: sheet.get, append: sheet.append }, {});
+  assert.equal(old.editSession, undefined, 'an app without the capability gets read-only fields');
+});
+
+test('website edit session: a hidden same-origin frame is sent the request once it says ready, answers once, is removed, and strangers are ignored', async () => {
+  const listeners = [], posted = []; let removed = false, appended = null;
+  const frameWin = { postMessage: (message, origin) => posted.push([message, origin]) };
+  const frame = { style: {}, setAttribute() {}, remove() { removed = true; }, get contentWindow() { return frameWin; } };
+  const p = { sheetsGet() {}, googleSessionAvailable: () => true, location: { origin: 'https://x.test', href: 'https://x.test/pos/index.html' },
+    document: { createElement: () => frame, body: { append: f => { appended = f; } } },
+    addEventListener: (type, fn) => { if (type === 'message') listeners.push(fn); }, removeEventListener: (type, fn) => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); } };
+  const w = { parent: p, location: { origin: 'https://x.test' }, localStorage: memoryStorage(), navigator: { userAgent: '' } };
+  const env = K.environment(w);
+  assert.equal(env.kind, 'web'); assert.equal(env.pdfRefresh, false);
+  const request = { v: 1, sessionId: 'abcdefgh', txn: { txnId: 'T' } };
+  const pending = env.editSession(request);
+  assert.equal(frame.src, 'https://x.test/pos/index.html?mpeEditSession=1'); assert.equal(appended, frame);
+  const say = (source, origin, data) => listeners.slice().forEach(fn => fn({ source, origin, data }));
+  say({}, 'https://x.test', { type: 'edit-ready' });                 // some other window
+  say(frameWin, 'https://evil.test', { type: 'edit-ready' });        // the right window, the wrong origin
+  assert.equal(posted.length, 0);
+  say(frameWin, 'https://x.test', { type: 'edit-ready' });
+  assert.deepEqual(posted, [[{ type: 'edit-session', request }, 'https://x.test']]);
+  say(frameWin, 'https://x.test', { type: 'edit-result', result: { sessionId: 'someone-else', ok: true } });   // another session's answer
+  assert.equal(removed, false);
+  say(frameWin, 'https://x.test', { type: 'edit-result', result: { v: 1, sessionId: 'abcdefgh', ok: true, verified: true } });
+  assert.deepEqual(await pending, { v: 1, sessionId: 'abcdefgh', ok: true, verified: true });
+  assert.equal(removed, true); assert.equal(listeners.length, 0);
 });

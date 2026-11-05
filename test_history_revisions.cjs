@@ -12,7 +12,7 @@ function setup() {
     _currentTxnId: null, _currentTxnDate: null, _pendingTxnDate: null,
     _pendingDocNumber: null, _currentDocNumber: null,
     _lastPrintedOrder: null, _lastPushStatus: null, _ledgerOutputCoordinator: null,
-    MPELedgerNumbering: require('./ledger-numbering'), window: {}, sheetsGet: async () => [],
+    MPELedgerNumbering: require('./ledger-numbering'), window: {MPELedgerData: require('./ledger-data')}, sheetsGet: async () => [],
     HISTORY_KEY: 'history', HISTORY_MAX: 1000, PUSHED_TXNIDS_KEY: 'pushed',
     SHEETS_ID: 'test', TXN_SHEET: 'Transactions', DOC_TITLES: {quote:'Quote',receipt:'Receipt',invoice:'Invoice'},
     _txns: null, _txnsLoadedAt: 0, _txnShown: [], _txnRefreshWarning: '', _txnRefreshPromise: null,
@@ -29,7 +29,7 @@ function setup() {
     getSheetNumericId: async () => 7,
     sheetsGet: async range => {
       if(range === 'Transactions') return clone(sheet);
-      const match=range.match(/A(\d+):[PVW](\d+)/);assert.ok(match,range);
+      const match=range.match(/A(\d+):[BPVWX](\d+)/);assert.ok(match,range);
       const result=clone(sheet.slice(Number(match[1])-1, Number(match[2])));
       if(corruptRead && result[1]) result[1][10]='999';
       return result;
@@ -229,7 +229,7 @@ test('Next Transaction on an already saved sale retains one transaction',async()
 
 test('automatic retry resumes a failed upload without another sign-in',async()=>{
  const c=setup();c.save();c.connect();c.fail(true);
- c.s.document={getElementById:()=>({classList:{contains:()=>true}})};c.s.window={};
+ c.s.document={getElementById:()=>({classList:{contains:()=>true}})};c.s.window={MPELedgerData:require('./ledger-data')};
  await vm.runInContext('retryTransactionSync()',c.s);assert.equal(c.s.countUnpushedTxns(),1);
  c.fail(false);await vm.runInContext('retryTransactionSync()',c.s);
  assert.equal(c.s.countUnpushedTxns(),0);assert.equal(c.sheet().filter(r=>r[0]==='TXN').length,1);
@@ -288,4 +288,262 @@ test('an interrupted edit pass is completed by the next pass without duplicate o
  const batch=c.s.sheetsBatchUpdate;c.s.sheetsBatchUpdate=async()=>{throw Error('offline');};   // contents written, leftover not removed
  await assert.rejects(c.sync(),/offline/);assert.equal(c.s.countUnpushedTxns(),1);
  c.s.sheetsBatchUpdate=batch;await c.sync();assert.equal(c.sheet().length,4);assert.deepEqual(c.sheet().slice(-2),neighbor);assert.equal(c.s.countUnpushedTxns(),0);
+});
+
+// ── F00 characterization (History Edit roadmap, ProjectMap/features/F00-baseline.md) ─────────────
+// Records what the register's save path does TODAY for a History Edit. Cases marked KNOWN FAILURE assert
+// the current (wrong) behavior so the suite stays green; F01 flips them when it repairs the cause.
+// The register screen is emulated: `openForEdit` mimics fillTxnIntoPOS (index.html:7230-7312), which sets
+// _reprintSource without fromQuote or the card-fee toggle and takes the baseline after loading.
+const flush2 = async () => { for (let i = 0; i < 12; i++) await new Promise(r => setImmediate(r)); };
+function markHarness() {
+ const c = setup(), pay = [];
+ const baseGet = c.s.sheetsGet, baseAppend = c.s.sheetsAppend;
+ const plain = rows => rows.map(r => r.map(v => typeof v === 'string' ? v.replace(/^'/, '') : v));
+ c.s.sheetsGet = async (range, opts) => /^Payments/.test(range) ? clone(pay) : baseGet(range, opts);
+ c.s.sheetsAppend = async (range, rows) => /^Payments/.test(range) ? (pay.push(...plain(rows)), {updates: {}}) : baseAppend(range, rows);
+ c.s.window = {MPELedgerData: require('./ledger-data'), MPELedgerHostKit: require('./ledger-host')};
+ const at = html.indexOf('function queueLedgerEditMark');
+ vm.runInContext(html.slice(at, html.indexOf('// History\'s timeline: this sale was printed', at)), c.s);
+ const marks = () => pay.filter(r => r[5] === 'edit');
+ const openForEdit = (extra = {}) => {   // what openLedgerSale({kind:'edit'}) leaves on a fresh page
+  const h = c.s.getHistory()[0] || extra.from;
+  c.s._currentTxnId = null; c.s._currentTxnDate = null; c.s._pendingTxnDate = null;
+  c.s._reprintSource = {txnId: h.txnId, date: h.date, docType: h.docType, docNumber: h.docNumber, ledgerEdit: true};
+  // fillTxnIntoPOS (index.html) keeps the quote link and restores the card fee; test 'fillTxnIntoPOS source' guards the real lines.
+  if (extra.fromQuote) c.s._reprintSource.fromQuote = {txnId: extra.fromQuote, docNumber: ''};
+  if (extra.cardFee) c.s.draft.toggles.cardFee = true;
+  c.s._quoteSource = null;
+  vm.runInContext('_historyContentBaseline = historyContentFingerprint(captureOrder())', c.s);
+ };
+ return {...c, pay: () => clone(pay), marks, openForEdit, otherComputer: () => { c.storage.set('history', '[]'); c.storage.set('pushed', '[]'); }};
+}
+const rowsOf = sheet => sheet.map(r => r.map(v => String(v ?? '')));
+
+test('F00 edit mark: a changed History Edit save leaves exactly one edit mark holding the before: rows', async () => {
+ const c = markHarness(); c.connect(); c.save(); await c.sync(); const original = rowsOf(c.sheet());
+ c.openForEdit(); c.s.draft.items[0].qty = 2; c.s.draft.items[0].sub = 1059.98; c.s.draft.total = '1109.93';
+ assert.equal(c.save(), true); assert.equal(c.s.getHistory()[0].ledgerEdit, true);
+ await c.sync(); await flush2();
+ assert.equal(c.marks().length, 1); const note = c.marks()[0][6]; assert.match(note, /^before:/);
+ assert.deepEqual(JSON.parse(note.slice('before:'.length)), original);
+ assert.equal(c.marks()[0][2], c.s.getHistory()[0].txnId); assert.equal(c.marks()[0][1], c.s.getHistory()[0].docNumber);
+ assert.equal(Number(c.sheet()[1][10]), 2);
+ await c.sync(); await flush2(); assert.equal(c.marks().length, 1, 'a second push of the same snapshot adds no second mark');
+});
+test('F00 edit mark: Save with no change writes nothing and leaves no mark', async () => {
+ const c = markHarness(); c.connect(); c.save(); await c.sync(); const before = c.sheet(), writes = c.batches();
+ c.openForEdit(); assert.equal(c.save(), true); await c.sync(); await flush2();
+ assert.equal(c.s.getHistory()[0].historySyncPending, false); assert.equal(c.marks().length, 0);
+ assert.deepEqual(c.sheet(), before); assert.equal(c.batches(), writes);
+ // Same on a computer that has no local history entry (sheet-only document).
+ c.otherComputer(); c.openForEdit({from: {txnId: before[0][1], date: new Date().toISOString(), docType: 'quote', docNumber: before[0][15]}});
+ assert.equal(c.save(), true); await c.sync(); await flush2(); assert.equal(c.marks().length, 0); assert.deepEqual(c.sheet(), before);
+});
+test('F00 edit mark: an offline edit replays after reload with ledgerEdit intact and queues exactly one mark (K5)', async () => {
+ const c = markHarness(); c.connect(); c.save(); await c.sync(); const original = rowsOf(c.sheet());
+ c.openForEdit(); c.s.draft.items[0].qty = 2; c.fail(true); c.save();
+ assert.equal(c.s.getHistory()[0].ledgerEdit, true); assert.equal(c.s.getHistory()[0].historySyncPending, true);
+ await assert.rejects(c.sync(), /offline/); await flush2(); assert.equal(c.marks().length, 0, 'no mark before the rewrite lands');
+ const r = markHarness(); for (const [k, v] of c.storage) r.storage.set(k, v);
+ r.setSheet(c.sheet()); r.connect();
+ await r.flush(); await flush2(); await r.flush(); await flush2();
+ assert.equal(Number(r.sheet()[1][10]), 2); assert.equal(r.marks().length, 1);
+ assert.deepEqual(JSON.parse(r.marks()[0][6].slice(7)), original);
+});
+test('F00 deposited quote: loaded with History\'s synthetic note, no-change Save writes nothing; a changed Save bakes the note into the rows', async () => {
+ const c = markHarness(); c.connect(); c.s._docType = 'quote'; c.save(); await c.sync(); const saved = c.sheet();
+ c.openForEdit();   // History sent withDeposit(r): one extra "Deposit paid" note line is on the screen
+ c.s.draft.items.push({pn: 'Note', desc: 'Deposit paid $100.00. Balance due $454.96.', qty: 1, ea: 0, sub: 0});
+ vm.runInContext('_historyContentBaseline = historyContentFingerprint(captureOrder())', c.s);
+ assert.equal(c.save(), true); await c.sync(); await flush2();
+ assert.deepEqual(c.sheet(), saved, 'no-change Save: sheet untouched'); assert.equal(c.marks().length, 0);
+ c.s.draft.items[0].qty = 2; assert.equal(c.save(), true); await c.sync(); await flush2();
+ assert.ok(c.sheet().some(r => r[0] === 'item' && r[8] === 'Note' && /Deposit paid/.test(r[9])), 'ACCEPTED until F03: the item Edit in History still sends the display note, so a changed item Edit saves it as a row (the F01 customer panel sends the raw record)');
+ assert.equal(c.marks().length, 1);
+});
+test('F01 fromQuote: a sheet-only invoice made from a quote keeps column N when edited on a computer with no local copy', async () => {
+ const c = markHarness(); c.connect(); c.s._docType = 'invoice'; c.s._quoteSource = {txnId: 'TX-QUOTE-1', docNumber: 'Q21001'};
+ c.save(); await c.sync(); assert.equal(c.sheet()[0][13], 'TX-QUOTE-1');
+ // Same computer, local copy present: the link survives an edit (previous?.fromQuote).
+ c.openForEdit(); c.s.draft.customer.phone = '808-555-0100'; c.save(); await c.sync();
+ assert.equal(c.sheet()[0][13], 'TX-QUOTE-1');
+ // Other computer: fillTxnIntoPOS keeps no fromQuote, there is no local entry to fall back on.
+ const first = c.sheet()[0]; c.otherComputer();
+ c.openForEdit({from: {txnId: first[1], date: new Date().toISOString(), docType: 'invoice', docNumber: first[15]}, fromQuote: first[13]});
+ c.s.draft.customer.phone = '808-555-0199'; c.save(); await c.sync();
+ assert.equal(c.sheet()[0][13], 'TX-QUOTE-1', 'F01 fix: column N survives on a computer with no local copy');
+ assert.equal(c.sheet()[0][5], '808-555-0199');
+});
+test('F00 round trip: one customer field changed on a sheet-only document; every other column survives', async () => {
+ const c = markHarness(); c.connect(); c.s._docType = 'invoice'; c.s._quoteSource = {txnId: 'TX-QUOTE-1', docNumber: 'Q21001'};
+ c.s.draft = {customer: {name: 'JO KAI', company: 'TEST LANDFILL', addr: '12 MAIN ST', city: 'KULA', state: 'HI', zip: '96790', phone: '808-555-0100', email: 'A@B.CO'},
+  items: [{pn: '0000131', desc: 'FS 131', qty: 2, ea: 529.99, sub: 1059.98, sn: ['S1', 'S2']},
+          {pn: 'B', desc: 'Chain', qty: 1, ea: 18, sub: 17, originalEa: 20, discountPerUnit: 3},
+          {pn: 'Note', desc: 'Call on arrival', qty: 1, ea: 0, sub: 0}],
+  total: '1148.18', presell: true, toggles: {cardFee: true}};
+ c.save(); await c.sync(); const s0 = rowsOf(c.sheet()); const id = s0[0][1];
+ c.otherComputer(); c.openForEdit({from: {txnId: id, date: new Date().toISOString(), docType: 'invoice', docNumber: s0[0][15]}, fromQuote: s0[0][13], cardFee: true});
+ c.s.draft.customer.phone = '808-555-0123';   // the register restores the quote link and the card fee on load, so the total stays
+ assert.equal(c.save(), true); await c.sync(); await flush2();
+ const s1 = rowsOf(c.sheet()); assert.equal(s1.length, s0.length);
+ const diff = []; s0.forEach((row, i) => row.forEach((v, j) => { if (v !== s1[i][j]) diff.push(`r${i}c${j}`); }));
+ assert.deepEqual(diff, ['r0c5'], 'only the phone differs');
+ assert.equal(s1[0][14], 'invoice'); assert.equal(s1[0][15], s0[0][15]); assert.equal(s1[0][22], 'PRESELL');
+ assert.equal(s1.filter(r => r[0] === 'item').length, 3); assert.equal(c.marks().length, 1);
+});
+const raceOther = [['TXN', 'ANOTHER', '1/1/2021', '9:00 AM', 'Another'], ['item', 'ANOTHER', '', '', '', '', '', '', 'X', 'Y', 1, '$2.00', '$2.00']];
+const raceNeighbor = [['TXN', 'OTHER', '1/1/2020', '10:00 AM', 'Other'], ['item', 'OTHER', '', '', '', '', '', '', 'NEIGHBOR', 'Keep', 1, '$1.00', '$1.00']];
+function assertRaceHealed(c, qty) {
+ const after = rowsOf(c.sheet()), id = c.s.getHistory()[0].txnId;
+ assert.equal(after.filter(r => r[1] === id && r[0] === 'TXN').length, 1, 'our document exists once');
+ assert.ok(after.some(r => r[8] === 'NEIGHBOR') && after.some(r => r[8] === 'X'), 'neither neighbor lost a row');
+ assert.equal(after.filter(r => r[0] === 'item' && r[1] === id).length, qty);
+ assert.ok(!after.some(r => r.every(v => v === '')), 'no blank row left behind');
+}
+test('F01 interleaving: rows inserted above the document between the read and the write stop the save, which retries cleanly (edit with no new lines)', async () => {
+ const c = markHarness(); c.connect(); c.save(); await c.sync();
+ c.setSheet([...raceNeighbor, ...c.sheet()]);   // our document now starts at row 3
+ c.openForEdit(); c.s.draft.items[0].qty = 2;
+ const get = c.s.sheetsGet; let reads = 0;
+ c.s.sheetsGet = async (range, opts) => { const rows = await get(range, opts); if (range === 'Transactions' && ++reads === 1) c.setSheet([...raceOther, ...c.sheet()]); return rows; };
+ c.save(); await flush2();   // Save starts its own push, which hits the race and is left queued
+ assert.ok(rowsOf(c.sheet()).some(r => r[8] === 'NEIGHBOR') && rowsOf(c.sheet()).some(r => r[8] === 'X'), 'nothing was overwritten');
+ assert.equal(c.s.countUnpushedTxns(), 1, 'the save is still queued, not counted as verified');
+ c.s.sheetsGet = get; await c.sync(); await flush2();
+ assertRaceHealed(c, 1); assert.equal(Number(rowsOf(c.sheet()).find(r => r[0] === 'item' && r[8] === '0000131')[10]), 2);
+ assert.equal(c.s.countUnpushedTxns(), 0); assert.equal(c.marks().length, 1);
+});
+test('F01 interleaving: rows inserted after the block was grown stop the values write; the retry reuses the blank rows', async () => {
+ const c = markHarness(); c.connect(); c.save(); await c.sync();
+ c.setSheet([...raceNeighbor, ...c.sheet()]);
+ c.openForEdit(); c.s.draft.items.push({pn: 'B', desc: 'Added', qty: 1, ea: 10, sub: 10});
+ const batch = c.s.sheetsBatchUpdate; let n = 0;
+ c.s.sheetsBatchUpdate = async reqs => { await batch(reqs); if (++n === 1) c.setSheet([...raceOther, ...c.sheet()]); };   // another register inserts right after our grow
+ c.save(); await flush2();
+ assert.ok(rowsOf(c.sheet()).some(r => r[8] === 'NEIGHBOR') && rowsOf(c.sheet()).some(r => r[8] === 'X'), 'nothing was overwritten');
+ c.s.sheetsBatchUpdate = batch; await c.sync(); await flush2();
+ assertRaceHealed(c, 2); assert.equal(c.s.countUnpushedTxns(), 0); assert.equal(c.marks().length, 1);
+});
+test('F01 interleaving: a shrinking edit stops before the delete when rows moved', async () => {
+ const c = markHarness(); c.connect(); c.s.draft.items.push({pn: 'B', desc: 'Two', qty: 1, ea: 10, sub: 10}); c.save(); await c.sync();
+ c.setSheet([...raceNeighbor, ...c.sheet()]);
+ c.openForEdit(); c.s.draft.items.pop();
+ const update = c.s.sheetsUpdate;
+ c.s.sheetsUpdate = async (r, rows) => { await update(r, rows); c.setSheet([...raceOther, ...c.sheet()]); };   // moved after the values were written
+ c.save(); await flush2();
+ assert.ok(rowsOf(c.sheet()).some(r => r[8] === 'NEIGHBOR') && rowsOf(c.sheet()).some(r => r[8] === 'X'), 'the delete never ran at the old offset');
+ assert.equal(c.s.countUnpushedTxns(), 1);
+ c.s.sheetsUpdate = update; await c.sync(); await flush2(); assertRaceHealed(c, 1); assert.equal(c.s.countUnpushedTxns(), 0);
+});
+test('F01 fillTxnIntoPOS source: keeps the quote link and restores the card fee before the baseline, and saveToHistory falls back to the link', () => {
+ const body = html.slice(html.indexOf('function fillTxnIntoPOS('), html.indexOf('function buildRows()'));
+ assert.match(body, /_reprintSource\.fromQuote = \{ txnId: quoteId/);
+ assert.ok(body.indexOf('toggleCardFee(true)') > 0 && body.indexOf('toggleCardFee(true)') < body.indexOf('_historyContentBaseline = historyContentFingerprint'));
+ assert.match(body, /mine \? mine\.toggles\?\.cardFee : t\.cardFee/);
+ assert.match(html, /previous\?\.fromQuote \|\| \(_reprintSource && _reprintSource\.fromQuote\)/);
+});
+test('an invoice PO number is saved in column X, survives an edit, and is read back; other types leave X empty',async()=>{
+ const c=setup();c.s._docType='invoice';c.s.draft.po='PO-7731';
+ assert.equal(c.save(),true);await c.sync();
+ assert.equal(c.sheet()[0][23],'PO-7731');assert.equal(c.sheet()[0].slice(0,16).join('|').includes('PO-7731'),false);
+ c.s.draft.items[0].qty=3;c.save();await c.sync();assert.equal(c.sheet()[0][23],'PO-7731');
+ c.s.draft.po='PO-8000';c.save();await c.sync();assert.equal(c.sheet()[0][23],'PO-8000');
+ const at=html.indexOf('function _parseTxnRows(');
+ vm.runInContext(html.slice(at,html.indexOf('\n}\n',at)+3),c.s);
+ assert.equal(c.s._parseTxnRows(c.sheet())[0].po,'PO-8000');
+ const q=setup();q.s.draft.po='IGNORED';q.save();await q.sync();assert.equal(q.sheet()[0][23],'');
+});
+
+// ── F01 silent edit session (runEditSession, the register side of History's customer panel) ─────────────────────
+function sessionHarness() {
+ const c = markHarness(); c.connect();
+ const D = require('./ledger-data');
+ const map = {custCompany: 'company', custName: 'name', custPhone: 'phone', custEmail: 'email', custAddr: 'addr', custCity: 'city', custState: 'state', custZip: 'zip'};
+ const queued = [];
+ Object.assign(c.s, {
+  partsArray: [{pn: 'x'}], ledgerDraftTabIsEmpty: () => true, ledgerErrorCode: e => e && e.code, ledgerDocumentRequest: () => ({type: 'invoice'}),
+  queueCustomerFromOrder: o => queued.push(o.txnId), syncCustomersFromSheet: async () => {}, setTimeout,
+  document: {getElementById: id => id === 'custPanel' ? {dataset: {customerRef: 'k:1'}} : {set value(v) { c.s.draft.customer[map[id]] = v; }, get value() { return c.s.draft.customer[map[id]] || ''; }}},
+  fillTxnIntoPOS: t => {   // what the real one leaves on a fresh page: identity and a baseline (the draft already holds the document)
+   c.s._reprintSource = {txnId: t.txnId, date: c.stored.date, docType: t.docType, docNumber: t.docNumber, fromQuote: t.fromQuote ? {txnId: t.fromQuote, docNumber: ''} : undefined};
+   vm.runInContext('_historyContentBaseline = historyContentFingerprint(captureOrder())', c.s);
+  },
+  prepareAndSaveForPrint: async () => { vm.runInContext('reserveDocDate()', c.s); if (!vm.runInContext('saveToHistory()', c.s)) throw Object.assign(new Error('x'), {code: 'output_failed'}); },
+ });
+ const at = html.indexOf("// ── History's silent edit session"); vm.runInContext(html.slice(at, html.indexOf('function toggleSignature() {', at)), c.s);
+ c.queued = queued; c.fp = () => D.transactionRowsFingerprint(c.sheet());
+ c.request = (patch, fp) => ({v: 1, kind: 'edit', mode: 'silent', sessionId: 'sess-0001abcd', txn: {txnId: c.stored.txnId, docType: c.s._docType, docNumber: c.stored.docNumber, fromQuote: c.sheet()[0][13]}, loaded: {fingerprint: fp || c.fp()}, patch});
+ return c;
+}
+async function savedInvoice() {
+ const c = sessionHarness(); c.s._docType = 'invoice'; c.s._quoteSource = {txnId: 'TX-Q', docNumber: 'Q1'}; c.s.draft.po = 'PO-9';
+ c.save(); await c.sync(); await flush2(); c.stored = c.s.getHistory()[0]; c.s._quoteSource = null; return c;
+}
+test('F01 session request: unknown keys, non-strings and bad ids are refused; text is trimmed and bounded', async () => {
+ const c = sessionHarness(); const ok = c.s.editSessionRequest({v: 1, kind: 'edit', mode: 'silent', sessionId: 'abcdefgh', txn: {txnId: 'T', docType: 'invoice'}, loaded: {fingerprint: 'x'}, patch: {phone: '  808 \n 555 ', updateInfo: true}});
+ assert.equal(ok.patch.phone, '808   555'); assert.equal(ok.patch.updateInfo, true);
+ const bad = patch => c.s.editSessionRequest({v: 1, kind: 'edit', mode: 'silent', sessionId: 'abcdefgh', txn: {txnId: 'T', docType: 'invoice'}, loaded: {fingerprint: 'x'}, patch});
+ assert.equal(bad({total: '1'}), null); assert.equal(bad({phone: 5}), null); assert.equal(bad([]), null);
+ assert.equal(c.s.editSessionRequest({v: 1, kind: 'edit', mode: 'silent', sessionId: 'a b', txn: {txnId: 'T', docType: 'invoice'}, loaded: {fingerprint: 'x'}, patch: {}}), null);
+ assert.equal(bad({phone: 'x'.repeat(500)}).patch.phone.length, 120);
+});
+test('F01 session: a customer change on a saved invoice rewrites it in place, keeps PO # and quote link, leaves one edit mark', async () => {
+ const c = await savedInvoice(), before = rowsOf(c.sheet());
+ const r = await c.s.runEditSession(c.request({phone: '808-555-0100', updateInfo: true})); await flush2();
+ assert.equal(r.ok, true); assert.equal(r.verified, true); assert.equal(r.customer, 'queued'); assert.equal(r.number, before[0][15]);
+ const after = rowsOf(c.sheet()); assert.equal(after[0][5], '808-555-0100'); assert.equal(after[0][13], 'TX-Q'); assert.equal(after[0][23], 'PO-9');
+ assert.equal(after.length, before.length); assert.equal(c.marks().length, 1); assert.deepEqual(JSON.parse(c.marks()[0][6].slice(7)), before);
+ assert.equal(c.s.getHistory()[0].historySyncPending, false); assert.deepEqual(c.queued, [c.stored.txnId]);
+ assert.equal(vm.runInContext('_editSession', c.s), null);
+});
+test('F01 session: no change writes nothing; a sale screen that cannot reproduce the saved rows is refused with nothing changed', async () => {
+ const c = await savedInvoice(), sheet = c.sheet(), writes = c.batches();
+ let r = await c.s.runEditSession(c.request({company: 'TEST LANDFILL'})); assert.equal(r.unchanged, true); assert.deepEqual(c.sheet(), sheet);
+ c.s.draft.items[0].qty = 5;   // the screen would save a different document than the one History showed
+ r = await c.s.runEditSession(c.request({phone: '1'})); assert.equal(r.ok, false); assert.equal(r.code, 'open_sale_screen');
+ assert.deepEqual(c.sheet(), sheet); assert.equal(c.batches(), writes); assert.equal(c.marks().length, 0);
+});
+test('F01 session: another register changed the document since History loaded it: refused, this computer\'s copy restored, nothing sent', async () => {
+ const c = await savedInvoice(), loaded = c.fp(), saved = clone(c.s.getHistory()[0]);
+ const theirs = c.sheet(); theirs[0][5] = '808-111-2222'; c.setSheet(theirs);
+ const r = await c.s.runEditSession(c.request({phone: '808-555-0100', updateInfo: true}, loaded)); await flush2();
+ assert.equal(r.ok, false); assert.equal(r.code, 'stale'); assert.match(r.message, /Changed on another register/);
+ assert.equal(c.sheet()[0][5], '808-111-2222'); assert.equal(c.marks().length, 0); assert.deepEqual(c.queued, []);
+ assert.deepEqual(c.s.getHistory()[0], saved); assert.equal(c.s.countUnpushedTxns(), 0);
+});
+test('F01 session: offline it saves here and reports pending; the replay writes once, leaves one mark and then updates the customer', async () => {
+ const c = await savedInvoice(), before = rowsOf(c.sheet()); c.fail(true);
+ const r = await c.s.runEditSession(c.request({phone: '808-555-0100', updateInfo: true})); await flush2();
+ assert.equal(r.ok, true); assert.equal(r.pending, true); assert.equal(r.localSaved, true); assert.equal(r.customer, 'waiting');
+ assert.equal(c.s.getHistory()[0].historySyncPending, true); assert.deepEqual(rowsOf(c.sheet()), before); assert.deepEqual(c.queued, []);
+ c.fail(false); await c.flush(); await flush2(); await c.flush(); await flush2();
+ assert.equal(c.sheet()[0][5], '808-555-0100'); assert.equal(c.marks().length, 1); assert.deepEqual(c.queued, [c.stored.txnId]);
+});
+test('F01 session: a crash after the rows were verified but before the mark still leaves exactly one mark with the true original', async () => {
+ const c = await savedInvoice(), before = rowsOf(c.sheet());
+ const append = c.s.sheetsAppend; c.s.sheetsAppend = async (range, rows) => { if (/^Payments/.test(range)) throw Error('offline'); return append(range, rows); };
+ const r = await c.s.runEditSession(c.request({phone: '808-555-0100'})); await flush2();
+ assert.equal(r.verified, true); assert.equal(c.marks().length, 0); assert.ok(c.s.getHistory()[0].editBefore, 'the original is kept on this computer');
+ c.s.sheetsAppend = append; await c.flush(); await flush2(); await c.flush(); await flush2();
+ assert.equal(c.marks().length, 1); assert.deepEqual(JSON.parse(c.marks()[0][6].slice(7)), before); assert.equal(c.s.getHistory()[0].editBefore, undefined);
+});
+test('F01 session: an offline edit that the other register beat is let go at replay: sheet copy kept, nothing pending, no mark, no customer update', async () => {
+ const c = await savedInvoice(); c.fail(true);
+ const r = await c.s.runEditSession(c.request({phone: '808-555-0100', updateInfo: true})); await flush2();
+ assert.equal(r.pending, true);
+ const theirs = c.sheet(); theirs[0][5] = '808-111-2222'; c.setSheet(theirs); c.fail(false);
+ await c.flush(); await flush2(); await c.flush(); await flush2();
+ assert.equal(c.sheet()[0][5], '808-111-2222'); assert.equal(c.marks().length, 0); assert.deepEqual(c.queued, []);
+ const e = c.s.getHistory()[0]; assert.equal(e.historySyncPending, false); assert.ok(!e.loadedFingerprint && !e.updateInfo && !e.editBefore);
+ assert.equal(c.s.countUnpushedTxns(), 0);
+});
+test('F01 session: if the mark reached the sheet but this computer forgot to drop its held copy, the retry is the same row and no second mark appears', async () => {
+ const c = await savedInvoice();
+ const r = await c.s.runEditSession(c.request({phone: '808-555-0100'})); await flush2();
+ assert.equal(r.verified, true); assert.equal(c.marks().length, 1);
+ const history = c.s.getHistory(); history[0].editBefore = JSON.stringify('x'); history[0].editAt = new Date(Date.now() - 5000).toISOString();
+ c.storage.set('history', JSON.stringify(history));
+ await c.flush(); await flush2(); await c.flush(); await flush2();
+ assert.equal(c.marks().length, 1, 'still one mark');
 });

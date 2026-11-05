@@ -90,7 +90,7 @@ test('register: History button gone, Ledger loads in the tab row, sale tabs unch
   assert.doesNotMatch(html, /q\('#txnHistoryBtn'\)/, 'counter view no longer looks it up');
   assert.match(html, /<script src="ledger-tab\.js"><\/script>/);
   // The browser row adds Sale 1 first, then Ledger is prepended; the app keeps its native strip.
-  assert.match(html, /if\(window\.mpeDesktop\)\{q\('#cvTabs'\)\.hidden=true;q\('#cvNew'\)\.hidden=true;window\.mpeDesktop\.onLedgerSale\?\.\(openLedgerSale\);\}else\{nextTab=1;addTab\(\);q\('#cvNew'\)\.onclick=addTab;ledgerTab=window\.MPELedgerTab\?\.install\(/);
+  assert.match(html, /if\(window\.mpeDesktop\)\{q\('#cvTabs'\)\.hidden=true;q\('#cvNew'\)\.hidden=true;window\.mpeDesktop\.onLedgerSale\?\.\(openLedgerSale\);window\.mpeDesktop\.onEditSession\?\.\(runEditSessionAndReport\);\}else\{if\(MPE_EDIT_SESSION_PAGE\)\{.*?\}nextTab=1;addTab\(\);q\('#cvNew'\)\.onclick=addTab;ledgerTab=MPE_EDIT_SESSION_PAGE\?null:window\.MPELedgerTab\?\.install\(/);
   assert.match(html, /function activateTab\(id\)\{ledgerTab\?\.hide\(\);commitFocused\(\);/, 'any sale tab returns to that sale');
   assert.match(html, /const ids=qa\('#cvTabs \.cv-tab\[data-cv-tab\]'\)/, 'closing a sale never picks Ledger');
   assert.match(html, /if\(hasContent&&!confirm\('Close Sale '\+id/, 'sale tabs still warn before closing');

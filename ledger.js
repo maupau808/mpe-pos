@@ -295,13 +295,20 @@
     const desc = `Deposit paid ${money(r.deposit)}. Balance due ${money(cents(r.total - r.deposit))}.`;
     return { ...r, items: [...(r.items || []), { pn: 'Note', desc, qty: '', ea: 0, sub: 0, serials: [], origEa: 0, off: 0 }] };
   }
+  // The 3% card fee is not stored in the rows: total minus subtotal minus tax, five cents or more (less is rounding). QuickBooks sales have none.
+  function cardFeeOf(rec) {
+    const r = withDeposit(rec);
+    if (isQbo(r)) return 0;
+    const subtotal = (r.items || []).filter(i => i.pn !== 'Note').reduce((a, i) => a + i.sub, 0);
+    const rest = cents(r.total) - cents(subtotal) - cents(subtotal * TAX_RATE);
+    return Math.abs(rest) >= 0.05 ? rest : 0;
+  }
   function requestFromRecord(rec) {
     const r = withDeposit(rec);
     const items = r.items.filter(i => i.pn !== 'Note');
     const subtotal = items.reduce((a, i) => a + i.sub, 0);
     const tax = isQbo(r) ? r.tax : subtotal * TAX_RATE; // QuickBooks states its own tax and has no card fee
-    const rest = cents(r.total) - cents(subtotal) - cents(tax);
-    const cardFee = !isQbo(r) && Math.abs(rest) >= 0.05 ? rest : 0; // a sale with the card fee on; less is rounding
+    const cardFee = cardFeeOf(r);
     const completion = new Date(r.date ? `${r.date}T12:00:00-10:00` : Date.now());
     const billing = r.street || r.city
       ? { billing_address: { lines: r.addrLines || (r.street ? [r.street] : []), city: r.city, region: regionOf(r), postal_code: r.zip, country: '' } }
@@ -498,7 +505,36 @@
     return load;
   }
 
-  const pure = { qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  // ---- Customer fields typed on a saved document (F01) ----
+  const CUST_KEYS = ['company', 'name', 'phone', 'email', 'street', 'city', 'region', 'zip'];
+  const isPlaceholderBuyer = r => s(r.name).toLowerCase() === 'jana yamashiro' && !s(r.company) && !s(r.phone); // the register's stand-in: nobody's customer (D10)
+  const savedField = (r, key) => (isPlaceholderBuyer(r) && key === 'name' ? '' : s(key === 'region' ? regionOf(r) : r[key]));
+  // Only the fields whose typed value differs from the saved one (case aside). A field cleared on purpose is ''.
+  function customerPatch(r, typed) {
+    const patch = {};
+    for (const key of CUST_KEYS) if (key in typed && s(typed[key]).toUpperCase() !== savedField(r, key).toUpperCase()) patch[key] = s(typed[key]);
+    return patch;
+  }
+  // D3 (Trevor): filling only blanks is a fill (the "also update this customer's info" box starts ticked); changing a filled value is an
+  // overwrite (starts unticked). The placeholder buyer counts as blank (D10).
+  function customerChange(r, typed) {
+    const patch = customerPatch(r, typed);
+    const keys = Object.keys(patch);
+    if (!keys.length) return 'none';
+    return keys.some(key => savedField(r, key)) ? 'overwrite' : 'fill';
+  }
+  // The toast for an edit's one result. A failure is a plain sentence that says whether anything was saved.
+  function editOutcomeText(r, res) {
+    if (!res || typeof res !== 'object') return 'The edit closed before it finished. Check History before trying again.';
+    if (!res.ok) return s(res.message) || 'That did not go through. Nothing changed. Try again.';
+    if (res.unchanged) return 'Nothing was changed.';
+    const num = s(res.number) && res.number !== r.number ? ` Number changed to ${res.number}.` : '';
+    if (res.pending) return `Saved on this computer. It will go to the sheet when this register is back online.${num}`;
+    const pdf = res.pdf === 'website' ? ' The PDF copy updates when it is next printed at a counter PC.'
+      : res.pdf === 'queued' ? ' The PDF copy is waiting to upload.' : res.pdf === 'unavailable' ? ' The PDF copy could not be refreshed yet.' : '';
+    return `Saved. ${r.number} is updated.${num}${pdf}`;
+  }
+  const pure = { CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest, documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
@@ -767,8 +803,8 @@
       const hist = historyFor(r, st.payRows, st.marks, st.records);
       $('rail').innerHTML = `
         <div><h3>${esc(KIND_LABEL[r.kind])} ${esc(r.number)}</h3><div class="big num">${money(r.total)}</div>
-          <div class="state"><span class="pill ${t.tone}">${['paid'].includes(t.key) ? ICON.check : ''}${esc(t.pill)}</span>${awaitingPickup(r) ? '<span class="pill soon">Presold, awaiting pickup</span>' : ''}${qn ? `<span class="pill muted">${esc(qn)}</span>` : ''}${sent ? `<span class="pill draft">${ICON.email}Emailed ${esc(fmtD(sent))}</span>` : draft ? `<span class="pill draft">${ICON.email}Draft made ${esc(fmtD(draft))}</span>` : ''}</div></div>
-        ${r.name || r.company || r.phone || r.qboBuyer ? `<button class="who" data-act="${r.state === 'void' || r.state === 'cancelled' || isQbo(r) ? 'noop' : 'edit'}" title="${isQbo(r) ? '' : 'Edit customer'}"><h3>Customer ${r.state === 'void' || r.state === 'cancelled' || isQbo(r) ? '' : ICON.edit}</h3><b${r.qboBuyer ? ' class="muted"' : ''}>${esc(r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : r.company || r.name)}</b>${!r.qboBuyer && r.company && r.name ? esc(r.name) + '<br>' : ''}${r.phone ? esc(r.phone) + '<br>' : ''}${r.email ? esc(r.email) : '<span class="muted">No email on file</span>'}${addr.length ? '<br>' + addr.map(esc).join('<br>') : ''}</button>` : ''}
+          <div class="state"><span class="pill ${t.tone}">${['paid'].includes(t.key) ? ICON.check : ''}${esc(t.pill)}</span>${awaitingPickup(r) ? '<span class="pill soon">Presold, awaiting pickup</span>' : ''}${pendingPill(r)}${qn ? `<span class="pill muted">${esc(qn)}</span>` : ''}${sent ? `<span class="pill draft">${ICON.email}Emailed ${esc(fmtD(sent))}</span>` : draft ? `<span class="pill draft">${ICON.email}Draft made ${esc(fmtD(draft))}</span>` : ''}</div></div>
+        ${r.name || r.company || r.phone || r.qboBuyer || custAct(r) === 'editCust' ? `<button class="who" data-act="${custAct(r)}"${st.busy ? ' disabled' : ''} title="${esc(custTitle(r))}"><h3>Customer ${custAct(r) === 'editCust' ? ICON.edit : ''}</h3><b${r.qboBuyer || !(r.company || r.name) ? ' class="muted"' : ''}>${esc(r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : r.company || r.name || 'Add customer details')}</b>${!r.qboBuyer && r.company && r.name ? esc(r.name) + '<br>' : ''}${r.phone ? esc(r.phone) + '<br>' : ''}${r.email ? esc(r.email) : '<span class="muted">No email on file</span>'}${addr.length ? '<br>' + addr.map(esc).join('<br>') : ''}</button>` : ''}
         <div class="acts">${acts.map(btn).join('')}</div>${payLinkHtml(r)}
         <div><h3>History</h3><ol>${hist.map(e => `<li>${esc(e.t)}<span>${esc([fmtD(e.d), e.at].filter(Boolean).join(' · '))}</span>${e.before != null ? `<a class="rec" href="#" data-before="${e.before}">See it before this edit</a>` : ''}</li>`).join('')}</ol></div>`;
     }
@@ -888,8 +924,66 @@
         return out && out.sent ? `Sent to ${out.to}.` : '';
       });
     }
+    // The customer block edits in place (F01) when this app can save an edit in the background; otherwise it only shows.
+    const pendingIds = () => { const h = host(); return h && h.pendingTxnIds ? h.pendingTxnIds() : new Set(); };
+    const parkedIds = () => { const h = host(); return h && h.parkedTxnIds ? h.parkedTxnIds() : new Set(); };
+    function custAct(r) {
+      if (r.state === 'void' || r.state === 'cancelled' || isQbo(r) || r.contactConflict) return 'noop';
+      const h = host();
+      return h && h.editSession && !pendingIds().has(r.txnId) && !parkedIds().has(r.txnId) ? 'editCust' : 'noop';
+    }
+    function custTitle(r) {
+      if (r.state === 'void' || r.state === 'cancelled' || isQbo(r)) return '';
+      if (r.contactConflict) return 'Customer changes for this sale need review first.';
+      const h = host();
+      if (!h || !h.editSession) return 'Update the counter app to edit here';
+      if (pendingIds().has(r.txnId)) return 'Waiting to share the last change';
+      if (parkedIds().has(r.txnId)) return 'The last change on this computer needs a look';
+      return 'Edit customer';
+    }
+    function pendingPill(r) {
+      return pendingIds().has(r.txnId) ? '<span class="pill muted">Saved on this computer, not shared yet</span>'
+        : parkedIds().has(r.txnId) ? '<span class="pill late">Last change needs a look</span>' : '';
+    }
+    // The document's customer fields in a form. Save sends only what changed to the register's background save.
+    const DOC_FIELDS = [['company', 'dcCompany'], ['name', 'dcName'], ['phone', 'dcPhone'], ['email', 'dcEmail'], ['street', 'dcStreet'], ['city', 'dcCity'], ['region', 'dcState'], ['zip', 'dcZip']];
+    function editDocCustomer(r, typed, err) {
+      const d = $('docCustEdit'), box = $('dcUpdate');
+      for (const [key, id] of DOC_FIELDS) $(id).value = typed ? s(typed[key]) : savedField(r, key);
+      const current = () => Object.fromEntries(DOC_FIELDS.map(([key, id]) => [key, $(id).value]));
+      let touched = false;
+      const sync = () => {
+        const change = customerChange(r, current());
+        if (!touched) box.checked = change === 'fill';
+        $('dcHint').textContent = change === 'overwrite' ? 'You changed a saved detail, so the saved customer stays as it was unless you tick this.' : change === 'fill' ? 'You filled in blanks, so the customer gets them too.' : '';
+      };
+      touched = false; $('dcErr').textContent = err || '';
+      d.returnValue = '';
+      d.oninput = sync; box.onchange = () => { touched = true; };
+      sync();
+      d.onsubmit = e => {
+        if (e.submitter && e.submitter.value === 'save' && customerChange(r, current()) === 'none') { e.preventDefault(); $('dcErr').textContent = 'Nothing was changed.'; }
+      };
+      d.onclose = () => { if (d.returnValue === 'save') saveDocCustomer(r, current(), box.checked); };
+      if (d.showModal) d.showModal(); else d.setAttribute('open', '');
+      $('dcCompany').focus();
+    }
+    function saveDocCustomer(r, typed, updateInfo) {
+      let again = null;
+      run('docEdit', async () => {
+        const h = host();
+        const res = await h.editSession(r, { ...customerPatch(r, typed), updateInfo: !!updateInfo }, { cardFee: cardFeeOf(r) > 0 });
+        if (!res || !res.ok) again = s(res && res.message) || editOutcomeText(r, res);
+        return again ? '' : editOutcomeText(r, res);
+      }).then(() => {
+        if (!again) return;
+        // Reopen on the fresh record, carrying over only what was actually typed: never the old values of fields another register changed.
+        const fresh = byId(r.txnId) || r;
+        editDocCustomer(fresh, { ...Object.fromEntries(CUST_KEYS.map(key => [key, savedField(fresh, key)])), ...customerPatch(r, typed) }, again);
+      });
+    }
     function openSale(kind, r, what) {
-      run(kind, async () => { await host().openInNewSale({ kind, txn: withDeposit(r) }); return `${what} opened in a new sale tab. The sale in progress is unchanged.`; });
+      run(kind, async () => { await host().openInNewSale({ kind, txn: { ...withDeposit(r), cardFee: cardFeeOf(r) > 0 } }); return `${what} opened in a new sale tab. The sale in progress is unchanged.`; });
     }
     function act(k, el) {
       const r = byId(ui.sel);
@@ -908,6 +1002,7 @@
         return;
       }
       if (!r) return;
+      if (k === 'editCust') return editDocCustomer(r);
       if (k === 'pay') return takePayment(r);
       if (k === 'undoPay') return undoPaid(r.txnId);
       if (k === 'payLink') return addLink(r);
@@ -1139,6 +1234,6 @@
     copy: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="1.5"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></svg>',
     newInvoice: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   };
-  const api = { ...pure, withDeposit, boot };
+  const api = { ...pure, withDeposit, cardFeeOf, boot };
   return api;
 });
