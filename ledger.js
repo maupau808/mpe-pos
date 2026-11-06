@@ -255,7 +255,7 @@
     if (r.kind === 'invoice' && UNPAID.has(r.state) && cents(r.balance) === cents(r.total) && helcim && helcim.connected && !helcim.link) a.push({ act: 'payLink', label: 'Add pay link' });
     a.push({ act: 'reprint', label: 'Print' });
     if (canPdf) a.push({ act: 'pdf', label: 'Download' }); // the same document as Print, saved as a PDF
-    if (r.kind !== 'receipt' && !isVoid) a.push({ act: 'email', label: 'Email' });
+    if (!isVoid) a.push({ act: 'email', label: 'Email' });
     if (!isVoid) a.push({ act: 'edit', label: 'Edit' });
     if (r.kind === 'invoice' && !isVoid && (r.paymentsLive || []).length) a.push({ act: 'undoPay', label: r.paymentsLive.length > 1 ? 'Undo last payment' : r.state === 'paid' ? 'Undo paid' : 'Undo payment' });
     if (r.kind === 'quote' && !r.convertedTo && (r.paymentsLive || []).length) a.push({ act: 'undoPay', label: 'Undo last deposit' });
@@ -764,7 +764,7 @@
   // three boxes in fixed spots (one the record cannot use stays in place, disabled, its reason as the title), then More.
   const RAIL_BOXES = [['reprint', 'Print'], ['email', 'Email'], ['edit', 'Edit'], ['pdf', 'Download'], ['retype', 'Change type'], ['cancel', 'Cancel']];
   const RAIL_WHY = { edit: 'Edit: not for cancelled, void or QuickBooks sales', reprint: 'Print: not available', pdf: 'Download: not available here',
-    email: 'Email: not for receipts, cancelled sales or QuickBooks copies', retype: 'Change type: not for cancelled, void, internal, converted or QuickBooks records',
+    email: 'Email: not for cancelled sales or QuickBooks copies', retype: 'Change type: not for cancelled, void, internal, converted or QuickBooks records',
     cancel: 'Cancel: not for void, internal, converted or QuickBooks records' };
   function railActsHtml(acts, busy) {
     const big = acts.find(a => a.primary), off = busy ? ' disabled' : '';
