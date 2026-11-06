@@ -49,15 +49,19 @@
   const NET_DAYS = 30;
   const COUNT_FROM = '2026-01-01'; // invoices dated earlier never count as owed
   const SOON_DAYS = 7;
-  const METHODS = Object.freeze(['cash', 'check', 'card_terminal', 'helcim_card', 'helcim_ach']); // helcim_*: payments Helcim reported (helcimPaymentRows)
+  const METHODS = Object.freeze(['cash', 'check', 'card_terminal', 'helcim_card', 'helcim_ach', 'credit_given', 'credit_used']); // helcim_*: payments Helcim reported (helcimPaymentRows); credit_*: store credit
+  // Labels for the two store-credit methods (ledger.js owns the rest in its METHOD_LABEL). credit_given on a sale = an overpayment moved off it.
+  const CREDIT_LABELS = Object.freeze({ credit_given: 'Moved to store credit', credit_used: 'Store credit' });
   const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs', email_sent: 'sent', paylink: 'paylinks' }); // paylink: note = url|helcimInvoiceId (parseMarks.paylinks)
   const LOGGED = new Set(['email_draft', 'email_sent', 'print', 'pdf', 'pdf_open', 'paylink']); // each one shows in History's timeline
   const PAYMENT_COLUMNS = Object.freeze(['payment_id', 'invoice_number', 'txnId', 'date', 'amount', 'method',
-    'note', 'place', 'recorded_at', 'voids']);
+    'note', 'place', 'recorded_at', 'voids', 'customer']); // customer (K): store credit's owner (QuickBooks id, else register key); blank on every other row
 
   const s = v => String(v == null ? '' : v).trim();
   const money = v => { const n = parseFloat(s(v).replace(/[^0-9.\-]/g, '')); return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0; };
   const cents = n => Math.round(n * 100);
+  const CREDIT = Object.freeze({ credit_given: true, credit_used: true });
+  const signedCents = p => (p.method === 'credit_given' ? -1 : 1) * cents(p.amount); // credit_given moves money OFF the sale it names
   const alnum = v => s(v).toLowerCase().replace(/[^a-z0-9]/g, '');
   // Shop date (Pacific/Honolulu) as YYYY-MM-DD for a Date, ISO string or Date-like; default now.
   function honoluluToday(d) {
@@ -147,22 +151,42 @@
     return 'pay_' + (now || Date.now()).toString(36) + Math.random().toString(36).slice(2, 8);
   }
   function buildPaymentRow(p, now) {
-    if (!METHODS.includes(p.method)) throw new Error('method must be cash, check, card_terminal, helcim_card or helcim_ach');
+    if (!METHODS.includes(p.method)) throw new Error('method must be cash, check, card_terminal, helcim_card, helcim_ach, credit_given or credit_used');
     const amt = typeof p.amount === 'string' && p.amount.trim() === '' ? NaN : Number(p.amount);
     if (!Number.isFinite(amt) || amt < 0) throw new Error('amount must be a number, 0 or more');
+    if (CREDIT[p.method]) { // store credit: positive amount, an owner in K; given needs a reason, used needs the sale it paid
+      if (!(amt > 0)) throw new Error('Store credit needs an amount more than $0.');
+      if (!s(p.customer)) throw new Error('Store credit needs a customer.');
+      if (p.method === 'credit_given' && !s(p.note)) throw new Error('Store credit needs a reason.');
+      if (p.method === 'credit_used' && !s(p.txnId)) throw new Error('Store credit used needs the sale it paid.');
+    }
     const at = (now ? new Date(now) : new Date()).toISOString();
     return [p.payment_id || newPaymentId(Date.parse(at)), s(p.invoice_number), s(p.txnId), isoDate(p.date) || honoluluToday(at),
-      amt.toFixed(2), p.method, s(p.note), s(p.place), at, ''];
+      amt.toFixed(2), p.method, s(p.note), s(p.place), at, '', s(p.customer)];
   }
   function buildVoidRow(target, now, place) { // Undo of one payment: append, never delete
     const at = (now ? new Date(now) : new Date()).toISOString();
     return [newPaymentId(Date.parse(at)), target.invoice_number, target.txnId, honoluluToday(at), '0.00', target.method,
-      'undo', s(place), at, target.payment_id];
+      'undo', s(place), at, target.payment_id, s(target.customer)];
   }
   // Undo for an invoice record: one void row for its NEWEST live payment (undo again for the one before).
-  function undoRows(record, now, place) {
+  // Store credit: undoing credit_used gives the credit back; undoing a credit_given (an automatic move) brings back "Refund due $X".
+  // A credit_given goes through undoCredit's spent check. opts: { paymentRows, records, ctx } as for creditBalances.
+  function undoRows(record, now, place, opts) {
     const last = [...(record.paymentsLive || [])].sort(newestFirst)[0];
-    return last ? [buildVoidRow(last, now, place)] : [];
+    if (!last) return [];
+    return last.method === 'credit_given' ? [undoCredit(last, now, place, opts)] : [buildVoidRow(last, now, place)];
+  }
+  // undoCredit(row, now, place, { paymentRows, records, ctx }) -> the void row for one credit_given (a Give credit row has no sale, so
+  // History undoes it here; undoRows uses it for automatic moves). Throws a plain sentence unless opts.paymentRows (the Payments tab,
+  // read fresh) shows the owner's balance still holds the whole amount. row: a parsed Payments row (paymentRows / paymentsLive).
+  function undoCredit(row, now, place, opts) {
+    const o = opts || {};
+    if (!o.paymentRows) throw new Error('Read the Payments tab again before undoing store credit.');
+    const bal = creditBalances(o.paymentRows, o.records, o.ctx)[resolveCredit(row.customer, o.ctx)] || 0;
+    const spent = cents(row.amount) - Math.max(0, bal);
+    if (spent > 0) throw new Error(`${usd(spent)} of this store credit is already used, so it cannot be undone. Undo that store credit payment first.`);
+    return buildVoidRow(row, now, place);
   }
   const paymentRows = rows => (rows || []).filter(r => r && s(r[0]) && s(r[0]) !== PAYMENT_COLUMNS[0]).map(r => { // blank or header out
     const o = {};
@@ -176,7 +200,7 @@
     if (!MARKS[m.kind]) throw new Error('mark must be email_draft, email_sent, edit, cancel, uncancel, print, pdf, pdf_open or paylink');
     const at = (now ? new Date(now) : new Date()).toISOString();
     return [m.id ? s(m.id) : 'mark_' + Date.parse(at).toString(36) + Math.random().toString(36).slice(2, 8), s(m.invoice_number), s(m.txnId),
-      honoluluToday(at), '0.00', m.kind, s(m.note), s(m.place), at, ''];
+      honoluluToday(at), '0.00', m.kind, s(m.note), s(m.place), at, '', ''];
   }
   const BEFORE = 'before:';
   // The note for an edit mark: the sale's Transactions rows before the edit. Over Sheets' cell limit: no copy (the edit still saves).
@@ -252,9 +276,10 @@
 
   // ---- Status ----
   const newestFirst = (a, b) => b.recorded_at.localeCompare(a.recorded_at) || b.payment_id.localeCompare(a.payment_id);
-  function derive(txns, payments, today, drafts, cancels) { // cancels: parseMarks(...).cancels
+  function derive(txns, payments, today, drafts, cancels, editLog) { // cancels, editLog: parseMarks(...).cancels / .editLog
     today = todayIso(today);
-    const live = livePayments(payments || []);
+    payments = payments || [];
+    const live = livePayments(payments);
     const draftSet = new Set(Array.isArray(drafts) ? drafts : Object.keys(drafts || {}));
     const byId = new Map(txns.map(t => [t.txnId, t]));
     const replacedBy = new Map(), replaces = new Map(); // old txnId -> new record ; new txnId -> [old records]
@@ -286,6 +311,7 @@
         r.paymentsLive = mine(new Set([t.txnId]), new Set(t.number ? [t.number] : []));
         r.deposit = Math.min(r.paymentsLive.reduce((a, p) => a + cents(p.amount), 0), cents(t.total)) / 100;
       }
+      if (kind === 'receipt') r.creditUsed = live.filter(p => p.method === 'credit_used' && p.txnId === t.txnId).reduce((a, p) => a + cents(p.amount), 0) / 100;
       if (kind !== 'invoice') { r.state = gone ? 'cancelled' : kind; if (gone) r.cancelledAt = gone.date; return r; }
       const ids = new Set(), nums = new Set();
       for (const c of chain(t)) {
@@ -294,8 +320,20 @@
         if (q && q.docType === 'quote') { ids.add(q.txnId); if (q.number) nums.add(q.number); }
       }
       r.paymentsLive = mine(ids, nums);
-      const latest = [...r.paymentsLive].sort(newestFirst)[0];
-      const sum = r.paymentsLive.reduce((a, p) => a + cents(p.amount), 0); // partial payments add up
+      const latest = r.paymentsLive.filter(p => p.method !== 'credit_given').sort(newestFirst)[0];
+      const sum = Math.max(0, r.paymentsLive.reduce((a, p) => a + signedCents(p), 0)); // partial payments add up; credit_given takes off
+      const sumOf = m => r.paymentsLive.filter(p => p.method === m).reduce((a, p) => a + cents(p.amount), 0);
+      r.movedToCredit = sumOf('credit_given') / 100; // dollars, like paid / overpaid
+      r.movedText = r.movedToCredit > 0 ? 'Moved ' + usd(cents(r.movedToCredit)) + ' to store credit' : '';
+      r.creditUsed = sumOf('credit_used') / 100;
+      // Automatic moves ever written for THIS sale (live or undone): autoCreditRow's id index. creditUndone: staff undid the NEWEST one
+      // and the sale has not been edited since that Undo (a newer 'edit' mark in editLog means a new overpay, which moves again).
+      const autoRows = payments.filter(p => p.method === 'credit_given' && !p.voids && p.txnId === t.txnId);
+      const newestAuto = [...autoRows].sort(newestFirst)[0];
+      const undoAt = newestAuto ? payments.filter(p => p.voids === newestAuto.payment_id).map(p => p.recorded_at).sort().pop() : '';
+      const editAt = ((editLog || {})[t.txnId] || []).map(e => s(e.at)).sort().pop() || '';
+      r.creditMoves = new Set(autoRows.map(p => p.payment_id)).size;
+      r.creditUndone = !!undoAt && !(editAt > undoAt);
       r.paid = Math.min(sum, cents(t.total)) / 100;
       r.overpaid = Math.max(0, sum - cents(t.total)) / 100; // more taken than the total (an edit lowered it): Refund due
       r.paidDate = latest ? latest.date : '';
@@ -485,12 +523,13 @@
   const joinAddr = c => [c.street, [c.city, c.region, c.zip].filter(Boolean).join(' ')].filter(Boolean).join(', '); // display only
   // qbo: the file's customers array; sheetRows: Customers tab rows; records: model.records (QuickBooks merged in, states derived).
   // Returns customers, newest activity first: contact fields, addr (display), balance / overdue (owed rule), records (unsorted), edited.
-  function buildCustomers({ qbo, sheetRows, records }) {
+  // The grouping both buildCustomers and store credit use: QuickBooks customers, then Customers-tab rows with J (renames), then
+  // rows without J. alias: register key -> group ({ id: 'q:<id>' | 'k:<key>' }).
+  function customerGroups(qbo, sheetRows) {
     const groups = new Map(), alias = new Map();
     const make = (id, qboId) => { let g = groups.get(id); if (!g) { g = { id, qboId, q: null, rows: [], records: [] }; groups.set(id, g); } return g; };
     const claim = (key, g) => { if (key !== '|' && !alias.has(key)) alias.set(key, g); return g; };
     const byKey = key => alias.get(key) || claim(key, make('k:' + key, ''));
-    const qLines = q => (Array.isArray(q.lines) ? q.lines : []).map(s).filter(Boolean);
     for (const q of qbo || []) {
       const id = s(q.id);
       if (!id) continue;
@@ -510,6 +549,11 @@
       const key = customerKey(row.phone, row.company, row.name);
       if (key !== '|') byKey(key).rows.push(row);
     }
+    return { groups, alias, make, byKey };
+  }
+  function buildCustomers({ qbo, sheetRows, records }) {
+    const { groups, make, byKey } = customerGroups(qbo, sheetRows);
+    const qLines = q => (Array.isArray(q.lines) ? q.lines : []).map(s).filter(Boolean);
     for (const r of records || []) {
       const cid = r.source === 'qbo' ? s(r.customerId) : r.kind === 'receipt' && r.qboBuyer ? s(r.qboBuyer.customerId) : ''; // W3b: a matched register sale joins that customer
       if (cid) { make('q:' + cid, cid).records.push(r); continue; }
@@ -548,6 +592,75 @@
   }
   const lt = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
+  // ---- Store credit (Payments methods credit_given / credit_used; column K = owner; the balance is never stored) ----
+  // ctx everywhere below: the same { qbo, sheetRows } object History passes to buildCustomers (optional; without it no renames resolve).
+  const aliasMemo = new WeakMap();
+  const aliasOf = ctx => {
+    if (!ctx || typeof ctx !== 'object') return new Map();
+    if (!aliasMemo.has(ctx)) aliasMemo.set(ctx, customerGroups(ctx.qbo, ctx.sheetRows).alias);
+    return aliasMemo.get(ctx);
+  };
+  // A stored K read today: a register key that a QuickBooks customer or a Customers-tab rename has since claimed moves to that group.
+  const resolveCredit = (k, ctx) => { k = s(k); const g = k.startsWith('k:') && aliasOf(ctx).get(k.slice(2)); return g ? g.id : k; };
+  // creditKey(who, ctx) -> column K for a customer, '' when there is none. who: a customer (buildCustomers), a record, or the register's
+  // fields ({ qboId | customerId, phone, company, name }). QuickBooks id -> 'q:<id>'; else the register key through the same alias map
+  // as buildCustomers, so the value equals that customer's buildCustomers id. Blank buyer or the Jana placeholder -> ''.
+  // History and the register call only this.
+  function creditKey(who, ctx) {
+    const w = who || {}, qid = s(w.qboId || w.customerId);
+    if (qid) return 'q:' + qid;
+    if (!(s(w.name) || s(w.company)) || isPlaceholderBuyer(w)) return '';
+    const key = customerKey(w.phone, w.company, w.name), g = aliasOf(ctx).get(key);
+    return g ? g.id : 'k:' + key;
+  }
+  // creditBalances(paymentRows, records, ctx) -> { [creditKey]: cents }: live credit_given minus live credit_used per owner. Negative =
+  // overdrawn (show "Credit overdrawn -$X"). a cancelled sale undoes all it did to credit (its credit_used comes back, its automatic credit_given drops): its txnId has a cancel
+  // mark, or it is a live payment of a cancelled record (records: derived, optional; this covers a cancelled replacement invoice).
+  // A void (replaced) invoice passes its payments to its replacement, so credit used on it stays spent there: nothing counts twice.
+  function creditBalances(rows, records, ctx) {
+    const live = livePayments(paymentRows(rows).filter(o => CREDIT[o.method]));
+    const gone = cancelledIds(rows), back = new Set();
+    for (const r of records || []) if (r.state === 'cancelled') {
+      gone.add(r.txnId);
+      for (const p of r.paymentsLive || []) back.add(p.payment_id);
+    }
+    const out = {};
+    for (const p of live) {
+      const k = resolveCredit(p.customer, ctx);
+      if (!k || back.has(p.payment_id) || gone.has(p.txnId)) continue; // Give credit rows have no txnId and always count
+      out[k] = (out[k] || 0) + (p.method === 'credit_given' ? 1 : -1) * cents(p.amount);
+    }
+    return out;
+  }
+  // creditCap(freshRows, key, dueCents, records, ctx) -> the most credit_used cents allowed now: min(balance, amount due), never below 0.
+  const creditCap = (rows, key, dueCents, records, ctx) =>
+    Math.max(0, Math.min(creditBalances(rows, records, ctx)[resolveCredit(key, ctx)] || 0, Math.round(Number(dueCents) || 0)));
+  // autoCreditRow(record, overpaidCents, customerKey, now, place) -> the automatic credit_given row for an edit that overpaid a sale, or
+  // null (nothing over, or no customer). record: derived from fresh rows AFTER the save. Fixed id credit_<txnId>, so two registers
+  // write it once; a later edit that overpays again gets credit_<txnId>_2, _3... (record.creditMoves), so it is not lost.
+  function autoCreditRow(record, overpaidCents, key, now, place) {
+    const c = Math.round(Number(overpaidCents) || 0);
+    if (!(c > 0) || !s(key) || !record || !s(record.txnId)) return null;
+    const n = record.creditMoves || 0;
+    return buildPaymentRow({ payment_id: 'credit_' + record.txnId + (n ? '_' + (n + 1) : ''), invoice_number: record.number, txnId: record.txnId,
+      amount: c / 100, method: 'credit_given', note: 'Overpaid after edit of ' + (s(record.number) || record.txnId), place, customer: key }, now);
+  }
+  // creditUseRow(sale, amountCents, customerKey, now, place) -> one credit_used row paying sale ({ txnId, number, kind }). A receipt
+  // (the register) gets the fixed id credit_used_<receipt txnId>; an invoice (History Take payment) a new id each time. Cap it first (creditCap).
+  function creditUseRow(sale, amountCents, key, now, place) {
+    const receipt = sale.kind !== 'invoice' && sale.kind !== 'quote', at = Date.parse((now ? new Date(now) : new Date()).toISOString());
+    return buildPaymentRow({ payment_id: receipt ? 'credit_used_' + s(sale.txnId) : newPaymentId(at).replace(/^pay_/, 'credit_used_'),
+      invoice_number: sale.number, txnId: sale.txnId, amount: Math.round(Number(amountCents) || 0) / 100, method: 'credit_used',
+      note: 'Store credit', place, customer: key }, now);
+  }
+  // pendingCreditMoves(records, ctx) -> [{ record, key, cents }]: sales that show Refund due, now have a customer and were never undone
+  // by staff. History writes autoCreditRow for each on load (the retry when the credit row failed or the customer came later).
+  const pendingCreditMoves = (records, ctx) => (records || []).flatMap(r => {
+    if (r.kind !== 'invoice' || r.source === 'qbo' || r.state === 'void' || r.state === 'cancelled' || r.creditUndone) return [];
+    const c = cents(r.overpaid || 0), key = c > 0 ? creditKey(r, ctx) : '';
+    return key ? [{ record: r, key, cents: c }] : [];
+  });
+
   // One call for the page: rows in, ready model out. displayRows: optional (defaults to the page's
   // MPETransactionContact.displayRows) so CUSTOMER_UPDATE fixes and conflict flags match History.
   async function create({ txnRows, paymentRows, drafts, today, displayRows }) {
@@ -555,7 +668,8 @@
     const fn = displayRows || (owner && owner.displayRows && (rows => owner.displayRows(rows)));
     let rows = txnRows, states = null;
     if (fn) { const d = await fn(txnRows); rows = d.rows; states = d.states; }
-    const records = derive(parseTransactions(rows, states), parsePayments(paymentRows), today, drafts, parseMarks(paymentRows).cancels);
+    const marks = parseMarks(paymentRows);
+    const records = derive(parseTransactions(rows, states), parsePayments(paymentRows), today, drafts, marks.cancels, marks.editLog);
     const model = {
       records,
       list: (name, query) => search(filter(model.records, name), query),
@@ -601,19 +715,22 @@
   }
   // ---- Item edits in History (F03, C3 money; integer cents) ----
   const usd = c => '$' + (Math.abs(c) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const liveCents = r => (r.paymentsLive || []).reduce((a, p) => a + cents(p.amount), 0);
+  const liveCents = r => (r.paymentsLive || []).reduce((a, p) => a + signedCents(p), 0);
   // The panel's line for an invoice that took more than its total: 'Refund due $X', else ''.
   const refundDue = r => (r && r.kind === 'invoice' && r.state !== 'void' && r.state !== 'cancelled' && cents(r.overpaid || 0) > 0 ? 'Refund due ' + usd(cents(r.overpaid)) : '');
   // The Editing bar's money line for record (as loaded, before the edit) at a new total. Paid before the edit is the record's own paid
   // (QuickBooks-recognized paid included) plus anything already over the total (R7); it is never recomputed from the new total.
-  // Returns { kind, cents, text }; the same wording as refundDue, so the bar and the panel after Save agree.
-  function editMoney(r, newTotalCents, originalTotalCents) {
+  // Returns { kind, cents, text }. Overpaid (D18): kind 'credit', "Becomes store credit $X" when there is a customer, else
+  // "Add a customer to keep $X as credit" (needsCustomer: true; saved that way the panel shows refundDue's "Refund due $X").
+  // customer: the fields the edit's customer editor holds now (optional; defaults to the record's own buyer).
+  function editMoney(r, newTotalCents, originalTotalCents, customer) {
     const now = Math.round(Number(newTotalCents)), was = Number.isFinite(Number(originalTotalCents)) ? Math.round(Number(originalTotalCents)) : cents(r.total);
     if (!Number.isFinite(now)) return { kind: 'unknown', cents: 0, text: '' };
     if (r.kind === 'invoice') {
       const paid = cents(r.paid || 0) + cents(r.overpaid || 0);
       if (paid <= 0) return { kind: 'newTotal', cents: now, text: 'New total ' + usd(now) };
-      if (paid > now) return { kind: 'refund', cents: paid - now, text: 'Refund due ' + usd(paid - now) };
+      if (paid > now) return creditKey(customer || r) ? { kind: 'credit', cents: paid - now, text: 'Becomes store credit ' + usd(paid - now) }
+        : { kind: 'credit', cents: paid - now, text: 'Add a customer to keep ' + usd(paid - now) + ' as credit', needsCustomer: true };
       return now === paid ? { kind: 'paid', cents: 0, text: 'Paid in full' } : { kind: 'owed', cents: now - paid, text: 'Still owed ' + usd(now - paid) };
     }
     if (r.kind === 'quote') {
@@ -639,6 +756,6 @@
     const txn = (after[0].rows || []).find(row => s(row && row[0]).toUpperCase() === 'TXN');
     return !txn || cents(money(txn[12])) !== cents(r.total);
   }
-  return { refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionBlockEnd, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow, helcimPaymentRows,
+  return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionBlockEnd, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow, helcimPaymentRows,
     buildVoidRow, beforeNote, undoRows, honoluluToday, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });

@@ -574,7 +574,7 @@ test('F03 embedded: loads and proves, marks the page, sends a ready state, then 
  assert.deepEqual(c.s.document.body.classList.added, ['embedded-edit']);
  const first = c.states[0];
  assert.equal(first.v, 1); assert.equal(first.sessionId, c.req.sessionId); assert.equal(first.seq, 1); assert.equal(first.ready, true);
- assert.equal(first.dirty, false); assert.equal(first.canSave, false); assert.equal(first.saving, false); assert.equal(first.problem, '');
+ assert.equal(first.dirty, false); assert.equal(first.canSave, true, 'lines complete: History adds "something changed" (lines or its panel)'); assert.equal(first.saving, false); assert.equal(first.problem, '');
  assert.equal(first.totalCents, 55496); assert.equal(first.originalTotalCents, 55496); assert.equal(first.customer.company, 'TEST LANDFILL');
  assert.deepEqual(Object.keys(first.customer), ['company', 'name', 'phone', 'email', 'street', 'city', 'region', 'zip']);
  c.twoLines(); c.s.scheduleEditState(); c.s.scheduleEditState(); await wait(260);
@@ -697,7 +697,62 @@ test('F03 embedded: History\'s forwarded keys reach the scanner path only, as ke
  assert.equal(c.s.runEditKey({type: 'edit-key', key: 5}), false); assert.equal(c.s.runEditKey({type: 'edit-key', key: 'x'.repeat(30)}), false);
  assert.deepEqual(keys.map(k => [k.key, k.code, k.ctrlKey, k.repeat, k.isComposing, k.timeStamp]), [['1', 'Digit1', false, false, false, 1234], ['Enter', 'Enter', false, false, false, 1234]]);
  assert.equal(keys[0].target, c.s.document.body, 'never a focused field'); keys[0].preventDefault(); keys[0].stopPropagation();
- assert.match(html, /else if\(e\.data\.type==='edit-key'\)runEditKey\(e\.data\);\}/, 'website: only from window.parent with the origin check');
+ assert.match(html, /else if\(e\.data\.type==='edit-key'\)runEditKey\(e\.data\);else if\(e\.data\.type==='edit-scan'\)runEditScan\(e\.data\);\}/, 'website: only from window.parent with the origin check');
  assert.match(html, /body\.embedded-edit #counterView #docTypeSel\{display:none!important\}/, 'type buttons hidden in an embedded edit');
  assert.match(html, /type\.textContent = '· ' \+ \(DOC_TITLES\[_docType\] \|\| ''\)/);
 });
+
+// ── The one Edit (D14): the customer typed in History's panel rides on the one save; a refused save keeps the screen open ─────────
+test('one Edit: Save carries the customer: applied to the customer boxes like the silent patch, saved with the items in one write and one mark', async () => {
+ const c = await embeddedEdit(), before = rowsOf(c.sheet()); c.twoLines();
+ const r = await c.cmd('save', {updateInfo: true, customer: {phone: ' 808-555-0100 \n', city: 'Kahului'}}); await flush2();
+ assert.equal(r.ok, true); assert.equal(r.verified, true); assert.equal(r.customer, 'queued'); assert.deepEqual(c.results, [r]);
+ const after = rowsOf(c.sheet()); assert.equal(after[0][5], '808-555-0100'); assert.equal(Number(after[1][10]), 2, 'items and customer in the same save');
+ assert.equal(after[0][2], before[0][2], 'a key not sent is left alone');
+ assert.equal(c.marks().length, 1); assert.deepEqual(c.queued, [c.stored.txnId]);
+});
+test('one Edit: a customer-only Save writes; a customer that is not 8 plain keys is refused with nothing written and the screen open', async () => {
+ const c = await embeddedEdit();
+ assert.equal(c.states.at(-1).canSave, true, 'nothing changed on the lines, yet Save is allowed: History knows its panel changed');
+ const r = await c.cmd('save', {updateInfo: false, customer: {email: 'new@x.example'}}); await flush2();
+ assert.equal(r.ok, true); assert.equal(r.verified, true); assert.equal(rowsOf(c.sheet())[0][6], 'new@x.example');
+ const d = await embeddedEdit(), sheet = d.sheet();
+ for (const bad of [{total: '1'}, {phone: 5}, ['x'], 'x', {phone: 'x'.repeat(401)}]) {
+  assert.equal(await d.cmd('save', {updateInfo: false, customer: bad}), null);
+  assert.equal(d.states.at(-1).problem, 'That save was not valid. Nothing was saved.');
+ }
+ await flush2(); assert.deepEqual(d.sheet(), sheet); assert.deepEqual(d.results, [], 'still open');
+});
+test('one Edit: a refused Save writes nothing, puts the customer boxes back, keeps the screen open with the reason, and the next Save can still go', async () => {
+ const c = await embeddedEdit(), saved = clone(c.s.getHistory()[0]);
+ const theirs = c.sheet(); theirs[0][5] = '808-111-2222'; c.setSheet(theirs);   // another register changed it since the edit opened
+ c.twoLines();
+ const r = await c.cmd('save', {updateInfo: true, customer: {phone: '808-555-0100'}}); await flush2();
+ assert.equal(r, null, 'no result: the edit stays open'); assert.deepEqual(c.results, []);
+ assert.equal(c.sheet()[0][5], '808-111-2222'); assert.equal(c.marks().length, 0); assert.deepEqual(c.queued, []);
+ assert.deepEqual(c.s.getHistory()[0], saved, 'this computer\'s copy as it was');
+ assert.equal(c.s.draft.customer.phone || '', '', 'the box went back to what it held');
+ const st = c.states.at(-1); assert.equal(st.saving, false); assert.match(st.problem, /Changed on another register/); assert.equal(st.canSave, true);
+ assert.equal(vm.runInContext('_embeddedEdit.done', c.s), false);
+ c.s.scheduleEditState(); await wait(260); assert.equal(c.states.at(-1).problem, '', 'the next change clears the reason');
+});
+test('one Edit: a scan History caught in its customer box (website) is added to the lines like a hardware scan, only while the edit is open', async () => {
+ const c = await embeddedReady(), seen = [];
+ Object.assign(c.s, {closeAllDropdowns() {}, acceptDecodedScan: (v, how) => seen.push([v, how])});
+ assert.equal(c.s.runEditScan({type: 'edit-scan', value: '0000131'}), false, 'no edit yet');
+ await c.s.runEditSessionAndReport(c.req);
+ assert.equal(c.s.runEditScan({type: 'edit-scan', value: ' 0000131 '}), true);
+ assert.equal(c.s.runEditScan({type: 'edit-scan', value: ''}), false); assert.equal(c.s.runEditScan({type: 'edit-scan', value: 'x'.repeat(600)}), false);
+ assert.deepEqual(seen, [['0000131', 'hardware']]);
+});
+test('one Edit layout: only the lines and a slim strip show; header, customer boxes and checkout column are hidden; discount and card fee stay', () => {
+ const css = html.slice(html.indexOf('/* The one Edit (D14)'), html.indexOf('\n', html.indexOf('/* The one Edit (D14)') + 300));
+ const E = 'body\\.embedded-edit #counterView';
+ assert.match(css, new RegExp(E + ' \\.cv-top\\{display:none!important\\}'));
+ assert.match(css, new RegExp(E + ' \\.cv-body\\{display:flex;flex-direction:column\\}'));
+ assert.match(css, new RegExp(E + ' \\.cv-checkout\\{flex-direction:row'));
+ for (const sel of ['.cv-customer-label', '#cvCustomer', '#cvLedger', '#cvFinalize', '#cvCharge', '#sumInternal']) assert.ok(css.includes('body.embedded-edit #counterView ' + sel), sel);
+ for (const kept of ['.cv-order', '.cv-fee', '#cvTotals']) assert.ok(css.includes('body.embedded-edit #counterView ' + kept + '{'), kept + ' stays, placed in the strip');
+ assert.ok(!/cvOrderValue|cvCardFee|cvNote|#cvPo\{display:none/.test(css), 'order discount, card fee, Add note and PO # are not hidden');
+});
+

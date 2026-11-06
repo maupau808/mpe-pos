@@ -142,6 +142,21 @@ test('A1: while History has an item edit open, a key History is not using goes t
   assert.equal(scans, 2); assert.equal(shown, 1);
 });
 
+test('one Edit: typing in History\'s customer fields during an edit stays there and never moves focus to the edit frame; a checkbox or button key still does', () => {
+  let keydown = null, focused = 0;
+  const posted = [], win = { addEventListener: (type, fn) => { if (type === 'keydown') keydown = fn; }, document: { activeElement: null }, Event: class {} };
+  const frame = { focus: () => { focused += 1; }, contentWindow: { postMessage: (m, o) => posted.push([m, o]) } };
+  LedgerTab.forwardScans(win, () => { throw new Error('no register scanner test while an edit is open'); }, () => {}, () => frame, 'https://x.test');
+  const key = (k, target) => ({ key: k, code: 'Key' + k, defaultPrevented: false, target, preventDefault() { this.defaultPrevented = true; } });
+  for (const target of [{ tagName: 'INPUT', type: 'text' }, { tagName: 'INPUT' }, { tagName: 'TEXTAREA' }, { tagName: 'DIV', isContentEditable: true }]) {
+    const e = key('S', target); keydown(e);
+    assert.equal(e.defaultPrevented, false, 'the letter is typed in the box');
+  }
+  assert.equal(focused, 0, 'the caret stays in the customer box'); assert.deepEqual(posted, []);
+  keydown(key(' ', { tagName: 'INPUT', type: 'checkbox' })); keydown(key('x', { tagName: 'BUTTON' }));
+  assert.equal(focused, 2, 'a key on the info box or a button lets the edit take the burst'); assert.deepEqual(posted, []);
+});
+
 test('A1: install looks for the edit frame in the register document (iframe[data-mpe-embed]) and posts with the register origin', () => {
   const src = fs.readFileSync(path.join(__dirname, 'ledger-tab.js'), 'utf8');
   assert.match(src, /forwardScans\(frame\.contentWindow, scanKeydown, onScan, \(\) => document\.querySelector\('iframe\[data-mpe-embed\]'\), window\.location\.origin\)/);

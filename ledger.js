@@ -15,8 +15,11 @@
  *                                Without it History says "Refresh on the Mac".
  *   readQboHistory(knownVersion) (optional) -> Promise<{ unchanged: true } | { data, modifiedTime }>; History's read-only QuickBooks
  *                                copy (see ledger-data.js qboRecords). The sheet shows first; these merge in when they arrive.
- *   editEmbed(record, extra, { onState, onClose }) (optional) -> { sessionId, result: Promise<one result>, rect(msg), command(msg) };
- *                                item Edit on the register's sale screen in the middle column (editFlow). Without it Edit opens a new sale tab.
+ *   editEmbed(record, extra, { onState, onClose }) (optional) -> { sessionId, result: Promise<one result>, rect(msg), command(msg),
+ *                                saveCustomer, scan? }; the one Edit: the register's sale lines in the middle, the customer in the panel
+ *                                (editFlow). saveCustomer: the save command carries the customer (app 0.3.67+, website). Without it the
+ *                                customer goes through editSession after the items. Without editEmbed Edit opens a new sale tab.
+ *   editSession(record, patch, extra) (optional) -> Promise<one result>; customer fields saved by a hidden register page (0.3.66 fallback).
  *   honoluluToday()           -> 'YYYY-MM-DD'
  *   place         (optional)  -> '1' Mac, '2' PC Left, '3' PC Right, '9' web; stamped on payment rows
  *   documentSettings (optional) -> the app's saved Document settings; defaults to the renderer's DEFAULT_SETTINGS
@@ -32,7 +35,7 @@
   const TAX_RATE = 0.04712; // POS/index.html TAX_RATE
   const QUOTE_DAYS = 30;
   const PLACES = { 1: 'Mac', 2: 'PC Left', 3: 'PC Right', 9: 'Web' };
-  const METHOD_LABEL = { cash: 'Cash', check: 'Check', card_terminal: 'Card terminal', helcim_card: 'Card online', helcim_ach: 'Bank transfer' };
+  const METHOD_LABEL = { cash: 'Cash', check: 'Check', card_terminal: 'Card terminal', helcim_card: 'Card online', helcim_ach: 'Bank transfer', ...L.CREDIT_LABELS }; // + credit_given / credit_used
   const KIND_LABEL = { invoice: 'Invoice', quote: 'Quote', receipt: 'Sale' };
   const STORE_KEY = 'mpe.ledger.ui';
   const UNPAID = new Set(['unpaid', 'dueSoon', 'overdue']);
@@ -40,6 +43,7 @@
   const SEARCH_HINT = { recent: 'Search all sales', invoices: 'Search invoices', quotes: 'Search quotes', sales: 'Search register sales', customers: 'Search customers' };
   const QBO_RECHECK_MS = 10 * 60 * 1000;
   const HELCIM_RECHECK_MS = 10 * 60 * 1000;
+  const CREDIT_FROM = '2026-11-05T18:30:00-10:00'; // store credit release: only an overpay from an edit saved on or after this moves by itself
 
   const s = v => String(v == null ? '' : v).trim();
   const cents = n => Math.round(n * 100) / 100;
@@ -276,16 +280,18 @@
       const draft = marks && marks.drafts && (marks.drafts[r.txnId] || marks.drafts[r.number]);
       if (draft) ev.push({ t: 'Email draft made', d: draft, at: '' });
     }
-    if ((r.kind === 'invoice' || r.kind === 'quote') && !isQbo(r)) {
+    if (!isQbo(r)) { // a register sale lists only the store credit it used (D17)
       const from = (records || []).find(x => x.txnId === r.fromQuote && x.kind === 'quote'); // its deposit shows on the sale made from it
       const ids = new Set([r.txnId, from && from.txnId].filter(Boolean)), nums = new Set([r.number, from && from.number].filter(Boolean));
-      const mine = L.parsePayments(paymentRows).filter(p => ids.has(p.txnId) || (!p.txnId && nums.has(p.invoice_number)));
+      const mine = L.parsePayments(paymentRows).filter(p => (ids.has(p.txnId) || (!p.txnId && nums.has(p.invoice_number))) && (r.kind !== 'receipt' || p.method === 'credit_used'));
       const seen = new Set();
       for (const p of mine.sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))) {
         if (seen.has(p.payment_id)) continue;
         seen.add(p.payment_id);
         const dep = r.kind === 'quote' || (from && p.txnId === from.txnId);
-        ev.push({ t: p.voids ? (dep ? 'Deposit undone' : 'Payment undone') : `${dep ? 'Deposit' : 'Paid'} ${money(p.amount)} by ${(METHOD_LABEL[p.method] || p.method).toLowerCase()}`, d: p.date, at: PLACES[p.place] || '' });
+        const t = p.method === 'credit_given' ? (p.voids ? 'Move to store credit undone' : `Moved ${money(p.amount)} to store credit`) // credit_given takes money off the sale
+          : p.voids ? (dep ? 'Deposit undone' : 'Payment undone') : `${dep ? 'Deposit' : 'Paid'} ${money(p.amount)} by ${(METHOD_LABEL[p.method] || p.method).toLowerCase()}`;
+        ev.push({ t, d: p.date, at: PLACES[p.place] || '' });
       }
     }
     if (r.state === 'void' && !isQbo(r)) { const n = (records || []).find(x => (x.number || x.txnId) === r.replacedBy); ev.push({ t: `Corrected, replaced by ${r.replacedBy}`, d: n ? n.date : '', at: n ? placeOf(n.number) : '' }); }
@@ -299,6 +305,11 @@
   // A quote with a deposit carries one note line saying so, on screen, on every print and in the sale made from it (Trevor, Nov 1).
   // Added once: a sale that already has a "Deposit paid" note (saved from an earlier conversion) is left as it is.
   function withDeposit(r) {
+    // A register receipt paid partly with store credit: one note line, the same way as a quote deposit (no renderer change).
+    if (r && r.kind === 'receipt' && r.creditUsed > 0 && !(r.items || []).some(i => i.pn === 'Note' && /^store credit/i.test(s(i.desc)))) {
+      const desc = `Store credit −${money(r.creditUsed)}. Amount paid ${money(Math.max(0, cents(r.total - r.creditUsed)))}.`;
+      return { ...r, items: [...(r.items || []), { pn: 'Note', desc, qty: '', ea: 0, sub: 0, serials: [], origEa: 0, off: 0 }] };
+    }
     if (!(r && r.kind === 'quote' && r.deposit > 0) || (r.items || []).some(i => i.pn === 'Note' && /^deposit paid/i.test(s(i.desc)))) return r;
     const desc = `Deposit paid ${money(r.deposit)}. Balance due ${money(cents(r.total - r.deposit))}.`;
     return { ...r, items: [...(r.items || []), { pn: 'Note', desc, qty: '', ea: 0, sub: 0, serials: [], origEa: 0, off: 0 }] };
@@ -560,7 +571,7 @@
     const at = (rows || []).findIndex(row => String(row[0]).toLowerCase() === 'txn' && String(row[1]) === r.txnId);
     if (at < 0 || L.transactionRowsFingerprint(rows.slice(at, L.transactionBlockEnd(rows, at, r.txnId))) !== r.fingerprint) throw new Error('This document changed. Close and open Email again.');
   }
-  // The inline customer form (R1). Its state lives in st.custEdit so a redraw never loses what was typed; the HTML is rebuilt from it.
+  // The customer form in the panel during an edit (D14). Its state lives in st.edit.cust so a redraw never loses what was typed; the HTML is rebuilt from it.
   const CUST_LABELS = { company: 'Company', name: 'Contact', phone: 'Phone', email: 'Email', street: 'Street', city: 'City', region: 'State', zip: 'Zip' };
   const CUST_IDS = { company: 'dcCompany', name: 'dcName', phone: 'dcPhone', email: 'dcEmail', street: 'dcStreet', city: 'dcCity', region: 'dcState', zip: 'dcZip' };
   const custEditStart = (r, typed, err) => ({ txnId: r.txnId, typed: Object.fromEntries(CUST_KEYS.map(k => [k, typed ? s(typed[k]) : savedField(r, k)])), touched: false, box: false, err: err || '', saving: false });
@@ -570,24 +581,24 @@
     return { change, ticked: e.touched ? e.box : change === 'fill',
       hint: change === 'overwrite' ? 'You changed a saved detail, so the saved customer stays as it was unless you tick this.' : change === 'fill' ? 'You filled in blanks, so the customer gets them too.' : '' };
   }
-  // The edit survives redraws of the same sale; any other sale, section or a sale that can no longer be edited ends it.
-  const custEditKeeps = (e, r, editable) => !!(e && r && r.txnId === e.txnId && (e.saving || editable));
+  // The customer editor in the right panel during an edit (D14). It has no buttons of its own: the bar's one Save writes it with the items.
   function custEditHtml(r, e, off) {
     const m = custEditModel(r, e), d = off ? ' disabled' : '';
     const f = k => `<label>${CUST_LABELS[k]}<input id="${CUST_IDS[k]}" data-cf="${k}" value="${esc(e.typed[k])}" autocomplete="off"${d}></label>`;
     return `<div class="cedit"><h3>Customer on this document</h3>${['company', 'name', 'phone', 'email', 'street'].map(f).join('')}<div class="row2">${['city', 'region', 'zip'].map(f).join('')}</div>
       <label class="chk"><input type="checkbox" id="dcUpdate"${m.ticked ? ' checked' : ''}${d}> Also update this customer's info</label>
-      <div class="hint" id="dcHint">${esc(m.hint)}</div><div class="err" id="dcErr" role="alert">${esc(e.err)}</div>
-      <div class="btns"><button type="button" class="btn quiet" data-act="custCancel"${d}>Cancel</button><button type="button" class="btn primary" data-act="custSave"${d}>${e.saving ? 'Saving…' : 'Save'}</button></div></div>`;
+      <div class="hint" id="dcHint">${esc(m.hint)}</div><div class="err" id="dcErr" role="alert">${esc(e.err)}</div></div>`;
   }
   // ---- Item edit in the middle column (F03) ----
   const LOCK = 'Finish or cancel the edit first';
-  // One embedded edit session, History's side. h.editEmbed starts it; state from the register is kept only when it is v:1, this
-  // session and a higher seq (an older or foreign one is dropped). rect / save / cancel go back through the host. Nothing here
-  // writes the sheet: the register's one save path does. opts: { cardFee, confirm(text) -> bool, changed(f), ended(result, f) }.
+  // One embedded edit session, History's side (D14). h.editEmbed starts it; state from the register is kept only when it is v:1, this
+  // session and a higher seq (an older or foreign one is dropped). The customer is typed in History's panel (f.cust, the inline
+  // editor's state) and goes to the register with the one save; rect / save / cancel go back through the host. Nothing here writes
+  // the sheet: the register's one save path does. opts: { cardFee, confirm(text) -> bool, changed(f), ended(result, f) }.
+  // Without one.saveCustomer (app 0.3.66) Save sends the items only and f.followUp carries the customer for the silent session.
   function editFlow(h, r, opts = {}) {
-    const f = { txnId: r.txnId, record: r, state: null, seq: -Infinity, rectSeq: 0, touched: false, box: false, done: false, deferred: false, everReady: false };
-    const one = h.editEmbed(r, { cardFee: !!opts.cardFee }, { onState: m => f.accept(m), onClose: () => f.cancel() });
+    const f = { txnId: r.txnId, record: r, state: null, seq: -Infinity, rectSeq: 0, done: false, deferred: false, everReady: false, cust: custEditStart(r), followUp: null };
+    const one = h.editEmbed(r, { cardFee: !!opts.cardFee, storeCredit: opts.storeCredit || 0 }, { onState: m => f.accept(m), onClose: () => f.cancel() });
     f.sessionId = one.sessionId;
     f.accept = m => {
       if (f.done || !m || typeof m !== 'object' || m.v !== 1 || m.sessionId !== f.sessionId || !(Number(m.seq) > f.seq)) return false;
@@ -596,27 +607,29 @@
       if (opts.changed) opts.changed(f);
       return true;
     };
-    // The "Also update this customer's info" box: History's own customerChange on the customer the sale screen shows now (D3).
-    f.boxModel = () => {
-      const shown = { ...((f.state && f.state.customer) || {}) };
-      if (isPlaceholderBuyer(shown)) shown.name = ''; // the register's Jana stand-in is a blank buyer, never a customer to save (D10)
-      return custEditModel(r, { typed: shown, touched: f.touched, box: f.box });
-    };
-    f.setBox = on => { f.touched = true; f.box = !!on; if (opts.changed) opts.changed(f); };
+    // The panel's "Also update this customer's info" box (D3). The Jana stand-in is already a blank buyer in f.cust (savedField, D10).
+    f.boxModel = () => custEditModel(r, f.cust);
+    f.custChanged = () => customerChange(r, f.cust.typed) !== 'none';
+    f.changed = () => !!(f.state && f.state.dirty) || f.custChanged();
+    f.canSave = () => { const st = f.state; return !!(st && st.ready && st.canSave && !st.saving && !f.asked && !f.done && f.changed()); };
+    f.scan = one.scan; // website only: a scan typed in History's panel goes to the sale lines
     const msg = extra => ({ v: 1, sessionId: f.sessionId, ...extra });
     f.rect = b => one.rect(b ? msg({ seq: ++f.rectSeq, rect: { x: b.x, y: b.y, width: b.width, height: b.height } }) : msg({ seq: ++f.rectSeq, hidden: true }));
     f.save = () => {
-      const st = f.state;
-      if (f.done || f.asked || !st || !st.ready || !st.canSave || st.saving) return false;
+      if (!f.canSave()) return false;
       f.asked = true;
-      const b = f.boxModel();
-      one.command(msg({ cmd: 'save', updateInfo: b.change !== 'none' && b.ticked }));
+      const b = f.boxModel(), patch = customerPatch(r, f.cust.typed), updateInfo = b.change !== 'none' && b.ticked;
+      if (one.saveCustomer) { one.command(msg({ cmd: 'save', updateInfo, customer: patch })); return true; }
+      f.followUp = Object.keys(patch).length ? { typed: { ...f.cust.typed }, updateInfo } : null;
+      if (f.state.dirty) one.command(msg({ cmd: 'save', updateInfo: false }));
+      else { f.viaCancel = true; one.command(msg({ cmd: 'cancel' })); } // customer only: close the screen, the silent session saves it
       return true;
     };
-    // Cancel (and Cmd/Ctrl+W in the app): asks first when there are unsaved changes. The register answers with { cancelled: true }.
+    // Cancel (and Cmd/Ctrl+W in the app): asks first when the items or the customer changed. The register answers with { cancelled: true }.
     f.cancel = () => {
       if (f.done || (f.state && f.state.saving)) return false;
-      if (f.state && f.state.dirty && !(opts.confirm && opts.confirm('Throw away these changes?'))) return false;
+      if (f.changed() && !(opts.confirm && opts.confirm('Throw away these changes?'))) return false;
+      f.followUp = null; f.viaCancel = false;
       one.command(msg({ cmd: 'cancel' }));
       return true;
     };
@@ -626,26 +639,37 @@
   }
   // R10: the sale screen could not prove the saved rows before it opened (open_sale_screen, never ready): edit in a new sale tab instead.
   const embedFallsBack = (res, f) => !!(res && !res.ok && res.code === 'open_sale_screen' && !(f && f.everReady));
-  // The Editing bar above the sale screen: number, original -> new total, the money line (C3), warnings (R5, R6), the info box (R8),
-  // Save (from canSave; shows the register's problem) and Cancel. payLink: the invoice has a pay link.
-  function editBarHtml(f, { payLink } = {}) {
+  // App 0.3.66 only: the items are saved; now the customer goes through the silent session, on the freshly loaded record.
+  // Returns the customer's result, or null when it must not run (the items were kept on this computer only, or nothing to save).
+  const followUpRuns = (f, res) => !!(f && f.followUp && res && res.ok && !res.pending && (!res.cancelled || f.viaCancel));
+  function followUpText(r, first, out) {
+    if (out && out.ok) return first ? `${first} Customer details saved.` : editOutcomeText(r, out);
+    const why = s(out && out.message) || 'It did not go through.';
+    return `${first ? first + ' ' : ''}The customer details were not saved: ${why} Open Edit again to add them.`;
+  }
+  // The Now editing bar above the sale lines: number and customer, original -> new total, the money line (C3, text from
+  // L.editMoney with the customer typed in the panel), warnings (R5, R6), Save and Cancel. payLink: the invoice has a pay link.
+  // credit: store credit is on (host.creditReady()); off, an overpayment reads "Refund due $X" as before (no automatic credit).
+  function editBarHtml(f, { payLink, credit } = {}) {
     const r = f.record, st = f.state, num = esc(r.number || r.txnId);
+    const buyer = isPlaceholderBuyer(r) ? '' : s(r.company || r.name);
+    const title = `<b class="etitle">Now editing ${num}${buyer ? ` · ${esc(buyer)}` : ''}</b>`;
     const btns = (save, cancel, label) => `<div class="ebtns"><button type="button" class="btn quiet" data-act="editCancel"${cancel ? '' : ' disabled'}>Cancel</button><button type="button" class="btn primary" data-act="editSave"${save ? '' : ' disabled'}>${label}</button></div>`;
-    if (!st || !st.ready) return `<div class="ebar"><b class="etitle">Editing ${num}</b><span class="etot muted">Opening the sale screen…</span>${btns(false, true, 'Save')}</div>`;
+    if (!st || !st.ready) return `<div class="ebar">${title}<span class="etot muted">Opening the sale screen…</span>${btns(false, true, 'Save')}</div>`;
     const was = Number.isSafeInteger(st.originalTotalCents) ? st.originalTotalCents : Math.round(Number(r.total) * 100);
     const now = Number.isSafeInteger(st.totalCents) ? st.totalCents : null;
-    const line = now == null ? null : L.editMoney(r, now, was);
+    let line = now == null ? null : L.editMoney(r, now, was, f.cust ? f.cust.typed : undefined);
+    if (line && line.kind === 'credit' && !credit) line = { kind: 'refund', cents: line.cents, text: 'Refund due ' + money(line.cents / 100) };
+    const tone = !line ? '' : line.kind === 'refund' || line.kind === 'depositExceeds' ? ' late' : line.kind === 'credit' ? (line.needsCustomer ? ' soon' : ' credit') : '';
     const warn = [];
     if (payLink) warn.push('This invoice has a pay link. If the total changes, it needs a new link after you save.');
     if (r.kind === 'quote' && r.convertedTo) warn.push(`Already turned into sale ${r.convertedTo}. That sale is not changed.`);
-    const b = f.boxModel();
-    const why = st.problem ? `<span class="eprob" role="alert">${esc(st.problem)}</span>` : !st.dirty ? '<span class="ehint">Change the sale below, then Save.</span>' : '';
-    return `<div class="ebar"><b class="etitle">Editing ${num}</b>`
+    const why = st.problem ? `<span class="eprob" role="alert">${esc(st.problem)}</span>` : !f.changed() ? '<span class="ehint">Change the lines or the customer, then Save.</span>' : '';
+    return `<div class="ebar">${title}`
       + `<span class="etot num">${money(was / 100)}${now == null ? '' : ` → ${money(now / 100)}`}</span>`
-      + (line && line.text ? `<span class="emoney${line.kind === 'refund' || line.kind === 'depositExceeds' ? ' late' : ''}">${esc(line.text)}</span>` : '')
-      + why + btns(!!st.canSave && !st.saving && !f.asked, !st.saving, st.saving ? 'Saving…' : 'Save')
+      + (line && line.text ? `<span class="emoney${tone}">${esc(line.text)}</span>` : '')
+      + why + btns(f.canSave(), !st.saving, st.saving ? 'Saving…' : 'Save')
       + warn.map(w => `<div class="ewarn">${esc(w)}</div>`).join('')
-      + (b.change === 'none' ? '' : `<label class="chk"><input type="checkbox" id="ebUpdate"${b.ticked ? ' checked' : ''}${st.saving ? ' disabled' : ''}> Also update this customer's info<span class="ehint">${esc(b.hint)}</span></label>`)
       + '</div>';
   }
   // The right panel's buttons. locked (an edit is open): every one disabled, with the reason once above them.
@@ -653,7 +677,47 @@
     const btn = a => `<button class="btn${a.primary ? ' primary' : ''}${a.quiet ? ' quiet' : ''}" data-act="${a.act}"${a.disabled || busy || locked ? ' disabled' : ''}${a.why ? ` title="${esc(a.why)}"` : ''}>${ICON[a.act] || ''}<span>${busy === a.act ? 'Saving…' : esc(a.label)}</span>${a.menu ? ICON.down : ''}</button>${a.disabled && a.why ? `<span class="why">${esc(a.why)}</span>` : ''}`;
     return (locked ? `<span class="why">${LOCK}</span>` : '') + acts.map(btn).join('');
   }
-  const pure = { LOCK, STALE_LOOK, editFlow, embedFallsBack, editBarHtml, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditKeeps, custEditHtml, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  // ---- Store credit (Part C, D17, D18). Balances come from the Payments tab every time (L.creditBalances); nothing stores one.
+  // The words for a customer's balance in cents: '' (none), "Credit $40.00", or "Credit overdrawn −$5.00" (never hidden).
+  const creditText = c => (c > 0 ? `Credit ${money(c / 100)}` : c < 0 ? `Credit overdrawn −${money(-c / 100)}` : '');
+  const creditPill = c => (c ? `<span class="pill ${c < 0 ? 'late' : 'credit'}">${esc(creditText(c))}</span>` : '');
+  // Give credit: one credit_given row with no sale on it. key: the picked customer (L.creditKey); reason is required.
+  function giveCreditRows(key, amountText, reason, today, place, now) {
+    if (!s(key)) return { error: 'Pick a customer first.' };
+    const c = checkAmount(amountText, Infinity);
+    if (c.error) return c;
+    if (!s(reason)) return { error: 'Type a short reason, for example "Returned part".' };
+    return { rows: [L.buildPaymentRow({ invoice_number: '', txnId: '', date: today, amount: c.amount, method: 'credit_given', note: s(reason).slice(0, 200), place: place || '', customer: key }, now)] };
+  }
+  // Take payment by store credit on an invoice. Reads the Payments tab (and the sale) fresh and caps with L.creditCap: when the cap is
+  // now lower than asked, nothing is written and the sentence says how much is left. Returns { ok, cents } or { ok: false, cap, message }.
+  async function takeCredit(h, r, amountCents, key, ctx, now) {
+    const freshRows = await h.readPayments();
+    const fm = await L.create({ txnRows: await h.readTransactions(), paymentRows: freshRows, today: h.honoluluToday ? h.honoluluToday() : undefined });
+    const fresh = fm.records.find(x => x.txnId === r.txnId);
+    if (!fresh || !UNPAID.has(fresh.state)) return { ok: false, cap: 0, message: `${r.number} is not owing any more. Nothing was taken.` };
+    const cap = L.creditCap(freshRows, key, Math.round(fresh.balance * 100), fm.records, ctx);
+    if (!(amountCents > 0) || amountCents > cap) return { ok: false, cap, message: cap > 0 ? `Only ${money(cap / 100)} of store credit can be used now. Nothing was taken. Try again with that amount.` : 'This customer has no store credit left. Nothing was taken.' };
+    await h.appendPaymentRows([L.creditUseRow({ txnId: fresh.txnId, number: fresh.number, kind: fresh.kind }, amountCents, key, now, h.place || '')]);
+    return { ok: true, cents: amountCents };
+  }
+  // D18: a sale that shows Refund due and has a customer moves the extra to store credit by itself. Runs on every History load, so a
+  // credit row that failed after a save, or a customer added later, is picked up; the fixed ids (credit_<txnId>) make two Histories safe.
+  // Only a sale whose newest 'edit' mark (payRows: the Payments tab) is on or after `from` moves: an older Refund due may already be
+  // refunded in cash, so it keeps showing "Refund due $X".
+  async function moveCredits(h, records, ctx, now, payRows, from = CREDIT_FROM) {
+    const log = L.parseMarks(payRows || []).editLog, cut = Date.parse(from);
+    const edited = m => Math.max(-Infinity, ...((log[m.record.txnId] || []).map(e => Date.parse(e.at)).filter(Number.isFinite))) >= cut;
+    const rows = L.pendingCreditMoves(records, ctx).filter(edited).map(m => L.autoCreditRow(m.record, m.cents, m.key, now, h.place || '')).filter(Boolean);
+    if (rows.length) await h.appendPaymentRows(rows);
+    return rows.length;
+  }
+  // The customer's newest live Give credit row (no sale on it), for its Undo; null when there is none.
+  function lastGiven(payRows, key, ctx) {
+    const live = L.livePayments(L.parsePayments(payRows));
+    return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
+  }
+  const pure = { LOCK, STALE_LOOK, CREDIT_FROM, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, embedFallsBack, followUpRuns, followUpText, editBarHtml, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest, documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
@@ -663,7 +727,7 @@
     const store = (() => { try { return root.sessionStorage; } catch (_) { return null; } })();
     const ui = store ? loadUi(store) : { ...DEFAULT_UI, closed: [] };
     const st = { phase: 'loading', model: null, records: [], payRows: [], custRows: [], qboCustomers: [], cust: null, custRev: 0, recLimit: 100, backTo: '', marks: { drafts: {}, edits: {} }, local: { drafts: {} },
-      today: '', busy: '', custEdit: null, edit: null, template: null, docKey: '', pages: null, docErr: '',
+      today: '', busy: '', edit: null, template: null, docKey: '', pages: null, docErr: '',
       qbo: null, qboVersion: '', qboAt: 0, qboBusy: false, qboWarned: false, qboAgain: false, helcimOk: false, helcimP: null, helcimAt: { at: 0 }, helcimBusy: false, helcimWhen: 0, looks: {}, linkErr: {}, qboRun: null, qboTried: false, qboGenerated: '', refreshing: false, refreshFailed: false, rev: 0, limit: PAGE, view: null };
     const host = () => root.MPELedgerHost;
     const remember = () => { if (store) saveUi(store, ui); };
@@ -678,11 +742,26 @@
       }
       return st.cust;
     }
+    // Store credit: ctx is the { qbo, sheetRows } object buildCustomers groups by (kept while those two stay the same); credits() is
+    // { creditKey: cents } from the Payments tab, or null when this app cannot read column K (creditReady false: no credit anywhere).
+    function ctx() {
+      if (!st.ctx || st.ctx.qbo !== st.qboCustomers || st.ctx.sheetRows !== st.custRows) st.ctx = { qbo: st.qboCustomers, sheetRows: st.custRows };
+      return st.ctx;
+    }
+    function credits() {
+      const h = host();
+      if (!(h && h.creditReady && h.creditReady())) return null;
+      const c = ctx();
+      if (!st.bal || st.bal.p !== st.payRows || st.bal.r !== st.records || st.bal.c !== c) st.bal = { p: st.payRows, r: st.records, c, map: L.creditBalances(st.payRows, st.records, c) };
+      return st.bal.map;
+    }
+    const creditOf = key => { const b = credits(); return b && key ? b[key] || 0 : 0; };
 
-    async function load() {
+    async function load(noMove) {
       const h = host();
       if (!h) { st.phase = 'nohost'; return draw(); }
       if (!st.model) { st.phase = 'loading'; draw(); }
+      let fresh = false;
       try {
         const [tx, pay, mk, cu] = await Promise.all([h.readTransactions(), h.readPayments(), h.readMarks ? h.readMarks() : null,
           h.readCustomers ? h.readCustomers().catch(() => st.custRows) : st.custRows]); // customer rows are extra: a failure keeps the last ones
@@ -693,10 +772,16 @@
         st.model = await L.create({ txnRows: tx || [], paymentRows: st.payRows, drafts: st.marks.drafts, today: st.today });
         if (st.qbo) st.model.addQbo(st.qbo, st.today); // QuickBooks copy already downloaded: merge before the first draw
         setRecords(st.model.records);
-        st.phase = 'ready';
+        st.phase = 'ready'; fresh = true;
       } catch (e) {
         st.phase = e && e.code === 'not_signed_in' ? 'signedout' : (st.model ? 'ready' : 'error');
         if (st.model) toast('Could not refresh. Showing what was loaded before.');
+      }
+      // D18: overpaid sales with a customer move to store credit now (also the retry after a failed credit row). Once per load.
+      if (!noMove && fresh && credits()) { // never on the rows of an earlier load (this one failed)
+        let moved = 0;
+        try { moved = await moveCredits(h, st.records, ctx(), Date.now(), st.payRows); } catch (_) { /* the sale keeps "Refund due $X"; the next load tries again */ }
+        if (moved) return load(true);
       }
       draw();
       loadQbo();
@@ -838,15 +923,12 @@
       list.querySelectorAll('details').forEach(el => el.addEventListener('toggle', () => {
         const k = el.dataset.g; ui.closed = ui.closed.filter(x => x !== k); if (!el.open) ui.closed.push(k); remember();
       }));
-      if (inCust) { st.custEdit = null; drawCustomer(byId(ui.sel)); } else drawRecord(byId(ui.sel));
-      const wide = !!st.custEdit;
-      if ($('main').classList.contains('cust-editing') !== wide) { $('main').classList.toggle('cust-editing', wide); fitDocument(); }
-      // R9: while an item edit is open the list, sections, search, filters and the right panel take no input.
+      if (inCust) drawCustomer(byId(ui.sel)); else drawRecord(byId(ui.sel));
+      // D15: while an edit is open the left list collapses to a thin edge and takes no input; the panel holds the customer editor.
       const editing = !!st.edit;
       $('main').classList.toggle('editing', editing);
-      doc.querySelector('.left').inert = editing; $('rail').inert = editing;
-      $('editLock').hidden = !editing;
-      drawEdit();
+      doc.querySelector('.left').inert = editing;
+      drawEdit(); // after the collapse or the expand: the slot moved, so the rect goes again
       remember();
     }
 
@@ -878,9 +960,10 @@
       const sub = [c.company ? c.name : '', c.phone].filter(Boolean).join(' · ');
       const last = c.last ? 'Last ' + (c.last.slice(0, 4) === st.today.slice(0, 4) ? fmtD(c.last) : fmtDY(c.last)) : 'No sales yet';
       const n = c.count ? ` · ${c.count} record${c.count === 1 ? '' : 's'}` : '';
+      const cr = creditOf(c.id); // a buildCustomers id is the customer's credit key
       return `<button class="row" role="option" data-id="${esc(c.id)}" aria-selected="${c.id === ui.sel}">
         <span class="nm">${esc(c.company || c.name)}</span><span class="amt num ${c.overdue ? 'late' : ''}">${c.balance > 0 ? money(c.balance) : ''}</span>
-        <span class="sub num">${esc(sub)}</span><span class="when muted">${esc(last + n)}${c.inactive ? ' · Inactive' : ''}</span></button>`;
+        <span class="sub num">${cr ? `<b class="cr${cr < 0 ? ' late' : ''}">${esc(creditText(cr))}</b>${sub ? ' · ' : ''}` : ''}${esc(sub)}</span><span class="when muted">${esc(last + n)}${c.inactive ? ' · Inactive' : ''}</span></button>`;
     }
 
     // Customer view: contact block and the 2026 balance in the middle, then every record newest first; actions on the right.
@@ -888,7 +971,7 @@
       st.docKey = ''; // a document still being drawn must not land here
       $('note').innerHTML = '';
       if (!c) { $('paper').innerHTML = '<div class="empty">Pick a customer on the left.</div>'; $('rail').innerHTML = ''; return; }
-      const bal = customerBalance(c);
+      const bal = customerBalance(c), cr = creditOf(c.id), on = !!credits(), given = on ? lastGiven(st.payRows, c.id, ctx()) : null;
       const line = (label, value) => (value ? `<dt>${label}</dt><dd>${esc(value)}</dd>` : '');
       const all = byNewest(c.records);
       const shown = all.slice(0, st.recLimit);
@@ -901,19 +984,21 @@
       $('paper').innerHTML = `<div class="cust">
         <h2>${esc(c.company || c.name)}</h2>
         <dl class="cinfo">${line('Contact', c.company ? c.name : '')}${line('Phone', c.phone)}${line('Email', c.email)}${line('Address', c.addr)}</dl>
-        <div class="cbal"><span class="pill ${bal.tone}">${esc(bal.text)}</span><span class="muted">Counts invoices from 2026 on. Older open invoices are not added in.</span></div>
+        <div class="cbal"><span class="pill ${bal.tone}">${esc(bal.text)}</span>${creditPill(cr)}<span class="muted">Counts invoices from 2026 on. Older open invoices are not added in.</span></div>
         <h3>${all.length ? `Records (${all.length})` : 'Records'}</h3>
         ${all.length ? `<div class="crecs">${recs}</div>` : '<div class="empty">No sales or quotes on file for this customer.</div>'}
         ${all.length > shown.length ? `<button class="btn more" data-act="cMore">Show all ${all.length}</button>` : ''}</div>`;
       $('rail').innerHTML = `
-        <div><h3>Customer</h3><div class="big">${esc(c.company || c.name)}</div><div class="state"><span class="pill ${bal.tone}">${esc(bal.text)}</span></div></div>
+        <div><h3>Customer</h3><div class="big">${esc(c.company || c.name)}</div><div class="state"><span class="pill ${bal.tone}">${esc(bal.text)}</span>${creditPill(cr)}</div></div>
         <div class="acts"><button class="btn primary" data-act="cNew">${ICON.newInvoice}<span>New invoice for this customer</span></button>
-          <button class="btn" data-act="cEdit">${ICON.edit}<span>Edit</span></button></div>
+          <button class="btn" data-act="cEdit">${ICON.edit}<span>Edit</span></button>
+          ${on ? `<button class="btn" data-act="giveCredit">${ICON.giveCredit}<span>Give credit</span></button>` : ''}
+          ${given ? `<button class="btn quiet" data-act="undoCredit" data-id="${esc(given.payment_id)}">${ICON.undoPay}<span>Undo credit given ${esc(money(given.amount))} · ${esc(given.note)}</span></button>` : ''}</div>
         <div><h3>Where this came from</h3><div class="muted">${esc(customerSource(c))}</div></div>`;
     }
 
     function drawRecord(r) {
-      if (st.custEdit && !custEditKeeps(st.custEdit, r, r && custAct(r) === 'editCust')) st.custEdit = null;
+      if (st.edit) return drawEditRail();
       if (!r) { $('note').innerHTML = ''; $('paper').innerHTML = '<div class="empty">Pick a sale on the left.</div>'; $('rail').innerHTML = ''; st.docKey = ''; return; }
       const t = statusOf(r, st.today);
       const back = st.backTo && st.cust && st.cust.map.get(st.backTo);
@@ -935,15 +1020,21 @@
       const qn = qboNote(r);
       const addr = [r.street, [r.city, regionOf(r), r.zip].filter(Boolean).join(' ')].filter(Boolean);
       const hist = historyFor(r, st.payRows, st.marks, st.records);
-      const ae = doc.activeElement, held = ae && ae.dataset && ae.dataset.cf && $('rail').contains(ae) ? { k: ae.dataset.cf, a: ae.selectionStart, b: ae.selectionEnd } : null;
+      const key = credits() && !r.qboBuyer ? L.creditKey(r, ctx()) : ''; // the customer on this sale, for its credit tag and Give credit
       $('rail').innerHTML = `
         <div><h3>${esc(KIND_LABEL[r.kind])} ${esc(r.number)}</h3><div class="big num">${money(r.total)}</div>
-          <div class="state"><span class="pill ${t.tone}">${['paid'].includes(t.key) ? ICON.check : ''}${esc(t.pill)}</span>${awaitingPickup(r) ? '<span class="pill soon">Presold, awaiting pickup</span>' : ''}${L.refundDue(r) ? `<span class="pill late">${esc(L.refundDue(r))}</span>` : ''}${pendingPill(r)}${qn ? `<span class="pill muted">${esc(qn)}</span>` : ''}${stale ? `<span class="pill soon">${ICON.email}Emailed ${esc(fmtD(stale))}, changed since</span>` : sent ? `<span class="pill draft">${ICON.email}Emailed ${esc(fmtD(sent))}</span>` : draft ? `<span class="pill draft">${ICON.email}Draft made ${esc(fmtD(draft))}</span>` : ''}</div></div>
-        ${st.custEdit ? custEditHtml(r, st.custEdit, st.busy || st.custEdit.saving) : r.name || r.company || r.phone || r.qboBuyer || custAct(r) === 'editCust' ? `<button class="who" data-act="${custAct(r)}"${st.busy || st.edit ? ' disabled' : ''} title="${esc(custTitle(r))}"><h3>Customer ${custAct(r) === 'editCust' ? ICON.edit : ''}</h3><b${r.qboBuyer || !(r.company || r.name) ? ' class="muted"' : ''}>${esc(r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : r.company || r.name || 'Add customer details')}</b>${!r.qboBuyer && r.company && r.name ? esc(r.name) + '<br>' : ''}${r.phone ? esc(r.phone) + '<br>' : ''}${r.email ? esc(r.email) : '<span class="muted">No email on file</span>'}${addr.length ? '<br>' + addr.map(esc).join('<br>') : ''}</button>` : ''}
-        <div class="acts">${railActsHtml(acts, st.busy, !!st.edit)}</div>${payLinkHtml(r)}
+          <div class="state"><span class="pill ${t.tone}">${['paid'].includes(t.key) ? ICON.check : ''}${esc(t.pill)}</span>${awaitingPickup(r) ? '<span class="pill soon">Presold, awaiting pickup</span>' : ''}${L.refundDue(r) ? `<span class="pill late">${esc(L.refundDue(r))}</span>` : ''}${r.movedText ? `<span class="pill credit">${esc(r.movedText)}</span>` : ''}${r.kind === 'receipt' && r.creditUsed > 0 ? `<span class="pill credit">Store credit −${money(r.creditUsed)}</span>` : ''}${pendingPill(r)}${qn ? `<span class="pill muted">${esc(qn)}</span>` : ''}${stale ? `<span class="pill soon">${ICON.email}Emailed ${esc(fmtD(stale))}, changed since</span>` : sent ? `<span class="pill draft">${ICON.email}Emailed ${esc(fmtD(sent))}</span>` : draft ? `<span class="pill draft">${ICON.email}Draft made ${esc(fmtD(draft))}</span>` : ''}</div></div>
+        ${r.name || r.company || r.phone || r.qboBuyer ? `<div class="who"><h3>Customer</h3><b${r.qboBuyer || !(r.company || r.name) ? ' class="muted"' : ''}>${esc(r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : r.company || r.name || 'No name')}</b>${!r.qboBuyer && r.company && r.name ? esc(r.name) + '<br>' : ''}${r.phone ? esc(r.phone) + '<br>' : ''}${r.email ? esc(r.email) : '<span class="muted">No email on file</span>'}${addr.length ? '<br>' + addr.map(esc).join('<br>') : ''}${key ? `<div class="ccredit">${creditPill(creditOf(key))}<button class="btn quiet" data-act="giveCredit">Give credit</button></div>` : ''}</div>` : ''}
+        <div class="acts">${railActsHtml(acts, st.busy, false)}</div>${payLinkHtml(r)}
         <div><h3>History</h3><ol>${hist.map(e => `<li>${esc(e.t)}<span>${esc([fmtD(e.d), e.at].filter(Boolean).join(' · '))}</span>${e.before != null ? `<a class="rec" href="#" data-before="${e.before}">See it before this edit</a>` : ''}</li>`).join('')}</ol></div>`;
+    }
+    // During an edit the panel is only the customer editor (D14), at the panel's normal width (D13). A redraw keeps the caret.
+    function drawEditRail() {
+      const f = st.edit, ae = doc.activeElement, held = ae && ae.dataset && ae.dataset.cf && $('rail').contains(ae) ? { k: ae.dataset.cf, a: ae.selectionStart, b: ae.selectionEnd } : null;
+      $('rail').innerHTML = custEditHtml(f.record, f.cust, editBusy(f));
       if (held) { const el = $(CUST_IDS[held.k]); if (el && !el.disabled) { el.focus(); try { el.setSelectionRange(held.a, held.b); } catch (_) {} } }
     }
+    const editBusy = f => !!(f.asked || (f.state && f.state.saving));
 
     // The record's Helcim bits under the buttons: the pay link with Copy, a plain Helcim error, or what needs a look.
     function payLinkHtml(r) {
@@ -1018,14 +1109,21 @@
         : r.paid > 0 ? `${money(r.balance)} left of ${money(r.total)}` : `${money(r.balance)} owed`;
       $('payAmt').value = dep ? '' : m2(r.balance);
       $('payErr').textContent = '';
+      // Store credit (invoices only): the customer's credit, at most what is owed. Untouched, the amount box means "all of it"; a smaller
+      // typed amount uses that much. The sheet is read again when it is written (takeCredit).
+      const key = !dep && credits() ? L.creditKey(r, ctx()) : '', avail = key ? Math.min(Math.max(0, creditOf(key)), Math.round(r.balance * 100)) : 0, typedAt = $('payAmt').value;
+      $('payCredit').hidden = !(avail > 0);
+      $('payCredit').textContent = `Store credit · ${money(avail / 100)}`;
       d.returnValue = '';
       d.onsubmit = e => {
         if (!e.submitter || !METHOD_LABEL[e.submitter.value]) return;
-        const c = checkAmount($('payAmt').value, left);
+        const credit = e.submitter.value === 'credit_used';
+        let c = credit && $('payAmt').value === typedAt ? { amount: avail / 100 } : checkAmount($('payAmt').value, left);
+        if (credit && !c.error && Math.round(c.amount * 100) > avail) c = { error: `Store credit covers up to ${money(avail / 100)}.` };
         if (c.error) { e.preventDefault(); $('payErr').textContent = c.error; $('payAmt').focus(); return; }
         d.amount = c.amount;
       };
-      d.onclose = () => { if (METHOD_LABEL[d.returnValue]) markPaid(r, d.returnValue, d.amount); };
+      d.onclose = () => { if (d.returnValue === 'credit_used') useCredit(r, key, d.amount); else if (METHOD_LABEL[d.returnValue]) markPaid(r, d.returnValue, d.amount); };
       $('payDlg').querySelector('.hint').textContent = dep ? 'The deposit counts toward the sale made from this quote.' : 'Type a smaller amount for a part payment. The rest stays owed.';
       if (d.showModal) d.showModal(); else d.setAttribute('open', '');
       $('payAmt').select();
@@ -1039,14 +1137,60 @@
           : `${r.number} paid in full by ${METHOD_LABEL[method].toLowerCase()}.`, undo: () => undoPaid(r.txnId) };
       });
     }
+    // Store credit on an invoice: written only if the fresh Payments tab still holds that much (takeCredit).
+    function useCredit(r, key, amount) {
+      run('pay', async () => {
+        const out = await takeCredit(host(), r, Math.round(amount * 100), key, ctx(), Date.now());
+        if (!out.ok) return out.message;
+        const left = cents(r.balance - amount);
+        return { text: `${money(amount)} of store credit used on ${r.number}.${left > 0 ? ` ${money(left)} still owed.` : ''}`, undo: () => undoPaid(r.txnId) };
+      });
+    }
+    // Undo voids the newest live payment, read fresh (load). Store credit: an automatic move already spent is refused with a plain sentence.
     function undoPaid(id) {
       run('undoPay', async () => {
-        await load();
+        await load(true);
         const r = recById(id);
-        const rows = r ? L.undoRows(r, Date.now(), host().place || '') : [];
+        let rows;
+        try { rows = r ? L.undoRows(r, Date.now(), host().place || '', { paymentRows: st.payRows, records: st.records, ctx: ctx() }) : []; }
+        catch (e) { return s(e && e.message) || 'That did not go through. Nothing changed.'; }
         if (!rows.length) return `${id} has no payment to undo.`;
         await host().appendPaymentRows(rows);
+        if (rows[0][5] === 'credit_given') return `The move to store credit on ${r.number} is undone.`;
         return r.kind === 'quote' ? `Last deposit on ${r.number} undone.` : `${r.number} is unpaid again.`;
+      });
+    }
+    // Give credit: amount and a short reason (required) for the picked customer. One credit_given row; its toast offers Undo.
+    function giveCredit(key, name) {
+      const d = $('creditDlg'), have = creditOf(key);
+      $('crTitle').textContent = `Give store credit to ${name}`;
+      $('crHave').textContent = have ? `${creditText(have)} on file now.` : 'No store credit on file yet.';
+      $('crAmt').value = ''; $('crWhy').value = ''; $('crErr').textContent = '';
+      d.returnValue = ''; d.rows = null;
+      d.onsubmit = e => {
+        if (!e.submitter || e.submitter.value !== 'give') return;
+        const out = giveCreditRows(key, $('crAmt').value, $('crWhy').value, st.today, host().place, Date.now());
+        if (out.error) { e.preventDefault(); $('crErr').textContent = out.error; (/reason/.test(out.error) ? $('crWhy') : $('crAmt')).focus(); return; }
+        d.rows = out.rows;
+      };
+      d.onclose = () => {
+        const rows = d.returnValue === 'give' && d.rows; d.rows = null;
+        if (rows) run('giveCredit', async () => { await host().appendPaymentRows(rows); return { text: `${money(rows[0][4])} store credit given to ${name}.`, undo: () => undoGiven(rows[0][0], name) }; });
+      };
+      if (d.showModal) d.showModal(); else d.setAttribute('open', '');
+      $('crAmt').focus();
+    }
+    // Undo one Give credit row, read fresh; refused with L.undoCredit's sentence when some of it is already used.
+    function undoGiven(id, name) {
+      run('undoCredit', async () => {
+        await load(true);
+        const p = L.livePayments(L.parsePayments(st.payRows)).find(x => x.payment_id === id);
+        if (!p) return 'That store credit is already undone.';
+        let row;
+        try { row = L.undoCredit(p, Date.now(), host().place || '', { paymentRows: st.payRows, records: st.records, ctx: ctx() }); }
+        catch (e) { return s(e && e.message) || 'That did not go through. Nothing changed.'; }
+        await host().appendPaymentRows([row]);
+        return `Store credit of ${money(p.amount)}${name ? ` for ${name}` : ''} undone.`;
       });
     }
     // Email: the shared email window (email-window.js). It sends only when a person presses Send.
@@ -1061,70 +1205,43 @@
         return out && out.sent ? `Sent to ${out.to}.` : '';
       });
     }
-    // The customer block edits in place (F01) when this app can save an edit in the background; otherwise it only shows.
+    // Saved on this computer and not on the sheet yet, or parked for a look: shown as a pill on the record.
     const pendingIds = () => { const h = host(); return h && h.pendingTxnIds ? h.pendingTxnIds() : new Set(); };
     const parkedIds = () => { const h = host(); return h && h.parkedTxnIds ? h.parkedTxnIds() : new Set(); };
-    function custAct(r) {
-      if (r.state === 'void' || r.state === 'cancelled' || isQbo(r) || r.contactConflict) return 'noop';
-      const h = host();
-      return h && h.editSession && !pendingIds().has(r.txnId) && !parkedIds().has(r.txnId) ? 'editCust' : 'noop';
-    }
-    function custTitle(r) {
-      if (r.state === 'void' || r.state === 'cancelled' || isQbo(r)) return '';
-      if (r.contactConflict) return 'Customer changes for this sale need review first.';
-      const h = host();
-      if (!h || !h.editSession) return 'Update the counter app to edit here';
-      if (pendingIds().has(r.txnId)) return 'Waiting to share the last change';
-      if (parkedIds().has(r.txnId)) return 'The last change on this computer needs a look';
-      return 'Edit customer';
-    }
     function pendingPill(r) {
       return pendingIds().has(r.txnId) ? '<span class="pill muted">Saved on this computer, not shared yet</span>'
         : parkedIds().has(r.txnId) ? '<span class="pill late">Last change needs a look</span>' : '';
     }
-    // The customer block turns into the form in the right panel. Typing goes to st.custEdit; Save sends only what changed to the register's background save.
-    function editDocCustomer(r) {
-      st.custEdit = custEditStart(r); draw();
-      const first = $('dcCompany'); if (first) first.focus();
-    }
     function syncCustEdit() { // update the box, hint and error in place, so typing never loses the caret
-      const e = st.custEdit, r = e && recById(e.txnId); if (!r) return;
-      const m = custEditModel(r, e);
-      $('dcUpdate').checked = m.ticked; $('dcHint').textContent = m.hint; $('dcErr').textContent = e.err;
-    }
-    function saveCustEdit() {
-      const e = st.custEdit, r = e && recById(e.txnId);
-      if (!r || e.saving || st.busy) return;
-      if (customerChange(r, e.typed) === 'none') { e.err = 'Nothing was changed.'; return syncCustEdit(); }
-      e.saving = true;
-      saveDocCustomer(r, { ...e.typed }, custEditModel(r, e).ticked);
-    }
-    function saveDocCustomer(r, typed, updateInfo) {
-      let again = null;
-      run('docEdit', async () => {
-        const h = host();
-        const res = await h.editSession(r, { ...customerPatch(r, typed), updateInfo: !!updateInfo }, { cardFee: cardFeeOf(r) > 0 });
-        if (!res || !res.ok) again = s(res && res.message) || editOutcomeText(r, res);
-        else if (st.custEdit && st.custEdit.txnId === r.txnId) st.custEdit = null; // saved: the form closes
-        return again ? '' : editOutcomeText(r, res);
-      }).then(() => {
-        const e = st.custEdit;
-        if (!e || e.txnId !== r.txnId) { if (again) toast(again); return; }
-        // Failed: keep the form on the fresh record, carrying over only what was actually typed: never the old values of fields another register changed.
-        const fresh = byId(r.txnId) || r;
-        st.custEdit = again ? custEditStart(fresh, { ...Object.fromEntries(CUST_KEYS.map(key => [key, savedField(fresh, key)])), ...customerPatch(r, typed) }, again) : { ...e, saving: false };
-        draw();
-      });
+      const f = st.edit; if (!f) return;
+      const m = custEditModel(f.record, f.cust);
+      $('dcUpdate').checked = m.ticked; $('dcHint').textContent = m.hint; $('dcErr').textContent = f.cust.err;
     }
     function openSale(kind, r, what) {
-      run(kind, async () => { await host().openInNewSale({ kind, txn: { ...withDeposit(r), cardFee: cardFeeOf(r) > 0 } }); return `${what} opened in a new sale tab. The sale in progress is unchanged.`; });
+      run(kind, async () => { await host().openInNewSale({ kind, txn: { ...withDeposit(r), cardFee: cardFeeOf(r) > 0, storeCredit: r.creditUsed || 0 } }); return `${what} opened in a new sale tab. The sale in progress is unchanged.`; });
     }
-    // ---- Item edit in the middle column (F03): the register's sale screen sits in #editSlot under History's Editing bar.
+    // App 0.3.66 (no customer on the embedded save): the items are on the sheet, so the silent session saves the customer on the
+    // freshly loaded record, the same way the old customer editor did. A failure says so plainly; the items stay saved.
+    async function saveCustomerAfter(r, res, f) {
+      const first = f.viaCancel ? '' : editOutcomeText(r, res);
+      st.busy = 'docEdit';
+      let out = null, fresh = r;
+      try {
+        await load();
+        fresh = recById(r.txnId) || r;
+        const h = host();
+        out = h && h.editSession ? await h.editSession(fresh, { ...customerPatch(fresh, f.followUp.typed), updateInfo: !!f.followUp.updateInfo }, { cardFee: cardFeeOf(fresh) > 0, storeCredit: fresh.creditUsed || 0 }) : null;
+      } catch (_) { out = null; }
+      st.busy = '';
+      toast(followUpText(fresh, first, out));
+      return load();
+    }
+    // ---- The one Edit (D14): the register's sale lines sit in #editSlot under the Now editing bar; the panel holds the customer.
     function startEmbed(r) {
       const h = host();
       if (st.edit || st.busy || !h || !h.editEmbed) return;
-      st.custEdit = null; st.before = null;
-      st.edit = editFlow(h, r, { cardFee: cardFeeOf(r) > 0, confirm: text => root.confirm(text), changed: () => drawEdit(), ended: res => endEmbed(r, res) });
+      st.before = null;
+      st.edit = editFlow(h, r, { cardFee: cardFeeOf(r) > 0, storeCredit: r.creditUsed || 0, confirm: text => root.confirm(text), changed: () => drawEdit(), ended: res => endEmbed(r, res) });
       draw();
     }
     // The one result: back to the same row (section, sub-tab, search and scroll as they were), a toast, then one fresh load.
@@ -1134,16 +1251,17 @@
       st.edit = null;
       if (embedFallsBack(res, f)) { draw(); return openSale('edit', r, `${r.number} cannot be edited here, so it`); }
       ui.sel = r.txnId;
-      toast(editOutcomeText(r, res));
+      if (followUpRuns(f, res)) return saveCustomerAfter(r, res, f);
+      toast(f && f.followUp && res && res.ok && res.pending ? `${editOutcomeText(r, res)} The customer details were not saved yet. Open Edit again once it is shared.` : editOutcomeText(r, res));
       load();
     }
     function drawEdit() {
       const f = st.edit, on = !!f;
-      $('editBar').hidden = !on; $('editSlot').hidden = !on; $('paper').hidden = on;
+      $('editBar').hidden = !on; $('editSlot').hidden = !on; $('paper').hidden = on; $('note').hidden = on;
       if (on) {
-        const box = doc.activeElement && doc.activeElement.id === 'ebUpdate';
-        $('editBar').innerHTML = editBarHtml(f, { payLink: f.record.kind === 'invoice' && !!rawLink(f.record) });
-        if (box && $('ebUpdate')) $('ebUpdate').focus();
+        $('editBar').innerHTML = editBarHtml(f, { payLink: f.record.kind === 'invoice' && !!rawLink(f.record), credit: !!credits() });
+        const busy = editBusy(f); // while saving the panel's fields wait too
+        $('rail').querySelectorAll('.cedit input').forEach(el => { el.disabled = busy; });
       } else $('editBar').innerHTML = '';
       sendRect();
     }
@@ -1173,13 +1291,13 @@
       if (ui.section === 'customers') {
         if (k === 'cNew' && r) return openSale('newInvoice', newInvoiceTxn(r), `A new invoice for ${r.company || r.name}`);
         if (k === 'cEdit' && r) return editCustomer(r);
+        if (k === 'giveCredit' && r && credits()) return giveCredit(r.id, r.company || r.name);
+        if (k === 'undoCredit' && r && el) return undoGiven(el.dataset.id, r.company || r.name);
         return;
       }
       if (!r) return;
-      if (k === 'editCust') return editDocCustomer(r);
-      if (k === 'custSave') return saveCustEdit();
-      if (k === 'custCancel') { if (st.custEdit && !st.custEdit.saving) { st.custEdit = null; draw(); } return; }
       if (k === 'pay') return takePayment(r);
+      if (k === 'giveCredit') { const key = credits() ? L.creditKey(r, ctx()) : ''; return key && giveCredit(key, r.company || r.name); }
       if (k === 'undoPay') return undoPaid(r.txnId);
       if (k === 'payLink') return addLink(r);
       if (k === 'copyLink') return copyLink(linkFor(r));
@@ -1345,16 +1463,13 @@
       const r = byId(row.dataset.id); if (r) rowMenu(r, e.clientX, e.clientY);
     });
     const rail = $('rail');
+    // The panel's customer fields during an edit: typing goes to st.edit.cust; the bar's Save and Cancel follow it.
     rail.addEventListener('input', e => {
-      const k = e.target.dataset && e.target.dataset.cf, ed = st.custEdit; if (!k || !ed || ed.saving) return;
-      ed.typed[k] = e.target.value; ed.err = ''; syncCustEdit();
+      const k = e.target.dataset && e.target.dataset.cf, f = st.edit; if (!k || !f || editBusy(f)) return;
+      f.cust.typed[k] = e.target.value; f.cust.err = ''; syncCustEdit(); drawEdit();
     });
-    rail.addEventListener('change', e => { const ed = st.custEdit; if (ed && e.target.id === 'dcUpdate') { ed.touched = true; ed.box = e.target.checked; syncCustEdit(); } });
-    rail.addEventListener('keydown', e => {
-      if (!st.custEdit || !e.target.dataset || !e.target.dataset.cf) return;
-      if (e.key === 'Enter') { e.preventDefault(); saveCustEdit(); }
-      else if (e.key === 'Escape' && !st.custEdit.saving) { e.preventDefault(); st.custEdit = null; draw(); }
-    });
+    rail.addEventListener('change', e => { const f = st.edit; if (f && e.target.id === 'dcUpdate') { f.cust.touched = true; f.cust.box = e.target.checked; syncCustEdit(); } });
+    rail.addEventListener('keydown', e => { if (st.edit && e.key === 'Enter' && e.target.dataset && e.target.dataset.cf) e.preventDefault(); }); // Enter never saves by surprise
     doc.addEventListener('mousedown', e => { const menu = $('menu'); if (!menu.hidden && !menu.contains(e.target) && !e.target.closest('[data-act="pay"]')) menu.hidden = true; });
     doc.addEventListener('keydown', e => {
       if (e.key === 'Escape') { $('menu').hidden = true; return; }
@@ -1364,18 +1479,21 @@
       const n = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
       if (n) { e.preventDefault(); select(n.txnId); }
     });
-    // Scanner typed like a keyboard (app): keys under SCAN_GAP ms apart, ending in Enter or Tab, are a scan. Its keys are kept
-    // out of the page, the search box keeps its text, and the code goes to the last sale tab, which is shown.
+    // Scanner typed like a keyboard: keys under SCAN_GAP ms apart, ending in Enter or Tab, are a scan. Its keys are kept out of the
+    // page, the text box it landed in (search, or a customer field during an edit) keeps its text, and the code goes on: app, to the
+    // last sale tab, or to the open edit's lines (main's scanTarget); website, during an edit, to the edit's lines (other keys are
+    // already forwarded to the edit frame by ledger-tab.js, so only a scan typed in a text box is caught here).
     const SCAN_GAP = 35, SCAN_MIN = 4;
+    const isText = el => !!el && ((el.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(el.type)) || el.tagName === 'TEXTAREA');
     let burst = '', lastKey = 0, saved = null;
     doc.addEventListener('keydown', e => {
-      const h = host();
-      if (!h || !h.scan || e.ctrlKey || e.metaKey || e.altKey) return;
+      const h = host(), web = st.edit && st.edit.scan, send = web || (h && h.scan);
+      if (!send || e.ctrlKey || e.metaKey || e.altKey || (web && !isText(e.target))) return;
       const now = e.timeStamp || Date.now();
       const fast = now - lastKey < SCAN_GAP;
       lastKey = now;
       if (e.key.length === 1) {
-        if (!fast) { burst = ''; saved = e.target.id === 'q' ? { el: e.target, v: e.target.value } : null; }
+        if (!fast) { burst = ''; saved = isText(e.target) ? { el: e.target, v: e.target.value } : null; }
         burst += e.key;
         if (burst.length >= 3) e.preventDefault(); // three keys each under 35 ms apart is a scanner, never a person
         return;
@@ -1384,13 +1502,12 @@
         e.preventDefault(); e.stopPropagation();
         if (saved && saved.el.value !== saved.v) { saved.el.value = saved.v; saved.el.dispatchEvent(new root.Event('input', { bubbles: true })); }
         const code = burst; burst = ''; saved = null;
-        h.scan(code);
+        send(code);
         return;
       }
       if (!fast) burst = '';
     }, true);
     doc.addEventListener('change', e => {
-      if (e.target.id === 'ebUpdate' && st.edit) return st.edit.setBox(e.target.checked);
       const f = e.target.closest('[data-filter]');
       if (f) { ui[f.dataset.filter] = f.value; ui.sel = ''; $('list').scrollTop = 0; draw(); }
     });
@@ -1427,6 +1544,7 @@
     undoPay: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
     toSale: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2.5l2.2 10.5h10.6L20.5 7H7"/><circle cx="9.5" cy="19" r="1.3"/><circle cx="17" cy="19" r="1.3"/></svg>',
     copy: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="1.5"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></svg>',
+    giveCredit: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12.5V4.5h8l9 9-8 8z"/><circle cx="8" cy="9" r="1.4"/></svg>',
     newInvoice: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   };
   const api = { ...pure, withDeposit, cardFeeOf, boot };

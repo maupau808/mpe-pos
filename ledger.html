@@ -75,6 +75,10 @@ dialog.pay .hint{font-size:12.5px;color:var(--ink-3);margin-top:4px}
 dialog.pay .err{min-height:18px;font-size:13px;color:var(--red);margin-top:4px}
 dialog.pay .how{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px}
 dialog.pay .how .btn{justify-content:center}
+dialog.pay .how .btn.credit{grid-column:1/-1}
+dialog.pay .how .btn[hidden]{display:none}
+dialog.pay #crWhy{font-size:15px;font-weight:400}
+dialog.pay label + label{margin-top:10px}
 .chips button{height:28px;padding:0 7px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:12.5px;font-weight:600;color:var(--ink-2)}
 .chips button:hover{border-color:#b8c6b5}
 .chips button .n{font-weight:500;color:var(--ink-3)}
@@ -102,6 +106,8 @@ summary.red,summary.red .tot{color:var(--red)}
 .row .when b.k-doc{font-weight:700;color:var(--ink)}
 .row .when b.k-repair{font-weight:700;color:#a3520f}
 .row .when b.k-cancel{font-weight:700;color:var(--red)}
+.row .sub .cr{font-weight:700;color:#2d6a3a}
+.row .sub .cr.late{color:var(--red)}
 .row.is-void .amt{text-decoration:line-through;color:var(--ink-3)}
 
 .mid{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--panel)}
@@ -127,11 +133,10 @@ a.rec{color:var(--green);font-weight:700;text-decoration:underline;text-underlin
 .rail .acts .btn.primary{justify-content:center}
 .rail .acts .btn svg.sm:last-child{margin-left:auto}
 .rail .why{font-size:12px;color:var(--ink-3);margin:-3px 0 2px 2px}
-.rail .who{display:block;width:100%;margin:-6px -8px;padding:6px 8px;border:1px solid transparent;border-radius:6px;background:transparent;text-align:left;font-size:14px;line-height:1.5}
-.rail .who:hover{background:var(--panel);border-color:var(--line)}
-.rail .who h3{display:flex;align-items:center;gap:6px}
-.rail .who h3 svg.i{width:14px;height:14px}
+.rail .who{font-size:14px;line-height:1.5}
 .rail .who b{display:block}
+.rail .who .ccredit{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:8px}
+.rail .who .ccredit .btn{height:30px;padding:0 8px;font-size:13px}
 .owed[hidden]{display:none}
 .rail ol{list-style:none;font-size:13.5px;border-left:1px solid var(--line);margin-left:4px}
 .rail li{position:relative;padding:0 0 9px 14px}
@@ -144,6 +149,7 @@ a.rec{color:var(--green);font-weight:700;text-decoration:underline;text-underlin
 .pill.paid{background:#e7f2e6;border-color:#b5d2b2;color:#2d6a3a}
 .pill.void{background:#f1f1f0;border-color:#cfcfcc;color:#555}
 .pill.quote{background:#e8eef3;border-color:#b9cad6;color:#29485c}
+.pill.credit{background:#e7f2e6;border-color:#b5d2b2;color:#2d6a3a}
 .pill.draft{background:#fff;border-color:var(--line);color:var(--ink-2);font-weight:600}
 .pill svg.i{width:14px;height:14px}
 
@@ -182,34 +188,35 @@ dialog.edit .row2{display:grid;grid-template-columns:1fr 70px 100px;gap:8px}
 dialog.edit .err{min-height:18px;font-size:13px;color:var(--red)}
 @media (min-width:1700px){.main{grid-template-columns:minmax(400px,26%) minmax(0,1fr) 300px}}
 @media (max-width:1250px){.main{grid-template-columns:320px minmax(0,1fr) 230px}}
-/* Editing the customer widens the right panel (the preview shrinks). One number to tune: --rail-edit. */
-:root{--rail-edit:400px}
-.main.cust-editing{grid-template-columns:minmax(350px,28%) minmax(0,1fr) var(--rail-edit)}
-@media (min-width:1700px){.main.cust-editing{grid-template-columns:minmax(400px,26%) minmax(0,1fr) var(--rail-edit)}}
-@media (max-width:1250px){:root{--rail-edit:360px}.main.cust-editing{grid-template-columns:320px minmax(0,1fr) var(--rail-edit)}}
+/* The one Edit (D14, D15): the list collapses to a thin edge, the middle holds the register's sale lines, the panel keeps its width. */
+.main.editing{grid-template-columns:30px minmax(0,1fr) 264px}
+@media (min-width:1700px){.main.editing{grid-template-columns:30px minmax(0,1fr) 300px}}
+@media (max-width:1250px){.main.editing{grid-template-columns:30px minmax(0,1fr) 230px}}
+.main.editing .left>:not(.edge){display:none}
+.left .edge{display:none}
+.main.editing .left .edge{display:flex;flex:1;align-items:center;justify-content:center;background:var(--panel);box-shadow:inset -3px 0 0 var(--chip-line);color:var(--ink-3);font-size:12.5px;font-weight:600;letter-spacing:.02em;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;user-select:none}
 .rail .cedit label{display:block;margin-bottom:8px;font-size:13px;font-weight:600;color:var(--ink-2)}
 .rail .cedit input:not([type=checkbox]){display:block;width:100%;height:34px;margin-top:3px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:14px;font-weight:400;color:var(--ink)}
 .rail .cedit input:disabled{opacity:.6}
-.rail .cedit .row2{display:grid;grid-template-columns:1fr 64px 90px;gap:8px}
+.rail .cedit .row2{display:grid;grid-template-columns:minmax(0,1fr) 46px 70px;gap:6px}
 .rail .cedit .chk{display:flex;align-items:center;gap:8px;margin-top:4px}
 .rail .cedit .hint{font-size:12.5px;color:var(--ink-3);min-height:16px}
 .rail .cedit .err{min-height:18px;font-size:13px;color:var(--red)}
 .rail .cedit .btns{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 /* Item edit (F03): History's Editing bar over the register's sale screen, which the app or the website places over .mid-edit-slot. */
 .ebar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:10px 18px;background:var(--paper);border-bottom:1px solid var(--line)}
-.ebar .etitle{font-size:15px;font-weight:700}
+.ebar .etitle{font-size:15px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ebar .etot{font-size:14px;color:var(--ink-2)}
 .ebar .emoney{font-size:14px;font-weight:700}
 .ebar .emoney.late{color:var(--red)}
+.ebar .emoney.soon{color:var(--amber)}
+.ebar .emoney.credit{color:#2d6a3a}
 .ebar .eprob{font-size:13px;font-weight:600;color:var(--red)}
 .ebar .ehint{font-size:12.5px;font-weight:400;color:var(--ink-3)}
 .ebar .ebtns{display:flex;gap:8px;margin-left:auto}
 .ebar .ewarn{flex-basis:100%;font-size:13px;font-weight:600;color:var(--amber)}
-.ebar .chk{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:13.5px;font-weight:600;color:var(--ink-2)}
 .mid-edit-slot{flex:1;min-height:0;background:#fff}
-.edit-lock{font-size:13px;font-weight:600;color:var(--amber);background:var(--amber-bg);border:1px solid #e8cf9c;border-radius:5px;padding:6px 10px}
-.edit-lock[hidden]{display:none}
-.main.editing .left .list,.main.editing .left .filters,.main.editing .left .seg,.main.editing .left .search{opacity:.55}
+#note[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 <script src="ledger-data.js"></script>
@@ -235,8 +242,8 @@ else {
 <div class="state-msg" id="state" role="status"><p>Loading sales…</p></div>
 <div class="main" id="main" hidden>
   <section class="left">
+    <div class="edge" aria-hidden="true">Sales list hidden while editing</div>
     <div class="lt">
-      <div class="edit-lock" id="editLock" role="status" hidden>Finish or cancel the edit first</div>
       <div class="seg" id="sections" role="group" aria-label="Show"></div>
       <label class="search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
         <input id="q" type="search" placeholder="Search all sales" aria-label="Search all sales" autocomplete="off" spellcheck="false"></label>
@@ -277,8 +284,15 @@ else {
   <div class="hint">Type a smaller amount for a part payment. The rest stays owed.</div>
   <div class="err" id="payErr" role="alert"></div>
   <div class="hint" style="margin-top:6px">How was it paid?</div>
-  <div class="how"><button class="btn primary" value="cash">Cash</button><button class="btn primary" value="check">Check</button><button class="btn primary" value="card_terminal">Card</button></div>
+  <div class="how"><button class="btn primary" value="cash">Cash</button><button class="btn primary" value="check">Check</button><button class="btn primary" value="card_terminal">Card</button><button class="btn credit" id="payCredit" value="credit_used" hidden>Store credit</button></div>
   <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn quiet" value="cancel" formnovalidate>Cancel</button></div>
+</form></dialog>
+<dialog id="creditDlg" class="pay"><form method="dialog"><h2 id="crTitle">Give store credit</h2>
+  <div class="owed-line" id="crHave"></div>
+  <label>Amount<input id="crAmt" inputmode="decimal" autocomplete="off"></label>
+  <label>Reason<input id="crWhy" autocomplete="off" maxlength="200" placeholder="For example: returned trimmer head"></label>
+  <div class="err" id="crErr" role="alert"></div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn quiet" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="give">Give credit</button></div>
 </form></dialog>
 <script src="ledger.js"></script>
 </body></html>

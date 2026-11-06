@@ -29,7 +29,8 @@
 })(typeof globalThis === 'object' ? globalThis : this, function (root, L) {
   'use strict';
   const TXN_RANGE = 'Transactions!A:X';
-  const PAY_RANGE = 'Payments!A:J';
+  const PAY_RANGE = 'Payments!A:K';
+  const PAY_RANGE_OLD = 'Payments!A:J'; // an app older than 0.3.67 refuses A:K: read A:J, and store credit stays off (creditReady false)
   const PAY_APPEND = 'Payments!A1';
   const CUST_RANGE = 'Customers!A:J';
   const CUST_APPEND = 'Customers!A1';
@@ -52,7 +53,7 @@
   const sameCols = (cols, a, b) => cols.every((_, i) => s(a && a[i]) === s(b && b[i]));
   const sameRow = (a, b) => sameCols(L.PAYMENT_COLUMNS, a, b);
   // What a durable store needs to know about one tab. A row is "on the sheet" when a sheet row has the same id.
-  const PAY_TAB = { range: PAY_RANGE, appendRange: PAY_APPEND, pendingKey: PENDING_KEY, missingText: MISSING_TEXT, missingCode: 'payments_missing',
+  const PAY_TAB = { range: PAY_RANGE, oldRange: PAY_RANGE_OLD, appendRange: PAY_APPEND, pendingKey: PENDING_KEY, missingText: MISSING_TEXT, missingCode: 'payments_missing',
     noun: 'payment', idOf: r => s(r[0]), same: sameRow };
   const CUST_TAB = { range: CUST_RANGE, appendRange: CUST_APPEND, pendingKey: CUST_PENDING_KEY, missingText: CUST_MISSING_TEXT, missingCode: 'customers_missing',
     noun: 'customer change', idOf: r => L.CUSTOMER_COLUMNS.map((_, i) => s(r && r[i])).join('\u0001'), same: (a, b) => sameCols(L.CUSTOMER_COLUMNS, a, b) };
@@ -72,8 +73,15 @@
       storage.setItem(pendingKey, text);
       if (storage.getItem(pendingKey) !== text) throw new Error('Could not save on this computer');
     }
+    let wide = true; // false once the app refused the wide range (tab.oldRange read instead)
     async function read() {
-      try { return await guard(get(range)); } catch (e) { throw isMissingTab(e) ? coded(tab.missingText, tab.missingCode) : e; }
+      try {
+        if (wide || !tab.oldRange) return await guard(get(range));
+        return await guard(get(tab.oldRange));
+      } catch (e) {
+        if (wide && tab.oldRange && /not allowed/i.test(s(e && e.message))) { wide = false; return read(); }
+        throw isMissingTab(e) ? coded(tab.missingText, tab.missingCode) : e;
+      }
     }
     // Send what is waiting, then keep only what the sheet does not show exactly. Returns the sheet rows read last.
     async function flush(sheet) {
@@ -91,6 +99,8 @@
       return sheet;
     }
     return {
+      // True until the app refuses the wide range: store credit needs column K (Payments A:K).
+      wide: () => wide,
       // Resolves only after every row reads back exactly.
       appendRows: rows => serial(async () => {
         const sheet = await read(); // a missing tab or signed-out stops here, before anything is kept
@@ -115,7 +125,7 @@
   async function setupPaymentsTab({ get, append, batchUpdate }) {
     const header = L.PAYMENT_COLUMNS.slice();
     let rows;
-    try { rows = await get('Payments!A1:J1'); } catch (e) {
+    try { rows = await get('Payments!A1:K1'); } catch (e) {
       if (!isMissingTab(e)) throw e;
       await batchUpdate([{ addSheet: { properties: { title: 'Payments' } } }]);
       rows = [];
@@ -123,7 +133,7 @@
     if (rows.length && sameRow(rows[0], header)) return 'already set up';
     if (rows.length && rows[0].some(v => s(v))) throw new Error('The Payments tab has something else in row 1. Nothing was changed.');
     if (await append(PAY_APPEND, [asText(header)]) === false) throw notSignedIn();
-    const back = await get('Payments!A1:J1');
+    const back = await get('Payments!A1:K1');
     if (!back.length || !sameRow(back[0], header)) throw new Error('The Payments header could not be checked.');
     return 'created';
   }
@@ -136,6 +146,7 @@
       time: s(r.time), name: [s(r.name), s(r.company)].filter(Boolean).join(' / '), phone: s(r.phone), email: s(r.email),
       addr: s(r.addr), total: m2(r.total), docType: s(r.docType), docNumber: s(r.number), fromQuote: s(r.fromQuote), po: s(r.po),
       customer: customer.some(Boolean) ? customer : null, presell: !!r.presell, contactConflict: !!r.contactConflict,
+      ...(Number(r.storeCredit) > 0 ? { storeCredit: Number(r.storeCredit) } : {}), // store credit this receipt used (dollars): the register shows it locked
       completedContact: Array.isArray(r.completedContact) ? r.completedContact.slice() : null,
       items: (r.items || []).map(i => ({ pn: s(i.pn), desc: s(i.desc), qty: s(i.qty), ea: i.pn === 'Note' ? '' : m2(i.ea),
         sub: i.pn === 'Note' ? '' : m2(i.sub), sn: (i.serials || []).join(', '),
@@ -227,7 +238,10 @@
     return {
       result,
       rect(m) { if (!m || !(Number(m.seq) > rectSeq)) return; rectSeq = Number(m.seq); slot = m.hidden ? { hidden: true } : m.rect; place(); },
-      command(c) { if (!done && frame.contentWindow) frame.contentWindow.postMessage({ type: 'edit-command', command: c }, origin); },
+      command(c) { if (!done && frame.contentWindow) frame.contentWindow.postMessage({ type: 'edit-command', command: c }, origin); }, // the whole command, customer included
+      saveCustomer: true,
+      // A scan History caught in its own text box (a customer field): the frame's register adds it to the lines.
+      scan(code) { if (!done && frame.contentWindow) frame.contentWindow.postMessage({ type: 'edit-scan', value: s(code).slice(0, 512) }, origin); },
     };
   }
 
@@ -258,7 +272,8 @@
           const off = [d.onEditState(m => handlers.onState && handlers.onState(m)), typeof d.onEditClose === 'function' ? d.onEditClose(m => handlers.onClose && handlers.onClose(m)) : null];
           const result = Promise.resolve().then(() => d.editEmbed(request));
           result.then(() => off.forEach(u => typeof u === 'function' && u()), () => off.forEach(u => typeof u === 'function' && u()));
-          return { result, rect: m => d.editRect(m), command: m => d.editCommand(m) };
+          // App 0.3.67+: the save command carries the customer typed in History's panel. 0.3.66 drops it, so History saves it after.
+          return { result, rect: m => d.editRect(m), command: m => d.editCommand(m), saveCustomer: !!d.editCapabilities.saveCustomer };
         } : undefined,
         pdfRefresh: !!(d.editCapabilities && d.editCapabilities.pdfSave),
         scan: typeof d.scan === 'function' ? value => d.scan(value) : undefined, // app 0.3.49+
@@ -410,6 +425,8 @@
       // An app older than the PO column refuses A:X; fall back to A:W so History still opens (PO # blank) until it updates.
       async readTransactions() { await signedIn(); try { return await guard(env.get(TXN_RANGE)); } catch (e) { if (e && e.code === 'not_signed_in') throw e; return guard(env.get('Transactions!A:W')); } },
       readPayments: () => payments(),
+      // Store credit needs Payments column K; false on an app that refuses A:K (older than 0.3.67). Known after the first read.
+      creditReady: () => store.wide(),
       async readMarks() { return L.parseMarks(await payments()); },
       appendPaymentRows: rows => store.appendRows(rows),
       // The Customers tab (A:J) plus any edit still waiting on this computer; a missing tab reads as no rows.
@@ -455,20 +472,20 @@
         const base = { v: 1, ok: false, txnId: s(record.txnId) };
         if (!fingerprint) return { ...base, code: 'open_sale_screen', message: 'This one has to be changed on the sale screen. Nothing was changed.' };
         const id = newSessionId();
-        const out = await env.editSession({ v: 1, kind: 'edit', mode: 'silent', sessionId: id, txn: { ...toHistory(record), cardFee: !!(extra && extra.cardFee) }, loaded: { fingerprint }, patch });
+        const out = await env.editSession({ v: 1, kind: 'edit', mode: 'silent', sessionId: id, txn: { ...toHistory({ ...record, storeCredit: extra && extra.storeCredit }), cardFee: !!(extra && extra.cardFee) }, loaded: { fingerprint }, patch });
         return out && typeof out === 'object' ? out : { ...base, sessionId: id, code: 'closed', message: 'The edit closed before it finished. Check History before trying again.' };
       } : undefined,
-      // Item edit (F03): the register's sale screen in History's middle column. RAW record, never withDeposit (R11); History writes
+      // The one Edit: the register's sale lines in History's middle column. RAW record, never withDeposit (R11); History writes
       // nothing to Transactions, the register's one save path does. handlers: { onState(state), onClose(msg) }. Returns at once
-      // { sessionId, result: Promise<the one result>, rect(msg), command(msg) }.
+      // { sessionId, result: Promise<the one result>, rect(msg), command(msg), saveCustomer, scan (website) }.
       editEmbed: env.embedEdit ? (record, extra, handlers) => {
         const fingerprint = s(record.fingerprint), sessionId = newSessionId();
         const base = { v: 1, ok: false, txnId: s(record.txnId), sessionId };
         const closed = { ...base, code: 'closed', message: 'The edit closed before it finished. Check History before trying again.' };
         if (!fingerprint) return { sessionId, rect() {}, command() {}, result: Promise.resolve({ ...base, code: 'open_sale_screen', message: 'This one has to be changed on the sale screen. Nothing was changed.' }) };
-        const request = { v: 1, kind: 'edit', mode: 'embedded', sessionId, txn: { ...toHistory(record), cardFee: !!(extra && extra.cardFee) }, loaded: { fingerprint } };
+        const request = { v: 1, kind: 'edit', mode: 'embedded', sessionId, txn: { ...toHistory({ ...record, storeCredit: extra && extra.storeCredit }), cardFee: !!(extra && extra.cardFee) }, loaded: { fingerprint } };
         const one = env.embedEdit(request, handlers || {});
-        return { sessionId, rect: one.rect, command: one.command,
+        return { sessionId, rect: one.rect, command: one.command, saveCustomer: !!one.saveCustomer, scan: one.scan,
           result: Promise.resolve(one.result).then(out => (out && typeof out === 'object' ? out : closed), () => closed) };
       } : undefined,
       // Transactions saved on THIS computer and not yet on the sheet (History reads the sheet, so it must say so). A set of txnIds.

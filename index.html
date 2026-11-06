@@ -166,6 +166,24 @@ h2 { font-size: 20px; font-weight: 700; color: #2f4339; margin-bottom: 4px; }
 .discount-editor button { font: inherit; font-size: 11px; padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
 .discount-editor .discount-apply { color: #2d7a3a; border-color: #8ebc92; }
 .card-fee-row.hidden { display: none; }
+/* Store credit at the register (D17): tag + tick box in the customer panel, credit and amount due under Total. */
+.credit-row.hidden { display: none; }
+.sum-row.credit-row.due { font-weight: 700; }
+#counterView .sum-row.credit-row.due { align-items: baseline; font-size: 17px; }
+#counterView .sum-row.credit-row.due .sum-val { font-size: 28px; letter-spacing: -.02em; }
+body.embedded-edit #counterView .sum-row.credit-row.due .sum-val { font-size: 15px; }
+.cust-credit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; width: 100%; grid-column: 1 / -1; font-size: 14px; color: #202c24; }
+.cust-credit[hidden], .cust-credit [hidden] { display: none !important; }
+.credit-tag { font-size: 13px; font-weight: 700; color: #294e35; background: #dce9db; border: 1px solid #91ab94; border-radius: 4px; padding: 2px 7px; font-variant-numeric: tabular-nums; }
+.credit-apply, .credit-amt { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.credit-apply input { width: 18px; height: 18px; margin: 0; accent-color: #294e35; }
+.credit-amt input.cust-input { width: 96px; min-height: 0; padding: 6px 8px; font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; }
+.credit-note { flex-basis: 100%; font-size: 13px; color: #8a4b12; }
+.credit-note:empty, .credit-tag:empty { display: none; }
+body.dark .cust-credit { color: #e1e8dd; }
+body.dark .credit-tag { color: #eff5ec; background: #3e5942; border-color: #779379; }
+body.dark .credit-note { color: #f0b37a; }
+@media print { .cust-credit { display: none !important; } }
 .sub-edit { width: 80px; font-size: var(--value-fit-size, 16px); font-weight: 700; font-family: inherit; font-variant-numeric: tabular-nums; text-align: right; border: 1px solid #d9dfd6; border-radius: 4px; padding: 2px 4px; background: #fff; color: #1a1a1a; box-sizing: border-box; }
 .sub-edit:focus { outline: none; border-color: #999; box-shadow: 0 0 0 2px rgba(0,0,0,0.08); }
 .cost-edit { width: 62px; font-size: var(--value-fit-size, 12px); font-family: inherit; font-variant-numeric: tabular-nums; text-align: right; border: 1px solid #d9dfd6; border-radius: 4px; padding: 2px 4px; background: #fff8f0; color: #777; box-sizing: border-box; }
@@ -804,7 +822,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
  #counterView .cv-top{height:54px;min-height:54px;display:flex;align-items:center;gap:6px;padding:6px 16px;border-bottom:1px solid #d5ddd3;flex-shrink:0}#counterView .cv-tabs{display:flex;gap:3px;max-width:220px;overflow:auto}#counterView .cv-tab{font-size:14px;white-space:nowrap}#counterView .cv-tab.active{background:#dce9db;border-color:#91ab94}#counterView .cv-new{font-size:24px;padding:0;width:30px;height:34px}#counterView .cv-docs{margin-left:auto;display:flex;align-items:center}#counterView #docTypeSel{display:flex;gap:3px;margin:0}#counterView #docTypeSel button{font-size:14px;padding:8px;border-color:transparent;background:transparent}#counterView #docTypeSel button.active{background:#e1e8dd;border-color:#a6b5a0}#counterView #txnHistoryBtn{font-size:16px;font-weight:700;color:#294e35;border-color:#8da791;background:#e0eae1;margin-left:22px;margin-right:auto;padding:10px 14px;white-space:nowrap}#counterView .cv-top .icon-btn,#counterView .cv-top .cv-icon{display:flex;align-items:center;justify-content:center;width:36px;height:36px;padding:8px;font-size:18px;flex-shrink:0}#counterView .cv-top svg{width:19px;height:19px}#counterView #themeToggle{height:36px;width:36px;padding:4px;font-size:20px}
  #counterView .menu-wrap{position:relative}#counterView .menu-panel{z-index:90;max-height:calc(100dvh - 70px);overflow:auto;background:#fffdfa;color:#202c24}#counterView .menu-panel button{font-size:15px}
  #counterView .cv-quote{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid #d5ddd3;background:#f2f5f0;font-size:14px}#counterView .cv-quote[hidden]{display:none}#counterView .cv-quote label{display:flex;align-items:center;gap:6px}
- #counterView .cv-body{display:grid;grid-template-columns:minmax(0,1fr) 354px;flex:1;min-height:0}#counterView .cv-work{padding:10px 16px;min-width:0;overflow:auto}#counterView .cv-head,#counterView .cv-line{display:grid;grid-template-columns:var(--cv-columns,22px minmax(150px,1fr) 64px 58px 68px 92px 44px 104px 34px);gap:8px;padding:5px 4px;align-items:center}#counterView .cv-head{position:sticky;top:-10px;z-index:2;background:#fffdfa;border-bottom:1px solid #d5ddd3;font-size:13px;min-height:32px}#counterView .cv-head>span{text-align:right}#counterView .cv-head>span:nth-child(2){display:flex;justify-content:space-between;text-align:left;gap:8px}#counterView .cv-head .cv-reorder-label{font-size:12px;width:84px;text-align:right}#counterView .cv-head>span:nth-child(7){text-align:center}#counterView .cv-article{border-bottom:1px solid #d5ddd3}#counterView .cv-article:nth-child(even){background:#f3f5f0}#counterView .cv-line{min-height:70px}#counterView .cv-desc{position:relative;min-width:0}#counterView .cv-desc input.cv-description{height:31px;line-height:25px;width:100%;font-size:19px;color:#000;font-weight:600;letter-spacing:-.015em;text-align:left;padding:1px 3px;border-color:transparent;background:transparent}#counterView .cv-desc input.cv-description:hover,#counterView .cv-desc input.cv-description:focus{border-color:#b8c6b5;background:#fff}#counterView .cv-meta{min-height:21px;padding-right:22px;display:flex;align-items:start;gap:4px}#counterView .cv-sn-group,#counterView .cv-sn-overflow{display:flex;flex-wrap:wrap;gap:4px 8px}#counterView .cv-sn-group{width:100%}#counterView .cv-sn{display:flex;align-items:center;gap:4px;font-size:13px;color:#000;flex:0 0 156px;height:21px}#counterView .cv-sn span{white-space:nowrap}#counterView .cv-sn input{width:108px;max-width:108px;flex:0 0 108px;height:21px;font-size:12px;padding:1px 4px;line-height:17px}#counterView .cv-sn-overflow{padding:0 30px 8px 34px}#counterView .cv-reorder{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:13px;height:13px;margin:0;accent-color:#315e41}
+ #counterView .cv-body{display:grid;grid-template-columns:minmax(0,1fr) 354px;flex:1;min-height:0}#counterView .cv-work{padding:10px 16px;min-width:0;overflow:auto}#counterView .cv-head,#counterView .cv-line{display:grid;grid-template-columns:var(--cv-columns,22px minmax(150px,1fr) 64px 58px 68px 92px 44px 104px 34px);gap:8px;padding:5px 4px;align-items:center}#counterView .cv-head{position:sticky;top:-10px;z-index:2;background:#fffdfa;border-bottom:1px solid #d5ddd3;font-size:13px;min-height:32px}#counterView .cv-head>span{text-align:right}#counterView .cv-head>span:nth-child(2){display:flex;justify-content:space-between;text-align:left;gap:8px}#counterView .cv-head .cv-reorder-label{font-size:12px;width:84px;text-align:right}#counterView .cv-head>span:nth-child(7){text-align:center}#counterView .cv-article{border-bottom:1px solid #d5ddd3}#counterView .cv-article{position:relative}#counterView .cv-addnote{position:absolute;left:34px;bottom:-9px;z-index:3;height:18px;padding:0 8px;font-size:11px;line-height:16px;border:1px solid #b8c6b5;border-radius:9px;background:#fffdfa;color:#59665c;cursor:pointer;opacity:0;pointer-events:none}#counterView .cv-article:hover .cv-addnote,#counterView .cv-article:focus-within .cv-addnote{opacity:1;pointer-events:auto}#counterView .cv-addnote:hover{background:#eef3ec;color:#202c24}@media(hover:none){#counterView .cv-addnote{opacity:.7;pointer-events:auto}}body.dark #counterView .cv-addnote{background:#252f27;color:#cdd8cb;border-color:#48544a}#counterView .cv-article:nth-child(even){background:#f3f5f0}#counterView .cv-line{min-height:70px}#counterView .cv-desc{position:relative;min-width:0}#counterView .cv-desc input.cv-description{height:31px;line-height:25px;width:100%;font-size:19px;color:#000;font-weight:600;letter-spacing:-.015em;text-align:left;padding:1px 3px;border-color:transparent;background:transparent}#counterView .cv-desc input.cv-description:hover,#counterView .cv-desc input.cv-description:focus{border-color:#b8c6b5;background:#fff}#counterView .cv-meta{min-height:21px;padding-right:22px;display:flex;align-items:start;gap:4px}#counterView .cv-sn-group,#counterView .cv-sn-overflow{display:flex;flex-wrap:wrap;gap:4px 8px}#counterView .cv-sn-group{width:100%}#counterView .cv-sn{display:flex;align-items:center;gap:4px;font-size:13px;color:#000;flex:0 0 156px;height:21px}#counterView .cv-sn span{white-space:nowrap}#counterView .cv-sn input{width:108px;max-width:108px;flex:0 0 108px;height:21px;font-size:12px;padding:1px 4px;line-height:17px}#counterView .cv-sn-overflow{padding:0 30px 8px 34px}#counterView .cv-reorder{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:13px;height:13px;margin:0;accent-color:#315e41}
  #counterView .cv-line>input{width:100%;padding:5px 4px;text-align:right;border-color:transparent;background:transparent;font-variant-numeric:tabular-nums}#counterView .cv-line>input:hover,#counterView .cv-line>input:focus{border-color:#b8c6b5;background:#fff}#counterView .cv-cost,#counterView .cv-margin,#counterView .cv-discount{font-size:15px;color:#000!important}#counterView .cv-line>input.cv-cost:hover,#counterView .cv-line>input.cv-cost:focus{border-color:transparent;background:transparent}#counterView .cv-discount-head{color:#c62828}#counterView .cv-line>input.cv-discount.cv-on{color:#c62828!important;font-weight:700}#counterView .cv-pn{font-size:13px;line-height:15px;color:#000;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#counterView .cv-pn:empty{display:none}#counterView .cv-ea{font-size:18px;color:#000}#counterView .cv-line .cv-qty{font-size:19px;color:#000;text-align:center;border-color:#d5ddd3;background:#fff}#counterView .cv-line .cv-sub{font-size:21px;color:#000;font-weight:650}#counterView .cv-line .cv-grip,#counterView .cv-line .cv-clear{padding:4px;border-color:transparent;background:transparent;color:#59665c;width:24px;height:30px;font-size:20px;line-height:20px}#counterView .cv-grip{cursor:grab;touch-action:none}#counterView .cv-line .cv-clear{color:#c62828;width:34px;height:38px;font-size:30px;line-height:28px;font-weight:700}#counterView .cv-clear:hover{color:#963d32;background:#fff0ec}#counterView .cv-drop{outline:2px solid #315e41;outline-offset:-2px}
  #counterView .cv-entry{padding:8px 4px 8px 34px}#counterView .cv-entry input{width:100%;font-size:18px;padding:10px 12px}#counterView .cv-checkout{padding:14px 16px;background:#f2f5f0;border-left:1px solid #d5ddd3;display:flex;flex-direction:column;gap:10px;min-width:0;overflow:auto}#counterView .cv-customer-label{font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:space-between}#counterView #custPanel{display:grid!important;grid-template-columns:1fr 60px 80px;gap:6px;margin:0;padding:0;border:0;background:transparent;position:relative}#counterView #custPanel>input{width:100%;font-size:15px;padding:8px 9px;min-height:34px;grid-column:1/-1;display:block}#counterView #custCity{grid-column:1!important}#counterView #custState{grid-column:2!important;max-width:none}#counterView #custZip{grid-column:3!important;max-width:none}#counterView .cv-note{font-size:13px;align-self:flex-start;padding:5px 8px}#counterView #cvPo .cust-input{width:100%;box-sizing:border-box;font-size:15px;font-weight:600;padding:8px 10px}#counterView .cv-summary{margin-top:auto}#counterView .summary{width:auto!important;min-width:0!important;margin:0;padding:0;background:transparent;border:0}#counterView .sum-row{padding:4px 0;display:flex;justify-content:space-between;gap:12px;font-size:15px;color:#202c24}#counterView .sum-row.total{display:block;border-top:1px solid #d5ddd3;margin-top:8px;padding-top:10px}#counterView .sum-row.total .sum-val{display:block;text-align:left;font-size:40px;font-weight:700;margin-top:4px;letter-spacing:-.025em}#counterView .sum-val{font-variant-numeric:tabular-nums}body:not(.doc-internal) #counterView #sumInternal{display:none}#counterView #sumInternal .sum-row{font-size:15px}#counterView #sumInternal .sum-row.gp .sum-val{font-size:20px;font-weight:700}#counterView .cv-fee{display:flex;align-items:center;gap:6px;font-size:14px;color:#59665c}#counterView .cv-fee input{margin:0}#counterView .cv-checkout #chargeCardBtn,#counterView #finalizeInvoiceBtn{font-size:14px;padding:10px;width:100%}#counterView .cv-order{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}#counterView .cv-order>button{font-size:13px;padding:5px 7px}#counterView .cv-discount-mode{display:flex}#counterView .cv-discount-mode button{padding:4px 7px;font-size:14px}#counterView .cv-discount-mode button.active{background:#dce8dc;border-color:#8ca28b}#counterView .cv-order>input{width:72px;padding:5px;font-size:14px;text-align:right}#counterView .cv-order-off{font-weight:800}
  #counterView .cv-deck{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:9px 16px;background:#f2f5f0;border-top:1px solid #d5ddd3;flex-shrink:0}#counterView .cv-command{min-height:106px;display:flex;align-items:center;justify-content:flex-start;gap:18px;padding:6px 12px;border-radius:5px;font-size:30px;font-weight:700;text-align:left;line-height:1.1;min-width:0}#counterView .cv-command svg{width:80px;height:80px;background:#fff;flex:0 0 80px;shape-rendering:crispEdges}#counterView .cv-command span{white-space:normal}#counterView .cv-command.print{background:#2b5c8f;color:#fff;border-color:#2b5c8f}#counterView .cv-command.print:hover{background:#234b75}#counterView .cv-command.delete{background:#b2362b;color:#fff;border-color:#b2362b}#counterView .cv-command.delete:hover{background:#962c22}#counterView .cv-command.undo{background:#eddfb3;color:#675321;border-color:#bda86b}#counterView .cv-command.next svg,#counterView .cv-command.print svg{order:2}#counterView .cv-command.next span,#counterView .cv-command.print span{flex:1}#counterView .cv-command.next span{white-space:nowrap}#counterView .cv-command.print{display:grid;grid-template-columns:1fr 80px 1fr;font-size:40px}#counterView .cv-command.print span{text-align:center}#counterView .cv-command.print .cv-mirror{order:3}#counterView .cv-command.next{background:#315e41;color:#fff;border-color:#315e41;font-size:29px}#counterView .cv-command.next:hover{background:#274c34}#counterView .cv-feedback{display:none;position:fixed;left:16px;bottom:150px;z-index:20;max-width:60vw;padding:7px 12px;border-radius:6px;font-size:14px;font-weight:600;background:#fff8e6;border:1px solid #d7a34c;color:#805600;box-shadow:0 2px 8px rgba(0,0,0,.18)}#counterView .cv-feedback.warn,#counterView .cv-feedback.err,#counterView .cv-feedback.notice{display:block}#counterView .cv-feedback.notice{background:#e9f5ec;border-color:#2d7a3a;color:#1f5a2a}#counterView .cv-feedback.err{background:#fff0ec;border-color:#c62828;color:#963d32}
@@ -816,6 +834,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
  /* History edit (embedded in History's middle column): always the desktop layout, no tab row, History button, command deck or output icons. */
  #counterView #cvEditTitle,#counterView #cvEditType{display:none}body.embedded-edit #counterView #cvEditTitle{display:block;font-size:17px;font-weight:700;white-space:nowrap}body.embedded-edit #counterView #cvEditType{display:block;font-size:16px;white-space:nowrap;margin-right:auto;padding-left:4px}body.embedded-edit #counterView #docTypeSel{display:none!important}body.embedded-edit #counterView .cv-tabs,body.embedded-edit #counterView #cvNew,body.embedded-edit #counterView .cv-history,body.embedded-edit #counterView .cv-deck,body.embedded-edit #counterView .cv-top .icon-btn,body.embedded-edit #counterView .cv-top .menu-wrap,body.embedded-edit #counterView #cvOptions,body.embedded-edit #counterView #cvFullScreen,body.embedded-edit #counterView #cvFrontLock,body.embedded-edit #counterView #themeToggle,body.embedded-edit #counterView #printBtn,body.embedded-edit #counterView #chargeCardBtn{display:none!important}body.embedded-edit #counterView .cv-top{padding-left:12px;padding-right:12px}body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 300px}body.embedded-edit #counterView .cv-work{padding:8px 10px}body.embedded-edit #counterView .cv-checkout{padding:12px}body.embedded-edit #counterView .sum-row.total .sum-val{font-size:32px}
  @media(max-width:1060px){body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 250px}body.embedded-edit #counterView .cv-reorder,body.embedded-edit #counterView .cv-reorder-label{display:none}body.embedded-edit #counterView .cv-desc input.cv-description{font-size:16px}body.embedded-edit #counterView .cv-checkout{gap:8px}body.embedded-edit #counterView .cv-head>.cv-support:not(.cv-discount-head),body.embedded-edit #counterView .cv-line>.cv-cost,body.embedded-edit #counterView .cv-line>.cv-margin{display:none}body.embedded-edit #counterView .cv-head,body.embedded-edit #counterView .cv-line{grid-template-columns:20px minmax(150px,1fr) 62px 80px 44px 88px 26px;gap:5px}}
+ /* The one Edit (D14): only the sale lines, and under them a slim strip (Add note, PO #, order discount, card fee, subtotal, tax, total). History's panel holds the customer and its bar the Save, so this page's customer boxes, header and checkout column stay hidden. */
+ body.embedded-edit #counterView .cv-top{display:none!important}body.embedded-edit #counterView .cv-body{display:flex;flex-direction:column}body.embedded-edit #counterView .cv-work{flex:1;min-height:0}body.embedded-edit #counterView .cv-checkout{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px 22px;padding:8px 16px;border-left:0;border-top:1px solid #d5ddd3;overflow:visible;flex-shrink:0}body.embedded-edit #counterView .cv-customer-label,body.embedded-edit #counterView #cvCustomer,body.embedded-edit #counterView #cvLedger,body.embedded-edit #counterView #cvFinalize,body.embedded-edit #counterView #cvCharge,body.embedded-edit #counterView #sumInternal{display:none!important}body.embedded-edit #counterView #cvPo .cust-input{width:170px;font-size:14px;padding:6px 8px}body.embedded-edit #counterView .cv-summary{display:contents}body.embedded-edit #counterView .cv-order{margin:0;order:1}body.embedded-edit #counterView .cv-fee{order:2}body.embedded-edit #counterView #cvTotals{order:3;margin-left:auto}body.embedded-edit #counterView #presellWrap{margin:0;font-size:15px;display:flex;align-items:center;gap:6px;white-space:nowrap}body.embedded-edit #counterView #cvTotals .summary{display:flex;align-items:baseline;gap:20px}body.embedded-edit #counterView .sum-row{padding:0;gap:6px;white-space:nowrap}body.embedded-edit #counterView .sum-row.total{display:flex;border-top:0;margin:0;padding:0;font-weight:700}body.embedded-edit #counterView .sum-row.total .sum-val{display:inline;font-size:24px;margin:0;letter-spacing:-.01em}
 }
 @media screen{#counterView #cvFullScreen[aria-pressed="true"],#counterView #cvFrontLock[aria-pressed="true"]{background:#dce8dc;border-color:#8ca28b}body.dark #counterView #cvFullScreen[aria-pressed="true"],body.dark #counterView #cvFrontLock[aria-pressed="true"]{background:#3e5942;color:#eff5ec;border-color:#779379}}
 @media print{#counterView,.cv-results{display:none!important}tr[data-order-discount] td,tr[data-order-discount] input,tr.cv-order-print td,tr.cv-order-print input{font-weight:800!important;color:#000!important}}
@@ -1017,6 +1037,12 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <input class="cust-input cust-zip" id="custZip" placeholder="Zip" autocomplete="off" inputmode="numeric" oninput="autofillCityStateFromZip()">
     <input class="cust-input" id="custPhone" placeholder="Phone" autocomplete="off" type="tel" oninput="custSuggest('phone')" onkeydown="custDDKey(event)">
     <input class="cust-input" id="custEmail" placeholder="Email" autocomplete="off" type="email">
+    <div class="cust-credit" id="custCredit" hidden>
+      <span class="credit-tag" id="creditTag"></span>
+      <label class="credit-apply" id="creditApplyWrap"><input type="checkbox" id="creditApply" onchange="regCreditTick(this.checked)"> <span id="creditApplyText">Apply credit</span></label>
+      <label class="credit-amt" id="creditAmtWrap" hidden>How much? <input class="cust-input" id="creditAmt" inputmode="decimal" autocomplete="off" onchange="regCreditAmount(this.value)" onkeydown="if(event.key==='Enter')this.blur()"></label>
+      <div class="credit-note" id="creditNote" role="status"></div>
+    </div>
     <input class="cust-input" id="docPO" placeholder="PO # (invoice)" autocomplete="off" maxlength="60">
     <div class="dropdown cust-dd" id="custDD"></div>
   </div>
@@ -1079,6 +1105,14 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <div class="sum-row total">
         <span class="sum-label">Total</span>
         <span class="sum-val" id="sumTotal">—</span>
+      </div>
+      <div class="sum-row credit-row hidden" id="sumCreditRow">
+        <span class="sum-label">Store credit</span>
+        <span class="sum-val" id="sumCredit">—</span>
+      </div>
+      <div class="sum-row credit-row due hidden" id="sumDueRow">
+        <span class="sum-label">Amount due</span>
+        <span class="sum-val" id="sumDue">—</span>
       </div>
         <div class="sum-internal" id="sumInternal">
         <div class="sum-row">
@@ -1171,7 +1205,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.05.2';
+const POS_RELEASE = '2026.11.05.3';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1205,9 +1239,9 @@ class LedgerFinalizationError extends Error {
   }
 }
 
-function checkoutTotals(subtotal, cardFeeActive) {
+function checkoutTotals(subtotal, cardFeeActive, storeCredit = 0) {   // storeCredit (dollars): paid by store credit, so no card fee on it
   const tax = subtotal * TAX_RATE;
-  const cardFee = cardFeeActive ? (subtotal + tax) * CARD_FEE_RATE : 0;
+  const cardFee = cardFeeActive ? Math.max(0, subtotal + tax - storeCredit) * CARD_FEE_RATE : 0;
   return { tax, cardFee, total: subtotal + tax + cardFee };
 }
 let discountControlsEnabled = false;
@@ -1337,8 +1371,9 @@ async function chargeCardOnTerminal() {
   const { subtotal, hasAny } = currentSubtotal();
   if (!hasAny || subtotal <= 0) { flashScanCommand('Nothing to charge yet', 'warn'); return; }
   const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
-  const { total } = checkoutTotals(subtotal, cardFeeActive);
-  const amountCents = Math.round(total * 100);
+  const credit = regCreditApplied();   // store credit is not charged, and carries no card fee
+  const amountCents = Math.max(0, Math.round(checkoutTotals(subtotal, cardFeeActive, credit / 100).total * 100) - credit);
+  const total = amountCents / 100;
   if (!(amountCents > 0)) { flashScanCommand('Nothing to charge yet', 'warn'); return; }
   if (!confirm(`Charge ${fmtPrint(total)} on the card terminal?`)) return;
 
@@ -1411,6 +1446,7 @@ function googleConnectedActions() {
   fetchFromDrive();
   if (MPE_EDIT_SESSION_PAGE) return;
   syncCustomersFromSheet();
+  setTimeout(() => void flushRegCredit(), 0);   // a store credit row left waiting here (offline at print) goes now; never in the way of startup
   flushPendingPartCodes();
   flushPendingReorders();
   flushPendingPriceChanges();
@@ -1477,6 +1513,7 @@ function initTokenClient() {
       fetchFromDrive();
       if (MPE_EDIT_SESSION_PAGE) return;
       syncCustomersFromSheet();
+      setTimeout(() => void flushRegCredit(), 0);
       flushPendingPartCodes();
       flushPendingReorders();
       flushPendingPriceChanges();
@@ -7074,7 +7111,168 @@ function queueLedgerMark(kind, txnId, number, note, id, at) {
 }
 // History's timeline: this sale was printed, saved as a PDF or emailed (an Internal copy is never in history).
 function queueOutputMark(kind, note) {
-  if (_docType !== 'internal') queueLedgerMark(kind, _currentTxnId, activeDocNumber(), note ? String(note).slice(0, 300) : '');
+  if (_docType === 'internal') return;
+  queueLedgerMark(kind, _currentTxnId, activeDocNumber(), note ? String(note).slice(0, 300) : '');
+  queueRegCreditUse();
+}
+
+// ─── Store credit at the register (D17; receipts only) ───────────────────────
+// A customer filled in from autofill with credit shows "Credit $X"; on a receipt, "Apply credit" takes up to min(credit, total) off the
+// amount due. The Payments tab is read when the customer is picked, the box is ticked and the amount changes, never on the print path:
+// Print uses the amount already here, and the credit_used row (fixed id credit_used_<txnId>) is appended after the output.
+let _regCredit = null;   // { key, balance (cents, last fresh read), on, cents, typed, note } for the sale on screen; never a stored balance
+const _regCreditSent = new Set();   // txnIds whose credit row this page already queued (print then PDF: one row)
+let _regCreditStore = null;
+function regCreditStore() {
+  if (!_regCreditStore) _regCreditStore = window.MPELedgerHostKit.createPaymentsStore({ get: range => sheetsGet(range, { retryThrottle: false }), append: sheetsAppend, storage: localStorage });
+  return _regCreditStore;
+}
+// ctx as History builds it ({ qbo, sheetRows }, see buildCustomers), rebuilt from the register's copies. The register keeps QuickBooks
+// customers converted (co = DisplayName, else company), so qbo is approximate: a mismatch only hides credit, never adds any.
+function regCreditCtx() {
+  return { qbo: _custQbo.map(c => ({ id: c.id, name: c.co, phone: String(c.ph || '').split(',')[0] })), sheetRows: _custSheet.map(_custRecToRow) };
+}
+function regSaleCents() {   // subtotal + tax: the most credit can pay (the card fee is only on what the card pays)
+  const { subtotal, hasAny } = currentSubtotal();
+  return hasAny ? Math.max(0, Math.round((subtotal + checkoutTotals(subtotal, false).tax) * 100)) : 0;
+}
+function regDueCents(applied) {   // what is left to collect after store credit, card fee included; never below 0
+  const { subtotal, hasAny } = currentSubtotal();
+  if (!hasAny) return 0;
+  const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
+  return Math.max(0, Math.round(checkoutTotals(subtotal, cardFeeActive, applied / 100).total * 100) - applied);
+}
+// The credit taken off this sale now (cents), 0 when none applies.
+function regCreditApplied() {
+  const c = _regCredit;
+  if (!c || !c.on || _docType !== 'receipt') return 0;
+  if (c.locked) return c.cents;   // already on the Payments tab for this receipt: every reprint (and History's Edit) shows exactly that
+  if (MPE_EDIT_SESSION_PAGE) return 0;
+  return Math.max(0, Math.min(c.cents, c.balance, regSaleCents()));
+}
+function setRegCredit(next) { _regCredit = next; updateSummary(); }
+async function regCreditFresh(c) {   // { cap, balance } from a fresh Payments read, or null when it could not be read
+  const data = window.MPELedgerData, ctx = regCreditCtx();
+  try {
+    const sheet = await regCreditStore().readAll(), ids = new Set(sheet.map(r => String(r[0] || '').trim()));
+    const rows = sheet.concat(regCreditPending().filter(r => !ids.has(r[0])));   // a row still waiting here counts as spent
+    void flushRegCredit();
+    return { balance: data.creditBalances(rows, null, ctx)[c.key] || 0, cap: data.creditCap(rows, c.key, regSaleCents(), null, ctx) };
+  } catch (error) { console.warn('[MPE] Store credit read failed:', error.message); return null; }
+}
+// custPick: look up this customer's credit (fresh read; nothing shows until it answers).
+async function regCreditLookup(c) {
+  if (_regCredit?.locked) return;   // this printed receipt keeps the credit it used
+  setRegCredit(null);
+  if (MPE_EDIT_SESSION_PAGE || !window.MPELedgerData?.creditKey || !window.MPELedgerHostKit || !googleSessionAvailable()) return;
+  const ref = String(c.ref || c.id || ''), qboId = ref && !ref.startsWith('k:') ? ref : '';
+  const key = window.MPELedgerData.creditKey(qboId ? { qboId } : { phone: c.ph, company: c.co, name: c.nm }, regCreditCtx());
+  if (!key) return;
+  const mine = { key, balance: 0, on: false, cents: 0, typed: false, note: '' };
+  _regCredit = mine;
+  const fresh = await regCreditFresh(mine);
+  if (_regCredit !== mine) return;   // the customer changed meanwhile
+  if (!fresh || fresh.balance <= 0) { setRegCredit(null); return; }
+  mine.balance = fresh.balance;
+  updateSummary();
+}
+// Re-read and cap; lower the amount and say so when the credit is now less. ticking: a failed read unticks (nothing unchecked is used).
+async function regCreditRecheck(ticking) {
+  const c = _regCredit;
+  if (!c || c.locked) return;
+  const want = regCreditApplied();
+  const fresh = await regCreditFresh(c);
+  if (_regCredit !== c) return;
+  if (!fresh) {
+    if (ticking) { c.on = false; c.note = 'Could not check store credit right now. Try again.'; }
+    else c.note = 'Could not re-check store credit. Using ' + fmtPrint(want / 100) + '.';
+    updateSummary(); return;
+  }
+  c.balance = Math.max(0, fresh.balance);
+  if (fresh.cap < want) {
+    c.cents = fresh.cap; c.typed = true;
+    c.note = c.balance > 0 ? 'Store credit is now ' + fmtPrint(c.balance / 100) + '. Amount lowered to ' + fmtPrint(fresh.cap / 100) + '.' : 'This customer has no store credit left.';
+    if (!(c.balance > 0)) c.on = false;
+    flashScanCommand(c.note, 'warn');
+  }
+  updateSummary();
+}
+function regCreditTick(on) {
+  const c = _regCredit;
+  if (!c) return;
+  if (c.locked) { updateSummary(); return; }
+  c.on = !!on && _docType === 'receipt'; c.typed = false; c.note = '';
+  c.cents = Math.min(c.balance, regSaleCents());
+  updateSummary();
+  if (c.on) void regCreditRecheck(true);
+}
+function regCreditAmount(text) {
+  const c = _regCredit;
+  if (!c || !c.on || c.locked) { updateSummary(); return; }
+  const max = Math.min(c.balance, regSaleCents()), typed = Math.round((Number(String(text).replace(/[$,\s]/g, '')) || 0) * 100);
+  c.cents = Math.max(0, Math.min(typed, max)); c.typed = true;
+  c.note = typed > max ? 'At most ' + fmtPrint(max / 100) + ' (the credit or the sale total, whichever is less).' : '';
+  updateSummary();
+  void regCreditRecheck(false);
+}
+// Panel and totals. Called by updateSummary, so a changed total re-caps the amount (untouched amount follows min(credit, total)).
+function renderRegCredit() {
+  const box = document.getElementById('custCredit');
+  const c = MPE_EDIT_SESSION_PAGE ? null : _regCredit, shown = !!(c && c.balance > 0);
+  if (c && c.on && !c.typed && !c.locked) c.cents = Math.min(c.balance, regSaleCents());
+  const applied = regCreditApplied();
+  if (c && c.locked) c.note = 'Cancel in History to change store credit.'
+    + (applied > regSaleCents() ? ' The sale is now less than the ' + fmtPrint(applied / 100) + ' store credit already used.' : '');
+  if (box) {
+    box.hidden = !shown;
+    if (shown) {
+      const receipt = _docType === 'receipt', apply = document.getElementById('creditApply'), amt = document.getElementById('creditAmt');
+      document.getElementById('creditTag').textContent = c.restored ? '' : c.locked ? 'Credit left ' + fmtPrint(Math.max(0, c.balance - c.cents) / 100) : 'Credit ' + fmtPrint(c.balance / 100);
+      document.getElementById('creditApplyWrap').hidden = !receipt;
+      document.getElementById('creditApplyText').textContent = c.locked ? 'Store credit used' : 'Apply credit (' + fmtPrint(c.balance / 100) + ')';
+      if (apply) apply.checked = receipt && c.on;
+      document.getElementById('creditAmtWrap').hidden = !(receipt && c.on);
+      if (apply) apply.disabled = !!c.locked;
+      if (amt) amt.disabled = !!c.locked;
+      if (amt && document.activeElement !== amt) amt.value = (applied / 100).toFixed(2);
+      document.getElementById('creditNote').textContent = receipt ? c.note || '' : '';
+    }
+  }
+  document.getElementById('sumCreditRow')?.classList.toggle('hidden', !applied);
+  document.getElementById('sumDueRow')?.classList.toggle('hidden', !applied);
+  const credit = document.getElementById('sumCredit'), due = document.getElementById('sumDue');
+  if (credit) credit.textContent = applied ? fmt(-applied / 100) : '—';
+  if (due) due.textContent = applied ? fmt(regDueCents(applied) / 100) : '—';
+}
+// After the receipt's output (queueOutputMark): one credit_used row for this sale, never blocking. Durable: kept on this computer
+// first, sent, and dropped here only once the sheet shows its id (the store reads it back exactly). Every later output retries.
+// A row already on the sheet for this txnId is not sent again, so print + PDF or a re-save writes it once.
+const REG_CREDIT_PENDING = 'mpeRegCreditPendingV1';
+function regCreditPending() { try { const v = JSON.parse(localStorage.getItem(REG_CREDIT_PENDING) || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; } }
+let _regCreditFlush = null;
+function flushRegCredit() {
+  if (_regCreditFlush || !regCreditPending().length || !window.MPELedgerHostKit) return _regCreditFlush || Promise.resolve();
+  const store = regCreditStore(), rows = regCreditPending(), ids = new Set(rows.map(r => r[0]));
+  _regCreditFlush = store.readAll()
+    .then(sheet => { const have = new Set(sheet.map(r => String(r[0] || '').trim())); const send = rows.filter(r => !have.has(r[0])); return send.length ? store.appendRows(send) : null; })
+    .then(() => localStorage.setItem(REG_CREDIT_PENDING, JSON.stringify(regCreditPending().filter(r => !ids.has(r[0])))))
+    .catch(error => console.warn('[MPE] Store credit row deferred:', error.message))
+    .finally(() => { _regCreditFlush = null; });
+  return _regCreditFlush;
+}
+function queueRegCreditUse() {
+  const cents = regCreditApplied(), txnId = _currentTxnId, data = window.MPELedgerData;
+  if (cents && txnId && !_regCreditSent.has(txnId) && data?.creditUseRow) {
+    const place = registerDigit() || (window.mpeDesktop ? '' : '9');
+    try {
+      const row = data.creditUseRow({ txnId, number: activeDocNumber() || '', kind: 'receipt' }, cents, _regCredit.key, Date.now(), place);
+      const queue = regCreditPending();
+      if (!queue.some(r => r[0] === row[0])) localStorage.setItem(REG_CREDIT_PENDING, JSON.stringify([...queue, row]));
+      _regCreditSent.add(txnId);
+      _regCredit.locked = true; updateSummary();
+    } catch (error) { console.warn('[MPE] Store credit row not saved:', error.message); }
+  }
+  void flushRegCredit();
 }
 
 async function parseTransactionsWithContacts(rows) {
@@ -7422,6 +7620,13 @@ function fillTxnIntoPOS(t, convertTo = null) {
   if (!convertTo) {
     const mine = t.txnId ? getHistory().find(entry => entry.txnId === t.txnId) : null;
     if (mine ? mine.toggles?.cardFee : t.cardFee) toggleCardFee(true);
+    // Store credit this receipt used (History's live credit_used rows, so an undone or cancelled one is not restored): shown and
+    // locked, never written again, so the card fee, total, prints and History's Edit match what was saved.
+    const credit = Math.round((Number(t.storeCredit) || 0) * 100);
+    if (credit > 0 && (t.docType || 'receipt') === 'receipt') {
+      _regCredit = { key: '', balance: credit, on: true, cents: credit, typed: true, locked: true, restored: true, note: '' };
+      if (t.txnId) _regCreditSent.add(t.txnId);
+    }
   }
   updateSummary();
   // A conversion is a new, unsaved sale; only a reprint starts from a saved baseline.
@@ -8408,12 +8613,13 @@ function updateSummary() {
     document.getElementById('sumTotal').textContent = '—';
     feeRow?.classList.add('hidden');
     updateInternalTotals(0, false);
+    renderRegCredit();
     syncScannerModeView();
     scheduleValueFieldFit();
     return;
   }
   const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
-  const { tax, cardFee, total } = checkoutTotals(subtotal, cardFeeActive);
+  const { tax, cardFee, total } = checkoutTotals(subtotal, cardFeeActive, regCreditApplied() / 100);
   document.getElementById('sumSubtotal').textContent = fmt(subtotal);
   document.getElementById('sumCardFee').textContent = fmt(cardFee);
   feeRow?.classList.toggle('hidden', !cardFeeActive);
@@ -8421,6 +8627,7 @@ function updateSummary() {
   document.getElementById('sumTotal').textContent = fmt(total);
   // Gross profit is measured against the goods, not the card fee or tax.
   updateInternalTotals(subtotal, true);
+  renderRegCredit();
   syncScannerModeView();
   scheduleValueFieldFit();
 }
@@ -8506,6 +8713,9 @@ function buildCopy2HTML() {
   const cardFee = document.getElementById('sumCardFee')?.textContent || '—';
   const tax = document.getElementById('sumTax')?.textContent || '—';
   const total = document.getElementById('sumTotal')?.textContent || '—';
+  const creditCents = regCreditApplied();
+  const creditHtml = creditCents ? `<div class="sum-row"><span class="sum-label">Store credit</span><span class="sum-val">${esc(fmtPrint(-creditCents / 100))}</span></div>`
+    + `<div class="sum-row"><span class="sum-label"><strong>Amount due</strong></span><span class="sum-val"><strong>${esc(fmtPrint(regDueCents(creditCents) / 100))}</strong></span></div>` : '';
 
   let rowsHtml = '';
   let anyMulti = false;
@@ -8614,6 +8824,7 @@ function buildCopy2HTML() {
         <div class="sum-row"><span class="sum-label">Tax</span><span class="sum-val">${esc(tax)}</span></div>
         ${cardFeeActive ? `<div class="sum-row"><span class="sum-label">Card fee (3%)</span><span class="sum-val">${esc(cardFee)}</span></div>` : ''}
         <div class="sum-row total"><span class="sum-label">Total</span><span class="sum-val">${esc(total)}</span></div>
+        ${creditHtml}
       </div>
     </div>
     ${custHtml}
@@ -9424,7 +9635,8 @@ function buildEmailDocHTML(order, title, number, dateStr) {
     ? Number(frozenTotals.subtotal)
     : items.reduce((s, it) => s + (parseFloat(it.sub) || 0), 0);
   const cardFeeActive = !!order.toggles?.cardFee;
-  const calculated = checkoutTotals(subtotal, cardFeeActive);
+  const storeCredit = Number(order.storeCredit) || 0;
+  const calculated = checkoutTotals(subtotal, cardFeeActive, storeCredit);
   const tax = frozenTotals ? Number(frozenTotals.tax) : calculated.tax;
   const cardFee = frozenTotals ? Number(frozenTotals.card_fee) : calculated.cardFee;
   const total = frozenTotals ? Number(frozenTotals.total) : calculated.total;
@@ -9513,6 +9725,7 @@ function buildEmailDocHTML(order, title, number, dateStr) {
       <div style="${sumRow};color:${PDF_INK}"><span>Tax</span><span>$${tax.toFixed(2)}</span></div>
       ${cardFeeActive ? `<div style="${sumRow};color:${PDF_INK}"><span>Card fee (3%)</span><span>$${cardFee.toFixed(2)}</span></div>` : ''}
       <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:2px solid ${PDF_INK};font-weight:700;font-size:16px;color:${PDF_INK}"><span>Total</span><span>$${total.toFixed(2)}</span></div>
+      ${storeCredit ? `<div style="${sumRow};color:${PDF_INK}"><span>Store credit</span><span>- $${storeCredit.toFixed(2)}</span></div><div style="${sumRow};color:${PDF_INK};font-weight:700"><span>Amount due</span><span>$${Math.max(0, total - storeCredit).toFixed(2)}</span></div>` : ''}
     </div>
     ${internalHtml}
     ${billToDocument ? '' : custHtml}
@@ -9782,6 +9995,7 @@ function captureOrder() {
   return {
     date: new Date().toISOString(), customer, items, total, toggles,
     tender: historyTenderSelection(),
+    storeCredit: regCreditApplied() / 100 || undefined,   // local copy only (the Payments row is the record); the PDF shows it
     presell: (_docType !== 'internal' && document.getElementById('presellChk')?.checked) || undefined,
     po: _docType === 'invoice' ? String(document.getElementById('docPO')?.value || '').trim() : '',
   };
@@ -9837,6 +10051,8 @@ function historyDocTypeTag(type) {
     document.querySelectorAll('#docTypeSel .doc-type-btn').forEach(b => b.classList.toggle('active', b.dataset.doc === t));
     const presellWrap = document.getElementById('presellWrap');
     if (presellWrap) presellWrap.hidden = t === 'internal';
+    if (_regCredit && _regCredit.on && t !== 'receipt' && !_regCredit.locked) { _regCredit.on = false; updateSummary(); }   // invoices take credit in History's Take payment
+    else renderRegCredit();
     // Drives the on-screen Cost / Gross Profit / Margin block. Kept separate from
     // the print-only `internal-print` class so switching back to Receipt/Invoice/
     // Quote takes those figures off the screen too.
@@ -10915,11 +11131,13 @@ function editSaveProblem() {   // '' or the first line captureOrder would silent
   const at = lines.findIndex(line => !line.ea && line.pn !== 'Note' && !(line.discountPerUnit > 0));
   return at < 0 ? '' : `Line ${at + 1} has no price`;
 }
+// canSave: the lines are complete and nothing is saving. History adds "something changed" (these lines, or the customer it holds in
+// its panel, D14). problem: the first incomplete line, else why the last Save was refused (cleared by the next change here).
 function editStateNow() {
-  const e = _embeddedEdit, problem = editSaveProblem(), dirty = hasUnsavedEdit(), customer = {};
+  const e = _embeddedEdit, lines = editSaveProblem(), dirty = hasUnsavedEdit(), customer = {};
   for (const [key, id] of Object.entries(EDIT_PATCH_FIELDS)) customer[key] = String(document.getElementById(id)?.value || '').slice(0, EDIT_PATCH_MAX);
   return { v: 1, sessionId: e.req.sessionId, seq: ++e.seq, ready: true, dirty, totalCents: orderTotalCents(captureOrder()),
-    originalTotalCents: e.originalTotalCents, canSave: dirty && !problem && !e.saving, saving: e.saving, problem, customer };
+    originalTotalCents: e.originalTotalCents, canSave: !lines && !e.saving, saving: e.saving, problem: lines || e.error || '', customer };
 }
 function postEditState() {
   const e = _embeddedEdit;
@@ -10930,7 +11148,9 @@ function postEditState() {
 }
 function scheduleEditState() {   // returns at once unless this page is an open embedded edit (nothing on the normal Print path)
   const e = _embeddedEdit;
-  if (!e || e.done || e.timer) return;
+  if (!e || e.done) return;
+  if (!e.saving) e.error = '';   // a change after a refused Save clears its reason
+  if (e.timer) return;
   e.timer = setTimeout(() => { e.timer = null; postEditState(); }, 200);
 }
 function finishEmbeddedEdit(result) {
@@ -10957,8 +11177,12 @@ async function startEmbeddedEdit(raw) {
   } finally {
     _embeddedLoading = null;
   }
-  _embeddedEdit = { req, base, seq: 0, saving: false, done: false, timer: null, originalTotalCents: orderTotalCents(captureOrder()) };
+  _embeddedEdit = { req, base, seq: 0, saving: false, done: false, timer: null, error: '', originalTotalCents: orderTotalCents(captureOrder()) };
   if (typeof document.body?.classList?.add === 'function') document.body.classList.add('embedded-edit');
+  if (typeof window.mountCounterViewForEdit === 'function') window.mountCounterViewForEdit(); // Classic view set in Admin: the edit still shows the lines layout
+  // The top bar (and the Presold box in it) is hidden here: show the same Presold box in the strip, next to PO #.
+  const presell = document.getElementById('presellWrap'), po = document.getElementById('cvPo');
+  if (presell && po && typeof po.after === 'function') po.after(presell);
   if (typeof document.addEventListener === 'function') { document.addEventListener('input', scheduleEditState, true); document.addEventListener('change', scheduleEditState, true); }
   const title = document.getElementById('cvEditTitle'), type = document.getElementById('cvEditType');
   if (title) title.textContent = 'Editing ' + (_reprintSource.docNumber || '');
@@ -10991,12 +11215,44 @@ async function runEditCommand(command) {   // History's Save / Cancel for the op
     return finishEmbeddedEdit({ ...e.base, ok: true, cancelled: true, unchanged: true });
   }
   if (command.cmd !== 'save' || e.saving) return null;
+  const customer = editCommandCustomer(command.customer);
+  if (!customer) { e.error = 'That save was not valid. Nothing was saved.'; postEditState(); return null; }
   const problem = editSaveProblem();
   if (problem) { postEditState(); return null; }   // History shows the problem from state; nothing is written
-  e.saving = true; postEditState();
+  e.saving = true; e.error = ''; postEditState();
+  // The customer typed in History's panel goes into this page's customer boxes, exactly as the silent session applies its patch,
+  // and then the one save writes items and customer together. Refused: the boxes go back, nothing is written and the screen stays
+  // open (D14) with the reason; History keeps everything typed for another try.
+  const boxes = Object.entries(EDIT_PATCH_FIELDS).map(([key, id]) => [key, document.getElementById(id)]).filter(([, el]) => el);
+  const before = boxes.map(([, el]) => el.value);
+  for (const [key, el] of boxes) if (key in customer) el.value = customer[key];
   const result = await editSessionSave(e.req, e.base, command.updateInfo === true);
   e.saving = false;
-  return finishEmbeddedEdit(result);
+  if (result && result.ok) return finishEmbeddedEdit(result);
+  boxes.forEach(([, el], i) => { el.value = before[i]; });
+  e.error = String(result && result.message || 'That did not save. Nothing was changed. Try again.').slice(0, 200);
+  postEditState();
+  return null;
+}
+// The customer on History's save (app 0.3.67+, website): only the 8 customer keys, strings, trimmed and bounded like the silent
+// patch. Missing is {} (an item-only save, or app 0.3.66). Anything else is refused (null).
+function editCommandCustomer(raw) {
+  if (raw === undefined) return {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const clean = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!EDIT_PATCH_FIELDS[key] || typeof value !== 'string' || value.length > 400) return null;
+    clean[key] = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, EDIT_PATCH_MAX);
+  }
+  return clean;
+}
+// A scan History caught in one of its own text boxes (website): added to these lines like a hardware scan.
+function runEditScan(data) {
+  const e = _embeddedEdit, value = String(data && data.value || '').trim();
+  if (!e || e.done || e.saving || !value || value.length > 512) return false;
+  closeAllDropdowns();
+  acceptDecodedScan(value, 'hardware', { acceptedAt: Date.now() });
+  return true;
 }
 
 function toggleSignature() {
@@ -11159,6 +11415,7 @@ function autofillCityStateFromZip() {
 }
 
 function custSuggest(kind) {
+  if (_regCredit && !_regCredit.locked) setRegCredit(null);   // a typed change to name, company or phone is another customer: the credit comes off
   let matches = [];
   if (kind === 'phone') {
     const q = (document.getElementById('custPhone').value || '').replace(/\D/g, '');
@@ -11232,6 +11489,7 @@ function custPick(i) {
   set('custPhone', c.ph); set('custEmail', c.em);
   document.getElementById('custPanel').dataset.customerRef = c.ref || c.id || '';
   closeCustDD();
+  void regCreditLookup(c);
 }
 function custDDKey(e) {
   const dd = document.getElementById('custDD');
@@ -11449,6 +11707,7 @@ async function syncCustomersFromSheet(){
 }
 function clearCustFields() {
   document.getElementById('custPanel').dataset.customerRef='';
+  setRegCredit(null);
   custFields.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const po = document.getElementById('docPO'); if (po) po.value = '';   // the PO number belongs to one sale, like the customer
 }
@@ -11886,14 +12145,14 @@ function applyOrderDiscount(){
 function move(selector,target){const node=typeof selector==='string'?q(selector):selector;if(!node||originals.some(x=>x.node===node))return;const marker=document.createComment('counter-view original');node.before(marker);originals.push({node,marker,target});if(mounted)target.append(node);}
 function mount(){if(mounted||printing)return;mounted=true;originals.forEach(x=>x.target.append(x.node));q('#adminMenuBtn').closest('.menu-wrap').before(q('#cvOptions'),q('#cvFullScreen'),q('#cvFrontLock'));document.body.classList.add('counter-view');document.body.classList.remove('scanner-mode-active');_scannerModeActive=false;clearTimeout(_scannerIdleTimer);sync();}
 function unmount(){if(!mounted)return;mounted=false;originals.slice().reverse().forEach(x=>x.marker.after(x.node));document.body.classList.remove('counter-view');hideSearch();}
-window.setCounterClassicView=function(classic){localStorage.setItem(VIEW_KEY,classic?'1':'0');q('#cvClassic').checked=!!classic;if(classic)unmount();else mount();};
+window.setCounterClassicView=function(classic){localStorage.setItem(VIEW_KEY,classic?'1':'0');q('#cvClassic').checked=!!classic;if(classic)unmount();else mount();};window.mountCounterViewForEdit=()=>mount();/* History's edit always uses the compact lines layout, without changing the saved view choice */
 const classic=document.createElement('label');classic.className='menu-check';classic.innerHTML='<input type="checkbox" id="cvClassic"> Classic view';q('#adminMenu').append(classic);q('#cvClassic').addEventListener('change',e=>window.setCounterClassicView(e.target.checked));
 move('#docTypeSel',q('.cv-docs'));move('#docPO',q('#cvPo'));
 const top=q('.cv-top');move('#phoneListBtn',top);move('#emailDocBtn',top);move('#exportPdfBtn',top);move('#printBtn',top);move(q('#adminMenuBtn')?.closest('.menu-wrap'),top);move('#themeToggle',top);move('#custPanel',q('#cvCustomer'));move(q('.checkout-summary .summary'),q('#cvTotals'));move('#presellWrap',q('.cv-docs'));move('#chargeCardBtn',q('#cvCharge'));move('#finalizeInvoiceBtn',q('#cvFinalize'));move('#ledgerCustomerChooser',q('#cvLedger'));move('#ledgerInvoiceStatus',q('#cvLedger'));move('#licenseDiag',q('#cvCustomer'));move('#scanPanel',q('#cvReview'));
 q('#printBtn').classList.add('cv-icon');q('#printBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 8V3h12v5M6 17H3V9h18v8h-3M6 14h12v7H6zM17 11h1"/></svg>';q('#printBtn').setAttribute('aria-label','Manual print');q('#printBtn').title='Manual print';
 q('#emailDocBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg>';q('#emailDocBtn').setAttribute('aria-label','Email PDF');
 q('#exportPdfBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M13 3H5v18h14V9zM13 3v6h6M8 14h8M12 11v7m-3-3 3 3 3-3"/></svg>';q('#exportPdfBtn').setAttribute('aria-label','Download PDF');
-const customerPanel=q('#custPanel');['custName','custCompany','custAddr','custCity','custState','custZip','custPhone','custEmail'].forEach(id=>customerPanel.append(q('#'+id)));q('#custEmail').placeholder='Email (Optional)';
+const customerPanel=q('#custPanel');['custName','custCompany','custAddr','custCity','custState','custZip','custPhone','custEmail','custCredit'].forEach(id=>customerPanel.append(q('#'+id)));q('#custEmail').placeholder='Email (Optional)';
 
 q('#cvOptions').onclick=e=>{e.stopPropagation();if(typeof window.mpeDesktop?.openSettings==='function'){Promise.resolve().then(()=>window.mpeDesktop.openSettings()).catch(()=>flashScanCommand('Could not open Desktop Settings — try Admin → Desktop Settings','warn'));return;}q('#adminMenuBtn').click();};
 const nativeModes=window.mpeDesktop?.windowModes;
@@ -11904,7 +12163,10 @@ if(nativeModes){
  full.onclick=()=>toggle(()=>nativeModes.toggleFullScreen());front.onclick=()=>toggle(()=>nativeModes.toggleFrontLock());
  nativeModes.onChange(renderModes);nativeModes.get().then(renderModes).catch(()=>{});
 }
-q('#cvNote').onclick=()=>{if(!editable())return;const i=emptyRow();applyNoteToRow(i);schedule();requestAnimationFrame(()=>q(`[data-cv-id="${i}"] .cv-description`)?.focus());};
+// Notes are ordinary lines kept in line order (D16): Add note puts one first, "Add note below" puts one right under an item.
+function insertNote(under){if(!editable())return;const i=emptyRow();applyNoteToRow(i);const at=under==null?rowOrder()[0]:nextRowIndex(under);if(at!==i)moveRow(i,at);relabelRows();updateSummary();requestAnimationFrame(()=>q(`[data-cv-id="${i}"] .cv-description`)?.focus());return i;}
+window.cvInsertNote=insertNote;
+q('#cvNote').onclick=()=>insertNote();
 q('#cvCardFee').onchange=e=>toggleCardFee(e.target.checked);
 qa('[data-cv-toggle]').forEach(el=>el.onchange=()=>{const name=el.dataset.cvToggle;const original=q('#tg'+name);if(original){original.checked=el.checked;original.dispatchEvent(new Event('change',{bubbles:true}));}schedule();});
 q('#cvOrderValue').addEventListener('input',applyOrderDiscount);q('#cvOrderValue').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.target.blur();}});
@@ -11918,7 +12180,7 @@ function schedule(){if(frame||!mounted||printing)return;frame=requestAnimationFr
 const observer=new MutationObserver(schedule);observer.observe(tbody,{childList:true,subtree:true,attributes:true,characterData:true});
 function rowInfo(i){const tr=tbody.querySelector(`tr[data-row="${i}"]`),part=tr?.querySelector('.part-input'),price=q(`#price-${i}`),desc=q(`#desc-${i}`),note=desc?.querySelector('.note-desc-input,.discount-desc-input');const sn=Array.from(tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`));return{i,tr,part,price,desc,note,sn,name:note?note.value:desc?.textContent||part?.value||'',qty:num(q(`#qty-${i}`)?.value)||1,base:num(price?.dataset.originalEa)||num(price?.dataset.price),charged:num(price?.dataset.price),cost:num(q(`#cost-${i}`)?.dataset.cost),off:num(price?.dataset.discountPerUnit),total:num(q(`#sub-${i}`)?.dataset.val)};}
 function field(r,key,cls,label){return `<input class="${cls}" data-cv-field="${key}" data-cv-row="${r.i}" aria-label="${label} line ${rowPos(r.i)}" autocomplete="off" spellcheck="false" ${key==='qty'?'inputmode="numeric"':'inputmode="decimal"'}${key==='cost'?' readonly tabindex="-1"':''}>`;}
-function makeArticle(r){const a=document.createElement('article');a.className='cv-article';a.dataset.cvId=r.i;a.innerHTML=`<div class="cv-line"><button class="cv-grip" type="button" draggable="true" data-cv-drag="${r.i}" aria-label="Reorder line ${rowPos(r.i)}" title="Drag to reorder; Alt + Up or Down">⠿</button><div class="cv-desc"><input class="cv-description" data-cv-field="desc" data-cv-row="${r.i}" aria-label="Description line ${rowPos(r.i)}" autocomplete="off"><div class="cv-pn"></div><div class="cv-meta"><div class="cv-sn-group"></div></div><input class="cv-reorder" type="checkbox" data-cv-field="restock" data-cv-row="${r.i}" aria-label="Need to reorder line ${rowPos(r.i)}"></div>${field(r,'cost','cv-cost cv-support','Cost')}${field(r,'margin','cv-margin cv-support','Margin percent')}${field(r,'discount','cv-discount cv-support','Discount per item')}${field(r,'ea','cv-ea','Each price')}${field(r,'qty','cv-qty','Quantity')}${field(r,'sub','cv-sub','Line total')}<button class="cv-clear" type="button" data-cv-clear="${r.i}" aria-label="Clear line ${rowPos(r.i)}">×</button></div><div class="cv-sn-overflow"></div>`;return a;}
+function makeArticle(r){const a=document.createElement('article');a.className='cv-article';a.dataset.cvId=r.i;a.innerHTML=`<div class="cv-line"><button class="cv-grip" type="button" draggable="true" data-cv-drag="${r.i}" aria-label="Reorder line ${rowPos(r.i)}" title="Drag to reorder; Alt + Up or Down">⠿</button><div class="cv-desc"><input class="cv-description" data-cv-field="desc" data-cv-row="${r.i}" aria-label="Description line ${rowPos(r.i)}" autocomplete="off"><div class="cv-pn"></div><div class="cv-meta"><div class="cv-sn-group"></div></div><input class="cv-reorder" type="checkbox" data-cv-field="restock" data-cv-row="${r.i}" aria-label="Need to reorder line ${rowPos(r.i)}"></div>${field(r,'cost','cv-cost cv-support','Cost')}${field(r,'margin','cv-margin cv-support','Margin percent')}${field(r,'discount','cv-discount cv-support','Discount per item')}${field(r,'ea','cv-ea','Each price')}${field(r,'qty','cv-qty','Quantity')}${field(r,'sub','cv-sub','Line total')}<button class="cv-clear" type="button" data-cv-clear="${r.i}" aria-label="Clear line ${rowPos(r.i)}">×</button></div><button class="cv-addnote" type="button" data-cv-note-below="${r.i}" aria-label="Add note below this line" title="Add note below">+ Note below</button><div class="cv-sn-overflow"></div>`;return a;}
 function syncSerials(a,r){const group=a.querySelector('.cv-sn-group'),spill=a.querySelector('.cv-sn-overflow');let fields=[...a.querySelectorAll('[data-cv-sn]')];const count=r.sn.length;a.querySelector('.cv-meta').hidden=!count;if(!count){group.replaceChildren();spill.replaceChildren();spill.hidden=true;return;}if(fields.length!==count){group.innerHTML='';spill.innerHTML='';for(let n=0;n<count;n++){const label=document.createElement('label');label.className='cv-sn';label.innerHTML=`<span>${count===1?'SN:':`SN ${n+1}:`}</span><input data-cv-sn="${n}" data-cv-row="${r.i}" aria-label="Serial ${n+1} line ${rowPos(r.i)}" placeholder="Enter serial" autocomplete="off">`;group.append(label);}fields=[...group.querySelectorAll('input')];}else [...spill.children].forEach(l=>group.append(l));fields.forEach((el,n)=>{if(el!==document.activeElement)el.value=r.sn[n]?.value||'';});const width=group.getBoundingClientRect().width,capacity=Math.max(1,Math.floor((width+8)/164));[...group.children].slice(capacity).forEach(label=>spill.append(label));spill.hidden=!spill.children.length;}
 function sync(){
  if(!mounted||printing||busy)return;busy=true;try{
@@ -11926,7 +12188,7 @@ function sync(){
  if(key!==lastIds){const existing=new Map([...box.children].map(a=>[+a.dataset.cvId,a]));ids.forEach(i=>{const a=existing.get(i)||makeArticle(rowInfo(i));box.append(a);existing.delete(i);});existing.forEach(a=>a.remove());lastIds=key;}
  for(const i of ids){const r=rowInfo(i),a=q(`[data-cv-id="${i}"]`);const values={desc:r.name,cost:plain(r.cost),margin:r.charged>0?marginPercent(r.cost,r.charged).toFixed(1):'',discount:r.price?.dataset.cvDiscountRate?`${r.price.dataset.cvDiscountRate}%`:plain(r.off),ea:plain(r.base),qty:String(r.qty),sub:plain(r.total)};for(const [k,v] of Object.entries(values)){const el=a.querySelector(`[data-cv-field="${k}"]`);if(el!==document.activeElement)el.value=v;el.disabled=!!q(`#price-input-${i}`)?.disabled;}a.querySelector('.cv-discount').classList.toggle('cv-on',r.off>0||!!r.price?.dataset.cvDiscountRate);const pn=String(r.part?.dataset.partPn||'').trim();a.querySelector('.cv-pn').textContent=pn&&pn.toUpperCase()!==String(r.name).trim().toUpperCase()?pn:'';
  const check=a.querySelector('[data-cv-field="restock"]'),source=r.tr.querySelector('.reorder-toggle');check.checked=!!source?.checked;check.disabled=!!source?.disabled;syncSerials(a,r);}
- const locked=!editable();qa('#cvEntry,#cvOrderValue,#cvOrderMoney,#cvOrderPercent,#cvNote,[data-cv-field],[data-cv-sn],[data-cv-clear],[data-cv-drag]').forEach(el=>el.disabled=locked||(el.matches('[data-cv-field]')&&!!q(`#price-input-${el.dataset.cvRow}`)?.disabled));
+ const locked=!editable();qa('#cvEntry,#cvOrderValue,#cvOrderMoney,#cvOrderPercent,#cvNote,[data-cv-field],[data-cv-sn],[data-cv-clear],[data-cv-note-below],[data-cv-drag]').forEach(el=>el.disabled=locked||(el.matches('[data-cv-field]')&&!!q(`#price-input-${el.dataset.cvRow}`)?.disabled));
  const qv=q('.cv-quote');qv.hidden=_docType!=='quote';qa('[data-cv-toggle]').forEach(e=>e.checked=!!q('#tg'+e.dataset.cvToggle)?.checked);q('#cvCardFee').checked=q('#cardFeeBtn').classList.contains('active');
  if(document.activeElement!==q('#cvOrderValue')){orderStateFromRow();q('#cvOrderValue').value=plain(orderRequested);}for(const mode of ['Money','Percent']){const b=q('#cvOrder'+mode),active=(mode==='Percent')===(orderMode==='percent');b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}
  const maximum=(get,base,cap)=>Math.min(cap,Math.max(base,...ids.map(i=>String(get(rowInfo(i))).length*9+12)));root.style.setProperty('--cv-columns',`22px minmax(150px,1fr) ${maximum(r=>plain(r.cost),64,110)}px 58px 68px ${maximum(r=>plain(r.base),92,140)}px 44px ${maximum(r=>fmt(r.total),104,154)}px 34px`);
@@ -11965,7 +12227,7 @@ root.addEventListener('input',e=>{if(!editable())return;const el=e.target;if(el.
 root.addEventListener('focusout',e=>{if(e.target.matches('[data-cv-field]'))updateField(e.target,true);});
 root.addEventListener('change',e=>{if(e.target.matches('[data-cv-field="restock"]'))updateField(e.target,true);});
 root.addEventListener('keydown',e=>{const el=e.target;if(el.matches('[data-cv-field="desc"]')&&e.key==='Escape'){e.preventDefault();e.stopPropagation();if(focusSnapshot?.input===el){el.value=focusSnapshot.value;focusSnapshot.searching=false;}hideSearch();return;}if(el.matches('[data-cv-field="desc"]')&&searchKey(e))return;if(el.matches('[data-cv-field]')&&e.key==='Enter'){e.preventDefault();updateField(el,true);q('#cvEntry').focus();}const handle=el.closest('[data-cv-drag]');if(handle&&editable()&&e.altKey&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const i=+handle.dataset.cvDrag,o=rowOrder().filter(n=>n!==orderRow()),pos=o.indexOf(i);if(e.key==='ArrowUp'&&pos>0)moveRow(i,o[pos-1]);else if(e.key==='ArrowDown'&&pos<o.length-1)moveRow(i,o[pos+2]??null);updateSummary();}});
-root.addEventListener('click',e=>{const c=e.target.closest('[data-cv-clear]');if(c&&editable()){clearRow(+c.dataset.cvClear);compactRows();updateSummary();}});
+root.addEventListener('click',e=>{const nb=e.target.closest('[data-cv-note-below]');if(nb){insertNote(+nb.dataset.cvNoteBelow);return;}const c=e.target.closest('[data-cv-clear]');if(c&&editable()){clearRow(+c.dataset.cvClear);compactRows();updateSummary();}});
 root.addEventListener('dragstart',e=>{const h=e.target.closest('[data-cv-drag]');if(!h||!editable()){e.preventDefault();return;}dragId=+h.dataset.cvDrag;e.dataTransfer.setData('text/plain','line '+dragId);e.dataTransfer.effectAllowed='move';});root.addEventListener('dragover',e=>{const a=e.target.closest('[data-cv-id]');if(dragId==null||!a)return;e.preventDefault();qa('.cv-drop').forEach(x=>x.classList.remove('cv-drop'));a.classList.add('cv-drop');const work=q('.cv-work'),r=work.getBoundingClientRect();if(e.clientY>r.bottom-40)work.scrollTop+=16;if(e.clientY<r.top+40)work.scrollTop-=16;});root.addEventListener('drop',e=>{const a=e.target.closest('[data-cv-id]');if(dragId==null||!a||!editable())return;e.preventDefault();const target=+a.dataset.cvId;if(target!==dragId){const r=a.getBoundingClientRect();moveRow(dragId,e.clientY>r.top+r.height/2?nextRowIndexSkipping(target,dragId):target);compactRows();updateSummary();}dragId=null;qa('.cv-drop').forEach(x=>x.classList.remove('cv-drop'));});root.addEventListener('dragend',()=>{dragId=null;qa('.cv-drop').forEach(x=>x.classList.remove('cv-drop'));});
 window.addEventListener('resize',()=>{schedule();positionSearch();});document.addEventListener('scroll',e=>{if(!results.contains(e.target))positionSearch();},true);document.addEventListener('pointerdown',e=>{if(!results.contains(e.target)&&e.target!==searchTarget?.input)hideSearch();});
 // Print preparation keeps the live counter mounted. Native output and exported
@@ -11989,8 +12251,8 @@ const oldClear=clearAll;clearAll=function(){const result=oldClear();if(result!==
 // Desktop continues to own its independent native sale tabs. Browser sessions
 // retain detached canonical rows per tab; switching never saves/clears a sale.
 const browserTabs=new Map();let activeTab=1,nextTab=2;
-function snapshotTab(){return{rows:[...tbody.childNodes],mobile:[...q('#mobileRows').childNodes],count:NUM_ROWS,customer:custFields.map(id=>q('#'+id)?.value||''),customerRef:q('#custPanel').dataset.customerRef||'',po:q('#docPO')?.value||'',doc:_docType,toggles:['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].map(id=>q('#'+id).classList.contains('active')),pendingDate:_pendingTxnDate,pendingNumber:_pendingDocNumber,entry:q('#cvEntry').value,txn:_currentTxnId,date:_currentTxnDate,number:_currentDocNumber,reprint:_reprintSource,quote:_quoteSource,baseline:_historyContentBaseline,cleared:_clearedSale,stock:cartStockSession,tender:readTenderSelection(),scanIssues:new Map(scanIssues),presell:q('#presellChk').checked};}
-function activateTab(id){ledgerTab?.hide();commitFocused();browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);q('#custPanel').dataset.customerRef=s.customerRef||'';q('#docPO').value=s.po||'';_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}orderMode='amount';orderRequested=0;lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
+function snapshotTab(){return{rows:[...tbody.childNodes],mobile:[...q('#mobileRows').childNodes],count:NUM_ROWS,customer:custFields.map(id=>q('#'+id)?.value||''),customerRef:q('#custPanel').dataset.customerRef||'',po:q('#docPO')?.value||'',doc:_docType,toggles:['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].map(id=>q('#'+id).classList.contains('active')),pendingDate:_pendingTxnDate,pendingNumber:_pendingDocNumber,entry:q('#cvEntry').value,txn:_currentTxnId,date:_currentTxnDate,number:_currentDocNumber,reprint:_reprintSource,quote:_quoteSource,baseline:_historyContentBaseline,cleared:_clearedSale,stock:cartStockSession,tender:readTenderSelection(),scanIssues:new Map(scanIssues),presell:q('#presellChk').checked,credit:_regCredit};}
+function activateTab(id){ledgerTab?.hide();commitFocused();browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);q('#custPanel').dataset.customerRef=s.customerRef||'';q('#docPO').value=s.po||'';_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));_regCredit=s.credit||null;setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}orderMode='amount';orderRequested=0;lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
 function closeBrowserTab(id){
  const state=id===activeTab?snapshotTab():browserTabs.get(id);
  const hasContent=state&&(state.rows.some(row=>row.nodeType===1&&(row.querySelector('.part-input')?.value.trim()||row.querySelector('.note-desc-input,.discount-desc-input')?.value.trim()))||state.customer.some(Boolean)||state.entry.trim());
@@ -12004,7 +12266,7 @@ function editFrameOpen(){if(!document.querySelector('iframe[data-mpe-embed]'))re
 function addTab(){if(editFrameOpen())return;const id=nextTab++,b=document.createElement('button');b.type='button';b.className='cv-tab';b.dataset.cvTab=id;b.textContent='Sale '+id;b.onclick=()=>{if(!editFrameOpen())activateTab(id);};const group=document.createElement('div');group.className='cv-tab-group';const close=document.createElement('button');close.type='button';close.className='cv-close-tab';close.textContent='×';close.setAttribute('aria-label','Close sale '+id);close.title='Close sale '+id;close.onclick=()=>{if(!editFrameOpen())closeBrowserTab(id);};group.append(b,close);q('#cvTabs').append(group);if(id!==1)activateTab(id);else b.classList.add('active');}
 // Ledger tab: first, never closed. The app shows it in its native tab strip instead.
 let ledgerTab=null;
-if(window.mpeDesktop){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;window.mpeDesktop.onLedgerSale?.(openLedgerSale);window.mpeDesktop.onEditSession?.(runEditSessionAndReport);}else{if(MPE_EDIT_SESSION_PAGE){window.addEventListener('message',e=>{if(e.source!==window.parent||e.origin!==location.origin||!e.data)return;if(e.data.type==='edit-session')void runEditSessionAndReport(e.data.request);else if(e.data.type==='edit-command')void runEditCommand(e.data.command);else if(e.data.type==='edit-key')runEditKey(e.data);});window.parent.postMessage({type:'edit-ready'},location.origin);}nextTab=1;addTab();q('#cvNew').onclick=addTab;ledgerTab=MPE_EDIT_SESSION_PAGE?null:window.MPELedgerTab?.install({document,window,tabs:q('#cvTabs'),header:q('.cv-top'),host:root,onShow:()=>qa('#cvTabs .cv-tab[data-cv-tab]').forEach(b=>b.classList.remove('active')),onOpenSale:sale=>{addTab();openLedgerSale(sale);},scanKeydown:onHardwareScanKeydown,onScan:()=>activateTab(activeTab)})||null;}
+if(window.mpeDesktop){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;window.mpeDesktop.onLedgerSale?.(openLedgerSale);window.mpeDesktop.onEditSession?.(runEditSessionAndReport);}else{if(MPE_EDIT_SESSION_PAGE){window.addEventListener('message',e=>{if(e.source!==window.parent||e.origin!==location.origin||!e.data)return;if(e.data.type==='edit-session')void runEditSessionAndReport(e.data.request);else if(e.data.type==='edit-command')void runEditCommand(e.data.command);else if(e.data.type==='edit-key')runEditKey(e.data);else if(e.data.type==='edit-scan')runEditScan(e.data);});window.parent.postMessage({type:'edit-ready'},location.origin);}nextTab=1;addTab();q('#cvNew').onclick=addTab;ledgerTab=MPE_EDIT_SESSION_PAGE?null:window.MPELedgerTab?.install({document,window,tabs:q('#cvTabs'),header:q('.cv-top'),host:root,onShow:()=>qa('#cvTabs .cv-tab[data-cv-tab]').forEach(b=>b.classList.remove('active')),onOpenSale:sale=>{addTab();openLedgerSale(sale);},scanKeydown:onHardwareScanKeydown,onScan:()=>activateTab(activeTab)})||null;}
 if(window.mpeDesktop){if(MPE_EDIT_SESSION_PAGE&&typeof window.mpeDesktop.onEditCommand==='function')window.mpeDesktop.onEditCommand(c=>void runEditCommand(c));}else if(!MPE_EDIT_SESSION_PAGE)root.addEventListener('load',e=>{if(e.target.classList?.contains('cv-ledger-frame'))qa('iframe[data-mpe-embed]').forEach(f=>f.remove());},true);   // A4: a (re)loaded History frame drops any orphaned edit frame
 const oldIdle=posRegisterIsIdleAndEmpty;posRegisterIsIdleAndEmpty=function(){if(document.querySelector('iframe[data-mpe-embed]')||q('#cvEntry').value.trim())return false;for(const [id,state] of browserTabs){if(id!==activeTab&&(state.entry.trim()||state.customer.some(Boolean)||state.rows.some(row=>row.nodeType===1&&row.querySelector('.part-input')?.value.trim())))return false;}return oldIdle();};
 q('#cvClassic').checked=localStorage.getItem(VIEW_KEY)==='1';if(!q('#cvClassic').checked)mount();

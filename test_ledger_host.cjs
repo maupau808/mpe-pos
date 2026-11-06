@@ -24,7 +24,7 @@ function fakeSheet({ payments = true, signedIn = true } = {}) {
       if (!signedIn) throw new Error('Not signed in');
       const tab = range.split('!')[0];
       if (!tabs[tab]) throw new Error(`Unable to parse range: ${range}`);
-      return /A1:J1$/.test(range) ? tabs[tab].slice(0, 1).map(r => r.slice()) : tabs[tab].map(r => r.slice());
+      return /A1:K1$/.test(range) ? tabs[tab].slice(0, 1).map(r => r.slice()) : tabs[tab].map(r => r.slice());
     },
     async append(range, rows) {
       if (!signedIn) return false;
@@ -462,6 +462,11 @@ test('app editEmbed: one embedded envelope with the RAW record (no deposit note)
   assert.equal(req.txn.cardFee, true); assert.equal(req.loaded.fingerprint, '["fp"]');
   assert.deepEqual(req.txn.items.map(i => i.pn), ['A'], 'raw record: no "Deposit paid" note (R11)');
   assert.deepEqual(req.txn, { ...K.toHistory(EMBED_RECORD), cardFee: true });
+  { const two = deskEmbed(), h2 = K.createHost({ ...K.environment({ mpeDesktop: two.d, navigator: { userAgent: 'Macintosh' } }), get: sheet.get, append: sheet.append }, {});
+    h2.editEmbed(EMBED_RECORD, { cardFee: true, storeCredit: 40 }, {}); await Promise.resolve();
+    assert.equal(two.calls.embed[0].txn.storeCredit, 40, 'the receipt\'s store credit used goes to the register next to the card fee'); }
+  assert.equal(K.toHistory({ ...EMBED_RECORD, storeCredit: 12.5 }).storeCredit, 12.5, 'a reopened sale carries it too');
+  assert.equal('storeCredit' in K.toHistory(EMBED_RECORD), false, 'no credit: no key');
   if (typeof ledgerEditRequest === 'function') assert.ok(ledgerEditRequest(req), 'main accepts the embedded shape');
   s.rect({ v: 1, sessionId: s.sessionId, seq: 1, rect: { x: 1, y: 2, width: 3, height: 4 } });
   s.command({ v: 1, sessionId: s.sessionId, cmd: 'cancel' });
@@ -574,4 +579,38 @@ test('website environment offers embedEdit through webEmbedSession', () => {
   const env = K.environment({ parent: p, location: { origin: 'https://x.test' }, localStorage: memoryStorage(), navigator: {} });
   assert.equal(typeof env.embedEdit, 'function');
   assert.equal(typeof K.createHost(env, {}).editEmbed, 'function');
+});
+
+test('one Edit: the host says whether the save carries the customer (app 0.3.67 saveCustomer, website always); 0.3.66 says no', async () => {
+  const old = K.createHost(K.environment({ mpeDesktop: deskEmbed().d, navigator: {} }), {}).editEmbed(EMBED_RECORD, {}, {});
+  assert.equal(old.saveCustomer, false, 'app 0.3.66: History saves the customer after, through the silent session');
+  const { d, calls } = deskEmbed({ editCapabilities: { silentEdit: 1, embedEdit: 1, saveCustomer: 1 } });
+  const s = K.createHost(K.environment({ mpeDesktop: d, navigator: {} }), {}).editEmbed(EMBED_RECORD, {}, {});
+  assert.equal(s.saveCustomer, true);
+  s.command({ v: 1, sessionId: s.sessionId, cmd: 'save', updateInfo: true, customer: { phone: '808' } });
+  assert.deepEqual(calls.command.pop(), { v: 1, sessionId: s.sessionId, cmd: 'save', updateInfo: true, customer: { phone: '808' } }, 'passed through as is; the preload and main check it');
+  const p = { sheetsGet() {}, googleSessionAvailable: () => true, localStorage: memoryStorage() };
+  const env = K.environment({ parent: p, location: { origin: 'https://x.test' }, localStorage: memoryStorage(), navigator: {} });
+  const f = webEmbedFixture(), web = K.webEmbedSession(f.p, f.w, REQ, {});
+  assert.equal(web.saveCustomer, true); assert.equal(typeof env.embedEdit, 'function');
+  web.command({ v: 1, sessionId: 'abcdefgh', cmd: 'save', updateInfo: false, customer: { email: 'a@b.example' } });
+  assert.deepEqual(f.posted.pop(), [{ type: 'edit-command', command: { v: 1, sessionId: 'abcdefgh', cmd: 'save', updateInfo: false, customer: { email: 'a@b.example' } } }, 'https://x.test'], 'the website frame gets the whole command');
+});
+test('one Edit (website): a scan History caught in its customer box goes to the edit frame as edit-scan, never after the end', async () => {
+  const f = webEmbedFixture(), s = K.webEmbedSession(f.p, f.w, REQ, {});
+  s.scan('0000131');
+  assert.deepEqual(f.posted.pop(), [{ type: 'edit-scan', value: '0000131' }, 'https://x.test']);
+  s.scan('x'.repeat(700)); assert.equal(f.posted.pop()[0].value.length, 512);
+  f.hListeners.pagehide(); await s.result;
+  s.scan('0000131'); assert.equal(f.posted.length, 0, 'the frame is gone');
+  assert.equal(K.createHost({ kind: 'web', embedEdit: () => ({ result: new Promise(() => {}), rect() {}, command() {}, saveCustomer: true, scan: () => 'x' }) }, {}).editEmbed(EMBED_RECORD, {}, {}).scan(), 'x', 'createHost passes scan through');
+});
+test('an app that refuses Payments A:K: reads A:J, keeps working, and reports credit off', async () => {
+  const sheet = fakeSheet({ payments: true });
+  const get = range => { if (range === 'Payments!A:K') return Promise.reject(new Error('Google Sheet range is not allowed for Ledger')); return sheet.get(range); };
+  const store = K.createPaymentsStore({ get, append: sheet.append, storage: memoryStorage() });
+  assert.equal(store.wide(), true);
+  await store.appendRows([pay('pay_old')]);
+  assert.equal(store.wide(), false);
+  assert.equal((await store.readAll()).filter(r => r[0] === 'pay_old').length, 1);
 });

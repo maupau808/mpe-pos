@@ -10,7 +10,8 @@
 // While History has an item edit open (an iframe[data-mpe-embed] in this document, ledger-host.js webEmbedSession), a key typed
 // in History is not tested here and never shows a sale tab: a key History is not using (no field, button or shortcut) is posted
 // to the edit frame as { type:'edit-key', key, code, shiftKey, ctrlKey, altKey, metaKey } and the frame is focused, so its own
-// register's scan path gets the whole burst, first key included (A1). This listener's code runs in the register's window, so the
+// register's scan path gets the whole burst, first key included (A1). A key typed in one of History's fields (the customer editor
+// in the panel) stays there and never moves focus; ledger.js catches a scan typed there and posts it to the frame as 'edit-scan'. This listener's code runs in the register's window, so the
 // frame sees event.source === its window.parent.
 // Test: node POS/test_ledger_tab.cjs
 (function (root, factory) {
@@ -78,13 +79,15 @@
 
   // Every key in the Ledger frame passes the register's scanner test first. A proven scan ends with the register
   // preventing its Enter/Tab; then the field it restored tells Ledger, and the sale tab is shown.
-  const FIELDS = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON']);
+  const FIELDS = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON']), TYPING = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
   function forwardScans(win, scanKeydown, onScan, editFrame, origin) {
     if (!win) return;
     win.addEventListener('keydown', (event) => {
       const edit = editFrame && editFrame();
       if (edit) {
-        const t = event.target, busy = (t && (FIELDS.has(t.tagName) || t.isContentEditable)) || event.ctrlKey || event.metaKey || event.altKey;
+        const t = event.target, typing = !!t && ((TYPING.has(t.tagName) && !['checkbox', 'radio', 'button'].includes(t.type)) || t.isContentEditable);
+        if (typing) return; // History's customer fields keep their keys; a scan typed there is caught by ledger.js and sent to the lines
+        const busy = (t && FIELDS.has(t.tagName)) || event.ctrlKey || event.metaKey || event.altKey;
         if (!busy && edit.contentWindow && origin) {
           if (event.preventDefault) event.preventDefault();
           edit.contentWindow.postMessage({ type: 'edit-key', key: event.key, code: event.code, shiftKey: !!event.shiftKey, ctrlKey: false, altKey: false, metaKey: false }, origin);

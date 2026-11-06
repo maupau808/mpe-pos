@@ -182,11 +182,9 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
   const items = facts.lines.filter((line) => line.kind !== 'note');
   const multi = items.some((line) => !isOne(dec(line.quantity)) || !isZero(dec(line.discount_amount)));
   const rows = [];
-  const above = [];
   for (const line of facts.lines) {
-    if (line.kind === 'note') {
-      if (style === 'clean') rows.push(fill('clean.row.note', { text: escape(line.description) }));
-      else above.push(fill('counter.row.note', { text: escape(line.description) }));
+    if (line.kind === 'note') {   // notes print where they sit in the sale (Trevor, D16)
+      rows.push(fill(`${style}.row.note`, { text: escape(line.description) }));
       continue;
     }
     const serials = line.serials.length ? escape(line.serials.join(', ').toUpperCase()) : '';
@@ -213,7 +211,6 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
       amount: escape(money(line.line_total)),
     }));
   }
-  rows.unshift(...above);   // counter style: the customer note is the first line of the order
   const total = dec(totals.total);
   const sums = [['Subtotal', totals.subtotal, '']];
   for (const [label, key] of [['Card fee', 'card_fee'], ['Rounding', 'rounding']]) {
