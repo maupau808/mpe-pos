@@ -63,7 +63,8 @@
   const placeOf = number => (/^[A-Z]/.test(s(number)) && PLACES[s(number).charAt(1)]) || ''; // QuickBooks numbers are digits: no place
   // ledger-data.js puts the address state (column U) in r.state and then overwrites r.state with the paid status, so the
   // region is read back from the joined address (column H: "street, city, state, zip"). Drop this once ledger-data keeps it.
-  const regionOf = r => { if (s(r.region)) return s(r.region); const p = s(r.addr).split(',').map(x => x.trim()); return p.length >= 3 ? p[p.length - 2] : ''; };
+  // QuickBooks free-form addresses (lines only, no state) never guess: the city would print as the state (Trevor, Nov 6).
+  const regionOf = r => { if (s(r.region) || isQbo(r)) return s(r.region); const p = s(r.addr).split(',').map(x => x.trim()); return p.length >= 3 ? p[p.length - 2] : ''; };
   // No customer: name the sale by its highest-value line, as Oldger did.
   const topItem = r => (r.items || []).filter(i => i.pn !== 'Note').reduce((a, i) => (!a || i.sub > a.sub ? i : a), null);
   const who = r => r.company || r.name || (topItem(r) && (topItem(r).desc || topItem(r).pn)) || 'No items';
@@ -240,18 +241,20 @@
   function actionsFor(r, canPdf, helcim) { // helcim: { connected, link } for Add pay link (only when History runs in the app with Helcim set up)
     const a = [];
     if (isQbo(r)) { // read-only copy from QuickBooks: no Payments tab, edit, PDF or email draft
-      if (qboOpenQuote(r) && !r.convertedTo) a.push({ act: 'toSale', label: 'Turn quote into sale', primary: true });
-      a.push({ act: 'reprint', label: 'Print' }, { act: 'copy', label: 'Copy to new sale', quiet: true });
+      if (qboOpenQuote(r) && !r.convertedTo) a.push({ act: 'toSale', label: 'Convert to invoice', primary: true });
+      a.push({ act: 'reprint', label: 'Print' });
+      if (canPdf) a.push({ act: 'pdf', label: 'Download' });
+      a.push({ act: 'copy', label: 'Copy to new sale', quiet: true });
       if (r.name || r.company) a.push({ act: 'newInvoice', label: 'New invoice for this customer', quiet: true });
       return a;
     }
     const isVoid = r.state === 'void' || r.state === 'cancelled'; // a cancelled sale gets no Edit or Email draft, as a void one
-    if (r.kind === 'quote' && !r.convertedTo && !isVoid) a.push({ act: 'toSale', label: 'Turn quote into sale', primary: true });
+    if (r.kind === 'quote' && !r.convertedTo && !isVoid) a.push({ act: 'toSale', label: 'Convert to invoice', primary: true });
     if (r.kind === 'quote' && !r.convertedTo && !isVoid && cents(r.total - (r.deposit || 0)) > 0) a.push({ act: 'pay', label: r.deposit > 0 ? `Take more deposit · ${money(r.deposit)} paid` : 'Take deposit' });
     if (r.kind === 'invoice' && UNPAID.has(r.state)) a.push({ act: 'pay', label: r.paid > 0 ? `Take payment · ${money(r.balance)} left` : 'Take payment', primary: true });
     if (r.kind === 'invoice' && UNPAID.has(r.state) && cents(r.balance) === cents(r.total) && helcim && helcim.connected && !helcim.link) a.push({ act: 'payLink', label: 'Add pay link' });
     a.push({ act: 'reprint', label: 'Print' });
-    if (r.kind === 'invoice' && canPdf) a.push({ act: 'pdf', label: 'Download' });
+    if (canPdf) a.push({ act: 'pdf', label: 'Download' }); // the same document as Print, saved as a PDF
     if (r.kind !== 'receipt' && !isVoid) a.push({ act: 'email', label: 'Email' });
     if (!isVoid) a.push({ act: 'edit', label: 'Edit' });
     if (r.kind === 'invoice' && !isVoid && (r.paymentsLive || []).length) a.push({ act: 'undoPay', label: r.paymentsLive.length > 1 ? 'Undo last payment' : r.state === 'paid' ? 'Undo paid' : 'Undo payment' });
@@ -757,10 +760,10 @@
       + (status ? `<div class="od">${r.state === 'overdue' ? '<i aria-hidden="true"></i>' : ''}${esc(status)}</div>` : '') + lines.join('')
       + notes.map(x => `<div class="nt${x.tone ? ' ' + x.tone : ''}"><i aria-hidden="true"></i>${esc(x.text)}</div>`).join('') + '</div>';
   }
-  // The buttons: one big button for the record's next step (owing invoice: Take payment; open quote: Turn into sale), then two rows of
+  // The buttons: one big button for the record's next step (owing invoice: Take payment; open quote: Convert to invoice), then two rows of
   // three boxes in fixed spots (one the record cannot use stays in place, disabled, its reason as the title), then More.
   const RAIL_BOXES = [['reprint', 'Print'], ['email', 'Email'], ['edit', 'Edit'], ['pdf', 'Download'], ['retype', 'Change type'], ['cancel', 'Cancel']];
-  const RAIL_WHY = { edit: 'Edit: not for cancelled, void or QuickBooks sales', reprint: 'Print: not available', pdf: 'Download: invoices only, in the counter app',
+  const RAIL_WHY = { edit: 'Edit: not for cancelled, void or QuickBooks sales', reprint: 'Print: not available', pdf: 'Download: not available here',
     email: 'Email: not for receipts, cancelled sales or QuickBooks copies', retype: 'Change type: not for cancelled, void, internal, converted or QuickBooks records',
     cancel: 'Cancel: not for void, internal, converted or QuickBooks records' };
   function railActsHtml(acts, busy) {
@@ -1128,7 +1131,7 @@
       const draft = st.marks.drafts[r.txnId] || st.marks.drafts[r.number];
       const sent = (st.marks.sent || {})[r.txnId] || (st.marks.sent || {})[r.number];
       const stale = (r.kind === 'invoice' || r.kind === 'quote') && !isQbo(r) ? L.emailedChangedSince(r, st.marks) : '';
-      const acts = actionsFor(r, !!(host() && host().openPdf), helcimState(r)).filter(a => a.act !== 'retype' || typeChoices(r).length);
+      const acts = actionsFor(r, !!(host() && host().downloadPdf), helcimState(r)).filter(a => a.act !== 'retype' || typeChoices(r).length);
       const qn = qboNote(r), look = r.kind === 'invoice' && UNPAID.has(r.state) ? st.looks[r.txnId] : '';
       const key = credits() && !r.qboBuyer ? L.creditKey(r, ctx()) : ''; // the customer on this sale, for its credit tag and Give credit
       // What used to be pills: quiet lines under the money, a dot only for what needs attention.
@@ -1407,9 +1410,9 @@
       if (k === 'pay') return takePayment(r);
       if (k === 'giveCredit') { const key = credits() ? L.creditKey(r, ctx()) : ''; return key && giveCredit(key, r.company || r.name); }
       if (k === 'undoPay') return undoPaid(r.txnId);
-      if (k === 'railMore') return openMenu(el.getBoundingClientRect(), recordMenu(r), k2 => k2.startsWith('type:') ? changeType(r, k2.slice(5)) : act(k2));
+      if (k === 'railMore') return openMenu(el.getBoundingClientRect(), railMenu(r), k2 => k2.startsWith('type:') ? changeType(r, k2.slice(5)) : act(k2));
       if (k === 'undoCredit') { const key = credits() ? L.creditKey(r, ctx()) : '', g = key && lastGiven(st.payRows, key, ctx()); return g && undoGiven(g.payment_id, r.company || r.name); }
-      if (k === 'pdf') return host().openPdf(r.number, r).then(res => { if (!res || !res.ok) toast(PDF_WHY[res && res.reason] || PDF_WHY.missing); else load(); }, () => toast(PDF_WHY.offline));
+      if (k === 'pdf') return run('pdf', async () => { await host().downloadPdf(r, st.request || requestOf(r)); return `${r.number} PDF downloaded.`; });
       if (k === 'reprint') return run('reprint', async () => { const out = await host().reprint(r, st.request || requestOf(r)); return out?.printed === false ? 'Not printed.' : `${r.number} sent to print.`; });
       if (k === 'email') return emailWindow(r);
       if (k === 'toSale') return r.deposit > 0
@@ -1493,11 +1496,17 @@
     // The one record menu (right-click a row, or More in the panel): every action, Give credit / Undo credit for this customer, Check
     // pay link status when it has a link, then Change to.
     function recordMenu(r) {
-      const acts = actionsFor(r, !!(host() && host().openPdf), helcimState(r));
+      const acts = actionsFor(r, !!(host() && host().downloadPdf), helcimState(r));
       const key = credits() && !r.qboBuyer ? L.creditKey(r, ctx()) : '', given = key ? lastGiven(st.payRows, key, ctx()) : null;
       const extra = [key && ['giveCredit', 'Give credit'], given && ['undoCredit', `Undo credit given ${money(given.amount)}`],
         r.kind === 'invoice' && rawLink(r) && st.helcimOk && ['hcCheck', 'Check pay link status']].filter(Boolean);
       return menuItems(r, acts, typeChoices(r), extra);
+    }
+    // More in the panel: the same menu minus what the panel already shows (the big button, Print, Email, Edit, Download, Cancel).
+    const BOXED = new Set(['reprint', 'email', 'edit', 'pdf', 'cancel', 'uncancel']);
+    function railMenu(r) {
+      const big = (actionsFor(r, !!(host() && host().downloadPdf), helcimState(r)).find(a => a.primary) || {}).act;
+      return recordMenu(r).filter(([k]) => !BOXED.has(k) && k !== big);
     }
     function rowMenu(r, x, y) {
       if (ui.section === 'customers') return;
@@ -1691,12 +1700,6 @@
     load();
   }
 
-  const PDF_WHY = {
-    missing: 'No saved PDF for this invoice. Only invoices printed after Nov 1 are saved.',
-    waiting: 'The PDF is still uploading to Drive. Try again in a minute.',
-    needs_sign_in: 'This computer needs one more Google sign-in to save PDFs. Use the app menu: Sign In to Google Again (on the PCs press Alt, then File).',
-    offline: 'Could not reach Google Drive. Check the internet and try again.',
-  };
   const ICON = {
     pdf: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m-4-4 4 4 4-4M5 20h14"/></svg>',
     right: '<svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',

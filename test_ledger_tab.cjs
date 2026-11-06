@@ -102,7 +102,7 @@ test('register: the fill runs only on an empty tab and edit keeps the record ide
   const body = html.slice(start, html.indexOf('\n}\n', start));
   assert.match(body, /if \(!ledgerDraftTabIsEmpty\(\)\) throw/);
   assert.match(body, /kind === 'edit'\) \{ fillTxnIntoPOS\(txn\);/, 'Load into POS path: same txnId and number');
-  assert.match(body, /kind === 'quote-to-sale'\) fillTxnIntoPOS\(txn, 'receipt'\);/);
+  assert.match(body, /kind === 'quote-to-sale'\) fillTxnIntoPOS\(txn, 'invoice'\);/);
   assert.doesNotMatch(body, /clearAll\(/, 'never clears a sale');
 });
 

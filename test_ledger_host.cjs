@@ -275,7 +275,7 @@ test('register: edit keeps the record in place and flags it; copy and new invoic
   run = runOpenLedgerSale(K.saleRequest('newInvoice', r));
   assert.deepEqual(run.log, [['fill', 0, 'invoice'], ['title']]);
   run = runOpenLedgerSale(K.saleRequest('quote', r));
-  assert.deepEqual(run.log, [['fill', 3, 'receipt']]);
+  assert.deepEqual(run.log, [['fill', 3, 'invoice']]); // Convert to invoice
   assert.equal(run.ctx._quoteSource.txnId, 'T-L21007');
   run = runOpenLedgerSale(K.saleRequest('edit', r), { empty: false });
   assert.deepEqual(run.log, []);

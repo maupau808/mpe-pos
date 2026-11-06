@@ -410,17 +410,17 @@
         } finally { frame.remove(); }
       }
     }
-    // The customer copy as a PDF, base64, for the email attachment.
-    async function pdfB64(html) {
+    // The customer copy as a PDF blob: the email attachment and Download.
+    async function pdfBlob(html) {
       if (typeof w.html2canvas !== 'function' || typeof w.html2pdf !== 'function') throw new Error('The PDF maker did not load');
       const frame = await frameFor(html);
       try {
         const canvas = await w.html2canvas(frame.contentDocument.documentElement, { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 816 });
-        const blob = await w.html2pdf().set({ margin: 0, image: { type: 'jpeg', quality: 0.98 }, jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' } })
+        return await w.html2pdf().set({ margin: 0, image: { type: 'jpeg', quality: 0.98 }, jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' } })
           .from(canvas, 'canvas').outputPdf('blob');
-        return await w._blobToB64(blob);
       } finally { frame.remove(); }
     }
+    const pdfB64 = async html => w._blobToB64(await pdfBlob(html));
 
     const host = {
       environment: env.kind,
@@ -508,11 +508,15 @@
       },
       // A keyboard-style scan caught on this page goes to the last sale tab (app only; the website's register catches its own).
       scan: env.scan,
-      openPdf: env.openPdf ? async (number, record) => {
-        const res = await env.openPdf(number);
-        if (res && res.ok && record) await quietMark('pdf_open', record);
-        return res;
-      } : undefined,
+      // Download: the same document Print makes (customer copy), saved as <number>.pdf. Any type, app or website.
+      async downloadPdf(record, request) {
+        const blob = await pdfBlob((await pages(request))[0]);
+        const a = w.document.createElement('a'), url = w.URL.createObjectURL(blob);
+        a.href = url; a.download = (request.number || record.number || 'document') + '.pdf';
+        w.document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => w.URL.revokeObjectURL(url), 60000);
+        await quietMark('pdf', record);
+      },
       // Change a sale's type in place (invoice, receipt, quote). Missing on app 0.3.56 and older.
       setType: env.setType ? (record, to) => guard(env.setType(record.txnId, record.number, record.kind, to)) : undefined,
       refreshQbo: env.refreshQbo,
