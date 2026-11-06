@@ -261,6 +261,7 @@
         signedIn: async () => { const st = await d.google.getStatus(); return !!(st && st.connected); },
         get: range => d.google.sheetsGet(range),
         append: (range, rows) => d.google.sheetsAppend(range, rows),
+        addSettingsTab: typeof d.google.addSettingsTab === 'function' ? () => d.google.addSettingsTab() : undefined, // app 0.3.71+
         identity: () => d.google.gmailIdentity(),
         sendMail: typeof d.google.sendGmail === 'function' ? raw => d.google.sendGmail(raw) : undefined, // app 0.3.61+
         printDocument: request => d.printDocument(request),
@@ -299,6 +300,7 @@
         get: range => p.sheetsGet(range, { retryThrottle: false }),
         append: (range, rows) => p.sheetsAppend(range, rows),
         batchUpdate: requests => p.sheetsBatchUpdate(requests),
+        addSettingsTab: () => p.sheetsBatchUpdate([{ addSheet: { properties: { title: 'Settings' } } }]),
         // Change to (website): the same checked one-cell write the app's main process does (google-service setTransactionType).
         setType: typeof p.sheetsUpdate === 'function' ? async (id, num, from, to) => {
           const rows = await p.sheetsGet('Transactions!A:P', { retryThrottle: false });
@@ -518,6 +520,9 @@
       readQboHistory: env.qboHistory ? known => guard(env.qboHistory(known)) : undefined,
       // One-time, by hand, after Trevor's go (website only: the app's Ledger tab has no tab-adding permission).
       setupPaymentsTab: env.batchUpdate ? () => setupPaymentsTab(env) : undefined,
+      // The shop-wide Review QR switch (POS/shop-settings.js): Settings!A:D read, Settings!A1 append, the tab added on its first write.
+      shopSettings: root.MPEShopSettings ? root.MPEShopSettings.create({ get: env.get, append: env.append, addTab: env.addSettingsTab,
+        storage: env.storage, place: root.MPEShopSettings.placeLabel(env.place, env.kind === 'app') }) : undefined,
     };
     return host;
   }

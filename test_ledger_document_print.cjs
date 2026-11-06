@@ -21,6 +21,7 @@ const build = (docType, screen = {}) => {
     captureOrder: () => screen.order || null, activeDocNumber: () => screen.number || null,
     ledgerBillingAddress: () => screen.billing || { lines: [], city: '', region: '', postal_code: '', country: '' },
     _currentTxnDate: screen.date || null, _pendingTxnDate: null, Intl, Date, Math, String, Number,
+    shopReviewOn: () => !!screen.review, // the shop-wide Review QR switch (a local cache read in the page)
   };
   vm.createContext(sandbox);
   vm.runInContext(page.slice(page.indexOf('const TAX_RATE'), page.indexOf('const CARD_FEE_RATE') + 30) + ';\n' + page.slice(page.indexOf('function checkoutTotals'), page.indexOf('let discountControlsEnabled')), sandbox);
@@ -91,4 +92,14 @@ test('a printed invoice stays an invoice while it is on screen; Quote and Intern
   assert.equal(after('quote', { saved: true }), 'receipt');
   assert.equal(after('internal', { saved: true }), 'receipt');
   assert.equal(after('receipt', { saved: true }), 'receipt');
+});
+
+test('Review QR: the invoice request carries review only when the shop switch is on; quotes never', () => {
+  const order = { customer: { name: 'TEST', company: '', phone: '', email: '' }, toggles: { cardFee: false },
+    items: [{ pn: 'TST1', desc: 'Test part', qty: 1, ea: 10, sub: 10, sn: [] }] };
+  const screen = { order, number: 'L21001', date: '2026-11-05T20:00:00.000Z' };
+  assert.equal(build('invoice', { ...screen, review: true }).review, true);
+  assert.equal('review' in build('invoice', screen), false);
+  assert.equal('review' in build('quote', { ...screen, number: 'Q21001', review: true }), false);
+  assert.equal(build('receipt', { ...screen, review: true }), null, 'receipts print the page layout at the register');
 });

@@ -130,6 +130,7 @@ function officialExtras(extras) {
   }
   const revision = extras && extras.revision;
   if (Number.isInteger(revision) && revision >= 1) clean.revision = revision;
+  if (extras && extras.review === true) clean.review = true;   // the shop-wide Review QR switch is on (POS/shop-settings.js)
   return clean;
 }
 
@@ -300,7 +301,11 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
     closing: escape(cfg.closing),
     after: bill.length && kind === 'receipt' ? fill('counter.cust', { lines: lines(bill) }) : '',
     pay: footers.length ? fill('counter.pay', { paragraphs: paragraphs(footers) }) : '',
-    sig: (kind === 'invoice' && copy !== 'customer' ? fill('counter.sig', { po: escape(firstOf(extra.po, /[,;\n]/)) }) : '')
+    // The review request (text + Google review QR, Trevor 2026-11-05): receipts and invoices, the customer's copy only (an invoice's
+    // copy 'customer'; a receipt has one copy). Never quotes or the merchant copy. An older cached template has no piece: none prints.
+    sig: (extra.review && pieces.has('counter.review') && (kind === 'receipt' ? copy !== 'merchant' : kind === 'invoice' && copy === 'customer')
+      ? piece('counter.review') : '')
+      + (kind === 'invoice' && copy !== 'customer' ? fill('counter.sig', { po: escape(firstOf(extra.po, /[,;\n]/)) }) : '')
       + (copy && pieces.has('counter.copy') ? fill('counter.copy', { label: copy === 'customer' ? 'Customer copy' : 'Merchant copy' }) : ''),
   });
 }

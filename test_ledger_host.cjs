@@ -631,3 +631,36 @@ test('an app that refuses Payments A:K: reads A:J, keeps working, and reports cr
   assert.equal(store.wide(), false);
   assert.equal((await store.readAll()).filter(r => r[0] === 'pay_old').length, 1);
 });
+
+test('Review QR: the app host reads Settings!A:D, appends Settings!A1 and adds only the Settings tab through the preload; the website through the register', async () => {
+  globalThis.MPEShopSettings = require('./shop-settings.js');
+  try {
+    const mem = () => { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; };
+    const sheet = fakeSheet(), calls = [];
+    const desktop = { role: 'ledger', google: {
+      getStatus: async () => ({ connected: true }),
+      sheetsGet: r => { calls.push(['get', r]); return sheet.get(r); },
+      sheetsAppend: (r, rows) => { calls.push(['append', r]); return sheet.append(r, rows); },
+      addSettingsTab: () => { calls.push(['addTab']); return sheet.batchUpdate([{ addSheet: { properties: { title: 'Settings' } } }]); },
+    } };
+    const store = mem(); store.setItem('mpeRegisterDigitV1', '2');
+    const app = K.createHost(K.environment({ mpeDesktop: desktop, navigator: { userAgent: 'Windows' }, localStorage: store }), {});
+    assert.equal(await app.shopSettings.refresh({ force: true }), 'ok');
+    assert.equal(app.shopSettings.get('review_qr'), 'off', 'no tab = off');
+    await app.shopSettings.set('review_qr', 'on');
+    assert.deepEqual(sheet.tabs.Settings.map(r => r.slice(0, 2)), [['key', 'value'], ['review_qr', 'on']]);
+    assert.equal(sheet.tabs.Settings[1][3], 'PC Left');
+    assert.deepEqual([...new Set(calls.map(c => c.join(' ')))].sort(), ['addTab', 'append Settings!A1', 'get Settings!A:D']);
+    // An app 0.3.70 refuses the range: old_app, the update text, nothing thrown at load.
+    const old = K.createHost(K.environment({ mpeDesktop: { role: 'ledger', google: { getStatus: async () => ({ connected: true }),
+      sheetsGet: async () => { throw new Error('Google Sheet range is not allowed for Ledger'); }, sheetsAppend: async () => { throw new Error('not allowed'); } } }, navigator: {}, localStorage: mem() }), {});
+    assert.equal(await old.shopSettings.refresh({ force: true }), 'old_app');
+    // Website: the register's own sheet calls; the tab is added with the exact addSheet through its batchUpdate.
+    const web = fakeSheet(), parent = { sheetsGet: r => web.get(r), sheetsAppend: (r, rows) => web.append(r, rows), sheetsBatchUpdate: q => web.batchUpdate(q),
+      googleSessionAvailable: () => true, localStorage: mem() };
+    const site = K.createHost(K.environment({ parent, localStorage: mem() }), {});
+    await site.shopSettings.set('review_qr', 'on');
+    assert.deepEqual(web.calls.batch, [[{ addSheet: { properties: { title: 'Settings' } } }]]);
+    assert.equal(web.tabs.Settings[1][3], 'browser');
+  } finally { delete globalThis.MPEShopSettings; }
+});

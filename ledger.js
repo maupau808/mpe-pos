@@ -324,7 +324,8 @@
     const rest = cents(r.total) - cents(subtotal) - cents(subtotal * TAX_RATE);
     return Math.abs(rest) >= 0.05 ? rest : 0;
   }
-  function requestFromRecord(rec) {
+  // opts.review: the shop-wide Review QR switch is on; it rides only on receipts and invoices (the renderer prints it on the customer copy).
+  function requestFromRecord(rec, opts) {
     const r = rec.kind === 'quote' ? rec : withDeposit(rec); // a quote's deposit prints in the totals (deposit below), not as a note
     const items = r.items.filter(i => i.pn !== 'Note');
     const subtotal = items.reduce((a, i) => a + i.sub, 0);
@@ -346,6 +347,7 @@
           original_unit_amount: m2(i.off ? i.origEa : i.ea), discount_amount: m2(i.off || 0), unit_amount: m2(i.ea), line_total: m2(i.sub) })),
       totals: { subtotal: m2(subtotal), card_fee: m2(cardFee), tax: m2(tax),
         rounding: m2(cents(r.total) - cents(subtotal) - cents(tax) - cents(cardFee)), total: m2(r.total) },
+      ...(opts && opts.review && (r.kind === 'receipt' || r.kind === 'invoice') ? { review: true } : {}),
     };
   }
 
@@ -379,7 +381,8 @@
   function documentPages(request, renderer, template, settings) {
     const facts = factsFromRequest(request);
     const po = s(request.po);
-    const extras = { ...(po ? { po } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}), ...(request.type === 'quote' && request.deposit ? { deposit: request.deposit } : {}) };
+    const extras = { ...(po ? { po } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}), ...(request.type === 'quote' && request.deposit ? { deposit: request.deposit } : {}),
+      ...(request.review === true && (request.type === 'receipt' || request.type === 'invoice') ? { review: true } : {}) };
     const copies = request.type === 'invoice' ? ['customer', 'merchant'] : [undefined];
     return copies.map(copy => renderer.renderOfficialHtml(template, facts, extras, settings || renderer.DEFAULT_SETTINGS, copy));
   }
@@ -774,6 +777,13 @@
     const items = acts.filter(a => !a.disabled && a.act !== 'retype' && a.act !== 'payLink').map(a => [a.act, a.act === 'cancel' && r.kind !== 'quote' ? 'Remove (cancel sale)' : a.label]).concat(extra);
     return types.length ? items.concat([['hint', 'Change type']], types) : items;
   }
+  // The shop-wide Review QR switch (POS/shop-settings.js), a quiet line under the panel's buttons. status 'old_app': an app that refuses
+  // the Settings tab shows the value it has and cannot change it.
+  function reviewSwitchHtml(on, status, oldText) {
+    const old = status === 'old_app';
+    return `<div class="rq"><button type="button" class="rq-sw" role="switch" aria-checked="${on}" data-act="reviewQr"${old ? ` disabled title="${esc(oldText)}"` : ''}>`
+      + `<i aria-hidden="true"></i>Review QR</button><span>${esc(old ? oldText : 'on receipts and invoices, every register')}</span></div>`;
+  }
   const timelineHtml = hist => `<div class="tl"><h3>Timeline</h3><ol>${hist.map(e => `<li>${esc(e.t)}<span>${esc([fmtD(e.d), e.at].filter(Boolean).join(' · '))}</span>${e.before != null ? `<a class="rec" href="#" data-before="${e.before}">See it before this edit</a>` : ''}</li>`).join('')}</ol></div>`;
   // History's pay link option for the email window (History only): invoices with a link, or that can get one. startMessage reuses the
   // host's own email builder: messages.token is the starting message prepared with PAY_TOKEN as the link, so a new url is swapped in.
@@ -822,7 +832,7 @@
     const live = L.livePayments(L.parsePayments(payRows));
     return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
   }
-  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, railMoneyHtml, menuItems, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, embedFallsBack, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, railMoneyHtml, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, embedFallsBack, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest, documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
@@ -835,6 +845,16 @@
       today: '', busy: '', edit: null, template: null, docKey: '', pages: null, docErr: '',
       qbo: null, qboVersion: '', qboAt: 0, qboBusy: false, qboWarned: false, qboAgain: false, helcimOk: false, helcimP: null, helcimAt: { at: 0 }, helcimBusy: false, helcimWhen: 0, looks: {}, qboRun: null, qboTried: false, qboGenerated: '', refreshing: false, refreshFailed: false, rev: 0, limit: PAGE, view: null };
     const host = () => root.MPELedgerHost;
+    const shop = () => host() && host().shopSettings;
+    const reviewOn = () => !!shop() && shop().get('review_qr') === 'on';
+    const requestOf = r => requestFromRecord(r, { review: reviewOn() });
+    // Review QR: shows the new state at once here; the row goes to the Settings tab in the background (other computers within 5 minutes).
+    function reviewToggle() {
+      const ss = shop();
+      if (!ss) return;
+      ss.set('review_qr', reviewOn() ? 'off' : 'on').catch(e => { toast(s(e && e.message) || 'Saved on this computer. It is shared when the sheet answers.'); draw(); });
+      draw();
+    }
     const remember = () => { if (store) saveUi(store, ui); };
     const recById = id => st.records.find(r => r.txnId === id);
     const byId = id => (ui.section === 'customers' ? (st.cust && st.cust.map.get(id)) : recById(id)); // the selected row of the section on screen
@@ -865,6 +885,11 @@
     async function load(noMove) {
       const h = host();
       if (!h) { st.phase = 'nohost'; return draw(); }
+      if (h.shopSettings && !st.shopStarted) { // background only: page load, every 5 minutes, window shown again; never on a print
+        st.shopStarted = true;
+        h.shopSettings.subscribe(() => { if (st.phase === 'ready' && !st.edit) draw(); });
+        h.shopSettings.start(root);
+      }
       if (!st.model) { st.phase = 'loading'; draw(); }
       let fresh = false;
       try {
@@ -1113,7 +1138,7 @@
         r.kind === 'invoice' && staleLink(r) && { text: 'Pay link needs a new link: the total changed', tone: 'warn' },
         look && { text: look === STALE_LOOK ? STALE_LOOK : 'Needs a look: ' + look, tone: 'late' }].filter(Boolean);
       $('rail').innerHTML = docLineHtml(r) + custCardHtml(r, key ? creditOf(key) : 0) + railMoneyHtml(r, st.today, notes)
-        + `<div class="acts">${railActsHtml(acts, st.busy)}</div>` + timelineHtml(historyFor(r, st.payRows, st.marks, st.records));
+        + `<div class="acts">${railActsHtml(acts, st.busy)}${shop() ? reviewSwitchHtml(reviewOn(), shop().status(), root.MPEShopSettings.OLD_APP_TEXT) : ''}</div>` + timelineHtml(historyFor(r, st.payRows, st.marks, st.records));
     }
     // During an edit the panel keeps its shape (D14, D13): the customer card turns into the boxes, Save and Cancel take the buttons'
     // spots (#editRail, redrawn by drawEdit), the timeline stays. A redraw keeps the caret.
@@ -1126,7 +1151,7 @@
 
     // The document, filled from document-template.html exactly as the app prints it, scaled to the middle column.
     async function drawDocument(r) {
-      const request = requestFromRecord(r);
+      const request = requestOf(r);
       const key = JSON.stringify(request);
       if (key === st.docKey) return;
       st.docKey = key; st.request = request;
@@ -1276,7 +1301,7 @@
     // Email: the shared email window (email-window.js). It sends only when a person presses Send. An invoice that has a pay link, or
     // can get one (the same rule as actionsFor's payLink), passes the window its pay link option: Add pay link lives only there.
     function emailWindow(r) {
-      const request = st.request || requestFromRecord(r);
+      const request = st.request || requestOf(r);
       const url = r.kind === 'invoice' ? linkFor(r) : '', canAdd = actionsFor(r, false, helcimState(r)).some(a => a.act === 'payLink');
       const add = async () => { const out = await addPayLink(host(), r); if (!out.ok) return { error: out.message }; load(true); return { url: out.url }; };
       run('email', async () => {
@@ -1361,6 +1386,7 @@
       if (k === 'editSave') { if (st.edit && st.edit.save()) drawEdit(); return; }
       if (k === 'editCancel') return st.edit && st.edit.cancel();
       if (st.edit) return toast(LOCK);
+      if (k === 'reviewQr') return reviewToggle();
       if (k === 'retry') return load();
       if (k === 'qboRefresh') return refreshQbo();
       if (k === 'hcCheck') return helcimCheck(true);
@@ -1384,7 +1410,7 @@
       if (k === 'railMore') return openMenu(el.getBoundingClientRect(), recordMenu(r), k2 => k2.startsWith('type:') ? changeType(r, k2.slice(5)) : act(k2));
       if (k === 'undoCredit') { const key = credits() ? L.creditKey(r, ctx()) : '', g = key && lastGiven(st.payRows, key, ctx()); return g && undoGiven(g.payment_id, r.company || r.name); }
       if (k === 'pdf') return host().openPdf(r.number, r).then(res => { if (!res || !res.ok) toast(PDF_WHY[res && res.reason] || PDF_WHY.missing); else load(); }, () => toast(PDF_WHY.offline));
-      if (k === 'reprint') return run('reprint', async () => { const out = await host().reprint(r, st.request || requestFromRecord(r)); return out?.printed === false ? 'Not printed.' : `${r.number} sent to print.`; });
+      if (k === 'reprint') return run('reprint', async () => { const out = await host().reprint(r, st.request || requestOf(r)); return out?.printed === false ? 'Not printed.' : `${r.number} sent to print.`; });
       if (k === 'email') return emailWindow(r);
       if (k === 'toSale') return r.deposit > 0
         ? run('quote', async () => { await host().openInNewSale({ kind: 'quote', txn: withDeposit(r) }); return `Quote ${r.number} opened in a new sale tab. Deposit ${money(r.deposit)} already paid: collect ${money(cents(r.total - r.deposit))}.`; })

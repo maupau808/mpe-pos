@@ -268,9 +268,20 @@ body.doc-internal .sum-internal { display: block; }
 .checkout-summary .summary { margin-left: 0; }
 .discounts-trigger { margin-bottom: 1rem; }
 .discounts-trigger.active { border-color: #7cad80; background: #eef5ef; color: #2d7a3a; }
-.review-star-btn { background: none; border: 1.5px solid #d9dfd6; border-radius: 6px; cursor: pointer; font-size: 13px; padding: 6px 8px; line-height: 1; white-space: nowrap; transition: border-color .15s, background .15s; }
-.review-star-btn:hover { border-color: #aaa; }
-.review-star-btn.active { border-color: #4caf50; background: #f1f8e9; }
+/* Review QR: one shop-wide switch (POS/shop-settings.js), beside Print. Green when on; it never waits on the sheet. */
+.review-qr-sw { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 10px 0 8px; border: 1px solid #d5ddd3; border-radius: 8px; background: transparent; color: #202c24; font: inherit; font-size: 13px; font-weight: 650; white-space: nowrap; cursor: pointer; flex-shrink: 0; }
+.review-qr-sw i { position: relative; width: 28px; height: 16px; border-radius: 8px; background: #c4ccc2; transition: background .15s; }
+.review-qr-sw i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+.review-qr-sw[aria-checked="true"] { border-color: #9cc3a8; background: #e8f2eb; }
+.review-qr-sw[aria-checked="true"] i { background: #24683a; }
+.review-qr-sw[aria-checked="true"] i::after { transform: translateX(12px); }
+.review-qr-sw:hover { border-color: #9cc3a8; }
+.review-qr-sw:focus-visible { outline: 2px solid #9cc3a8; outline-offset: 2px; }
+.review-qr-sw:disabled { cursor: default; color: #5f6b61; }
+.review-qr-sw:disabled i { opacity: .55; }
+body.dark .review-qr-sw { color: #e1e8dd; border-color: #48544a; }
+body.dark .review-qr-sw[aria-checked="true"] { background: #2c3d30; border-color: #779379; }
+@media print { .review-qr-sw { display: none !important; } }
 .btn-clear:hover { background: #eef1ec; }
 .loading-msg { font-size: 14px; color: #888; padding: 6px 0; }
 .note-desc-input { font-size: 14px; font-family: inherit; padding: 4px 6px; border: 1px solid #d9dfd6; border-radius: 5px; background: #fffef0; color: #1a1a1a; width: 100%; box-sizing: border-box; resize: none; overflow: hidden; min-height: 28px; line-height: 1.4; display: block; }
@@ -893,7 +904,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
            never moves a button or a row. -->
       <span class="scan-slot" id="scanSlot"></span>
       <span style="display:none">
-        <button id="signatureBtn"></button><button id="reviewBtn"></button><button id="salesViewBtn"></button><button id="cardFeeBtn"></button>
+        <button id="signatureBtn"></button><button id="salesViewBtn"></button><button id="cardFeeBtn"></button>
       </span>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
     </div>
@@ -917,7 +928,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
               <button class="drive-btn hist-btn" id="scannerModeBtn" type="button" onclick="setScannerModeActive(true)">Scanner Mode</button>
               <div id="togglesMenu" style="display:contents">
                 <label class="menu-check"><input type="checkbox" id="tgSignature" onchange="toggleSignature()"> ✍ Signature</label>
-                <label class="menu-check"><input type="checkbox" id="tgReview" onchange="toggleReview()"> ⭐ Review</label>
                 <label class="menu-check"><input type="checkbox" id="tgSalesView" onchange="toggleSalesView()"> 👁 Sales View</label>
                 <label class="menu-check"><input type="checkbox" id="tgCardFee" onchange="toggleCardFee(this.checked)"> 💳 Card fee (3%)</label>
               </div>
@@ -1085,7 +1095,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
           <div class="print-choice-option"><div class="print-choice-label print-auto-note">(Auto)</div><button class="btn-big btn-filled" id="autoPrintBtn" onclick="autoPrint()" title="Send one single-sided copy directly to the Brother counter printer">Print</button></div>
         </div>
       </div>
-      <button class="review-star-btn" id="reviewStarBtn" onclick="toggleReview()" title="Toggle review request">😄?</button>
+      <button type="button" class="review-qr-sw" id="reviewQrSwitch" role="switch" aria-checked="false" onclick="toggleShopReviewQr()" title="Google review QR on receipts and invoices (customer copy), every register"><i aria-hidden="true"></i>Review QR</button>
     </div>
     <div class="mahalo-cell"><div class="mahalo">Mahalo for choosing us!</div></div>
     <div class="checkout-summary">
@@ -1196,6 +1206,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   <script src="email-window.js"></script>
   <script src="ledger-data.js"></script>
   <script src="ledger-host.js"></script>
+  <script src="shop-settings.js"></script>
   <script src="print-relay.js"></script>
 <script>
 // ─── CUSTOMER LIST (generated from QBO export by Playground/Archive/scripts_archive/build_customers.py) ─
@@ -1206,7 +1217,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.05.6';
+const POS_RELEASE = '2026.11.06.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1443,6 +1454,7 @@ const MPE_EDIT_SESSION_PAGE = !!(window.mpeDesktop && window.mpeDesktop.editSess
   || (window.parent !== window && /(?:^|[?&])mpeEditSession=1(?:&|$)/.test(location.search));
 function googleConnectedActions() {
   setSignedInUI();
+  if (shopSettings && !MPE_EDIT_SESSION_PAGE) shopSettings.refresh({ force: true }); // background, right after sign-in; Review QR
   scheduleTokenRefresh();
   fetchFromDrive();
   if (MPE_EDIT_SESSION_PAGE) return;
@@ -8707,7 +8719,7 @@ function buildCopy2HTML() {
   const dateHtml = document.getElementById('printDate')?.innerHTML || '';
   const docTitleText = document.getElementById('printDocTitle')?.textContent || '';
   const docNumText = document.getElementById('printDocNum')?.textContent || '';
-  const reviewOn = document.getElementById('reviewBtn')?.classList.contains('active');
+  const reviewOn = shopReviewOn(); // copy2 is the receipt customer's copy
   const invoiceOn = _docType === 'invoice';
   const subtotal = document.getElementById('sumSubtotal')?.textContent || '—';
   const cardFeeActive = document.getElementById('cardFeeBtn')?.classList.contains('active') || false;
@@ -8918,6 +8930,7 @@ function ledgerDocumentRequest() {
         discount_amount: m(item.discountPerUnit || 0), unit_amount: m(item.ea), line_total: m(item.sub) })),
     totals: { subtotal: m(subtotal), card_fee: m(t.cardFee), tax: m(t.tax),
       rounding: m(cents(t.total) - cents(subtotal) - cents(t.tax) - cents(t.cardFee)), total: m(t.total) },
+    ...(_docType === 'invoice' && shopReviewOn() ? { review: true } : {}), // shop-wide Review QR: customer copy only (renderer)
   };
 }
 
@@ -9040,11 +9053,11 @@ function preparePrint() {
       copy2.classList.remove('active');
     }
   }
-  // Review request prints on the customer's copy: copy2 when it prints, else copy1.
-  const reviewActive = document.getElementById('reviewBtn')?.classList.contains('active');
+  // Review request (the shop-wide Review QR switch, a cached local read): receipts and invoices, on the customer's copy: copy2
+  // when it prints, else copy1. Never quotes or Internal.
   const reviewEl = document.getElementById('reviewMsg');
   if (reviewEl) {
-    const showReview = reviewActive && !copy2On && !isInternal;
+    const showReview = shopReviewOn() && (_docType === 'receipt' || _docType === 'invoice') && !copy2On && !isInternal;
     reviewEl.innerHTML = showReview ? buildReviewBlock() : '';
     reviewEl.style.display = showReview ? 'block' : 'none';
   }
@@ -9989,7 +10002,6 @@ function captureOrder() {
   };
   const toggles = {
     signature: document.getElementById('signatureBtn')?.classList.contains('active') || false,
-    review:    document.getElementById('reviewBtn')?.classList.contains('active') || false,
     salesView: document.getElementById('salesViewBtn')?.classList.contains('active') || false,
     cardFee:   document.getElementById('cardFeeBtn')?.classList.contains('active') || false,
   };
@@ -10436,11 +10448,10 @@ async function reprintOrder(idx) {
     // Expand panel if any field has data
     const hasCust = Object.values(order.customer).some(v => v);
   }
-  // Restore toggle states (signature, review, salesView)
+  // Restore toggle states (signature, salesView). An old saved per-sale review flag is ignored: Review QR is shop-wide now.
   if (order.toggles) {
     const sig = document.getElementById('signatureBtn');
     if (order.toggles.signature && !sig?.classList.contains('active')) toggleSignature();
-    if (order.toggles.review)    toggleReview();
     if (order.toggles.salesView && !document.getElementById('salesViewBtn')?.classList.contains('active')) toggleSalesView();
     if (order.toggles.cardFee) toggleCardFee(true);
   }
@@ -11279,9 +11290,33 @@ function toggleSignature() {
   const btn = document.getElementById('signatureBtn');
   btn.classList.toggle('active');
 }
-function toggleReview() {
-  const active = document.getElementById('reviewBtn')?.classList.toggle('active');
-  document.getElementById('reviewStarBtn')?.classList.toggle('active', !!active);
+// ── Review QR (shop-wide, Trevor 2026-11-05) ───────────────────────────────
+// One switch for every register and the website (Settings tab, POS/shop-settings.js). Print reads only the local cache
+// (shopReviewOn, synchronous); the sheet is read in the background (load, every 5 minutes, window shown) and written after a press.
+var shopSettings = window.MPEShopSettings ? MPEShopSettings.create({ // var: googleConnectedActions may run before this line
+  get: range => sheetsGet(range, { retryThrottle: false }),
+  append: (range, rows) => (googleSessionAvailable() ? sheetsAppend(range, rows) : Promise.reject(new Error('Not signed in'))), // never opens sign-in
+  addTab: () => sheetsBatchUpdate([{ addSheet: { properties: { title: 'Settings' } } }]),
+  place: MPEShopSettings.placeLabel(registerDigit(), !!window.mpeDesktop),
+}) : null;
+function shopReviewOn() { return !!shopSettings && shopSettings.get('review_qr') === 'on'; }
+function drawShopReviewQr() {
+  const sw = document.getElementById('reviewQrSwitch');
+  if (!sw) return;
+  const on = shopReviewOn(), old = !!shopSettings && shopSettings.status() === 'old_app';
+  sw.setAttribute('aria-checked', String(on));
+  sw.disabled = !shopSettings || old;
+  sw.title = old ? MPEShopSettings.OLD_APP_TEXT : `Google review QR ${on ? 'prints' : 'is off'} on receipts and invoices (customer copy), every register`;
+}
+function toggleShopReviewQr() {
+  if (!shopSettings) return;
+  shopSettings.set('review_qr', shopReviewOn() ? 'off' : 'on').catch(() => drawShopReviewQr()); // offline: kept here, sent on the next refresh
+  drawShopReviewQr();
+}
+if (shopSettings) {
+  shopSettings.subscribe(drawShopReviewQr);
+  // A hidden edit-session page prints nothing on its own and runs no background reads. Others: a short wait for Google, then the loop.
+  window.addEventListener('load', () => { drawShopReviewQr(); if (!MPE_EDIT_SESSION_PAGE) setTimeout(() => shopSettings.start(window), 3000); });
 }
 
 // ── Dark mode ───────────────────────────────────────────────────────────────
@@ -11315,7 +11350,7 @@ function toggleSalesView() {
 }
 
 function syncToggles() {
-  const map = { tgSignature:'signatureBtn', tgReview:'reviewBtn', tgSalesView:'salesViewBtn', tgCardFee:'cardFeeBtn' };
+  const map = { tgSignature:'signatureBtn', tgSalesView:'salesViewBtn', tgCardFee:'cardFeeBtn' };
   for (const cb in map) { const c = document.getElementById(cb), b = document.getElementById(map[cb]); if (c && b) c.checked = b.classList.contains('active'); }
 }
 function toggleMenu(ev, id) {
@@ -12136,7 +12171,7 @@ let mounted=false,printing=false,frame=0,busy=false,lastIds=null,lastCount=0,sea
 const originals=[];
 const root=document.createElement('section');root.id='counterView';root.setAttribute('aria-label','Counter POS');
 root.innerHTML=`<header class="cv-top"><strong class="cv-edit-title" id="cvEditTitle"></strong><span class="cv-edit-type" id="cvEditType"></span><div class="cv-tabs" id="cvTabs"></div><button class="cv-new" id="cvNew" type="button" title="New sale" aria-label="New sale">+</button><div class="cv-docs"></div><div class="cv-history"></div><button class="cv-icon" id="cvOptions" type="button">Options</button><button class="cv-icon" id="cvFullScreen" type="button" title="Full screen" aria-label="Full screen" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button><button class="cv-icon" id="cvFrontLock" type="button" title="Keep POS in front" aria-label="Keep POS in front" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 3 8 0-1 6 4 4v2H5v-2l4-4-1-6zM12 15v7"/></svg></button></header>
-<div class="cv-quote" hidden><label><input type="checkbox" data-cv-toggle="Signature">Signature</label><label><input type="checkbox" data-cv-toggle="Review">Review request</label><label><input type="checkbox" data-cv-toggle="SalesView">Sales View</label></div>
+<div class="cv-quote" hidden><label><input type="checkbox" data-cv-toggle="Signature">Signature</label><label><input type="checkbox" data-cv-toggle="SalesView">Sales View</label></div>
 <div class="cv-body"><div class="cv-work"><div class="cv-head"><span></span><span><span>Description</span><span class="cv-reorder-label">Need to reorder?</span></span><span class="cv-support">Cost</span><span class="cv-support">Margin %</span><span class="cv-support cv-discount-head">Discount</span><span>Ea.</span><span>Qty</span><span>Price</span><span></span></div><div id="cvItems"></div><div class="cv-entry"><input id="cvEntry" autocomplete="off" aria-label="New item" placeholder="Part number or description…"></div><div id="cvReview"></div></div>
 <aside class="cv-checkout"><div class="cv-customer-label">Customer</div><div id="cvCustomer"></div><button class="cv-note" id="cvNote" type="button">Add note</button><div id="cvPo"></div><div id="cvLedger"></div><div class="cv-summary"><div class="cv-order"><button id="cvOrderToggle" type="button" aria-expanded="true">Order discount</button><div class="cv-discount-mode" role="group" aria-label="Order discount type"><button id="cvOrderMoney" type="button" aria-pressed="true">$</button><button id="cvOrderPercent" type="button" aria-pressed="false">%</button></div><input id="cvOrderValue" aria-label="Whole order discount" type="text" inputmode="decimal" value="0.00" autocomplete="off"></div><div id="cvTotals"></div></div><label class="cv-fee"><input id="cvCardFee" type="checkbox">Card fee · 3%</label><div id="cvFinalize"></div><div id="cvCharge"></div></aside></div>
 <div class="cv-deck"><button class="cv-command delete" type="button" data-cv-command="DELETE"><svg data-cv-qr="delete" role="img" aria-label="Clear / Price Check QR"></svg><span>Clear / Price Check</span></button><button class="cv-command print" type="button" data-cv-command="PRINT"><svg data-cv-qr="print" role="img" aria-label="Print QR"></svg><span>Print</span><span class="cv-mirror" aria-hidden="true">Print</span></button><button class="cv-command next" type="button" data-cv-command="SAVENEW"><svg data-cv-qr="clear" role="img" aria-label="Save / Next Transaction QR"></svg><span>Save / Next Transaction</span></button></div><div class="cv-feedback" role="status" id="cvFeedback"></div>`;
@@ -12168,7 +12203,7 @@ function unmount(){if(!mounted)return;mounted=false;originals.slice().reverse().
 window.setCounterClassicView=function(classic){localStorage.setItem(VIEW_KEY,classic?'1':'0');q('#cvClassic').checked=!!classic;if(classic)unmount();else mount();};window.mountCounterViewForEdit=()=>mount();/* History's edit always uses the compact lines layout, without changing the saved view choice */
 const classic=document.createElement('label');classic.className='menu-check';classic.innerHTML='<input type="checkbox" id="cvClassic"> Classic view';q('#adminMenu').append(classic);q('#cvClassic').addEventListener('change',e=>window.setCounterClassicView(e.target.checked));
 move('#docTypeSel',q('.cv-docs'));move('#docPO',q('#cvPo'));
-const top=q('.cv-top');move('#phoneListBtn',top);move('#emailDocBtn',top);move('#exportPdfBtn',top);move('#printBtn',top);move(q('#adminMenuBtn')?.closest('.menu-wrap'),top);move('#themeToggle',top);move('#custPanel',q('#cvCustomer'));move(q('.checkout-summary .summary'),q('#cvTotals'));move('#presellWrap',q('.cv-docs'));move('#chargeCardBtn',q('#cvCharge'));move('#finalizeInvoiceBtn',q('#cvFinalize'));move('#ledgerCustomerChooser',q('#cvLedger'));move('#ledgerInvoiceStatus',q('#cvLedger'));move('#licenseDiag',q('#cvCustomer'));move('#scanPanel',q('#cvReview'));
+const top=q('.cv-top');move('#phoneListBtn',top);move('#emailDocBtn',top);move('#exportPdfBtn',top);move('#printBtn',top);move('#reviewQrSwitch',top);move(q('#adminMenuBtn')?.closest('.menu-wrap'),top);move('#themeToggle',top);move('#custPanel',q('#cvCustomer'));move(q('.checkout-summary .summary'),q('#cvTotals'));move('#presellWrap',q('.cv-docs'));move('#chargeCardBtn',q('#cvCharge'));move('#finalizeInvoiceBtn',q('#cvFinalize'));move('#ledgerCustomerChooser',q('#cvLedger'));move('#ledgerInvoiceStatus',q('#cvLedger'));move('#licenseDiag',q('#cvCustomer'));move('#scanPanel',q('#cvReview'));
 q('#printBtn').classList.add('cv-icon');q('#printBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 8V3h12v5M6 17H3V9h18v8h-3M6 14h12v7H6zM17 11h1"/></svg>';q('#printBtn').setAttribute('aria-label','Manual print');q('#printBtn').title='Manual print';
 q('#emailDocBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg>';q('#emailDocBtn').setAttribute('aria-label','Email PDF');
 q('#exportPdfBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M13 3H5v18h14V9zM13 3v6h6M8 14h8M12 11v7m-3-3 3 3 3-3"/></svg>';q('#exportPdfBtn').setAttribute('aria-label','Download PDF');
@@ -12272,8 +12307,8 @@ const oldClear=clearAll;clearAll=function(){const result=oldClear();if(result!==
 // Desktop continues to own its independent native sale tabs. Browser sessions
 // retain detached canonical rows per tab; switching never saves/clears a sale.
 const browserTabs=new Map();let activeTab=1,nextTab=2;
-function snapshotTab(){return{rows:[...tbody.childNodes],mobile:[...q('#mobileRows').childNodes],count:NUM_ROWS,customer:custFields.map(id=>q('#'+id)?.value||''),customerRef:q('#custPanel').dataset.customerRef||'',po:q('#docPO')?.value||'',doc:_docType,toggles:['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].map(id=>q('#'+id).classList.contains('active')),pendingDate:_pendingTxnDate,pendingNumber:_pendingDocNumber,entry:q('#cvEntry').value,txn:_currentTxnId,date:_currentTxnDate,number:_currentDocNumber,reprint:_reprintSource,quote:_quoteSource,baseline:_historyContentBaseline,cleared:_clearedSale,stock:cartStockSession,tender:readTenderSelection(),scanIssues:new Map(scanIssues),presell:q('#presellChk').checked,credit:_regCredit};}
-function activateTab(id){ledgerTab?.hide();commitFocused();browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);q('#custPanel').dataset.customerRef=s.customerRef||'';q('#docPO').value=s.po||'';_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));_regCredit=s.credit||null;setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','reviewBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}orderMode='amount';orderRequested=0;lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
+function snapshotTab(){return{rows:[...tbody.childNodes],mobile:[...q('#mobileRows').childNodes],count:NUM_ROWS,customer:custFields.map(id=>q('#'+id)?.value||''),customerRef:q('#custPanel').dataset.customerRef||'',po:q('#docPO')?.value||'',doc:_docType,toggles:['signatureBtn','salesViewBtn','cardFeeBtn'].map(id=>q('#'+id).classList.contains('active')),pendingDate:_pendingTxnDate,pendingNumber:_pendingDocNumber,entry:q('#cvEntry').value,txn:_currentTxnId,date:_currentTxnDate,number:_currentDocNumber,reprint:_reprintSource,quote:_quoteSource,baseline:_historyContentBaseline,cleared:_clearedSale,stock:cartStockSession,tender:readTenderSelection(),scanIssues:new Map(scanIssues),presell:q('#presellChk').checked,credit:_regCredit};}
+function activateTab(id){ledgerTab?.hide();commitFocused();browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);q('#custPanel').dataset.customerRef=s.customerRef||'';q('#docPO').value=s.po||'';_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));_regCredit=s.credit||null;setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}orderMode='amount';orderRequested=0;lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
 function closeBrowserTab(id){
  const state=id===activeTab?snapshotTab():browserTabs.get(id);
  const hasContent=state&&(state.rows.some(row=>row.nodeType===1&&(row.querySelector('.part-input')?.value.trim()||row.querySelector('.note-desc-input,.discount-desc-input')?.value.trim()))||state.customer.some(Boolean)||state.entry.trim());

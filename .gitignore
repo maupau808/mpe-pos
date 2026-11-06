@@ -14,6 +14,8 @@
 !ledger-tab.js
 !ledger.js
 !ledger-host.js
+!shop-settings.js
+!test_shop_settings.cjs
 !email-draft.js
 !email-window.js
 !test_email_window.cjs

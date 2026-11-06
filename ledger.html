@@ -255,16 +255,26 @@ body.dragging{cursor:col-resize;user-select:none}
 .rail .emoney.credit{color:var(--green)}
 .mid-edit-slot{flex:1;min-height:0;min-width:0;background:#fff}
 #note[hidden]{display:none}
+/* Review QR switch (shop-wide, POS/shop-settings.js): a quiet line under the panel's buttons */
+.rail .rq{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding:6px 2px 0;border-top:1px solid var(--line-2);font-size:12.5px;color:var(--ink-3)}
+.rq-sw{display:inline-flex;align-items:center;gap:8px;min-height:28px;padding:0 2px;border:0;background:none;font:inherit;font-weight:600;color:var(--ink);cursor:pointer;border-radius:6px}
+.rq-sw i{position:relative;width:30px;height:18px;border-radius:9px;background:#c4ccc2;transition:background .15s}
+.rq-sw i::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+.rq-sw[aria-checked="true"] i{background:var(--green)}
+.rq-sw[aria-checked="true"] i::after{transform:translateX(12px)}
+.rq-sw:focus-visible{outline:2px solid #9cc3a8;outline-offset:2px}
+.rq-sw:disabled{cursor:default;color:var(--ink-3)}.rq-sw:disabled i{opacity:.55}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 <script src="ledger-data.js"></script>
+<script src="shop-settings.js"></script>
 <!-- document-renderer.js is a byte-for-byte copy of POSDesktop/src/document-renderer.js (test_document_renderer_copy.cjs). -->
 <script>var module = { exports: {} };</script>
 <script src="document-renderer.js"></script>
 <script>window.MPEDocumentRenderer = module.exports; module = undefined;</script>
 <script>
 // ?fixture=1 runs standalone on fake data; otherwise the real host (the app's Ledger tab or the website's register).
-if (new URLSearchParams(location.search).has('fixture')) document.write('<script src="ledger-host-fixture.js"><\/script>');
+if (new URLSearchParams(location.search).has('fixture')) document.write('<script src="ledger-host.js"><\/script><script src="ledger-host-fixture.js"><\/script>'); // the kit only (no MPE_LEDGER_PAGE): the fixture's Review QR store uses its createRowStore
 else {
   window.MPE_LEDGER_PAGE = true;
   document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script>'
