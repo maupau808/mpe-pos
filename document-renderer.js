@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   phone: '(808) 249-2730',
   email: 'info@mauipowerequipment.com',
   invoice_footer_1: 'Please either pay via the link (surcharge added for credit cards) or send a check made payable to:',
-  invoice_footer_2: 'Maui Power Equipment Inc., 970 Lower Main St, Wailuku HI 96793',
+  invoice_footer_2: 'Maui Power Equipment Inc.\n970 Lower Main St\nWailuku, HI 96793',
   quote_footer: 'Quotes are valid for {valid_days} days from issued date. However, Maui Power Equipment maintains the right to adjust prices in response to extreme increases in product or freight cost.',
   receipt_footer: '',
   default_terms: 'Net 30',
@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   quote_valid_days: 30,
   style: 'counter',
 });
-const GE_TAX_LABEL = 'GE tax (4.712%)';
+const TAX_LABEL = 'Tax (4.712%)';
 const TITLES = Object.freeze({ invoice: 'Invoice', quote: 'Quote', receipt: 'Receipt' });
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const EXTRA_LIMITS = { po: 200, terms: 200, ordered_by: 200, bill_to: 500, paid: 20, deposit: 20, revised_on: 10, valid_until: 10 };
@@ -139,7 +139,9 @@ function strictSettings(value) {
   const out = {};
   for (const key of TEXT_FIELDS) {
     if (typeof value[key] !== 'string') return null;
-    out[key] = value[key].split(/\s+/).filter(Boolean).join(' ');
+    const one = (text) => text.split(/\s+/).filter(Boolean).join(' ');
+    // The how-to-pay address keeps its line breaks (company / street / city); every other wording is one line.
+    out[key] = key === 'invoice_footer_2' ? value[key].split('\n').map(one).filter(Boolean).join('\n') : one(value[key]);
   }
   if (!out.shop_name || !Number.isInteger(value.quote_valid_days) || value.quote_valid_days < 1 || value.quote_valid_days > 365
       || !['counter', 'clean'].includes(value.style)) return null;
@@ -216,7 +218,7 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
   for (const [label, key] of [['Card fee', 'card_fee'], ['Rounding', 'rounding']]) {
     if (!isZero(dec(totals[key]))) sums.push([label, totals[key], '']);
   }
-  sums.push([isZero(dec(totals.tax)) ? 'GE tax' : GE_TAX_LABEL, totals.tax, '']);
+  sums.push([isZero(dec(totals.tax)) ? 'Tax' : TAX_LABEL, totals.tax, '']);
   // A quote's deposit prints as its own line before the total, and the total is what is left to pay (Trevor, Nov 5).
   const deposit = kind === 'quote' && extra.deposit !== undefined ? dec(extra.deposit) : null;
   if (deposit && !isZero(deposit)) sums.push(['Deposit paid', deposit, '', `-${money(deposit)}`], ['Total', maxZero(sub(total, deposit)), '.total']);
@@ -238,7 +240,7 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
     rows: rows.join(''), sums: sumsHtml,
   };
   const lines = (values) => values.map((text) => fill('line', { text: escape(text) })).join('');
-  const paragraphs = (values) => values.map((text) => fill('p', { text: escape(text) })).join('');
+  const paragraphs = (values) => values.map((text) => fill('p', { text: escape(text).replace(/\n/g, '<br>') })).join('');
   if (style === 'clean') {
     const factRows = [['Date', longDate(day)]];
     if (kind === 'invoice') {

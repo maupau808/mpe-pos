@@ -332,6 +332,7 @@
       const newestAuto = [...autoRows].sort(newestFirst)[0];
       const undoAt = newestAuto ? payments.filter(p => p.voids === newestAuto.payment_id).map(p => p.recorded_at).sort().pop() : '';
       const editAt = ((editLog || {})[t.txnId] || []).map(e => s(e.at)).sort().pop() || '';
+      r.lastEditAt = editAt; // newest 'edit' mark (ISO): History shows "Store credit due" only for an overpay from an edit after the credit release
       r.creditMoves = new Set(autoRows.map(p => p.payment_id)).size;
       r.creditUndone = !!undoAt && !(editAt > undoAt);
       r.paid = Math.min(sum, cents(t.total)) / 100;
