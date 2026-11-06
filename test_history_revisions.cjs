@@ -460,11 +460,11 @@ function sessionHarness() {
  const c = markHarness(); c.connect();
  const D = require('./ledger-data');
  const map = {custCompany: 'company', custName: 'name', custPhone: 'phone', custEmail: 'email', custAddr: 'addr', custCity: 'city', custState: 'state', custZip: 'zip'};
- const queued = [];
+ const queued = [], refs = [], panel = {dataset: {customerRef: 'k:1'}};
  Object.assign(c.s, {
   partsArray: [{pn: 'x'}], ledgerDraftTabIsEmpty: () => true, ledgerErrorCode: e => e && e.code, ledgerDocumentRequest: () => ({type: 'invoice'}),
-  queueCustomerFromOrder: o => queued.push(o.txnId), syncCustomersFromSheet: async () => {}, setTimeout,
-  document: {getElementById: id => id === 'custPanel' ? {dataset: {customerRef: 'k:1'}} : {set value(v) { c.s.draft.customer[map[id]] = v; }, get value() { return c.s.draft.customer[map[id]] || ''; }}},
+  queueCustomerFromOrder: o => { queued.push(o.txnId); refs.push(o.customerRef); }, syncCustomersFromSheet: async () => {}, setTimeout,
+  document: {getElementById: id => id === 'custPanel' ? panel : {set value(v) { c.s.draft.customer[map[id]] = v; }, get value() { return c.s.draft.customer[map[id]] || ''; }}},
   fillTxnIntoPOS: t => {   // what the real one leaves on a fresh page: identity and a baseline (the draft already holds the document)
    c.s._reprintSource = {txnId: t.txnId, date: c.stored.date, docType: t.docType, docNumber: t.docNumber, fromQuote: t.fromQuote ? {txnId: t.fromQuote, docNumber: ''} : undefined};
    vm.runInContext('_historyContentBaseline = historyContentFingerprint(captureOrder())', c.s);
@@ -472,7 +472,7 @@ function sessionHarness() {
   prepareAndSaveForPrint: async () => { vm.runInContext('reserveDocDate()', c.s); if (!vm.runInContext('saveToHistory()', c.s)) throw Object.assign(new Error('x'), {code: 'output_failed'}); },
  });
  const at = html.indexOf("// ── History's silent edit session"); vm.runInContext(html.slice(at, html.indexOf('function toggleSignature() {', at)), c.s);
- c.queued = queued; c.fp = () => D.transactionRowsFingerprint(c.sheet());
+ c.queued = queued; c.refs = refs; c.panel = panel; c.fp = () => D.transactionRowsFingerprint(c.sheet());
  c.request = (patch, fp) => ({v: 1, kind: 'edit', mode: 'silent', sessionId: 'sess-0001abcd', txn: {txnId: c.stored.txnId, docType: c.s._docType, docNumber: c.stored.docNumber, fromQuote: c.sheet()[0][13]}, loaded: {fingerprint: fp || c.fp()}, patch});
  return c;
 }
@@ -736,6 +736,32 @@ test('one Edit: a refused Save writes nothing, puts the customer boxes back, kee
  assert.equal(vm.runInContext('_embeddedEdit.done', c.s), false);
  c.s.scheduleEditState(); await wait(260); assert.equal(c.states.at(-1).problem, '', 'the next change clears the reason');
 });
+test('T6a picked customer: Save carries customer.customerRef; the customer write uses it (q: dropped, k: kept); no ref keeps the loaded buyer', async () => {
+ for (const [sent, used] of [['q:4417', '4417'], ['4417', '4417'], ['k:p:8085550100|sue example', 'k:p:8085550100|sue example'], ['k:|sue example', 'k:|sue example'], ['k:p:2441234|bob kahale', 'k:p:2441234|bob kahale'], ['k:p:808555010012|acme', 'k:p:808555010012|acme'], ['k:p:80855501008085550200|acme', 'k:p:80855501008085550200|acme']]) {
+  const c = await embeddedEdit();
+  const r = await c.cmd('save', {updateInfo: true, customer: {name: 'Sue Example', customerRef: sent}}); await flush2();
+  assert.equal(r.ok, true, sent); assert.equal(r.customer, 'queued');
+  assert.deepEqual(c.refs, [used], sent); assert.match(rowsOf(c.sheet())[0][4], /^Sue Example/);
+ }
+ const plain = await embeddedEdit();
+ const r = await plain.cmd('save', {updateInfo: true, customer: {phone: '808-555-0100'}}); await flush2();
+ assert.equal(r.ok, true); assert.deepEqual(plain.refs, ['k:1'], 'no customerRef: the loaded buyer, as before');
+});
+test('T6a picked customer: a junk customerRef is refused by reason, nothing is written and the loaded ref stays', async () => {
+ const d = await embeddedEdit(), sheet = d.sheet();
+ for (const bad of ['', 'q:', 'q:12a', '12'.repeat(11), 'k:', 'k:nopipe', 'k:|', 'k:|a\nb', 'k:|' + 'x'.repeat(220), 7, null, {}, ['k:|a']]) {
+  assert.equal(await d.cmd('save', {updateInfo: true, customer: {name: 'X', customerRef: bad}}), null, JSON.stringify(bad));
+  assert.equal(d.states.at(-1).problem, 'That save was not valid. Nothing was saved.');
+  assert.equal(d.panel.dataset.customerRef, 'k:1');
+ }
+ await flush2(); assert.deepEqual(d.sheet(), sheet); assert.deepEqual(d.results, []); assert.deepEqual(d.refs, []); assert.equal(d.marks().length, 0);
+});
+test('T6a picked customer: a refused save puts the loaded ref back with the boxes', async () => {
+ const c = await embeddedEdit();
+ const theirs = c.sheet(); theirs[0][5] = '808-111-2222'; c.setSheet(theirs); c.twoLines();
+ assert.equal(await c.cmd('save', {updateInfo: true, customer: {name: 'Sue Example', customerRef: 'q:4417'}}), null); await flush2();
+ assert.equal(c.panel.dataset.customerRef, 'k:1'); assert.deepEqual(c.refs, []); assert.equal(c.marks().length, 0);
+});
 test('one Edit: a scan History caught in its customer box (website) is added to the lines like a hardware scan, only while the edit is open', async () => {
  const c = await embeddedReady(), seen = [];
  Object.assign(c.s, {closeAllDropdowns() {}, acceptDecodedScan: (v, how) => seen.push([v, how])});
@@ -756,3 +782,16 @@ test('one Edit layout: only the lines and a slim strip show; header, customer bo
  assert.ok(!/cvOrderValue|cvCardFee|cvNote|#cvPo\{display:none/.test(css), 'order discount, card fee, Add note and PO # are not hidden');
 });
 
+test('T10 edit-session greens: scoped to the embedded edit; loaded lines unmarked, a line added after load marked; normal register untouched', async () => {
+ const c = await embeddedEdit();
+ assert.deepEqual(c.s.document.body.classList.added, ['embedded-edit'], 'the scoping class is set only by the edit session load');
+ assert.equal(c.s.editLineAdded(5), false, 'no loaded set (normal register): nothing is marked');
+ vm.runInContext('_editLoadedRows = new Set([0, 1])', c.s);
+ assert.equal(c.s.editLineAdded(0), false); assert.equal(c.s.editLineAdded(1), false);
+ assert.equal(c.s.editLineAdded(2), true, 'a line that was not in the sale at load');
+ const css = s => html.includes(s);
+ assert.ok(css('body.embedded-edit #counterView .cv-article.cv-added{background:#eef6f0}'));
+ assert.ok(css('body.embedded-edit #counterView #cvEntry{border-color:#9cc3a8}'));
+ assert.ok(css('body.embedded-edit tr.drop-before>td{box-shadow:inset 0 3px 0 #24683a}') && css('body.embedded-edit tr.drop-after>td{box-shadow:inset 0 -3px 0 #24683a}'));
+ assert.equal(html.split('cv-added{').length, html.split('body.embedded-edit #counterView .cv-article.cv-added{').length, 'no unscoped cv-added rule');
+});

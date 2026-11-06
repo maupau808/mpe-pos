@@ -4,8 +4,8 @@
 <style>
 :root{
   --paper:#fffdfa; --panel:#f2f5f0; --ink:#202c24; --ink-2:#4f5d52; --ink-3:#5f6b61;
-  --line:#d5ddd3; --line-2:#e6ebe4; --green:#2f4339; --green-2:#202d27;
-  --sel:#dce9db; --chip:#e1e8dd; --chip-line:#a6b5a0;
+  --line:#d5ddd3; --line-2:#e6ebe4; --green:#24683a; --green-2:#1b5230; --tint:#e8f2eb;
+  --sel:#e8f2eb; --chip:#e1e8dd; --chip-line:#a6b5a0;
   --red:#b3261e; --red-bg:#fbeceb; --amber:#8a5a12; --amber-bg:#fdf3e3;
   --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
 }
@@ -32,8 +32,6 @@ svg.i.sm{width:14px;height:14px}
 .qb-asof[hidden]{display:none}
 .qb-asof .stale{color:var(--amber);font-weight:600}
 .qb-asof .btn{height:30px;padding:0 8px 0 0;font-size:12.5px}
-.paylink .url{font-size:12.5px;color:var(--ink-2);word-break:break-all;margin-bottom:6px}
-.paylink .btn{height:32px}
 .more{margin:10px 14px 14px}
 .host-note{padding:6px 14px;font-size:13.5px;color:var(--amber);background:var(--amber-bg);border-bottom:1px solid #e8cf9c}
 .host-note[hidden]{display:none}
@@ -46,7 +44,7 @@ svg.i.sm{width:14px;height:14px}
 .btn.quiet{border-color:transparent;background:transparent;color:var(--ink-2)}
 .btn.quiet:hover:not(:disabled){background:var(--panel)}
 
-.main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(350px,28%) minmax(0,1fr) 264px}
+.main{--list-w:320px;--rail-w:296px;position:relative;flex:1;min-height:0;display:grid;grid-template-columns:var(--list-w) minmax(0,1fr) var(--rail-w)}
 .main[hidden]{display:none}
 .left{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
 .lt{padding:12px 14px 10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
@@ -102,6 +100,7 @@ summary.red,summary.red .tot{color:var(--red)}
 .row .nm.noname{font-weight:400;color:var(--ink-3)}
 .row .amt{font-size:14.5px;font-weight:650;text-align:right}
 .row .sub{font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .due-count{display:block;margin-top:2px}
 .row .when{font-size:12.5px;text-align:right;white-space:nowrap}
 .row .when b.k-doc{font-weight:700;color:var(--ink)}
 .row .when b.k-repair{font-weight:700;color:#a3520f}
@@ -124,44 +123,57 @@ a.rec{color:var(--green);font-weight:700;text-decoration:underline;text-underlin
 .fit{margin:0 auto;overflow:hidden;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.05),0 6px 22px rgba(32,56,32,.08)}
 .fit iframe{display:block;border:0;transform-origin:0 0;background:#fff}
 
-.rail{overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:18px;background:var(--paper);border-left:1px solid var(--line)}
+.rail{overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;background:#fff;border-left:1px solid var(--line)}
 .rail h3{font-size:12.5px;font-weight:700;color:var(--ink-3);margin-bottom:6px}
 .rail .big{font-size:22px;font-weight:700}
 .rail .state{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .rail .acts{display:flex;flex-direction:column;gap:8px}
-.rail .main4{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.rail .main4 .btn{justify-content:flex-start;min-width:0}
-.rail .acts2{display:flex;flex-direction:column;gap:6px}
 .rail .acts>.btn{width:100%;justify-content:flex-start;height:auto;min-height:40px;padding-top:6px;padding-bottom:6px;white-space:normal;text-align:left}
 .rail .acts>.btn.primary{justify-content:center}
-.rail .acts2 .btn{width:100%;justify-content:flex-start;height:auto;min-height:36px;padding-top:6px;padding-bottom:6px;white-space:normal;text-align:left}
-.rail .acts2 .btn.primary{justify-content:center}
-.rail .acts2 .btn.quiet{min-height:30px;font-size:13px}
 .rail .btn svg.sm:last-child{margin-left:auto}
-.rail .why{font-size:12px;color:var(--ink-3);margin:-3px 0 2px 2px}
-.rail .who{font-size:14px;line-height:1.5}
-.rail .who b{display:block}
-.rail .who .ccredit{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:8px}
-.rail .foot{display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;border-top:1px solid var(--line);padding-top:12px;margin-top:auto}
-.rail .foot .btn{height:32px;font-size:13px}
+.rail .acts>.btn.big{justify-content:center;min-height:46px;font-size:16px;border-radius:8px}
+/* Draft D panel (Trevor, Nov 5): doc line, customer card, money, one big button, two rows of three boxes, More, timeline. */
+.rail .docno{font-size:13px;color:var(--ink-3);margin-bottom:-4px}
+.rail .pc{border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:#fff}
+.rail .pc .cn{display:block;font-size:16px;font-weight:700;line-height:1.3;overflow-wrap:anywhere}
+.rail .pc .cn.muted{font-weight:500}
+.rail .pc .cs{font-size:14px;line-height:1.45;color:var(--ink-2);overflow-wrap:anywhere}
+.rail .ccredit{margin-top:8px}
+.rail .money{display:flex;flex-direction:column}
+.rail .money .amt{font-size:28px;font-weight:700;line-height:1.15;letter-spacing:-.01em}
+.rail .money .amt span{font-size:14px;font-weight:500;letter-spacing:0;color:var(--ink-3);margin-left:.3em}
+.rail .money .amt.gone{color:var(--ink-3);text-decoration:line-through;text-decoration-thickness:2px}
+.rail .money .amt.gone span{text-decoration:none;display:inline-block}
+.rail .od{display:flex;align-items:center;gap:8px;margin:4px 0 6px;font-size:14px;font-weight:600;color:var(--ink)}
+.rail .od i{width:9px;height:9px;border-radius:50%;background:var(--red);flex:none}
+.rail .money .ln{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:3px 0;font-size:14px;color:var(--ink-2)}
+.rail .money .ln.tot{margin-top:2px;padding-top:6px;border-top:1px solid var(--line);font-size:17px;font-weight:700;color:var(--ink)}
+.rail .nt{display:flex;align-items:baseline;gap:7px;margin-top:4px;font-size:13px;color:var(--ink-2)}
+.rail .nt i{width:7px;height:7px;border-radius:50%;flex:none;background:#b7c1b9;transform:translateY(-1px)}
+.rail .nt.warn i{background:#c98a1a}
+.rail .nt.late i{background:var(--red)}
+.rail .nt.ok i{background:var(--green)}
+.rail .b3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.rail .box{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;min-height:58px;padding:8px 4px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:13px;font-weight:600;line-height:1.15;text-align:center;overflow-wrap:anywhere}
+.rail .box:hover:not(:disabled){background:var(--tint);border-color:#9cc3a8}
+.rail .box:disabled{opacity:.4}
+.rail .box.del{color:var(--red)}
+.rail .box.wide{grid-column:1/-1;flex-direction:row;min-height:42px;font-size:14px}
+.rail .acts>.btn.mbtn{width:auto;align-self:center;min-height:30px;height:30px;padding:0 10px;font-size:13px;color:var(--ink-2)}
+.rail .acts>.btn.mbtn svg{margin-left:-4px}
 .owed[hidden]{display:none}
-.rail .tl{background:#fff;border:1px solid var(--line-2,var(--line));border-radius:6px;padding:12px 14px}
+.rail .tl{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
 .rail .tl h3{font-size:13px;color:var(--ink);margin-bottom:10px}
-.rail ol{list-style:none;font-size:14px;font-weight:600;color:var(--ink);border-left:2px solid var(--green);margin-left:5px}
+.rail ol{list-style:none;font-size:14px;font-weight:600;color:var(--ink);border-left:2px solid #56625a;margin-left:5px}
 .rail li{position:relative;padding:0 0 12px 16px;line-height:1.35}
 .rail li:last-child{padding-bottom:0}
-.rail li::before{content:"";position:absolute;left:-6px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid #fff;box-sizing:content-box;margin:-2px 0 0 -2px}
-.rail li span{display:block;font-size:12.5px;font-weight:500;color:var(--ink-2)}
+.rail li::before{content:"";position:absolute;left:-6px;top:5px;width:10px;height:10px;border-radius:50%;background:#26332b;border:2px solid #fff;box-sizing:content-box;margin:-2px 0 0 -2px}
+.rail li span{display:block;font-size:12.5px;font-weight:500;color:#3d4a41}
 .pill{display:inline-flex;align-items:center;gap:5px;min-height:24px;padding:2px 9px;border-radius:12px;font-size:13px;font-weight:700;border:1px solid transparent}
 .pill.late{background:var(--red-bg);border-color:#efc4c1;color:var(--red)}
 .pill.soon{background:var(--amber-bg);border-color:#e8cf9c;color:var(--amber)}
-.pill.muted{background:var(--panel);border-color:var(--line);color:var(--ink-2)}
 .pill.paid{background:#e7f2e6;border-color:#b5d2b2;color:#2d6a3a}
-.pill.void{background:#f1f1f0;border-color:#cfcfcc;color:#555}
-.pill.quote{background:#e8eef3;border-color:#b9cad6;color:#29485c}
 .pill.credit{background:#e7f2e6;border-color:#b5d2b2;color:#2d6a3a}
-.pill.draft{background:#fff;border-color:var(--line);color:var(--ink-2);font-weight:600}
-.pill svg.i{width:14px;height:14px}
 
 .menu{position:fixed;z-index:50;min-width:190px;padding:4px;background:#fff;border:1px solid #c5cfc2;border-radius:7px;box-shadow:0 8px 24px rgba(32,56,32,.16),0 1px 3px rgba(32,56,32,.12)}
 .menu[hidden]{display:none}
@@ -196,36 +208,52 @@ dialog.edit label{display:block;margin-bottom:9px;font-size:13px;font-weight:600
 dialog.edit input{display:block;width:100%;height:34px;margin-top:3px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:14px;font-weight:400;color:var(--ink)}
 dialog.edit .row2{display:grid;grid-template-columns:1fr 70px 100px;gap:8px}
 dialog.edit .err{min-height:18px;font-size:13px;color:var(--red)}
-@media (min-width:1700px){.main{grid-template-columns:minmax(400px,26%) minmax(0,1fr) 300px}}
-@media (max-width:1250px){.main{grid-template-columns:320px minmax(0,1fr) 230px}}
+/* Column handles (T4): widths come from --list-w / --rail-w, set by ledger.js (defaults, limits and memory live there). Hidden while an Edit is open. */
+.grip{position:absolute;top:0;bottom:0;width:12px;margin-left:-6px;z-index:6;cursor:col-resize;touch-action:none;outline:none}
+.grip::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:3px;margin-left:-1.5px;border-radius:2px;background:transparent;transition:background .12s}
+.grip:hover::after,.grip:focus-visible::after,.grip.drag::after{background:var(--green)}
+#gripL{left:var(--list-w)}
+#gripR{left:calc(100% - var(--rail-w))}
+.main.editing .grip{display:none}
+body.dragging{cursor:col-resize;user-select:none}
 /* The one Edit (D14, D15): the list collapses to a thin edge, the middle holds the register's sale lines, the panel keeps its width. */
-.main.editing{grid-template-columns:30px minmax(0,1fr) 264px}
-@media (min-width:1700px){.main.editing{grid-template-columns:30px minmax(0,1fr) 300px}}
-@media (max-width:1250px){.main.editing{grid-template-columns:30px minmax(0,1fr) 230px}}
+.main.editing{grid-template-columns:30px minmax(0,1fr) var(--rail-w)}
 .main.editing .left>:not(.edge){display:none}
 .left .edge{display:none}
 .main.editing .left .edge{display:flex;flex:1;align-items:center;justify-content:center;background:var(--panel);box-shadow:inset -3px 0 0 var(--chip-line);color:var(--ink-3);font-size:12.5px;font-weight:600;letter-spacing:.02em;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;user-select:none}
-.rail .cedit label{display:block;margin-bottom:8px;font-size:13px;font-weight:600;color:var(--ink-2)}
-.rail .cedit input:not([type=checkbox]){display:block;width:100%;height:34px;margin-top:3px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:14px;font-weight:400;color:var(--ink)}
+.rail .cedit label{display:block;margin-bottom:6px;font-size:13px;font-weight:600;color:var(--ink-2)}
+.rail .cedit input:not([type=checkbox]){display:block;width:100%;height:32px;margin-top:3px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:14px;font-weight:400;color:var(--ink)}
 .rail .cedit input:disabled{opacity:.6}
 .rail .cedit .row2{display:grid;grid-template-columns:minmax(0,1fr) 46px 70px;gap:6px}
 .rail .cedit .chk{display:flex;align-items:center;gap:8px;margin-top:4px}
 .rail .cedit .hint{font-size:12.5px;color:var(--ink-3);min-height:16px}
 .rail .cedit .err{min-height:18px;font-size:13px;color:var(--red)}
-.rail .cedit .btns{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
-/* Item edit (F03): History's Editing bar over the register's sale screen, which the app or the website places over .mid-edit-slot. */
-.ebar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:10px 18px;background:var(--paper);border-bottom:1px solid var(--line)}
-.ebar .etitle{font-size:15px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ebar .etot{font-size:14px;color:var(--ink-2)}
-.ebar .emoney{font-size:14px;font-weight:700}
-.ebar .emoney.late{color:var(--red)}
-.ebar .emoney.soon{color:var(--amber)}
-.ebar .emoney.credit{color:#2d6a3a}
-.ebar .eprob{font-size:13px;font-weight:600;color:var(--red)}
-.ebar .ehint{font-size:12.5px;font-weight:400;color:var(--ink-3)}
-.ebar .ebtns{display:flex;gap:8px;margin-left:auto}
-.ebar .ewarn{flex-basis:100%;font-size:13px;font-weight:600;color:var(--amber)}
-.mid-edit-slot{flex:1;min-height:0;background:#fff}
+.rail .cedit .hint:empty,.rail .cedit .err:empty{display:none}
+.rail .cedit .cf{position:relative}
+/* Customer suggestions under the box being typed in (like the register's): white sheet, green tint on the active row, no blue */
+.rail .cedit .sug{position:absolute;z-index:30;left:0;right:0;top:calc(100% - 4px);max-height:300px;overflow-y:auto;background:#fff;border:1px solid #9cc3a8;border-radius:6px;box-shadow:0 6px 16px rgba(32,44,36,.14),0 1px 3px rgba(32,44,36,.08);padding:3px}
+.rail .cedit .sug[hidden]{display:none}
+.rail .cedit .sug .opt{padding:6px 8px;border-radius:4px;cursor:pointer;line-height:1.25}
+.rail .cedit .sug .opt b{display:block;font-size:13.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rail .cedit .sug .opt span{display:block;margin-top:1px;font-size:12px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rail .cedit .sug .opt:hover,.rail .cedit .sug .opt.on{background:var(--tint)}
+.rail .cedit .sug .opt.on b{color:var(--green)}
+.rail .cedit input:focus-visible{outline:2px solid #9cc3a8;outline-offset:0;border-color:var(--green)}
+/* The edit in the middle (F03, draft D): a small "Now editing" title over the register's lines in a thin green frame. The app's session
+   view and the website frame sit over #editSlot (the frame's inner box, the rect History sends), so the border stays visible. */
+.etag{display:flex;align-items:center;gap:8px;min-width:0;padding:11px 18px 8px;font-size:14px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.etag b{color:var(--ink)}
+.etag .ed{font-size:12px;font-weight:700;color:var(--green);background:var(--tint);border-radius:4px;padding:2px 7px}
+.eframe{flex:1;min-height:0;display:flex;margin:0 14px 14px;padding:3px;border:2px solid var(--green);border-radius:10px;background:#fff}
+.eframe[hidden]{display:none}
+.rail .ewarn{font-size:13px;font-weight:600;color:var(--amber)}
+.rail .eprob{font-size:13px;font-weight:600;color:var(--red)}
+.rail .ehint{font-size:12.5px;color:var(--ink-3)}
+.rail .emoney{font-weight:700;color:var(--ink)}
+.rail .emoney.late{color:var(--red)}
+.rail .emoney.soon{color:var(--amber)}
+.rail .emoney.credit{color:var(--green)}
+.mid-edit-slot{flex:1;min-height:0;min-width:0;background:#fff}
 #note[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -270,10 +298,12 @@ else {
   <section class="mid">
     <div id="note"></div>
     <div id="editBar" hidden></div>
-    <div class="mid-edit-slot" id="editSlot" hidden></div>
+    <div class="eframe" id="editFrame" hidden><div class="mid-edit-slot" id="editSlot" hidden></div></div>
     <div class="paper" id="paper"></div>
   </section>
   <aside class="rail" id="rail" aria-label="Selected sale"></aside>
+  <div class="grip" id="gripL" role="separator" aria-orientation="vertical" aria-label="Resize the sales list" tabindex="0" title="Drag to resize. Double-click to reset."></div>
+  <div class="grip" id="gripR" role="separator" aria-orientation="vertical" aria-label="Resize the side panel" tabindex="0" title="Drag to resize. Double-click to reset."></div>
 </div>
 <div class="menu" id="menu" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

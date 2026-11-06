@@ -601,6 +601,18 @@ test('one Edit: the host says whether the save carries the customer (app 0.3.67 
   web.command({ v: 1, sessionId: 'abcdefgh', cmd: 'save', updateInfo: false, customer: { email: 'a@b.example' } });
   assert.deepEqual(f.posted.pop(), [{ type: 'edit-command', command: { v: 1, sessionId: 'abcdefgh', cmd: 'save', updateInfo: false, customer: { email: 'a@b.example' } } }, 'https://x.test'], 'the website frame gets the whole command');
 });
+test('T6a: the host says whether the save may carry customer.customerRef (app: editCapabilities.customerRef; website always)', () => {
+  const old = K.createHost(K.environment({ mpeDesktop: deskEmbed({ editCapabilities: { silentEdit: 1, embedEdit: 1, saveCustomer: 1 } }).d, navigator: {} }), {}).editEmbed(EMBED_RECORD, {}, {});
+  assert.equal(old.customerRef, false, 'an app without the flag');
+  const { d, calls } = deskEmbed({ editCapabilities: { silentEdit: 1, embedEdit: 1, saveCustomer: 1, customerRef: 1 } });
+  const s = K.createHost(K.environment({ mpeDesktop: d, navigator: {} }), {}).editEmbed(EMBED_RECORD, {}, {});
+  assert.equal(s.customerRef, true);
+  const cmd = { v: 1, sessionId: s.sessionId, cmd: 'save', updateInfo: true, customer: { name: 'Sue', customerRef: 'q:4417' } };
+  s.command(cmd); assert.deepEqual(calls.command.pop(), cmd, 'passed through as is');
+  const f = webEmbedFixture(), web = K.webEmbedSession(f.p, f.w, REQ, {});
+  assert.equal(web.customerRef, true);
+  assert.equal(K.createHost({ kind: 'web', embedEdit: () => web }, {}).editEmbed(EMBED_RECORD, {}, {}).customerRef, true, 'createHost passes the flag through');
+});
 test('one Edit (website): a scan History caught in its customer box goes to the edit frame as edit-scan, never after the end', async () => {
   const f = webEmbedFixture(), s = K.webEmbedSession(f.p, f.w, REQ, {});
   s.scan('0000131');

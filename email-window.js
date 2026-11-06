@@ -3,6 +3,9 @@
  * document below it. Send runs opts.send(fields) only when a person presses it (Trevor, 2026-11-04; Claude never sends).
  * Save draft keeps the version in progress on this computer (localStorage), not in Gmail; Send clears it.
  *   opts: { key, heading, from, accountEmail, to, subject, message, signature, pages: [html], attachment, send: async fields => void }
+ *   payLink (History only, optional): { url, canAdd, add: async () => ({ url } | { error }), startMessage: url => message }. url set: shows the
+ *     link + Copy. No url and canAdd: an "Add pay link" button above the attachment line; add() creates the link, then the message gets it
+ *     (untouched message = startMessage(url); edited = the pay lines appended, worded by startMessage so email-draft.js stays the one source).
  *   fields: { to, cc, bcc, subject, message, text, html }   resolves { sent: true, to } or null when closed.
  * Needs email-draft.js (buildTypedEmail, parseEmailList). Test: node POS/test_email_window.cjs */
 (function (root) {
@@ -28,13 +31,14 @@
 .mew input,.mew textarea{display:block;width:100%;margin-top:3px;padding:7px 9px;border:1px solid #d5ddd3;border-radius:5px;background:#fff;font:inherit;color:inherit}
 .mew textarea{flex:1;min-height:180px;resize:none}
 .mew .grow{flex:1;display:flex;flex-direction:column}
-.mew .link{background:none;border:0;padding:0;color:#2f4339;text-decoration:underline;font:inherit;font-size:13px;cursor:pointer;align-self:flex-start}
+.mew .link{background:none;border:0;padding:0;color:#24683a;text-decoration:underline;font:inherit;font-size:13px;cursor:pointer;align-self:flex-start}
 .mew .hint{font-size:12.5px;color:#5f6b61}
 .mew .err{min-height:18px;font-size:13px;color:#b3261e}
 .mew .ok{font-size:13px;color:#2f4339}
 .mew .btns{display:flex;gap:8px;align-items:center}
-.mew .btn{height:38px;padding:0 16px;border:1px solid #d5ddd3;border-radius:6px;background:#fff;font:inherit;font-weight:600;cursor:pointer}
-.mew .btn.primary{background:#2f4339;border-color:#2f4339;color:#fff}
+.mew .btn{height:38px;padding:0 16px;border:1px solid #d5ddd3;border-radius:6px;background:#fff;color:#202c24;font:inherit;font-weight:600;cursor:pointer}
+.mew .btn.primary{background:#24683a;border-color:#24683a;color:#fff}
+.mew .btn.addlink{border-color:#24683a;color:#24683a;background:#fff}
 .mew .btn:disabled{opacity:.55;cursor:default}
 .mew .btns .sp{flex:1}
 .mew .r{overflow:auto;background:#f2f5f0;padding:18px;display:flex;flex-direction:column;gap:14px}
@@ -43,6 +47,9 @@
 .mew .hdr{padding:10px 14px;border-bottom:1px solid #e6ebe4;font-size:13px;color:#4f5d52;display:grid;grid-template-columns:auto 1fr;gap:2px 10px}
 .mew .hdr b{color:#202c24;font-weight:600}
 .mew .body{display:block;width:100%;height:260px;border:0}
+.mew .pay{background:#e8f2eb;border:1px solid #cfe3d5;border-radius:6px;padding:8px 10px;display:flex;align-items:center;gap:10px;font-size:13px;color:#4f5d52}
+.mew .pay .u{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#202c24}
+.mew .pay .btn{height:32px;padding:0 12px}
 .mew .att{font-size:13px;font-weight:600;color:#4f5d52}
 .mew .page{display:block;width:816px;height:1056px;border:0;background:#fff;transform-origin:0 0}
 .mew .pagebox{overflow:hidden;border:1px solid #d5ddd3;background:#fff}
@@ -90,6 +97,7 @@
       <div class="r">
         <div class="card"><div class="hdr"><span>To</span><b data-p="to"></b><span data-p="cclabel" hidden>Cc</span><b data-p="cc" hidden></b><span>Subject</span><b data-p="subject"></b></div>
           <iframe class="body" sandbox="allow-same-origin" title="Email preview"></iframe></div>
+        ${opts.payLink && (opts.payLink.url || opts.payLink.canAdd) ? '<div class="pay" data-pay></div>' : ''}
         <div class="att">Attached: ${esc(opts.attachment || 'document.pdf')}</div>
         ${(opts.pages || []).map(() => '<div class="pagebox"><iframe class="page" sandbox="allow-same-origin" tabindex="-1" title="Attached document"></iframe></div>').join('')}
       </div>`;
@@ -126,6 +134,35 @@
       pages.forEach(f => { const z = Math.min(1, w / 816), h = parseFloat(f.style.height) || 1056; f.style.transform = `scale(${z})`; f.parentNode.style.height = Math.ceil(h * z) + 'px'; f.parentNode.style.width = Math.ceil(816 * z) + 'px'; });
     }
     preview();
+    // Pay link row (History only): the link + Copy, or the Add pay link button. The register passes no payLink, so none of this runs.
+    const pl = opts.payLink, payEl = $('[data-pay]');
+    function payRow(url) {
+      payEl.innerHTML = url ? `<span>Pay link</span><span class="u" title="${esc(url)}">${esc(url)}</span><button type="button" class="btn" data-a="copylink">Copy</button>`
+        : '<span class="u">Lets the customer pay online. Adds the link and the card fee note to the message.</span><button type="button" class="btn addlink" data-a="addlink">Add pay link</button>';
+    }
+    if (payEl) payRow(pl.url);
+    // The lines startMessage adds for a link (found by comparing with and without), so the wording stays in email-draft.js.
+    function payLines(url) {
+      const a = String(pl.startMessage(url)), b = String(pl.startMessage(''));
+      let i = 0; while (i < b.length && a[i] === b[i]) i++;
+      let j = 0; while (j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j++;
+      return a.slice(i, a.length - j).trim();
+    }
+    async function addLink(btn) {
+      busy = true; err(''); btn.disabled = true; btn.textContent = 'Adding link…';
+      let out;
+      try { out = await pl.add(); } catch (x) { out = { error: (x && x.message) || 'That did not go through.' }; }
+      busy = false;
+      if (!out || !out.url) { btn.disabled = false; btn.textContent = 'Add pay link'; return err(`The pay link was not added. ${(out && out.error) || ''} Nothing changed.`.replace(/\s+/g, ' ')); }
+      const untouched = field('message').value === start.message;
+      if (pl.startMessage) {
+        const next = String(pl.startMessage(out.url)), here = field('message').value;
+        start.message = next;
+        field('message').value = untouched ? next : here.replace(/\s+$/, '') + '\n\n' + payLines(out.url);
+        if (untouched) clean = JSON.stringify(values());
+      }
+      payRow(out.url); preview();
+    }
     const err = t => { $('.err').textContent = t || ''; };
     return new Promise(resolve => {
       function finish(result) { root.removeEventListener('resize', scale); d.close(); d.remove(); resolve(result); }
@@ -141,6 +178,8 @@
         if (!a || busy) return;
         if (a === 'ccbcc') { showCc(true); field('cc').focus(); }
         if (a === 'close') tryClose();
+        if (a === 'addlink') await addLink(e.target.closest('[data-a]'));
+        if (a === 'copylink') { const b = e.target.closest('[data-a]'); try { await root.navigator.clipboard.writeText(payEl.querySelector('.u').title); b.textContent = 'Copied'; } catch (_) { b.textContent = 'Select and copy'; } }
         if (a === 'restart') { fill(start); showCc(false); if (opts.key) dropSaved(opts.key); savedNote(0); clean = JSON.stringify(values()); preview(); }
         if (a === 'save') {
           const at = Date.now();

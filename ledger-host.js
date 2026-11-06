@@ -241,6 +241,7 @@
       rect(m) { if (!m || !(Number(m.seq) > rectSeq)) return; rectSeq = Number(m.seq); slot = m.hidden ? { hidden: true } : m.rect; place(); },
       command(c) { if (!done && frame.contentWindow) frame.contentWindow.postMessage({ type: 'edit-command', command: c }, origin); }, // the whole command, customer included
       saveCustomer: true,
+      customerRef: true,   // the frame gets the whole command, so the save's customer may carry customerRef
       // A scan History caught in its own text box (a customer field): the frame's register adds it to the lines.
       scan(code) { if (!done && frame.contentWindow) frame.contentWindow.postMessage({ type: 'edit-scan', value: s(code).slice(0, 512) }, origin); },
     };
@@ -274,7 +275,7 @@
           const result = Promise.resolve().then(() => d.editEmbed(request));
           result.then(() => off.forEach(u => typeof u === 'function' && u()), () => off.forEach(u => typeof u === 'function' && u()));
           // App 0.3.67+: the save command carries the customer typed in History's panel. 0.3.66 drops it, so History saves it after.
-          return { result, rect: m => d.editRect(m), command: m => d.editCommand(m), saveCustomer: !!d.editCapabilities.saveCustomer };
+          return { result, rect: m => d.editRect(m), command: m => d.editCommand(m), saveCustomer: !!d.editCapabilities.saveCustomer, customerRef: !!d.editCapabilities.customerRef };
         } : undefined,
         pdfRefresh: !!(d.editCapabilities && d.editCapabilities.pdfSave),
         scan: typeof d.scan === 'function' ? value => d.scan(value) : undefined, // app 0.3.49+
@@ -478,7 +479,8 @@
       } : undefined,
       // The one Edit: the register's sale lines in History's middle column. RAW record, never withDeposit (R11); History writes
       // nothing to Transactions, the register's one save path does. handlers: { onState(state), onClose(msg) }. Returns at once
-      // { sessionId, result: Promise<the one result>, rect(msg), command(msg), saveCustomer, scan (website) }.
+      // { sessionId, result: Promise<the one result>, rect(msg), command(msg), saveCustomer, customerRef, scan (website) }.
+      // customerRef: the save's customer may carry customerRef (the picked customer's 'q:<id>' or 'k:<key>').
       editEmbed: env.embedEdit ? (record, extra, handlers) => {
         const fingerprint = s(record.fingerprint), sessionId = newSessionId();
         const base = { v: 1, ok: false, txnId: s(record.txnId), sessionId };
@@ -486,7 +488,7 @@
         if (!fingerprint) return { sessionId, rect() {}, command() {}, result: Promise.resolve({ ...base, code: 'open_sale_screen', message: 'This one has to be changed on the sale screen. Nothing was changed.' }) };
         const request = { v: 1, kind: 'edit', mode: 'embedded', sessionId, txn: { ...toHistory({ ...record, storeCredit: extra && extra.storeCredit }), cardFee: !!(extra && extra.cardFee) }, loaded: { fingerprint } };
         const one = env.embedEdit(request, handlers || {});
-        return { sessionId, rect: one.rect, command: one.command, saveCustomer: !!one.saveCustomer, scan: one.scan,
+        return { sessionId, rect: one.rect, command: one.command, saveCustomer: !!one.saveCustomer, customerRef: !!one.customerRef, scan: one.scan,
           result: Promise.resolve(one.result).then(out => (out && typeof out === 'object' ? out : closed), () => closed) };
       } : undefined,
       // Transactions saved on THIS computer and not yet on the sheet (History reads the sheet, so it must say so). A set of txnIds.

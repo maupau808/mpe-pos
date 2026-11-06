@@ -836,6 +836,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
  @media(max-width:1060px){body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 250px}body.embedded-edit #counterView .cv-reorder,body.embedded-edit #counterView .cv-reorder-label{display:none}body.embedded-edit #counterView .cv-desc input.cv-description{font-size:16px}body.embedded-edit #counterView .cv-checkout{gap:8px}body.embedded-edit #counterView .cv-head>.cv-support:not(.cv-discount-head),body.embedded-edit #counterView .cv-line>.cv-cost,body.embedded-edit #counterView .cv-line>.cv-margin{display:none}body.embedded-edit #counterView .cv-head,body.embedded-edit #counterView .cv-line{grid-template-columns:20px minmax(150px,1fr) 62px 80px 44px 88px 26px;gap:5px}}
  /* The one Edit (D14): only the sale lines, and under them a slim strip (Add note, PO #, order discount, card fee, subtotal, tax, total). History's panel holds the customer and its bar the Save, so this page's customer boxes, header and checkout column stay hidden. */
  body.embedded-edit #counterView .cv-top{display:none!important}body.embedded-edit #counterView .cv-body{display:flex;flex-direction:column}body.embedded-edit #counterView .cv-work{flex:1;min-height:0}body.embedded-edit #counterView .cv-checkout{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px 22px;padding:8px 16px;border-left:0;border-top:1px solid #d5ddd3;overflow:visible;flex-shrink:0}body.embedded-edit #counterView .cv-customer-label,body.embedded-edit #counterView #cvCustomer,body.embedded-edit #counterView #cvLedger,body.embedded-edit #counterView #cvFinalize,body.embedded-edit #counterView #cvCharge,body.embedded-edit #counterView #sumInternal{display:none!important}body.embedded-edit #counterView #cvPo .cust-input{width:170px;font-size:14px;padding:6px 8px}body.embedded-edit #counterView .cv-summary{display:contents}body.embedded-edit #counterView .cv-order{margin:0;order:1}body.embedded-edit #counterView .cv-fee{order:2}body.embedded-edit #counterView #cvTotals{order:3;margin-left:auto}body.embedded-edit #counterView #presellWrap{margin:0;font-size:15px;display:flex;align-items:center;gap:6px;white-space:nowrap}body.embedded-edit #counterView #cvTotals .summary{display:flex;align-items:baseline;gap:20px}body.embedded-edit #counterView .sum-row{padding:0;gap:6px;white-space:nowrap}body.embedded-edit #counterView .sum-row.total{display:flex;border-top:0;margin:0;padding:0;font-weight:700}body.embedded-edit #counterView .sum-row.total .sum-val{display:inline;font-size:24px;margin:0;letter-spacing:-.01em}
+ body.embedded-edit #counterView .cv-article.cv-added{background:#eef6f0}body.embedded-edit #counterView #cvEntry{border-color:#9cc3a8}body.embedded-edit tr.drop-before>td{box-shadow:inset 0 3px 0 #24683a}body.embedded-edit tr.drop-after>td{box-shadow:inset 0 -3px 0 #24683a}
 }
 @media screen{#counterView #cvFullScreen[aria-pressed="true"],#counterView #cvFrontLock[aria-pressed="true"]{background:#dce8dc;border-color:#8ca28b}body.dark #counterView #cvFullScreen[aria-pressed="true"],body.dark #counterView #cvFrontLock[aria-pressed="true"]{background:#3e5942;color:#eff5ec;border-color:#779379}}
 @media print{#counterView,.cv-results{display:none!important}tr[data-order-discount] td,tr[data-order-discount] input,tr.cv-order-print td,tr.cv-order-print input{font-weight:800!important;color:#000!important}}
@@ -1205,7 +1206,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.05.5';
+const POS_RELEASE = '2026.11.05.6';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -11100,6 +11101,8 @@ async function runEditSessionAndReport(raw) {
 // Loads and proves exactly as silent, then stays open: sends `state` as the person edits and answers History's `save` / `cancel`
 // commands with the one result. Everything that prints, clears, charges or changes the type is refused on this page.
 var _embeddedEdit = null;   // var, not let: updateSummary reads it while the page is still starting
+var _editLoadedRows = null;   // row numbers (data-row) the edit loaded; null on a normal register
+function editLineAdded(i) { return !!_editLoadedRows && !_editLoadedRows.has(i); }
 var _embeddedLoading = null;   // { sessionId, cancelled } while the request is loading
 var _embeddedEarlyCancel = '';   // a Cancel that came before its request
 function editSessionRefuses() {   // the Print, Save, Clear, Next, PDF, email, charge and type controls on an edit-session page
@@ -11179,6 +11182,7 @@ async function startEmbeddedEdit(raw) {
   }
   _embeddedEdit = { req, base, seq: 0, saving: false, done: false, timer: null, error: '', originalTotalCents: orderTotalCents(captureOrder()) };
   if (typeof document.body?.classList?.add === 'function') document.body.classList.add('embedded-edit');
+  if (typeof rowOrder === 'function') _editLoadedRows = new Set(rowOrder().filter(i => !rowIsEmpty(i)));   // the lines the sale had when the edit opened (History marks the ones added after)
   if (typeof window.mountCounterViewForEdit === 'function') window.mountCounterViewForEdit(); // Classic view set in Admin: the edit still shows the lines layout
   // The top bar (and the Presold box in it) is hidden here: show the same Presold box in the strip, next to PO #.
   const presell = document.getElementById('presellWrap'), po = document.getElementById('cvPo');
@@ -11215,7 +11219,8 @@ async function runEditCommand(command) {   // History's Save / Cancel for the op
     return finishEmbeddedEdit({ ...e.base, ok: true, cancelled: true, unchanged: true });
   }
   if (command.cmd !== 'save' || e.saving) return null;
-  const customer = editCommandCustomer(command.customer);
+  const pickedRef = editCommandCustomerRef(command.customer);
+  const customer = pickedRef === null ? null : editCommandCustomer(command.customer);
   if (!customer) { e.error = 'That save was not valid. Nothing was saved.'; postEditState(); return null; }
   const problem = editSaveProblem();
   if (problem) { postEditState(); return null; }   // History shows the problem from state; nothing is written
@@ -11226,10 +11231,14 @@ async function runEditCommand(command) {   // History's Save / Cancel for the op
   const boxes = Object.entries(EDIT_PATCH_FIELDS).map(([key, id]) => [key, document.getElementById(id)]).filter(([, el]) => el);
   const before = boxes.map(([, el]) => el.value);
   for (const [key, el] of boxes) if (key in customer) el.value = customer[key];
+  // A customer picked in History's suggestions: "Also update this customer's info" updates that customer (editSessionSave reads the ref).
+  const panel = document.getElementById('custPanel'), beforeRef = panel ? panel.dataset.customerRef : undefined;
+  if (panel && pickedRef) panel.dataset.customerRef = pickedRef;
   const result = await editSessionSave(e.req, e.base, command.updateInfo === true);
   e.saving = false;
   if (result && result.ok) return finishEmbeddedEdit(result);
   boxes.forEach(([, el], i) => { el.value = before[i]; });
+  if (panel && pickedRef) panel.dataset.customerRef = beforeRef || '';
   e.error = String(result && result.message || 'That did not save. Nothing was changed. Try again.').slice(0, 200);
   postEditState();
   return null;
@@ -11241,10 +11250,21 @@ function editCommandCustomer(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const clean = {};
   for (const [key, value] of Object.entries(raw)) {
+    if (key === 'customerRef') continue;   // checked by editCommandCustomerRef
     if (!EDIT_PATCH_FIELDS[key] || typeof value !== 'string' || value.length > 400) return null;
     clean[key] = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, EDIT_PATCH_MAX);
   }
   return clean;
+}
+// The customer picked in History (customer.customerRef): a QuickBooks id ('q:' prefix dropped) or a register key 'k:<key>'.
+// Not sent: undefined (the loaded buyer's ref stays). Anything else: null (the save is refused).
+function editCommandCustomerRef(raw) {
+  const ref = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw.customerRef : undefined;
+  if (ref === undefined) return undefined;
+  if (typeof ref !== 'string' || ref.length > 220) return null;
+  const qbo = /^(?:q:)?(\d{1,20})$/.exec(ref);
+  if (qbo) return qbo[1];
+  return /^k:(?:p:\d{1,40}\||\|(?=.))[^\u0000-\u001f\u007f]{0,200}$/.test(ref) ? ref : null;
 }
 // A scan History caught in one of its own text boxes (website): added to these lines like a hardware scan.
 function runEditScan(data) {
@@ -12186,7 +12206,8 @@ function sync(){
  if(!mounted||printing||busy)return;busy=true;try{
  const ids=rowOrder().filter(i=>!rowIsEmpty(i)&&i!==orderRow());const key=ids.join(',');const box=q('#cvItems');
  if(key!==lastIds){const existing=new Map([...box.children].map(a=>[+a.dataset.cvId,a]));ids.forEach(i=>{const a=existing.get(i)||makeArticle(rowInfo(i));box.append(a);existing.delete(i);});existing.forEach(a=>a.remove());lastIds=key;}
- for(const i of ids){const r=rowInfo(i),a=q(`[data-cv-id="${i}"]`);const values={desc:r.name,cost:plain(r.cost),margin:r.charged>0?marginPercent(r.cost,r.charged).toFixed(1):'',discount:r.price?.dataset.cvDiscountRate?`${r.price.dataset.cvDiscountRate}%`:plain(r.off),ea:plain(r.base),qty:String(r.qty),sub:plain(r.total)};for(const [k,v] of Object.entries(values)){const el=a.querySelector(`[data-cv-field="${k}"]`);if(el!==document.activeElement)el.value=v;el.disabled=!!q(`#price-input-${i}`)?.disabled;}a.querySelector('.cv-discount').classList.toggle('cv-on',r.off>0||!!r.price?.dataset.cvDiscountRate);const pn=String(r.part?.dataset.partPn||'').trim();a.querySelector('.cv-pn').textContent=pn&&pn.toUpperCase()!==String(r.name).trim().toUpperCase()?pn:'';
+ if(_editLoadedRows)_editLoadedRows.forEach(i=>{if(rowIsEmpty(i))_editLoadedRows.delete(i);});
+ for(const i of ids){const r=rowInfo(i),a=q(`[data-cv-id="${i}"]`);a.classList.toggle('cv-added',editLineAdded(i));const values={desc:r.name,cost:plain(r.cost),margin:r.charged>0?marginPercent(r.cost,r.charged).toFixed(1):'',discount:r.price?.dataset.cvDiscountRate?`${r.price.dataset.cvDiscountRate}%`:plain(r.off),ea:plain(r.base),qty:String(r.qty),sub:plain(r.total)};for(const [k,v] of Object.entries(values)){const el=a.querySelector(`[data-cv-field="${k}"]`);if(el!==document.activeElement)el.value=v;el.disabled=!!q(`#price-input-${i}`)?.disabled;}a.querySelector('.cv-discount').classList.toggle('cv-on',r.off>0||!!r.price?.dataset.cvDiscountRate);const pn=String(r.part?.dataset.partPn||'').trim();a.querySelector('.cv-pn').textContent=pn&&pn.toUpperCase()!==String(r.name).trim().toUpperCase()?pn:'';
  const check=a.querySelector('[data-cv-field="restock"]'),source=r.tr.querySelector('.reorder-toggle');check.checked=!!source?.checked;check.disabled=!!source?.disabled;syncSerials(a,r);}
  const locked=!editable();qa('#cvEntry,#cvOrderValue,#cvOrderMoney,#cvOrderPercent,#cvNote,[data-cv-field],[data-cv-sn],[data-cv-clear],[data-cv-note-below],[data-cv-drag]').forEach(el=>el.disabled=locked||(el.matches('[data-cv-field]')&&!!q(`#price-input-${el.dataset.cvRow}`)?.disabled));
  const qv=q('.cv-quote');qv.hidden=_docType!=='quote';qa('[data-cv-toggle]').forEach(e=>e.checked=!!q('#tg'+e.dataset.cvToggle)?.checked);q('#cvCardFee').checked=q('#cardFeeBtn').classList.contains('active');
