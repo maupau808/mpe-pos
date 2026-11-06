@@ -716,8 +716,10 @@
   // ---- Item edits in History (F03, C3 money; integer cents) ----
   const usd = c => '$' + (Math.abs(c) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const liveCents = r => (r.paymentsLive || []).reduce((a, p) => a + signedCents(p), 0);
-  // The panel's line for an invoice that took more than its total: 'Refund due $X', else ''.
-  const refundDue = r => (r && r.kind === 'invoice' && r.state !== 'void' && r.state !== 'cancelled' && cents(r.overpaid || 0) > 0 ? 'Refund due ' + usd(cents(r.overpaid)) : '');
+  // The panel's line for an invoice that took more than its total: 'Store credit due $X' (plus ' · add a customer' with no buyer), else ''.
+  // Trevor (Nov 5): never "refund"; an overpayment is store credit.
+  const refundDue = r => (r && r.kind === 'invoice' && r.state !== 'void' && r.state !== 'cancelled' && cents(r.overpaid || 0) > 0
+    ? 'Store credit due ' + usd(cents(r.overpaid)) + ((s(r.company) || s(r.name)) && !isPlaceholderBuyer(r) ? '' : ' · add a customer') : '');
   // The Editing bar's money line for record (as loaded, before the edit) at a new total. Paid before the edit is the record's own paid
   // (QuickBooks-recognized paid included) plus anything already over the total (R7); it is never recomputed from the new total.
   // Returns { kind, cents, text }. Overpaid (D18): kind 'credit', "Becomes store credit $X" when there is a customer, else

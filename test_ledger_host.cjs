@@ -467,6 +467,11 @@ test('app editEmbed: one embedded envelope with the RAW record (no deposit note)
     assert.equal(two.calls.embed[0].txn.storeCredit, 40, 'the receipt\'s store credit used goes to the register next to the card fee'); }
   assert.equal(K.toHistory({ ...EMBED_RECORD, storeCredit: 12.5 }).storeCredit, 12.5, 'a reopened sale carries it too');
   assert.equal('storeCredit' in K.toHistory(EMBED_RECORD), false, 'no credit: no key');
+  // Reopen in a new sale tab: the card fee and store credit must survive saleRequest (the register has no local copy on another computer).
+  { const req2 = K.saleRequest('edit', { ...EMBED_RECORD, cardFee: true, storeCredit: 12.5 });
+    assert.equal(req2.txn.cardFee, true, 'saleRequest carries the card fee');
+    assert.equal(req2.txn.storeCredit, 12.5, 'saleRequest keeps store credit');
+    assert.equal('cardFee' in K.toHistory(EMBED_RECORD), false, 'no fee: no key'); }
   if (typeof ledgerEditRequest === 'function') assert.ok(ledgerEditRequest(req), 'main accepts the embedded shape');
   s.rect({ v: 1, sessionId: s.sessionId, seq: 1, rect: { x: 1, y: 2, width: 3, height: 4 } });
   s.command({ v: 1, sessionId: s.sessionId, cmd: 'cancel' });

@@ -323,7 +323,7 @@
     return Math.abs(rest) >= 0.05 ? rest : 0;
   }
   function requestFromRecord(rec) {
-    const r = withDeposit(rec);
+    const r = rec.kind === 'quote' ? rec : withDeposit(rec); // a quote's deposit prints in the totals (deposit below), not as a note
     const items = r.items.filter(i => i.pn !== 'Note');
     const subtotal = items.reduce((a, i) => a + i.sub, 0);
     const tax = isQbo(r) ? r.tax : subtotal * TAX_RATE; // QuickBooks states its own tax and has no card fee
@@ -335,6 +335,7 @@
     return {
       po: r.kind === 'invoice' ? s(r.po) : '', type: r.kind, number: r.number || r.txnId, completionAt: completion.toISOString(),
       ...(r.kind === 'invoice' && r.paid > 0 ? { paid: m2(r.paid) } : {}), // part or full payments print as Amount paid / Balance due
+      ...(r.kind === 'quote' && r.deposit > 0 ? { deposit: m2(r.deposit) } : {}), // Subtotal, tax, Deposit paid -$X, Total (what is left)
       dueDate: r.kind === 'invoice' ? (r.dueDate || null) : null,
       customer: { name: r.name, company: r.company, phone: r.phone, email: r.email, ...billing },
       lines: r.items.map(i => (i.pn === 'Note'
@@ -376,7 +377,7 @@
   function documentPages(request, renderer, template, settings) {
     const facts = factsFromRequest(request);
     const po = s(request.po);
-    const extras = { ...(po ? { po } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}) };
+    const extras = { ...(po ? { po } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}), ...(request.type === 'quote' && request.deposit ? { deposit: request.deposit } : {}) };
     const copies = request.type === 'invoice' ? ['customer', 'merchant'] : [undefined];
     return copies.map(copy => renderer.renderOfficialHtml(template, facts, extras, settings || renderer.DEFAULT_SETTINGS, copy));
   }
@@ -659,7 +660,7 @@
     const was = Number.isSafeInteger(st.originalTotalCents) ? st.originalTotalCents : Math.round(Number(r.total) * 100);
     const now = Number.isSafeInteger(st.totalCents) ? st.totalCents : null;
     let line = now == null ? null : L.editMoney(r, now, was, f.cust ? f.cust.typed : undefined);
-    if (line && line.kind === 'credit' && !credit) line = { kind: 'refund', cents: line.cents, text: 'Refund due ' + money(line.cents / 100) };
+    if (line && line.kind === 'credit' && !credit) line = { kind: 'refund', cents: line.cents, text: 'Store credit due ' + money(line.cents / 100) };
     const tone = !line ? '' : line.kind === 'refund' || line.kind === 'depositExceeds' ? ' late' : line.kind === 'credit' ? (line.needsCustomer ? ' soon' : ' credit') : '';
     const warn = [];
     if (payLink) warn.push('This invoice has a pay link. If the total changes, it needs a new link after you save.');

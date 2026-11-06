@@ -146,6 +146,7 @@
       time: s(r.time), name: [s(r.name), s(r.company)].filter(Boolean).join(' / '), phone: s(r.phone), email: s(r.email),
       addr: s(r.addr), total: m2(r.total), docType: s(r.docType), docNumber: s(r.number), fromQuote: s(r.fromQuote), po: s(r.po),
       customer: customer.some(Boolean) ? customer : null, presell: !!r.presell, contactConflict: !!r.contactConflict,
+      ...(r.cardFee === true ? { cardFee: true } : {}), // the sale carried the 3% card fee: the register turns it on (it has no other copy on another computer)
       ...(Number(r.storeCredit) > 0 ? { storeCredit: Number(r.storeCredit) } : {}), // store credit this receipt used (dollars): the register shows it locked
       completedContact: Array.isArray(r.completedContact) ? r.completedContact.slice() : null,
       items: (r.items || []).map(i => ({ pn: s(i.pn), desc: s(i.desc), qty: s(i.qty), ea: i.pn === 'Note' ? '' : m2(i.ea),

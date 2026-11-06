@@ -30,7 +30,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 const GE_TAX_LABEL = 'GE tax (4.712%)';
 const TITLES = Object.freeze({ invoice: 'Invoice', quote: 'Quote', receipt: 'Receipt' });
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const EXTRA_LIMITS = { po: 200, terms: 200, ordered_by: 200, bill_to: 500, paid: 20, revised_on: 10, valid_until: 10 };
+const EXTRA_LIMITS = { po: 200, terms: 200, ordered_by: 200, bill_to: 500, paid: 20, deposit: 20, revised_on: 10, valid_until: 10 };
 
 class DocumentRenderError extends Error {}
 
@@ -217,12 +217,15 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
     if (!isZero(dec(totals[key]))) sums.push([label, totals[key], '']);
   }
   sums.push([isZero(dec(totals.tax)) ? 'GE tax' : GE_TAX_LABEL, totals.tax, '']);
-  sums.push(['Total', totals.total, '.total']);
+  // A quote's deposit prints as its own line before the total, and the total is what is left to pay (Trevor, Nov 5).
+  const deposit = kind === 'quote' && extra.deposit !== undefined ? dec(extra.deposit) : null;
+  if (deposit && !isZero(deposit)) sums.push(['Deposit paid', deposit, '', `-${money(deposit)}`], ['Total', maxZero(sub(total, deposit)), '.total']);
+  else sums.push(['Total', totals.total, '.total']);
   if (kind === 'invoice') {
     const paid = dec(extra.paid === undefined ? '0.00' : extra.paid);
     if (style === 'clean' || !isZero(paid)) sums.push(['Amount paid', paid, ''], ['Balance due', maxZero(sub(total, paid)), '.due']);
   }
-  const sumsHtml = sums.map(([label, value, level]) => fill(`${style}.sum${level}`, { label: escape(label), amount: escape(money(value)) })).join('');
+  const sumsHtml = sums.map(([label, value, level, text]) => fill(`${style}.sum${level}`, { label: escape(label), amount: escape(text || money(value)) })).join('');
   const revised = (extra.revision === undefined ? 1 : extra.revision) >= 2 && extra.revised_on
     ? fill('revised', { date: escape(longDate(extra.revised_on)) }) : '';
   const words = (text) => text.split('{terms}').join(terms).split('{valid_until}').join(validUntil).split('{valid_days}').join(String(cfg.quote_valid_days));
