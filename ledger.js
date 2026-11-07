@@ -134,14 +134,18 @@
   const MISSING_FIELDS = [['any', 'Any'], ['name', 'Name'], ['phone', 'Phone'], ['address', 'Address'], ['email', 'Email']];
   // Filters under the search box. Records: when and where from. Customers: who to show and the order.
   const FILTERS = {
-    when: [['', 'Any date'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['year', 'This year'], ['lastYear', 'Last year']],
+    when: [['', 'Any date'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['sixMonths', 'Past 6 months'], ['year', 'This year'], ['lastYear', 'Last year']],
     src: [['', 'All sources'], ['register', 'Register only'], ['qbo', 'QuickBooks only']],
     cShow: [['', 'All customers'], ['owes', 'Owes money'], ['overdue', 'Overdue'], ['year', 'Bought this year']],
     cSort: [['', 'Newest activity'], ['name', 'Name A–Z'], ['balance', 'Most owed']],
   };
   function filterRecords(records, ui, today) {
     const y = today.slice(0, 4), from30 = addDays(today, -30), from90 = addDays(today, -90);
-    const when = { '30': r => (r.date || '') >= from30, '90': r => (r.date || '') >= from90, year: r => (r.date || '').startsWith(y), lastYear: r => (r.date || '').startsWith(String(y - 1)) }[ui.when];
+    const [cy, cm, cd] = today.split('-').map(Number), month = new Date(Date.UTC(cy, cm - 7, 1));
+    const last = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0)).getUTCDate();
+    month.setUTCDate(Math.min(cd, last));
+    const fromSix = month.toISOString().slice(0, 10), selectedWhen = ui.section === 'invoices' ? (ui.invoiceWhen ?? ui.when ?? 'sixMonths') : ui.when;
+    const when = { sixMonths: r => (r.date || '') >= fromSix, '30': r => (r.date || '') >= from30, '90': r => (r.date || '') >= from90, year: r => (r.date || '').startsWith(y), lastYear: r => (r.date || '').startsWith(String(y - 1)) }[selectedWhen];
     const src = { register: r => !isQbo(r), qbo: isQbo }[ui.src];
     return when || src ? records.filter(r => (!when || when(r)) && (!src || src(r))) : records;
   }
@@ -447,7 +451,7 @@
   }
 
   // UI memory: in memory for tab switches, sessionStorage for a reload. Storage may be missing or throw.
-  const DEFAULT_UI = Object.freeze({ section: 'recent', invSub: 'unpaid', quoteSub: 'open', salesSub: 'all', missField: 'any', when: '', src: '', cShow: '', cSort: '', q: '', sel: '', scroll: 0, closed: [] });
+  const DEFAULT_UI = Object.freeze({ section: 'recent', invSub: 'unpaid', quoteSub: 'open', salesSub: 'all', missField: 'any', when: '', invoiceWhen: 'sixMonths', src: '', cShow: '', cSort: '', q: '', sel: '', scroll: 0, closed: [] });
   function loadUi(storage) {
     try {
       const v = JSON.parse(storage.getItem(STORE_KEY) || 'null');
@@ -751,7 +755,7 @@
     if (!pays.length && owing && r.paid > 0) lines.push(lnHtml('Paid', '−' + money(r.paid)));
     if (r.kind === 'receipt' && r.creditUsed > 0) lines.push(lnHtml('Store credit used', '−' + money(r.creditUsed)));
     if (r.kind === 'quote' && r.deposit > 0 && !r.convertedTo && !gone) lines.push(lnHtml('Left to collect', money(cents(r.total - r.deposit)), ' tot'));
-    return `<div class="money"><div class="amt num${gone ? ' gone' : r.state === 'overdue' ? ' late' : ''}">${money(owing ? r.balance : r.total)}<span>${esc(unit)}</span></div>`
+    return `<div class="money"><div class="amt num${gone ? ' gone' : ''}">${money(owing ? r.balance : r.total)}<span>${esc(unit)}</span></div>`
       + (status ? `<div class="od">${r.state === 'overdue' ? '<i aria-hidden="true"></i>' : ''}${esc(status)}</div>` : '') + lines.join('')
       + notes.map(x => `<div class="nt${x.tone ? ' ' + x.tone : ''}"><i aria-hidden="true"></i>${esc(x.text)}</div>`).join('') + '</div>';
   }
@@ -1010,8 +1014,8 @@
       $('q').placeholder = SEARCH_HINT[ui.section] || SEARCH_HINT.recent;
       $('q').title = inCust ? 'Name, company, phone or email' : 'Name, company, phone, part #, serial #, invoice or quote number';
       $('q').setAttribute('aria-label', $('q').placeholder);
-      const fkeys = inCust ? ['cShow', 'cSort'] : ['when', 'src'];
-      $('filters').innerHTML = subSel + fkeys.map(k => `<select data-filter="${k}" aria-label="${k === 'cSort' ? 'Sort' : 'Filter'}" class="${ui[k] ? 'on' : ''}">${FILTERS[k].map(([v, label]) => `<option value="${v}"${ui[k] === v ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`).join('');
+      const fkeys = inCust ? ['cShow', 'cSort'] : [ui.section === 'invoices' ? 'invoiceWhen' : 'when', 'src'];
+      $('filters').innerHTML = subSel + fkeys.map(k => `<select data-filter="${k}" aria-label="${k === 'cSort' ? 'Sort' : 'Filter'}" class="${ui[k] ? 'on' : ''}">${(FILTERS[k === 'invoiceWhen' ? 'when' : k]).map(([v, label]) => `<option value="${v}"${ui[k] === v ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`).join('');
       const view = currentView();
       const rows = view.rows;
       // In Missing info a filled-in sale leaves the list: the selection moves to the next row down, else the one above, else nothing.
@@ -1047,7 +1051,7 @@
     // buildView is pure: rebuilt only when the records or the section / sub-tab / search change, not on every selection.
     function currentView() {
       const inCust = ui.section === 'customers';
-      const key = [st.rev, inCust ? st.custRev : '', ui.section, ui.invSub, ui.quoteSub, ui.salesSub, ui.missField, ui.when, ui.src, ui.cShow, ui.cSort, s(ui.q)].join('\u0001');
+      const key = [st.rev, inCust ? st.custRev : '', ui.section, ui.invSub, ui.quoteSub, ui.salesSub, ui.missField, ui.when, ui.invoiceWhen, ui.src, ui.cShow, ui.cSort, s(ui.q)].join('\u0001');
       if (!st.view || st.view.key !== key) {
         const v = inCust ? buildCustomerView(customers().list, ui, st.today) : buildView(st.records, ui, st.today);
         st.view = { key, ...v, rows: v.groups.flatMap(g => g.rows) };
@@ -1064,7 +1068,7 @@
       const repair = (r.items || []).some(i => /labor/i.test(i.pn) || /labor/i.test(i.desc));
       const kind = r.state === 'cancelled' ? '<b class="k-cancel">Cancelled</b>' : repair ? '<b class="k-repair">Repair</b>' : r.kind === 'receipt' ? '' : `<b class="k-doc">${esc(KIND_LABEL[r.kind])}</b>`;
       return `<button class="row${r.state === 'void' || r.state === 'cancelled' ? ' is-void' : ''}" role="option" data-id="${esc(r.txnId)}" aria-selected="${r.txnId === ui.sel}">
-        <span class="nm${r.qboBuyer || !(r.company || r.name) ? ' noname' : ''}">${esc(r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : who(r))}</span><span class="amt num${r.state === 'overdue' ? ' late' : ''}">${money(UNPAID.has(r.state) ? r.balance : r.total)}</span>
+        <span class="nm${r.qboBuyer || !(r.company || r.name) ? ' noname' : ''}">${esc(r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : who(r))}</span><span class="amt num">${money(UNPAID.has(r.state) ? r.balance : r.total)}</span>
         <span class="sub num">${esc(when)}${owing ? `<span class="due-count${r.state === 'overdue' ? ' late' : ''}">${esc(statusOf(r, st.today).text)}</span>` : ''}</span><span class="when">${kind}</span></button>`;
     }
 
@@ -1075,7 +1079,7 @@
       const n = c.count ? ` · ${c.count} record${c.count === 1 ? '' : 's'}` : '';
       const cr = creditOf(c.id); // a buildCustomers id is the customer's credit key
       return `<button class="row" role="option" data-id="${esc(c.id)}" aria-selected="${c.id === ui.sel}">
-        <span class="nm">${esc(c.company || c.name)}</span><span class="amt num ${c.overdue ? 'late' : ''}">${c.balance > 0 ? money(c.balance) : ''}</span>
+        <span class="nm">${esc(c.company || c.name)}</span><span class="amt num">${c.balance > 0 ? money(c.balance) : ''}</span>
         <span class="sub num">${cr ? `<b class="cr${cr < 0 ? ' late' : ''}">${esc(creditText(cr))}</b>${sub ? ' · ' : ''}` : ''}${esc(sub)}</span><span class="when muted">${esc(last + n)}${c.inactive ? ' · Inactive' : ''}</span></button>`;
     }
 
@@ -1092,7 +1096,7 @@
         const t = statusOf(r, st.today);
         return `<button class="crec" data-open="${esc(r.txnId)}"><span class="num">${esc(r.number || r.txnId)}</span><span>${esc(KIND_LABEL[r.kind])}${isQbo(r) ? ' · QuickBooks' : ''}</span>
           <span class="num">${esc(fmtDY(r.date))}</span><span class="${r.kind === 'invoice' ? t.tone : 'muted'}">${esc(r.kind === 'invoice' ? t.text : '')}</span>
-          <span class="amt num${r.state === 'overdue' ? ' late' : ''}">${money(UNPAID.has(r.state) ? r.balance : r.total)}</span></button>`;
+          <span class="amt num">${money(UNPAID.has(r.state) ? r.balance : r.total)}</span></button>`;
       }).join('');
       $('paper').innerHTML = `<div class="cust">
         <h2>${esc(c.company || c.name)}</h2>
@@ -1391,7 +1395,7 @@
       if (k === 'qboRefresh') return refreshQbo();
       if (k === 'hcCheck') return helcimCheck(true);
       if (k === 'clearSearch') { ui.q = ''; $('q').value = ''; return draw(); }
-      if (k === 'clearFilters') { ui.when = ui.src = ui.cShow = ui.cSort = ''; ui.sel = ''; return draw(); }
+      if (k === 'clearFilters') { ui.when = ui.src = ui.cShow = ui.cSort = ''; ui.invoiceWhen = ''; ui.sel = ''; return draw(); }
       if (k === 'more') { st.limit += PAGE; return draw(); }
       if (k === 'beforeOff') { st.before = null; return draw(); }
       if (k === 'cMore') { st.recLimit = Infinity; return draw(); }
