@@ -739,6 +739,33 @@
     return `<div class="pc"><h3>Customer</h3>${name ? `<b class="cn${r.qboBuyer ? ' muted' : ''}">${esc(name)}</b>` : `<span class="cn muted">${lines.length ? 'No name' : 'No customer on this sale'}</span>`}`
       + lines.map(x => `<div class="cs">${esc(x)}</div>`).join('') + (credit ? `<div class="ccredit">${creditPill(credit)}</div>` : '') + '</div>';
   }
+  // Customer memo (shop only, Customers column K). It sits at the top of the customer card and is typed in place: click it (or
+  // "Add memo"), Enter saves, Shift+Enter is a new line, Escape cancels. ed = the open editor { id, text, err } or null. An app that
+  // cannot read column K (ready false) shows no memo at all.
+  const memoFirstLine = memo => s(s(memo).split('\n')[0]);
+  function memoHtml(c, ed, ready, busy) {
+    if (!ready) return '';
+    if (ed && ed.id === c.id) {
+      return `<div class="cmemo editing"><label class="cmemo-l" for="cMemoText">Memo · shop only, never printed or emailed</label>`
+        + `<textarea id="cMemoText" rows="${Math.min(8, Math.max(2, s(ed.text).split('\n').length))}"${busy ? ' disabled' : ''}${ed.err ? ' aria-invalid="true" aria-describedby="cMemoErr"' : ''}>${esc(ed.text)}</textarea>`
+        + `<div class="cmemo-f"><span class="cmemo-h">Enter saves · Shift+Enter new line · Esc cancels</span>`
+        + `<button class="btn quiet sm" data-act="memoCancel"${busy ? ' disabled' : ''}>Cancel</button><button class="btn primary sm" data-act="memoSave"${busy ? ' disabled' : ''}>${busy ? 'Saving…' : 'Save'}</button></div>`
+        + (ed.err ? `<div class="err" id="cMemoErr" role="alert">${esc(ed.err)}</div>` : '') + '</div>';
+    }
+    return c.memo
+      ? `<button class="cmemo" data-act="memoEdit" title="Click to change the memo"><span class="cmemo-l">Memo · shop only</span><span class="cmemo-t">${esc(c.memo)}</span></button>`
+      : `<button class="cmemo add" data-act="memoEdit"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add memo<span class="cmemo-h">shop only</span></button>`;
+  }
+  // Keys in the memo box: Enter saves (not while an input method is composing), Shift+Enter is a new line, Escape cancels.
+  const memoKey = e => (e.key === 'Escape' ? 'cancel' : e.key === 'Enter' && !e.shiftKey && !e.isComposing ? 'save' : '');
+  // A memo-only save: the customer's 8 current fields unchanged (so the key and ref stay the same) plus the memo.
+  const memoFields = (c, text) => ({ company: c.company, name: c.name, phone: c.phone, email: c.email, street: c.street, city: c.city, region: c.region, zip: c.zip, memo: s(text) });
+  // The list row's name, with the memo's first line beside it (gray, one line, cut off with "…" by CSS).
+  const custNameHtml = (c, ready) => (ready && memoFirstLine(c.memo)
+    ? `<span class="nm has-memo"><span class="nmn">${esc(c.company || c.name)}</span><span class="nmemo">${esc(memoFirstLine(c.memo))}</span></span>`
+    : `<span class="nm">${esc(c.company || c.name)}</span>`);
+  // Column J for a Customers row (see buildCustomerRow): the QuickBooks id, else the customer's own 'k:' id when the edit moves its key.
+  const customerRef = (c, f) => c.qboId || (c.id.startsWith('k:') && L.customerKey(f.phone, f.company, f.name) !== c.id.slice(2) ? c.id : '');
   // Money: the big amount (left to pay on an owing invoice, else the total), one dark status line (red dot only when overdue), then the
   // total and each payment, deposit, store credit line. notes: [{ text, tone: ''|'warn'|'late'|'ok' }], the quiet status lines under it.
   function railMoneyHtml(r, today, notes = []) {
@@ -834,7 +861,7 @@
     const live = L.livePayments(L.parsePayments(payRows));
     return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
   }
-  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, railMoneyHtml, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, embedFallsBack, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railMoneyHtml, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, embedFallsBack, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest, documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
@@ -847,6 +874,7 @@
       today: '', busy: '', edit: null, template: null, docKey: '', pages: null, docErr: '',
       qbo: null, qboVersion: '', qboAt: 0, qboBusy: false, qboWarned: false, qboAgain: false, helcimOk: false, helcimP: null, helcimAt: { at: 0 }, helcimBusy: false, helcimWhen: 0, looks: {}, qboRun: null, qboTried: false, qboGenerated: '', refreshing: false, refreshFailed: false, rev: 0, limit: PAGE, view: null };
     const host = () => root.MPELedgerHost;
+    const memoOn = () => !!(host() && host().memoReady && host().memoReady()); // an app that cannot read Customers column K shows no memo
     const shop = () => host() && host().shopSettings;
     const reviewOn = () => !!shop() && shop().get('review_qr') === 'on';
     const requestOf = r => requestFromRecord(r, { review: reviewOn() });
@@ -1079,7 +1107,7 @@
       const n = c.count ? ` · ${c.count} record${c.count === 1 ? '' : 's'}` : '';
       const cr = creditOf(c.id); // a buildCustomers id is the customer's credit key
       return `<button class="row" role="option" data-id="${esc(c.id)}" aria-selected="${c.id === ui.sel}">
-        <span class="nm">${esc(c.company || c.name)}</span><span class="amt num">${c.balance > 0 ? money(c.balance) : ''}</span>
+        ${custNameHtml(c, memoOn())}<span class="amt num">${c.balance > 0 ? money(c.balance) : ''}</span>
         <span class="sub num">${cr ? `<b class="cr${cr < 0 ? ' late' : ''}">${esc(creditText(cr))}</b>${sub ? ' · ' : ''}` : ''}${esc(sub)}</span><span class="when muted">${esc(last + n)}${c.inactive ? ' · Inactive' : ''}</span></button>`;
     }
 
@@ -1087,6 +1115,7 @@
     function drawCustomer(c) {
       st.docKey = ''; // a document still being drawn must not land here
       $('note').innerHTML = '';
+      if (st.memoEdit && (!c || st.memoEdit.id !== c.id)) st.memoEdit = null; // another customer: the open memo box closes
       if (!c) { $('paper').innerHTML = '<div class="empty">Pick a customer on the left.</div>'; $('rail').innerHTML = ''; return; }
       const bal = customerBalance(c), cr = creditOf(c.id), on = !!credits(), given = on ? lastGiven(st.payRows, c.id, ctx()) : null;
       const line = (label, value) => (value ? `<dt>${label}</dt><dd>${esc(value)}</dd>` : '');
@@ -1098,13 +1127,24 @@
           <span class="num">${esc(fmtDY(r.date))}</span><span class="${r.kind === 'invoice' ? t.tone : 'muted'}">${esc(r.kind === 'invoice' ? t.text : '')}</span>
           <span class="amt num">${money(UNPAID.has(r.state) ? r.balance : r.total)}</span></button>`;
       }).join('');
+      const was = doc.activeElement && doc.activeElement.id === 'cMemoText' ? doc.activeElement : null; // a background redraw keeps the caret
+      const caret = was ? [was.selectionStart, was.selectionEnd] : null;
       $('paper').innerHTML = `<div class="cust">
         <h2>${esc(c.company || c.name)}</h2>
+        ${memoHtml(c, st.memoEdit, memoOn(), st.busy === 'memo')}
         <dl class="cinfo">${line('Contact', c.company ? c.name : '')}${line('Phone', c.phone)}${line('Email', c.email)}${line('Address', c.addr)}</dl>
         <div class="cbal"><span class="pill ${bal.tone}">${esc(bal.text)}</span>${creditPill(cr)}<span class="muted">Counts invoices from 2026 on. Older open invoices are not added in.</span></div>
         <h3>${all.length ? `Records (${all.length})` : 'Records'}</h3>
         ${all.length ? `<div class="crecs">${recs}</div>` : '<div class="empty">No sales or quotes on file for this customer.</div>'}
         ${all.length > shown.length ? `<button class="btn more" data-act="cMore">Show all ${all.length}</button>` : ''}</div>`;
+      const ta = $('cMemoText'), ed = st.memoEdit;
+      if (ta && ed) { // the typed text exactly (the HTML copy is trimmed); the caret goes to the end when the box opens or a save is refused
+        ta.value = ed.text;
+        if (ed.focus || caret) {
+          const at = ed.focus || !caret ? [ta.value.length, ta.value.length] : caret;
+          ed.focus = false; ta.focus(); try { ta.setSelectionRange(at[0], at[1]); } catch (_) {}
+        }
+      }
       $('rail').innerHTML = `
         <div><h3>Customer</h3><div class="big">${esc(c.company || c.name)}</div><div class="state"><span class="pill ${bal.tone}">${esc(bal.text)}</span>${creditPill(cr)}</div></div>
         <div class="acts"><button class="btn primary" data-act="cNew">${ICON.newInvoice}<span>New invoice for this customer</span></button>
@@ -1403,6 +1443,9 @@
       if (ui.section === 'customers') {
         if (k === 'cNew' && r) return openSale('newInvoice', newInvoiceTxn(r), `A new invoice for ${r.company || r.name}`);
         if (k === 'cEdit' && r) return editCustomer(r);
+        if (k === 'memoEdit' && r) return memoOpen(r);
+        if (k === 'memoSave') return memoSave();
+        if (k === 'memoCancel') return memoCancel();
         if (k === 'giveCredit' && r && credits()) return giveCredit(r.id, r.company || r.name);
         if (k === 'undoCredit' && r && el) return undoGiven(el.dataset.id, r.company || r.name);
         return;
@@ -1432,6 +1475,8 @@
     function editCustomer(c) {
       const d = $('custEdit');
       for (const [key, id] of EDIT_FIELDS) $(id).value = c[key] || '';
+      const memo = memoOn();
+      $('ceMemoBox').hidden = !memo; $('ceMemo').value = c.memo || '';
       $('ceErr').textContent = '';
       d.returnValue = '';
       d.onsubmit = e => {
@@ -1442,20 +1487,37 @@
       d.onclose = () => {
         if (d.returnValue !== 'save') return;
         const f = Object.fromEntries(EDIT_FIELDS.map(([key, id]) => [key, $(id).value]));
+        if (memo) f.memo = $('ceMemo').value;
         saveCustomer(c, f);
       };
       if (d.showModal) d.showModal(); else d.setAttribute('open', '');
       $('ceCompany').focus();
     }
-    function saveCustomer(c, f) {
-      run('cSave', async () => {
-        const key = L.customerKey(f.phone, f.company, f.name);
-        const ref = c.qboId || (c.id.startsWith('k:') && key !== c.id.slice(2) ? c.id : ''); // see buildCustomerRow
-        try { await host().appendCustomerRows([L.buildCustomerRow(f, ref, Date.now())]); }
-        catch (e) { if (e && e.code === 'customers_missing') return 'The Customers tab is not on the sheet yet. Nothing was saved.'; throw e; }
+    // ed: the open memo box (a memo-only save from the card). A refused memo save keeps the box open with the typed text and says why.
+    function saveCustomer(c, f, ed) {
+      run(ed ? 'memo' : 'cSave', async () => {
+        try { await host().appendCustomerRows([L.buildCustomerRow(f, customerRef(c, f), Date.now())]); }
+        catch (e) {
+          const missing = e && e.code === 'customers_missing' ? 'The Customers tab is not on the sheet yet. Nothing was saved.' : '';
+          if (!ed) { if (missing) return missing; throw e; }
+          ed.err = missing || (e && e.code === 'not_signed_in' ? 'Not signed in to Google. Nothing was saved.' : 'That did not go through. Nothing changed. Try again.');
+          ed.focus = true;
+          return '';
+        }
+        if (ed && st.memoEdit === ed) st.memoEdit = null;
         ui.sel = c.id;
-        return `Saved. ${s(f.company) || s(f.name)} is updated.`;
+        return ed ? (s(f.memo) ? 'Memo saved.' : 'Memo cleared.') : `Saved. ${s(f.company) || s(f.name)} is updated.`;
       });
+    }
+    // The memo box on the customer card (memoHtml): open, save (only when the text changed), cancel.
+    function memoOpen(c) { if (!memoOn() || !c) return; st.memoEdit = { id: c.id, text: c.memo || '', err: '', focus: true }; draw(); }
+    function memoCancel() { if (!st.memoEdit || st.busy) return; st.memoEdit = null; draw(); }
+    function memoSave() {
+      const ed = st.memoEdit, c = ed && byId(ed.id);
+      if (!c || st.busy) return;
+      if (s(ed.text) === s(c.memo)) { st.memoEdit = null; return draw(); } // nothing changed: nothing written
+      ed.err = '';
+      saveCustomer(c, memoFields(c, ed.text), ed);
     }
     // Cancel sale: one 'cancel' mark on the Payments tab (ledger-data.js CANCEL). A payment must be undone first.
     function confirmCancel(r) {
@@ -1584,6 +1646,16 @@
       st.backTo = '';
       select(row.dataset.id);
       const r = byId(row.dataset.id); if (r) rowMenu(r, e.clientX, e.clientY);
+    });
+    // The memo box: typing is kept in st.memoEdit (a redraw or a refused save keeps it); Enter saves, Shift+Enter new line, Escape cancels.
+    // Its keys stay in the box (arrows never move the list selection).
+    const paper = $('paper');
+    paper.addEventListener('input', e => { if (e.target.id === 'cMemoText' && st.memoEdit) st.memoEdit.text = e.target.value; });
+    paper.addEventListener('keydown', e => {
+      if (e.target.id !== 'cMemoText') return;
+      e.stopPropagation();
+      const k = memoKey(e);
+      if (k) { e.preventDefault(); if (k === 'save') memoSave(); else memoCancel(); }
     });
     const rail = $('rail');
     // The panel's customer fields during an edit: typing goes to st.edit.cust; the panel's Save and Cancel follow it.

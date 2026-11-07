@@ -210,6 +210,29 @@ dialog.edit label{display:block;margin-bottom:9px;font-size:13px;font-weight:600
 dialog.edit input{display:block;width:100%;height:34px;margin-top:3px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:14px;font-weight:400;color:var(--ink)}
 dialog.edit .row2{display:grid;grid-template-columns:1fr 70px 100px;gap:8px}
 dialog.edit .err{min-height:18px;font-size:13px;color:var(--red)}
+dialog.edit textarea{display:block;width:100%;min-height:64px;margin-top:3px;padding:6px 9px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;font-size:14px;font-weight:400;color:var(--ink);resize:vertical}
+/* Customer memo (shop only), top of the customer card, typed in place (ledger.js memoHtml). Green tints only, no blue. */
+.cmemo{display:block;width:100%;margin:0 0 12px;padding:8px 11px;border:1px solid transparent;border-radius:6px;background:#eef6f0;text-align:left;font-size:14.5px;color:var(--ink)}
+button.cmemo{cursor:text}
+button.cmemo:hover{border-color:#9cc3a8}
+.cmemo-l{display:block;margin-bottom:2px;font-size:12px;font-weight:600;color:var(--ink-3)}
+.cmemo-t{display:block;white-space:pre-wrap;overflow-wrap:anywhere}
+.cmemo.add{display:flex;align-items:center;gap:6px;width:auto;padding:5px 9px;background:transparent;font-size:14px;font-weight:600;color:var(--green);cursor:pointer}
+.cmemo.add:hover{background:#eef6f0;border-color:transparent}
+.cmemo-h{font-size:12.5px;font-weight:400;color:var(--ink-3)}
+.cmemo.add .cmemo-h{margin-left:4px}
+.cmemo.editing{border-color:#9cc3a8;background:#fff}
+.cmemo textarea{display:block;width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;font-size:14.5px;color:var(--ink);resize:vertical}
+.cmemo textarea:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 2px #e8f2eb}
+.cmemo textarea[aria-invalid=true]{border-color:var(--red)}
+.cmemo-f{display:flex;align-items:center;gap:6px;margin-top:6px}
+.cmemo-f .cmemo-h{flex:1;min-width:0}
+.btn.sm{height:30px;padding:0 11px;font-size:13px}
+.cmemo .err{margin-top:6px;font-size:13px;color:var(--red)}
+/* The memo's first line beside a customer's name: the name keeps up to 70% of the line, the memo the rest; both cut off with "…". */
+.row .nm.has-memo{display:flex;align-items:baseline;gap:8px}
+.row .nmn{flex:0 0 auto;max-width:70%;overflow:hidden;text-overflow:ellipsis}
+.row .nmemo{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:400;font-size:13px;color:var(--ink-3)}
 /* Column handles (T4): widths come from --list-w / --rail-w, set by ledger.js (defaults, limits and memory live there). Hidden while an Edit is open. */
 .grip{position:absolute;top:0;bottom:0;width:12px;margin-left:-6px;z-index:6;cursor:col-resize;touch-action:none;outline:none}
 .grip::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:3px;margin-left:-1.5px;border-radius:2px;background:transparent;transition:background .12s}
@@ -327,6 +350,7 @@ else {
   <label>Email<input id="ceEmail" autocomplete="off"></label>
   <label>Street<input id="ceStreet" autocomplete="off"></label>
   <div class="row2"><label>City<input id="ceCity" autocomplete="off"></label><label>State<input id="ceState" autocomplete="off"></label><label>Zip<input id="ceZip" autocomplete="off"></label></div>
+  <label id="ceMemoBox">Memo <span class="hint">(shop only: never printed or emailed)</span><textarea id="ceMemo" rows="3"></textarea></label>
   <div class="err" id="ceErr" role="alert"></div>
   <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px"><button class="btn quiet" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="save">Save</button></div>
 </form></dialog>

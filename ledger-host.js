@@ -32,7 +32,8 @@
   const PAY_RANGE = 'Payments!A:K';
   const PAY_RANGE_OLD = 'Payments!A:J'; // an app older than 0.3.67 refuses A:K: read A:J, and store credit stays off (creditReady false)
   const PAY_APPEND = 'Payments!A1';
-  const CUST_RANGE = 'Customers!A:J';
+  const CUST_RANGE = 'Customers!A:K';
+  const CUST_RANGE_OLD = 'Customers!A:J'; // an app older than 0.3.72 refuses A:K: read A:J, and the memo stays off (memoReady false)
   const CUST_APPEND = 'Customers!A1';
   const CUST_PENDING_KEY = 'mpe.ledger.pendingCustomers.v1';
   const CUST_MISSING_TEXT = 'Customers tab not set up yet';
@@ -55,7 +56,7 @@
   // What a durable store needs to know about one tab. A row is "on the sheet" when a sheet row has the same id.
   const PAY_TAB = { range: PAY_RANGE, oldRange: PAY_RANGE_OLD, appendRange: PAY_APPEND, pendingKey: PENDING_KEY, missingText: MISSING_TEXT, missingCode: 'payments_missing',
     noun: 'payment', idOf: r => s(r[0]), same: sameRow };
-  const CUST_TAB = { range: CUST_RANGE, appendRange: CUST_APPEND, pendingKey: CUST_PENDING_KEY, missingText: CUST_MISSING_TEXT, missingCode: 'customers_missing',
+  const CUST_TAB = { range: CUST_RANGE, oldRange: CUST_RANGE_OLD, appendRange: CUST_APPEND, pendingKey: CUST_PENDING_KEY, missingText: CUST_MISSING_TEXT, missingCode: 'customers_missing',
     noun: 'customer change', idOf: r => L.CUSTOMER_COLUMNS.map((_, i) => s(r && r[i])).join('\u0001'), same: (a, b) => sameCols(L.CUSTOMER_COLUMNS, a, b) };
   async function guard(promise) {
     try { return await promise; } catch (e) { throw signedOutError(e) ? notSignedIn() : e; }
@@ -433,11 +434,13 @@
       creditReady: () => store.wide(),
       async readMarks() { return L.parseMarks(await payments()); },
       appendPaymentRows: rows => store.appendRows(rows),
-      // The Customers tab (A:J) plus any edit still waiting on this computer; a missing tab reads as no rows.
+      // The Customers tab (A:K) plus any edit still waiting on this computer; a missing tab reads as no rows.
       async readCustomers() {
         try { return await customers.readAll(); } catch (e) { if (e.code === 'customers_missing') return []; throw e; }
       },
       appendCustomerRows: rows => customers.appendRows(rows),
+      // The customer memo needs Customers column K; false on an app that refuses A:K. Known after the first read.
+      memoReady: () => customers.wide(),
       async reprint(record, request) {
         // Every type, receipts too: the app prints the filled template to the counter printer (browser print is a no-op there).
         if (env.printDocument) {

@@ -497,7 +497,11 @@
   }
 
   // ---- Customers ----
-  const CUSTOMER_COLUMNS = Object.freeze(['Company', 'Contact', 'Phone', 'Email', 'Street', 'City', 'State', 'Zip', 'Added', 'QBO Id']);
+  const CUSTOMER_COLUMNS = Object.freeze(['Company', 'Contact', 'Phone', 'Email', 'Street', 'City', 'State', 'Zip', 'Added', 'QBO Id', 'Memo']);
+  // K "Memo": the shop's private note on a customer, written only by History's Edit (never printed, emailed or sent to QuickBooks).
+  // A History row always fills K; a cleared memo is written as MEMO_NONE, because Sheets drops a blank last cell and a row without K
+  // (the register's) must not clear it. The memo is the one on the newest row that has K.
+  const MEMO_NONE = '-';
   // The register's customer key (POS/index.html custIndex(): 'p:' + phone digits, a leading 1 dropped, + '|' + lowercased company-or-name).
   // Copied, not shared: if the register's rule changes, change this too.
   const digits10 = v => s(v).replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
@@ -507,10 +511,13 @@
   // One Customers-tab row from the edit form: the 9 register columns + J. J is the QuickBooks id when the customer has one. A customer
   // with no QuickBooks id has J blank, except when the edit changes its register key (phone or company): then J holds the customer's
   // own group id ('k:' + old key, from buildCustomers) so the edited row stays with the same customer and its records.
+  // f.memo (only when this app reads column K) adds K.
   function buildCustomerRow(f, ref, now) {
     const row = [f.company, f.name, f.phone, f.email, f.street, f.city, f.region, f.zip].map(s);
     if (!row[0] && !row[1]) throw new Error('A customer needs a name or a company');
-    return [...row, addedText(now), s(ref)];
+    const out = [...row, addedText(now), s(ref)];
+    if (f.memo !== undefined) out.push(s(f.memo) || MEMO_NONE);
+    return out;
   }
   // Rows (the tab, header allowed) -> { company, name, phone, email, street, city, region, zip, added (ISO), qboId, order }.
   function parseCustomerRows(rows) {
@@ -518,7 +525,7 @@
     (rows || []).forEach((r, order) => {
       if (!r || (order === 0 && s(r[0]).toLowerCase() === 'company') || !(s(r[0]) || s(r[1]))) return;
       out.push({ company: s(r[0]), name: s(r[1]), phone: s(r[2]), email: s(r[3]), street: s(r[4]), city: s(r[5]), region: s(r[6]), zip: s(r[7]),
-        added: isoDate(r[8]), ref: s(r[9]), order });
+        added: isoDate(r[8]), ref: s(r[9]), memo: s(r[10]) ? (s(r[10]) === MEMO_NONE ? '' : s(r[10])) : null, order });
     });
     return out;
   }
@@ -575,18 +582,19 @@
       const row = g.rows.length ? g.rows.reduce(newerRow) : null;
       for (const r of g.rows) if (r.added > last) last = r.added;
       const q = g.q;
+      const memoRows = g.rows.filter(x => x.memo !== null), memo = memoRows.length ? memoRows.reduce(newerRow).memo : '';
       const from = row || (q && { company: s(q.company), name: [s(q.given), s(q.family)].filter(Boolean).join(' ') || (s(q.company) ? '' : s(q.name)),
         phone: s(q.phone || q.mobile), email: s(q.email), street: qLines(q).join(', '), city: s(q.city), region: s(q.state), zip: s(q.zip) })
         || (seen && { company: seen.company, name: seen.name, phone: seen.phone, email: seen.email, street: seen.street, city: seen.city,
           region: s(seen.region) || '', zip: seen.zip }) || (buyer && { name: s(buyer.name) }) || {};
       if (!(s(from.company) || s(from.name))) continue; // nothing to call it by
       const c = { id: g.id, txnId: g.id, qboId: g.qboId, company: s(from.company), name: s(from.name), phone: s(from.phone), email: s(from.email),
-        street: s(from.street), city: s(from.city), region: s(from.region), zip: s(from.zip), edited: !!row, inactive: !!(q && q.active === false),
+        street: s(from.street), city: s(from.city), region: s(from.region), zip: s(from.zip), memo, edited: !!row, inactive: !!(q && q.active === false),
         last, count: g.records.length, records: g.records };
       const owed = owedSummary(g.records);
       c.balance = owed.total; c.overdue = owed.overdue;
       c.addr = joinAddr(c);
-      c._hay = [c.company, c.name, c.phone, c.email, ...(q ? [q.name, q.company, q.given, q.family, q.phone, q.mobile, q.email] : []),
+      c._hay = [c.company, c.name, c.phone, c.email, c.memo, ...(q ? [q.name, q.company, q.given, q.family, q.phone, q.mobile, q.email] : []),
         ...g.rows.flatMap(x => [x.company, x.name, x.phone, x.email])].map(s).filter(Boolean).join(' ').toLowerCase();
       c._ph = [c.phone, q && q.phone, q && q.mobile, ...g.rows.map(x => x.phone)].map(digits10).filter(Boolean).join(' ');
       out.push(c);
@@ -762,5 +770,5 @@
     return !txn || cents(money(txn[12])) !== cents(r.total);
   }
   return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionBlockEnd, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow, helcimPaymentRows,
-    buildVoidRow, beforeNote, undoRows, honoluluToday, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
+    buildVoidRow, beforeNote, undoRows, honoluluToday, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, MEMO_NONE, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });
