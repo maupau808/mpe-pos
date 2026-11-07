@@ -128,7 +128,7 @@
   }
 
   const SECTIONS = [['recent', 'Recent'], ['invoices', 'Invoices'], ['quotes', 'Quotes'], ['sales', 'Sales'], ['customers', 'Customers']];
-  const INVOICE_SUBS = [['unpaid', 'Unpaid'], ['dueSoon', 'Due soon'], ['overdue', 'Overdue'], ['paid', 'Paid'], ['void', 'Void or cancelled']];
+  const INVOICE_SUBS = [['overdue', 'Past due'], ['unpaid', 'Open or unpaid'], ['paid', 'Paid or closed']]; // Trevor, Nov 6: no due-soon split; void and cancelled are closed
   const QUOTE_SUBS = [['open', 'Open'], ['converted', 'Turned into sale'], ['closed', 'Closed in QuickBooks'], ['deleted', 'Deleted']];
   const SALES_SUBS = [['all', 'All'], ['missing', 'Missing info']];
   const MISSING_FIELDS = [['any', 'Any'], ['name', 'Name'], ['phone', 'Phone'], ['address', 'Address'], ['email', 'Email']];
@@ -148,7 +148,6 @@
   // A receipt or invoice marked Presold in the register: held in stock, still to be picked up.
   const awaitingPickup = r => !!r.presell && (r.kind === 'receipt' || r.kind === 'invoice') && r.state !== 'void' && r.state !== 'cancelled' && !isQbo(r);
   const isGone = r => r.state === 'void' || r.state === 'cancelled';
-  const UNPAID_GROUPS = [['overdue', 'Overdue', 'late'], ['dueSoon', 'Due in the next 7 days', ''], ['unpaid', 'Due later', '']];
   const amountOf = r => (UNPAID.has(r.state) ? r.balance : r.total);
   const group = (key, label, rows, opts = {}) => ({ key, label, rows, count: rows.length,
     total: opts.noTotal ? null : cents(rows.reduce((a, r) => a + amountOf(r), 0)), tone: opts.tone || '' });
@@ -179,15 +178,11 @@
   function sectionView(records, ui) {
     if (ui.section === 'invoices') {
       const inv = records.filter(r => r.kind === 'invoice');
-      const sub = ui.invSub || 'unpaid';
-      if (sub === 'unpaid') {
-        return { groups: UNPAID_GROUPS.map(([k, label, tone]) => group(k, label, inv.filter(r => r.state === k).sort(byDue), { tone }))
-          .filter(g => g.count), empty: 'Nothing is owed. Every invoice is paid.' };
-      }
+      const sub = INVOICE_SUBS.some(x => x[0] === ui.invSub) ? ui.invSub : 'unpaid'; // an old saved choice (Due soon, Void) opens Open or unpaid
       const label = INVOICE_SUBS.find(x => x[0] === sub)[1];
-      const rows = sub === 'paid' ? byNewest(inv).filter(r => r.state === sub) : sub === 'void' ? byNewest(inv).filter(isGone) : inv.filter(r => r.state === sub).sort(byDue);
-      const empties = { dueSoon: 'No invoices are due in the next 7 days.', overdue: 'No invoices are overdue.', paid: 'No paid invoices yet.', void: 'No void or cancelled invoices.' };
-      return { groups: rows.length ? [group(sub, label, rows, { noTotal: sub === 'void', tone: sub === 'overdue' ? 'late' : '' })] : [], empty: empties[sub] };
+      const rows = sub === 'paid' ? byNewest(inv).filter(r => r.state === 'paid' || isGone(r)) : sub === 'unpaid' ? inv.filter(r => UNPAID.has(r.state)).sort(byDue) : inv.filter(r => r.state === sub).sort(byDue);
+      const empties = { unpaid: 'Nothing is owed. Every invoice is paid.', overdue: 'No invoices are past due.', paid: 'No paid or closed invoices yet.' };
+      return { groups: rows.length ? [group(sub, label, rows, { noTotal: sub === 'paid', tone: sub === 'overdue' ? 'late' : '' })] : [], empty: empties[sub] };
     }
     if (ui.section === 'quotes') {
       const sub = ui.quoteSub || 'open';
@@ -1008,8 +1003,9 @@
         : ui.section === 'sales' ? [['salesSub', SALES_SUBS]].concat(ui.salesSub === 'missing' ? [['missField', MISSING_FIELDS]] : []) : [];
       // One row of drop-downs under the search box on every section: what to show (Invoices, Quotes, Sales), date and source, or the
       // customer filter and sort. Fixed height, never wraps.
-      const subSel = subs.map(([key, list], n) => `<select data-filter="${key}" aria-label="${key === 'missField' ? 'Missing' : 'Show'}" class="${(ui[key] || list[0][0]) !== list[0][0] ? 'on' : ''}">${list.map(([k, label]) =>
-        `<option value="${k}"${(ui[key] || list[0][0]) === k ? ' selected' : ''}>${esc(label)}${counts[k] != null && ['unpaid', 'dueSoon', 'overdue', 'open', 'missing'].includes(k) ? ` (${counts[k]})` : ''}</option>`).join('')}</select>`).join('');
+      const subSel = subs.map(([key, list]) => { const def = key === 'invSub' ? 'unpaid' : list[0][0], cur = list.some(x => x[0] === ui[key]) ? ui[key] : def;
+        return `<select data-filter="${key}" aria-label="${key === 'missField' ? 'Missing' : 'Show'}" class="${cur !== def ? 'on' : ''}">${list.map(([k, label]) =>
+        `<option value="${k}"${cur === k ? ' selected' : ''}>${esc(label)}${counts[k] != null && ['unpaid', 'overdue', 'open', 'missing'].includes(k) ? ` (${counts[k]})` : ''}</option>`).join('')}</select>`; }).join('');
       const inCust = ui.section === 'customers';
       $('q').placeholder = SEARCH_HINT[ui.section] || SEARCH_HINT.recent;
       $('q').title = inCust ? 'Name, company, phone or email' : 'Name, company, phone, part #, serial #, invoice or quote number';
@@ -1062,13 +1058,14 @@
 
     // Row: who (or the top item), total; then date and time, and the type with its status for invoices.
     function rowHtml(r) {
-      const when = [fmtD(r.date), fmtT(r.time)].filter(Boolean).join(' · ');
+      const owing = r.kind === 'invoice' && UNPAID.has(r.state); // the due status takes the time's place on the date line (Trevor, Nov 6)
+      const when = [fmtD(r.date), owing ? '' : fmtT(r.time)].filter(Boolean).join(' · ');
       // Type spot (Trevor, Nov 2): only Cancelled, Repair, Invoice or Quote, in that order; a sale shows nothing. Labor makes it Repair.
       const repair = (r.items || []).some(i => /labor/i.test(i.pn) || /labor/i.test(i.desc));
       const kind = r.state === 'cancelled' ? '<b class="k-cancel">Cancelled</b>' : repair ? '<b class="k-repair">Repair</b>' : r.kind === 'receipt' ? '' : `<b class="k-doc">${esc(KIND_LABEL[r.kind])}</b>`;
       return `<button class="row${r.state === 'void' || r.state === 'cancelled' ? ' is-void' : ''}" role="option" data-id="${esc(r.txnId)}" aria-selected="${r.txnId === ui.sel}">
         <span class="nm${r.qboBuyer || !(r.company || r.name) ? ' noname' : ''}">${esc(r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : who(r))}</span><span class="amt num${r.state === 'overdue' ? ' late' : ''}">${money(UNPAID.has(r.state) ? r.balance : r.total)}</span>
-        <span class="sub num">${esc(when)}${r.kind === 'invoice' && UNPAID.has(r.state) ? `<span class="due-count${r.state === 'overdue' ? ' late' : ''}">${esc(statusOf(r, st.today).text)}</span>` : ''}</span><span class="when">${kind}</span></button>`;
+        <span class="sub num">${esc(when)}${owing ? `<span class="due-count${r.state === 'overdue' ? ' late' : ''}">${esc(statusOf(r, st.today).text)}</span>` : ''}</span><span class="when">${kind}</span></button>`;
     }
 
     // Customer row: name, what is owed, then contact and last activity.

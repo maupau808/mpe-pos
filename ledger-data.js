@@ -467,11 +467,13 @@
   // r.qboBuyer = { name, customerId } and that name in its search text. Two or more different documents: nothing. One pass builds
   // serial -> documents; nothing is written anywhere. Idempotent: a reload recomputes from the untouched base search text.
   const PLACEHOLDER_BUYER = 'jana yamashiro';
+  // "Jana Yamashiro" or QuickBooks' "Yamashiro, Jana": the stand-in, never a buyer.
+  const isJana = v => s(v).toLowerCase().split(/[^a-z]+/).filter(Boolean).sort().join(' ') === 'jana yamashiro';
   const snKey = v => s(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
   function addQboBuyers(sheet, mapped) {
     const docs = new Map(); // serial key -> Map(txnId -> record)
     for (const q of mapped) {
-      if (q.kind === 'quote') continue;
+      if (q.kind === 'quote' || isJana(q.company || q.name)) continue; // the old system's copies under Jana name nobody (Trevor, Nov 6)
       for (const i of q.items) for (const x of i.serials) {
         const k = snKey(x);
         if (k.length < 4) continue;
