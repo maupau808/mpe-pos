@@ -50,7 +50,7 @@
     // Q–V repeat the customer unjoined. Ledger hashes A:P only, so they stay outside the hash.
     const head = rows[start];
     if (!Array.isArray(head) || head.slice(22).some(v => v != null && v !== '')) fail('Unsupported transaction columns.');
-    const raw = [cells(head.slice(0,16)), ...rows.slice(start + 1,end).map(cells)];
+    const raw = [cells(head.slice(0,16)), ...rows.slice(start + 1,end).map(r => cells(Array.isArray(r) ? r.slice(0,16) : r))] // item rows keep cost/brand/flags in Q-S; the hash stays A:P;
     if (!['receipt','invoice','quote'].includes(raw[0][14].toLowerCase())) fail('This transaction type needs review.');
     const customer = Array.from({ length: 6 }, (_, i) => String(head[16 + i] ?? '').trim());
     return { start, end, rows: raw, customer };

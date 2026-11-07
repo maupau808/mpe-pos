@@ -158,7 +158,9 @@
         const off = money(r[15]);
         cur.items.push({ pn: s(r[8]), desc: s(r[9]), qty: s(r[10]), ea: money(r[11]), sub: money(r[12]),
           serials: s(r[13]).split(',').map(x => x.trim().toUpperCase()).filter(Boolean),
-          origEa: off > 0 ? money(r[14]) : 0, off: off > 0 ? off : 0 });
+          origEa: off > 0 ? money(r[14]) : 0, off: off > 0 ? off : 0,
+          // Q cost (null = an old row saved before cost was kept), R brand, S flags (W warranty unit, O editable custom line, F free-entry line)
+          cost: s(r[16]) === '' ? null : money(r[16]), make: s(r[17]), flags: s(r[18]).toUpperCase() });
         cur._hayParts.push(s(r[8]), s(r[9]), s(r[13]));
       } else if (type !== 'item') cur = null; // noise row ends the open group
     });
@@ -175,7 +177,7 @@
   function transactionRowsFingerprint(rows) {
     return JSON.stringify(rows.map(row => Array.from({ length: 24 }, (_, col) => {
       let value = String(row[col] ?? '').trim().replace(/^'/, '');
-      if (col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11, 14, 15].includes(col))) {
+      if (col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11, 14, 15, 16].includes(col))) {
         return value === '' ? '' : Number(value.replace(/[$,]/g, '')).toFixed(2);
       }
       if (col === 3) value = value.replace(/^0(?=\d:)/, '').toUpperCase();

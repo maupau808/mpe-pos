@@ -419,6 +419,9 @@ body.dark .review-qr-sw[aria-checked="true"] { background: #2c3d30; border-color
 .menu-panel .drive-btn { display: block; width: 100%; text-align: left; margin: 0; border-radius: 6px; }
 .menu-panel .scan-btn { display: block; width: 100%; text-align: left; margin: 0 0 6px; padding: 6px 9px; border-radius: 6px; }
 .admin-menu { min-width: 304px !important; }
+#adminMenu #scannerModeBtn, #adminMenu #scanBtn, #adminMenu #scanCameraSelect, #adminMenu #partsLookupBtn, #adminMenu #desktopSettingsBtn, #adminMenu #saveBtn, #adminMenu label:has(#scannerModeDefault) { display: none !important; }
+#adminMenu .admin-control-grid > *, #adminMenu .admin-control-grid .menu-check, #adminMenu > .menu-check { font-size: 13px !important; font-weight: 500 !important; line-height: 1.3; font-family: inherit !important; color: #333; }
+body.dark #adminMenu .admin-control-grid > *, body.dark #adminMenu > .menu-check { color: #e1e8dd; }
 .pos-update-notice {
   margin: 0 0 6px;
   padding: 6px;
@@ -833,8 +836,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
  #counterView .cv-top{height:54px;min-height:54px;display:flex;align-items:center;gap:6px;padding:6px 16px;border-bottom:1px solid #d5ddd3;flex-shrink:0}#counterView .cv-tabs{display:flex;gap:3px;max-width:220px;overflow:auto}#counterView .cv-tab{font-size:14px;white-space:nowrap}#counterView .cv-tab.active{background:#e8f2eb;border-color:#9cc3a8;color:#24683a}#counterView .cv-new{font-size:24px;padding:0;width:30px;height:34px}#counterView .cv-docs{margin-left:auto;display:flex;align-items:center}#counterView #docTypeSel{display:flex;gap:3px;margin:0}#counterView #docTypeSel button{font-size:14px;padding:8px;border-color:transparent;background:transparent}#counterView #docTypeSel button.active{background:#e1e8dd;border-color:#a6b5a0}#counterView #txnHistoryBtn{font-size:16px;font-weight:700;color:#294e35;border-color:#8da791;background:#e0eae1;margin-left:22px;margin-right:auto;padding:10px 14px;white-space:nowrap}#counterView .cv-top .icon-btn,#counterView .cv-top .cv-icon{display:flex;align-items:center;justify-content:center;width:36px;height:36px;padding:8px;font-size:18px;flex-shrink:0}#counterView .cv-top svg{width:19px;height:19px}#counterView #themeToggle{height:36px;width:36px;padding:4px;font-size:20px}
  #counterView .menu-wrap{position:relative}#counterView .menu-panel{z-index:90;max-height:calc(100dvh - 70px);overflow:auto;background:#fff;color:#202c24}#counterView .menu-panel button{font-size:15px}
  #counterView .cv-quote{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid #d5ddd3;background:#f2f5f0;font-size:14px}#counterView .cv-quote[hidden]{display:none}#counterView .cv-quote label{display:flex;align-items:center;gap:6px}
- #counterView .cv-body{display:grid;grid-template-columns:minmax(0,1fr) 354px;flex:1;min-height:0}#counterView .cv-work{padding:10px 16px;min-width:0;overflow:auto}#counterView .cv-head,#counterView .cv-line{display:grid;grid-template-columns:var(--cv-columns,22px minmax(150px,1fr) 64px 58px 68px 92px 44px 104px 34px);gap:8px;padding:5px 4px;align-items:center}#counterView .cv-head{position:sticky;top:-10px;z-index:2;background:#fff;border-bottom:1px solid #d5ddd3;font-size:13px;min-height:32px}#counterView .cv-head>span{text-align:right}#counterView .cv-head>span:nth-child(2){display:flex;justify-content:space-between;text-align:left;gap:8px}#counterView .cv-head .cv-reorder-label{font-size:12px;width:84px;text-align:right}#counterView .cv-head>span:nth-child(7){text-align:center}#counterView .cv-article{border-bottom:1px solid #d5ddd3}#counterView .cv-article{position:relative}#counterView .cv-addnote{position:absolute;left:34px;bottom:-9px;z-index:3;height:18px;padding:0 8px;font-size:11px;line-height:16px;border:1px solid #b8c6b5;border-radius:9px;background:#fff;color:#59665c;cursor:pointer;opacity:0;pointer-events:none}#counterView .cv-article:hover .cv-addnote,#counterView .cv-article:focus-within .cv-addnote{opacity:1;pointer-events:auto}#counterView .cv-addnote:hover{background:#eef3ec;color:#202c24}@media(hover:none){#counterView .cv-addnote{opacity:.7;pointer-events:auto}}body.dark #counterView .cv-addnote{background:#252f27;color:#cdd8cb;border-color:#48544a}#counterView .cv-article:nth-child(even){background:#f6f8f7}#counterView .cv-line{min-height:70px}#counterView .cv-desc{position:relative;min-width:0}#counterView .cv-desc input.cv-description{height:33px;line-height:27px;width:100%;font-size:21px;color:#000;font-weight:600;letter-spacing:-.015em;text-align:left;padding:1px 3px;border-color:transparent;background:transparent}#counterView .cv-desc input.cv-description:hover,#counterView .cv-desc input.cv-description:focus{border-color:#b8c6b5;background:#fff}#counterView .cv-meta{min-height:21px;padding-right:22px;display:flex;align-items:start;gap:4px}#counterView .cv-sn-group,#counterView .cv-sn-overflow{display:flex;flex-wrap:wrap;gap:4px 8px}#counterView .cv-sn-group{width:100%}#counterView .cv-sn{display:flex;align-items:center;gap:4px;font-size:13px;color:#000;flex:0 0 156px;height:21px}#counterView .cv-sn span{white-space:nowrap}#counterView .cv-sn input{width:108px;max-width:108px;flex:0 0 108px;height:21px;font-size:12px;padding:1px 4px;line-height:17px}#counterView .cv-sn-overflow{padding:0 30px 8px 34px}#counterView .cv-reorder{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:13px;height:13px;margin:0;accent-color:#315e41}
- #counterView .cv-line>input{width:100%;padding:5px 4px;text-align:right;border-color:transparent;background:transparent;font-variant-numeric:tabular-nums}#counterView .cv-line>input:hover,#counterView .cv-line>input:focus{border-color:#b8c6b5;background:#fff}#counterView .cv-cost,#counterView .cv-margin,#counterView .cv-discount{font-size:15px;color:#000!important}#counterView .cv-line>input.cv-cost:hover,#counterView .cv-line>input.cv-cost:focus{border-color:transparent;background:transparent}#counterView .cv-discount-head{color:#c62828}#counterView .cv-line>input.cv-discount.cv-on{color:#c62828!important;font-weight:700}#counterView .cv-pn{font-size:14px;line-height:16px;color:#000;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#counterView .cv-pn:empty{display:none}#counterView .cv-ea{font-size:20px;color:#000}#counterView .cv-line .cv-qty{font-size:20px;color:#000;text-align:center;border-color:#d5ddd3;background:#fff}#counterView .cv-line .cv-sub{font-size:22px;color:#000;font-weight:650}#counterView .cv-line .cv-grip,#counterView .cv-line .cv-clear{padding:4px;border-color:transparent;background:transparent;color:#59665c;width:24px;height:30px;font-size:20px;line-height:20px}#counterView .cv-grip{cursor:grab;touch-action:none}#counterView .cv-line .cv-clear{color:#c62828;width:34px;height:38px;font-size:30px;line-height:28px;font-weight:700}#counterView .cv-clear:hover{color:#963d32;background:#fff0ec}#counterView .cv-drop{outline:2px solid #315e41;outline-offset:-2px}
+ #counterView .cv-body{display:grid;grid-template-columns:minmax(0,1fr) 354px;flex:1;min-height:0}#counterView .cv-work{padding:10px 16px;min-width:0;overflow:auto}#counterView .cv-head,#counterView .cv-line{display:grid;grid-template-columns:var(--cv-columns,22px minmax(150px,1fr) 64px 58px 68px 92px 44px 104px 34px);gap:8px;padding:5px 4px;align-items:center}#counterView .cv-head{position:sticky;top:-10px;z-index:2;background:#fff;border-bottom:1px solid #d5ddd3;font-size:13px;min-height:32px}#counterView .cv-head>span{text-align:right}#counterView .cv-head>span:nth-child(2){display:flex;justify-content:space-between;text-align:left;gap:8px}#counterView .cv-head .cv-reorder-label{font-size:12px;width:84px;text-align:right}#counterView .cv-head>span:nth-child(7){text-align:center}#counterView .cv-article{border-bottom:1px solid #d5ddd3}#counterView .cv-article{position:relative}#counterView .cv-addnote{position:absolute;left:34px;bottom:-9px;z-index:3;height:18px;padding:0 8px;font-size:11px;line-height:16px;border:1px solid #b8c6b5;border-radius:9px;background:#fff;color:#59665c;cursor:pointer;opacity:0;pointer-events:none}#counterView .cv-article:hover .cv-addnote,#counterView .cv-article:focus-within .cv-addnote{opacity:1;pointer-events:auto}#counterView .cv-addnote:hover{background:#eef3ec;color:#202c24}@media(hover:none){#counterView .cv-addnote{opacity:.7;pointer-events:auto}}body.dark #counterView .cv-addnote{background:#252f27;color:#cdd8cb;border-color:#48544a}#counterView .cv-article:nth-child(even){background:#f6f8f7}#counterView .cv-line{min-height:70px}#counterView .cv-note-line .cv-line>input,#counterView .cv-note-line .cv-reorder{display:none}#counterView .cv-note-line .cv-desc{grid-column:2/-2}#counterView .cv-note-line .cv-clear{grid-column:-2}#counterView .cv-note-line .cv-desc input.cv-description{field-sizing:fixed;width:100%!important;max-width:none!important;border-color:#d5ddd3;background:#fff}body.dark #counterView .cv-note-line .cv-desc input.cv-description{background:#273229;border-color:#48544a}#counterView .cv-order-label{font-size:14px;color:#59665c}#counterView .cv-desc{position:relative;min-width:0}#counterView .cv-desc input.cv-description{height:33px;line-height:27px;width:100%;font-size:21px;color:#000;font-weight:600;letter-spacing:-.015em;text-align:left;padding:1px 3px;border-color:transparent;background:transparent}#counterView .cv-desc input.cv-description:hover,#counterView .cv-desc input.cv-description:focus{border-color:#b8c6b5;background:#fff}#counterView .cv-meta{min-height:21px;padding-right:22px;display:flex;align-items:start;gap:4px}#counterView .cv-sn-group,#counterView .cv-sn-overflow{display:flex;flex-wrap:wrap;gap:4px 8px}#counterView .cv-sn-group{width:100%}#counterView .cv-sn{display:flex;align-items:center;gap:4px;font-size:13px;color:#000;flex:0 0 156px;height:21px}#counterView .cv-sn span{white-space:nowrap}#counterView .cv-sn input{width:108px;max-width:108px;flex:0 0 108px;height:21px;font-size:12px;padding:1px 4px;line-height:17px}#counterView .cv-sn-overflow{padding:0 30px 8px 34px}#counterView .cv-reorder{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:13px;height:13px;margin:0;accent-color:#315e41}
+ #counterView .cv-line>input{width:100%;padding:5px 4px;text-align:right;border-color:transparent;background:transparent;font-variant-numeric:tabular-nums}#counterView .cv-line>input:hover,#counterView .cv-line>input:focus{border-color:#b8c6b5;background:#fff}#counterView .cv-cost,#counterView .cv-margin,#counterView .cv-discount{font-size:15px;color:#000!important}#counterView .cv-line>input.cv-cost:hover,#counterView .cv-line>input.cv-cost:focus{border-color:transparent;background:transparent}#counterView .cv-discount-head{color:#c62828}#counterView .cv-line>input.cv-discount.cv-on{color:#c62828!important;font-weight:700}#counterView .cv-pn{font-size:14px;line-height:16px;color:#000;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#counterView input.cv-pn{display:block;width:auto;field-sizing:content;min-width:6ch;max-width:100%;margin:1px 0 0;border:1px solid transparent;border-radius:4px;background:transparent;font:inherit;font-size:14px;cursor:text}#counterView input.cv-pn:hover,#counterView input.cv-pn:focus{border-color:#b8c6b5;background:#fff}body.dark #counterView input.cv-pn:focus{background:#273229}#counterView .cv-ea{font-size:20px;color:#000}#counterView .cv-line .cv-qty{font-size:20px;color:#000;text-align:center;border-color:#d5ddd3;background:#fff}#counterView .cv-line .cv-sub{font-size:22px;color:#000;font-weight:650}#counterView .cv-line .cv-grip,#counterView .cv-line .cv-clear{padding:4px;border-color:transparent;background:transparent;color:#59665c;width:24px;height:30px;font-size:20px;line-height:20px}#counterView .cv-grip{cursor:grab;touch-action:none}#counterView .cv-line .cv-clear{color:#c62828;width:34px;height:38px;font-size:30px;line-height:28px;font-weight:700}#counterView .cv-clear:hover{color:#963d32;background:#fff0ec}#counterView .cv-drop{outline:2px solid #315e41;outline-offset:-2px}
  #counterView .cv-entry{padding:8px 4px 8px 34px}#counterView .cv-entry input{width:100%;font-size:18px;padding:10px 12px}#counterView .cv-checkout{padding:14px 16px;background:#f3f5f4;border-left:1px solid #dfe5e1;display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;overflow:hidden}#counterView .cv-fill{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px}#counterView .cv-summary,#counterView #cvFinalize,#counterView #cvCharge{flex-shrink:0}#counterView .cv-card{background:#fff;border:1px solid #dfe5e1;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}#counterView .cv-card .cv-order{margin-bottom:0}#counterView .cv-card-po .cv-note{align-self:flex-start}#counterView .cv-customer-label{font-size:15px;color:#24683a;font-weight:600;display:flex;align-items:center;justify-content:space-between}#counterView #custPanel{display:grid!important;grid-template-columns:1fr 60px 80px;gap:6px;margin:0;padding:0;border:0;background:transparent;position:relative}#counterView #custPanel>input{width:100%;font-size:15px;padding:8px 9px;min-height:34px;grid-column:1/-1;display:block}#counterView #custCity{grid-column:1!important}#counterView #custState{grid-column:2!important;max-width:none}#counterView #custZip{grid-column:3!important;max-width:none}#counterView .cv-note{font-size:13px;align-self:flex-start;padding:5px 8px}#counterView #cvPo .cust-input{width:100%;box-sizing:border-box;font-size:15px;font-weight:600;padding:8px 10px}#counterView .cv-summary{margin-top:auto}#counterView .summary{width:auto!important;min-width:0!important;margin:0;padding:0;background:transparent;border:0}#counterView .sum-row{padding:4px 0;display:flex;justify-content:space-between;gap:12px;font-size:15px;color:#202c24}#counterView .sum-row.total{display:block;border-top:1px solid #d5ddd3;margin-top:8px;padding-top:10px}#counterView .sum-row.total .sum-val{display:block;text-align:left;font-size:40px;font-weight:700;margin-top:4px;letter-spacing:-.025em}#counterView .sum-val{font-variant-numeric:tabular-nums}body:not(.doc-internal) #counterView #sumInternal{display:none}#counterView #sumInternal .sum-row{font-size:15px}#counterView #sumInternal .sum-row.gp .sum-val{font-size:20px;font-weight:700}#counterView .cv-fee{display:flex;align-items:center;gap:6px;font-size:14px;color:#59665c}#counterView .cv-fee input{margin:0}#counterView .cv-checkout #chargeCardBtn,#counterView #finalizeInvoiceBtn{font-size:14px;padding:10px;width:100%}#counterView .cv-order{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}#counterView .cv-order>button{font-size:13px;padding:5px 7px}#counterView .cv-discount-mode{display:flex}#counterView .cv-discount-mode button{padding:4px 7px;font-size:14px}#counterView .cv-discount-mode button.active{background:#dce8dc;border-color:#8ca28b}#counterView .cv-order>input{width:72px;padding:5px;font-size:14px;text-align:right}#counterView .cv-order-off{font-weight:800}
  #counterView .cv-deck{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:9px 16px;background:#f3f5f4;border-top:1px solid #d5ddd3;flex-shrink:0}#counterView .cv-command{min-height:106px;display:flex;align-items:center;justify-content:flex-start;gap:18px;padding:6px 12px;border-radius:5px;font-size:30px;font-weight:700;text-align:left;line-height:1.1;min-width:0}#counterView .cv-command svg{width:80px;height:80px;background:#fff;flex:0 0 80px;shape-rendering:crispEdges}#counterView .cv-command span{white-space:normal}#counterView .cv-command.print{background:#2b5c8f;color:#fff;border-color:#2b5c8f}#counterView .cv-command.print:hover{background:#234b75}#counterView .cv-command.delete{background:#b2362b;color:#fff;border-color:#b2362b}#counterView .cv-command.delete:hover{background:#962c22}#counterView .cv-command.undo{background:#26332b;color:#fff;border-color:#26332b}#counterView .cv-command.undo:hover{background:#1b251f}#counterView .cv-command.undo small{display:block;margin-top:4px;font-size:15px;font-weight:500;color:#c9d4cc}#counterView .cv-command.next svg,#counterView .cv-command.print svg{order:2}#counterView .cv-command.next span,#counterView .cv-command.print span{flex:1}#counterView .cv-command.next span{white-space:nowrap}#counterView .cv-command.print{display:grid;grid-template-columns:1fr 80px 1fr;font-size:40px}#counterView .cv-command.print span{text-align:center}#counterView .cv-command.print .cv-mirror{order:3}#counterView .cv-command.next{background:#24683a;color:#fff;border-color:#24683a;font-size:29px}#counterView .cv-command.next:hover{background:#1c5530}#counterView .cv-feedback{display:none;position:fixed;left:16px;bottom:150px;z-index:20;max-width:60vw;padding:7px 12px;border-radius:6px;font-size:14px;font-weight:600;background:#fff8e6;border:1px solid #d7a34c;color:#805600;box-shadow:0 2px 8px rgba(0,0,0,.18)}#counterView .cv-feedback.warn,#counterView .cv-feedback.err,#counterView .cv-feedback.notice{display:block}#counterView .cv-feedback.notice{background:#e9f5ec;border-color:#2d7a3a;color:#1f5a2a}#counterView .cv-feedback.err{background:#fff0ec;border-color:#c62828;color:#963d32}
  body.counter-view .hist-modal{z-index:100}
@@ -842,7 +845,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
  body.dark #counterView{background:#1d241f;color:#eff3ed}body.dark #counterView .cv-top,body.dark #counterView .cv-head{background:#1d241f;border-color:#48544a}body.dark #counterView .cv-checkout,body.dark #counterView .cv-deck,body.dark #counterView .cv-quote{background:#252f27;border-color:#48544a}body.dark #counterView .cv-card{background:#1d241f;border-color:#48544a}body.dark #counterView .cv-customer-label{color:#9fd3ad}body.dark #counterView .cv-article:nth-child(even){background:#29362b}body.dark #counterView input,body.dark #counterView button{background:#273229;color:#eff3ed;border-color:#48544a}body.dark #counterView .cv-desc input.cv-description,body.dark #counterView .cv-line>input{background:transparent}body.dark #counterView .cv-line>input.cv-qty{background:#273229}body.dark #counterView .sum-row,body.dark #counterView .cv-cost,body.dark #counterView .cv-margin,body.dark #counterView .cv-discount{color:#e1e8dd!important}body.dark #counterView #txnHistoryBtn{background:#36513b;color:#eef6ec}body.dark #counterView .cv-discount-head,body.dark #counterView .cv-line>input.cv-discount.cv-on{color:#ff8a80!important}body.dark #counterView .cv-pn{color:#aab6ad}body.dark #counterView .cv-desc input.cv-description,body.dark #counterView .cv-line .cv-qty,body.dark #counterView .cv-line .cv-sub,body.dark #counterView .cv-ea{color:#eff3ed}body.dark #counterView .cv-command.print{background:#2b5c8f;color:#fff}body.dark #counterView .cv-command.undo{background:#0f1511;color:#fff}body.dark #counterView .cv-command.delete{background:#8e2e25;color:#fff}body.dark #counterView .cv-command.next{background:#315e41;color:#fff}body.dark .cv-results{background:#273229;color:#eff3ed}body.dark .cv-results button:hover,body.dark .cv-results button.active{background:#3e5942}
  @media(max-height:860px) and (min-width:900px){:where(body:not(.embedded-edit)) #counterView .cv-checkout{padding:8px 12px;gap:7px}:where(body:not(.embedded-edit)) #counterView .cv-fill{gap:7px}:where(body:not(.embedded-edit)) #counterView .cv-card{padding:7px 10px;gap:5px}:where(body:not(.embedded-edit)) #counterView .cv-customer-label{font-size:14px}:where(body:not(.embedded-edit)) #counterView #custPanel{gap:4px}:where(body:not(.embedded-edit)) #counterView #custPanel>input{font-size:14px;padding:4px 8px;min-height:29px}:where(body:not(.embedded-edit)) #counterView #cvPo .cust-input{font-size:14px;padding:5px 8px}:where(body:not(.embedded-edit)) #counterView .cv-note,:where(body:not(.embedded-edit)) #counterView .cv-order>button{padding:3px 7px}:where(body:not(.embedded-edit)) #counterView .cv-order>input{padding:3px 5px}:where(body:not(.embedded-edit)) #counterView .sum-row{padding:1px 0;font-size:14px}:where(body:not(.embedded-edit)) #counterView .sum-row.total{margin-top:4px;padding-top:5px}:where(body:not(.embedded-edit)) #counterView .sum-row.total .sum-val{font-size:34px;margin-top:0}}
 @media(max-width:1100px) and (min-width:900px){:where(body:not(.embedded-edit)) #counterView .cv-body{grid-template-columns:minmax(0,1fr) 321px}:where(body:not(.embedded-edit)) #counterView .cv-top{gap:4px;padding-left:10px;padding-right:10px}:where(body:not(.embedded-edit)) #counterView #docTypeSel button{padding:7px}:where(body:not(.embedded-edit)) #counterView #txnHistoryBtn{font-size:15px;padding:9px 10px;margin-left:14px}:where(body:not(.embedded-edit)) #counterView .cv-top .cv-icon,:where(body:not(.embedded-edit)) #counterView .cv-top .icon-btn{width:32px}}
- @media(max-width:899px){body.counter-view:where(:not(.embedded-edit)){overflow:auto}body.counter-view:where(:not(.embedded-edit)) #counterView{position:relative;min-height:100dvh;height:auto}:where(body:not(.embedded-edit)) #counterView .cv-top{height:auto;flex-wrap:wrap;padding:8px 12px}:where(body:not(.embedded-edit)) #counterView .cv-docs{margin-left:0}:where(body:not(.embedded-edit)) #counterView #txnHistoryBtn{margin-left:8px;font-size:15px;padding:8px}:where(body:not(.embedded-edit)) #counterView .cv-body{display:flex;flex-direction:column}:where(body:not(.embedded-edit)) #counterView .cv-work{overflow:visible;padding:10px 12px;min-height:400px}:where(body:not(.embedded-edit)) #counterView .cv-head,:where(body:not(.embedded-edit)) #counterView .cv-line{grid-template-columns:18px minmax(95px,1fr) 52px 34px 65px 22px;gap:4px}:where(body:not(.embedded-edit)) #counterView .cv-head>.cv-support,:where(body:not(.embedded-edit)) #counterView .cv-line>.cv-support,:where(body:not(.embedded-edit)) #counterView .cv-reorder-label{display:none}:where(body:not(.embedded-edit)) #counterView .cv-desc input.cv-description{font-size:16px}:where(body:not(.embedded-edit)) #counterView .cv-head>span:nth-child(7){text-align:center}:where(body:not(.embedded-edit)) #counterView .cv-checkout{border-left:0;border-top:1px solid #d5ddd3;padding:16px;overflow:visible}:where(body:not(.embedded-edit)) #counterView .cv-fill{overflow:visible}:where(body:not(.embedded-edit)) #counterView .cv-deck{gap:6px;padding:8px}:where(body:not(.embedded-edit)) #counterView .cv-command{flex-direction:column;gap:8px;padding:8px 2px;min-height:100px;font-size:18px}:where(body:not(.embedded-edit)) #counterView .cv-command.next{font-size:16px}:where(body:not(.embedded-edit)) #counterView .cv-command.next svg,:where(body:not(.embedded-edit)) #counterView .cv-command.print svg{order:0}:where(body:not(.embedded-edit)) #counterView .cv-command.next span{white-space:normal}:where(body:not(.embedded-edit)) #counterView .cv-command.print{display:flex;font-size:18px}:where(body:not(.embedded-edit)) #counterView .cv-command.print .cv-mirror{display:none}:where(body:not(.embedded-edit)) #counterView .cv-feedback{bottom:16px}:where(body:not(.embedded-edit)) #counterView .cv-command svg{width:58px;height:58px;flex-basis:58px}:where(body:not(.embedded-edit)) #counterView .cv-sn{flex-basis:126px}:where(body:not(.embedded-edit)) #counterView .cv-sn input{width:92px;max-width:92px;flex-basis:92px}:where(body:not(.embedded-edit)) #counterView .cv-summary{margin-top:6px}}
+ @media(max-width:899px){body.counter-view:where(:not(.embedded-edit)){overflow:auto}body.counter-view:where(:not(.embedded-edit)) #counterView{position:relative;min-height:100dvh;height:auto}:where(body:not(.embedded-edit)) #counterView .cv-top{height:auto;flex-wrap:wrap;padding:8px 12px}:where(body:not(.embedded-edit)) #counterView .cv-docs{margin-left:0}:where(body:not(.embedded-edit)) #counterView #txnHistoryBtn{margin-left:8px;font-size:15px;padding:8px}:where(body:not(.embedded-edit)) #counterView .cv-body{display:flex;flex-direction:column}:where(body:not(.embedded-edit)) #counterView .cv-work{overflow:visible;padding:10px 12px;min-height:400px}:where(body:not(.embedded-edit)) #counterView .cv-head,:where(body:not(.embedded-edit)) #counterView .cv-line{grid-template-columns:18px minmax(95px,1fr) 52px 34px 65px 22px;gap:4px}:where(body:not(.embedded-edit)) #counterView .cv-head>.cv-support,:where(body:not(.embedded-edit)) #counterView .cv-line>.cv-support,:where(body:not(.embedded-edit)) #counterView .cv-reorder-label{display:none}:where(body:not(.embedded-edit)) #counterView .cv-desc input.cv-description{font-size:16px}:where(body:not(.embedded-edit)) #counterView .cv-head>span:nth-child(7){text-align:center}:where(body:not(.embedded-edit)) #counterView .cv-checkout{border-left:0;border-top:1px solid #d5ddd3;padding:16px;overflow:visible}:where(body:not(.embedded-edit)) #counterView .cv-fill{overflow:visible}:where(body:not(.embedded-edit)) #counterView .cv-deck{gap:6px;padding:8px}:where(body:not(.embedded-edit)) #counterView .cv-command{flex-direction:column;gap:8px;padding:8px 2px;min-height:100px;font-size:18px}:where(body:not(.embedded-edit)) #counterView .cv-command.next{font-size:16px}:where(body:not(.embedded-edit)) #counterView .cv-command.next svg,:where(body:not(.embedded-edit)) #counterView .cv-command.print svg{order:0}:where(body:not(.embedded-edit)) #counterView .cv-command.next span{white-space:normal}:where(body:not(.embedded-edit)) #counterView .cv-command.print{display:flex;font-size:18px}:where(body:not(.embedded-edit)) #counterView .cv-feedback{bottom:16px}:where(body:not(.embedded-edit)) #counterView .cv-command svg{width:58px;height:58px;flex-basis:58px}:where(body:not(.embedded-edit)) #counterView .cv-sn{flex-basis:126px}:where(body:not(.embedded-edit)) #counterView .cv-sn input{width:92px;max-width:92px;flex-basis:92px}:where(body:not(.embedded-edit)) #counterView .cv-summary{margin-top:6px}}
  /* History edit (embedded in History's middle column): always the desktop layout, no tab row, History button, command deck or output icons. */
  #counterView #cvEditTitle,#counterView #cvEditType{display:none}body.embedded-edit #counterView #cvEditTitle{display:block;font-size:17px;font-weight:700;white-space:nowrap}body.embedded-edit #counterView #cvEditType{display:block;font-size:16px;white-space:nowrap;margin-right:auto;padding-left:4px}body.embedded-edit #counterView #docTypeSel{display:none!important}body.embedded-edit #counterView .cv-tabs,body.embedded-edit #counterView #cvNew,body.embedded-edit #counterView .cv-history,body.embedded-edit #counterView .cv-deck,body.embedded-edit #counterView .cv-top .icon-btn,body.embedded-edit #counterView .cv-top .menu-wrap,body.embedded-edit #counterView #cvOptions,body.embedded-edit #counterView #cvFullScreen,body.embedded-edit #counterView #cvFrontLock,body.embedded-edit #counterView #themeToggle,body.embedded-edit #counterView #printBtn,body.embedded-edit #counterView #chargeCardBtn{display:none!important}body.embedded-edit #counterView .cv-top{padding-left:12px;padding-right:12px}body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 300px}body.embedded-edit #counterView .cv-work{padding:8px 10px}body.embedded-edit #counterView .cv-checkout{padding:12px}body.embedded-edit #counterView .sum-row.total .sum-val{font-size:32px}
  @media(max-width:1060px){body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 250px}body.embedded-edit #counterView .cv-reorder,body.embedded-edit #counterView .cv-reorder-label{display:none}body.embedded-edit #counterView .cv-desc input.cv-description{font-size:16px}body.embedded-edit #counterView .cv-checkout{gap:8px}body.embedded-edit #counterView .cv-head>.cv-support:not(.cv-discount-head),body.embedded-edit #counterView .cv-line>.cv-cost,body.embedded-edit #counterView .cv-line>.cv-margin{display:none}body.embedded-edit #counterView .cv-head,body.embedded-edit #counterView .cv-line{grid-template-columns:20px minmax(150px,1fr) 62px 80px 44px 88px 26px;gap:5px}}
@@ -928,9 +931,9 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
               <button class="drive-btn hist-btn" id="printBtn" type="button" onclick="manualPrint()" title="Open the system print dialog">Manual print</button>
               <button class="drive-btn hist-btn" id="scannerModeBtn" type="button" onclick="setScannerModeActive(true)">Scanner Mode</button>
               <div id="togglesMenu" style="display:contents">
-                <label class="menu-check"><input type="checkbox" id="tgSignature" onchange="toggleSignature()"> ✍ Signature</label>
-                <label class="menu-check"><input type="checkbox" id="tgSalesView" onchange="toggleSalesView()"> 👁 Sales View</label>
-                <label class="menu-check"><input type="checkbox" id="tgCardFee" onchange="toggleCardFee(this.checked)"> 💳 Card fee (3%)</label>
+                <label class="menu-check"><input type="checkbox" id="tgSignature" onchange="toggleSignature()"> Signature</label>
+                <label class="menu-check"><input type="checkbox" id="tgSalesView" onchange="toggleSalesView()"> Sales View</label>
+                <label class="menu-check"><input type="checkbox" id="tgCardFee" onchange="toggleCardFee(this.checked)"> Card fee (3%)</label>
               </div>
               <select class="scan-camera-select" id="registerDigitSelect" aria-label="This register" title="Which register this is — keeps sale numbers from matching another counter's" onchange="setRegisterDigit(this.value)">
                 <option value="" disabled>Register: not set</option>
@@ -1055,7 +1058,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <label class="credit-amt" id="creditAmtWrap" hidden>How much? <input class="cust-input" id="creditAmt" inputmode="decimal" autocomplete="off" onchange="regCreditAmount(this.value)" onkeydown="if(event.key==='Enter')this.blur()"></label>
       <div class="credit-note" id="creditNote" role="status"></div>
     </div>
-    <input class="cust-input" id="docPO" placeholder="PO # (invoice)" autocomplete="off" maxlength="60">
+    <input class="cust-input" id="docPO" placeholder="PO #" autocomplete="off" maxlength="60">
     <div class="dropdown cust-dd" id="custDD"></div>
   </div>
 
@@ -1219,7 +1222,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.07.2';
+const POS_RELEASE = '2026.11.07.3';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -4010,7 +4013,35 @@ function showNextScanIssue(preferredRow) {
   if (next) next.textContent = `${scanIssues.size} row${scanIssues.size === 1 ? '' : 's'} still need review`;
 }
 
+// A saved custom line (flag O or F) stays a typed line: part number and description editable, as when it was first entered.
+function markRowEditable(i) {
+  for (const input of [tbody.querySelector(`[data-row="${i}"].part-input`), document.querySelector(`#mobileRows [data-row="${i}"].part-input`)]) {
+    if (!input) continue;
+    input.dataset.isOther = '1'; input.readOnly = false;
+  }
+}
+// Old saved rows have no cost or brand. A sale opened before the catalog finished loading (a fresh sale tab) fills them here once it has,
+// but only on lines nobody touched (cost box still empty).
+function fillPendingSavedLines() {
+  const pending = [...tbody.querySelectorAll('tr[data-cost-pending]')];
+  if (!pending.length) return;
+  const before = _historyContentBaseline ? historyContentFingerprint(captureOrder()) : null;
+  for (const tr of pending) {
+    const i = tr.dataset.row, input = tbody.querySelector(`[data-row="${i}"].part-input`), costEl = document.getElementById(`cost-${i}`);
+    delete tr.dataset.costPending;
+    const master = findPartByPn(input?.dataset.partPn || input?.value);
+    if (!master || !costEl || costEl.tagName !== 'INPUT' || costEl.value.trim()) continue;
+    const cost = parseFloat(master.cost) || 0;
+    costEl.dataset.cost = cost; costEl.dataset.origCost = cost; costEl.value = cost > 0 ? fmt(cost) : '';
+    if (!printMake(i)) { setPrintMake(i, master.make); const mk = document.getElementById(`make-${i}`); if (mk) mk.textContent = master.make || '—'; input.dataset.partMake = master.make || ''; }
+    if (master.warranty && tr.dataset.warranty !== '1') renderSNFields(i, parseFloat(document.getElementById(`qty-${i}`)?.value) || 1);
+    updateMarginForLine(i);
+  }
+  updateSummary();
+  if (before !== null && _historyContentBaseline === before) _historyContentBaseline = historyContentFingerprint(captureOrder());
+}
 function flushPendingCatalogScans() {
+  if (loaded) { try { fillPendingSavedLines(); } catch (error) { console.warn('[MPE] saved lines not completed:', error.message); } }
   if (!loaded || !pendingCatalogScans.length) return;
   const queued = pendingCatalogScans.splice(0);
   queued.forEach(scan => acceptDecodedScan(scan.raw, scan.format, { claimed: true }));
@@ -6853,7 +6884,12 @@ function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(
       (item.sn && item.sn.length) ? item.sn.join(', ') : '',
       // Per-item discount evidence for Ledger: original Ea. and the amount off each unit.
       parseFloat(item.discountPerUnit) > 0 && item.originalEa != null && item.originalEa !== '' ? '$' + parseFloat(item.originalEa).toFixed(2) : '',
-      parseFloat(item.discountPerUnit) > 0 ? '$' + parseFloat(item.discountPerUnit).toFixed(2) : '']);
+      parseFloat(item.discountPerUnit) > 0 ? '$' + parseFloat(item.discountPerUnit).toFixed(2) : '',
+      // Q, R, S (past P, so A:P and the contact hash are unchanged; older readers ignore them): the line's cost, its brand, and flags
+      // W warranty unit / O editable custom line / F typed free-entry line. A part line always writes a cost ($0.00 when none); a blank Q is an old row.
+      item.cost != null && item.cost !== '' && Number.isFinite(Number(item.cost)) ? '$' + Number(item.cost).toFixed(2) : '',
+      String(item.make || '').trim(),
+      (item.warranty ? 'W' : '') + (item.isOther ? 'O' : '') + (item.freeEntry ? 'F' : '')]);
   }
 
   return rows;
@@ -7353,7 +7389,9 @@ function _parseTxnRows(rows) {
               customer: (r.slice(16, 22).some(Boolean) ? r.slice(16, 22) : null),
               presell: String(r[22] || '').trim().toUpperCase() === 'PRESELL', po: String(r[23] || '').trim(), items: [] };
     } else if (type === 'item' && cur) {
-      cur.items.push({ pn: r[8]||'', desc: r[9]||'', qty: r[10]||'', ea: r[11]||'', sub: r[12]||'', sn: r[13]||'' });
+      cur.items.push({ pn: r[8]||'', desc: r[9]||'', qty: r[10]||'', ea: r[11]||'', sub: r[12]||'', sn: r[13]||'',
+        ...(String(r[14] || '').trim() && String(r[15] || '').trim() ? { originalEa: r[14], discountPerUnit: r[15] } : {}),
+        ...(String(r[16] || '').trim() !== '' ? { cost: r[16] } : {}), make: String(r[17] || '').trim(), flags: String(r[18] || '').trim() });
     }
   }
   if (cur) txns.push(cur);
@@ -7599,11 +7637,36 @@ function fillTxnIntoPOS(t, convertTo = null) {
     const price = parseFloat(String(it.ea || '').replace(/[^0-9.\-]/g, '')) || 0;
     const qty = parseFloat(it.qty) || 1;
     const hasSN = !!(it.sn && it.sn.trim());
-    // Master supplies cost/make/warranty; the transaction keeps its charged price and description.
+    // Notes and discount lines come back as real note / discount rows, in the same place (the saved item order).
+    if (it.pn === 'Note' || it.pn === 'Discount') {
+      const q0 = document.getElementById(`qty-${r}`);
+      if (it.pn === 'Note') {
+        applyNoteToRow(r);
+        const noteInput = document.getElementById(`desc-${r}`)?.querySelector('.note-desc-input');
+        if (noteInput) noteInput.value = it.desc || '';
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();   // applyNoteToRow focuses the note
+      } else {
+        applyDiscountToRow(r);
+        const di = document.getElementById(`desc-${r}`)?.querySelector('.discount-desc-input');
+        if (di) di.value = it.desc || 'Discount';
+        const field = document.getElementById(`price-${r}`)?.querySelector('.price-edit');
+        if (field) { field.value = fmt(price); onPriceEdit(r); }
+        if (/^Order discount\b/.test(it.desc || '')) tbody.querySelector(`tr[data-row="${r}"]`).dataset.orderDiscount = '1';
+      }
+      if (q0) q0.value = qty;
+      updateSubtotal(r);
+      continue;
+    }
+    // What the sale was saved with wins (cost, brand, warranty and custom-line flags: Transactions Q-S). Only an old row, saved before
+    // those were kept (cost null), falls back to Master, and to the catalog arriving later if it is not loaded yet.
+    const savedCost = it.cost == null || String(it.cost).trim() === '' ? null : parseFloat(String(it.cost).replace(/[^0-9.\-]/g, '')) || 0;
+    const flags = String(it.flags || '').toUpperCase();
     const master = findPartByPn(it.pn);
     const part = master
-      ? { ...master, desc: it.desc || master.desc, list: price, warranty: master.warranty || hasSN }
-      : { pn: it.pn || '', desc: it.desc || '', list: price, make: '', cost: '', warranty: hasSN };
+      ? { ...master, desc: it.desc || master.desc, list: price, warranty: savedCost == null ? (master.warranty || hasSN) : (flags.includes('W') || hasSN),
+          ...(savedCost == null ? {} : { make: it.make || '', cost: savedCost }), ...(flags.includes('F') ? { _freeEntry: true } : {}) }
+      : { pn: it.pn || '', desc: it.desc || '', list: price, make: it.make || '', cost: savedCost == null ? '' : savedCost,
+          warranty: hasSN || flags.includes('W'), ...(flags.includes('F') ? { _freeEntry: true } : {}) };
     // Desktop row
     const dInp = tbody.querySelector(`[data-row="${r}"].part-input`);
     if (dInp) dInp.value = it.pn || it.desc || '';
@@ -7624,6 +7687,12 @@ function fillTxnIntoPOS(t, convertTo = null) {
       document.getElementById(`mprice-${r}`).dataset.price = preciseEa;
       updateSubtotal(r); updateMobileSubtotal(r);
     }
+    const rowTr = tbody.querySelector(`tr[data-row="${r}"]`);
+    if (savedCost != null && master) {   // the saved cost is on the line; the cost an edit is compared with stays Master's
+      const costEl = document.getElementById(`cost-${r}`); if (costEl) costEl.dataset.origCost = parseFloat(master.cost) || 0;
+    } else if (savedCost == null && !master && rowTr) rowTr.dataset.costPending = '1';   // old row and the catalog may not be loaded yet: filled when it arrives
+    if (flags.includes('O') || flags.includes('F')) markRowEditable(r);
+    updateMarginForLine(r);
     // A discounted line comes back as a discount (original price struck through, amount off), not as a lower list price.
     const originalEa = parseFloat(String(it.originalEa ?? '').replace(/[^0-9.\-]/g, '')) || 0;
     const offEach = parseFloat(String(it.discountPerUnit ?? '').replace(/[^0-9.\-]/g, '')) || 0;
@@ -7637,7 +7706,8 @@ function fillTxnIntoPOS(t, convertTo = null) {
     // Serial numbers (warranty rows live in the desktop table)
     if (hasSN) {
       const serials = it.sn.split(',').map(s => s.trim()).filter(Boolean);
-      const snInputs = tbody.querySelectorAll(`tr[data-sn-for="${r}"] .sn-input`);
+      let snInputs = tbody.querySelectorAll(`tr[data-sn-for="${r}"] .sn-input`);
+      if (serials.length > snInputs.length) { renderSNFields(r, qty, it.pn, serials.length); snInputs = tbody.querySelectorAll(`tr[data-sn-for="${r}"] .sn-input`); }   // never drop a saved serial for lack of a box
       serials.forEach((s, idx) => { if (snInputs[idx]) snInputs[idx].value = s; });
     }
   }
@@ -8231,9 +8301,21 @@ const LABOR_PER_MINUTE = 110 / 60;
 function withLaborRate(part) {
   return String(part?.pn || '').trim().toUpperCase() === 'LABOR' ? { ...part, list: LABOR_PER_MINUTE } : part;
 }
+// The editable Cost box of a part line (applyPart, and a sale restored from this computer's history).
+function installCostInput(i, cost) {
+  const costSpan = document.getElementById(`cost-${i}`);
+  costSpan.outerHTML = `<input class="cost-edit cell-cost" id="cost-${i}" data-cost="${cost}" data-orig-cost="${cost}" value="${cost > 0 ? fmt(cost) : ''}" placeholder="—">`;
+  const costEl = document.getElementById(`cost-${i}`);
+  costEl.addEventListener('focus', function() { this.select(); });
+  costEl.addEventListener('blur', function() { onCostEdit(i); });
+  costEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); onCostEdit(i); document.getElementById(`margin-${i}`)?.focus?.(); }
+  });
+}
 function applyPart(i, part, options) {
   part = withLaborRate(part);
   tbody.querySelector(`tr[data-row="${i}"]`)?.removeAttribute('data-order-discount');
+  tbody.querySelector(`tr[data-row="${i}"]`)?.removeAttribute('data-cost-pending');
   const input = tbody.querySelector(`[data-row="${i}"].part-input`);
   const activeReorder = reorderRowSignal(i);
   if (activeReorder && (normalizePN(activeReorder.partNumber) !== normalizePN(part?.pn)
@@ -8278,14 +8360,7 @@ function applyPart(i, part, options) {
   document.getElementById(`make-${i}`).textContent = part.make || '—';
   setPrintMake(i, part.make);
   const cost = parseFloat(part.cost) || 0;
-  const costSpan = document.getElementById(`cost-${i}`);
-  costSpan.outerHTML = `<input class="cost-edit cell-cost" id="cost-${i}" data-cost="${cost}" data-orig-cost="${cost}" value="${cost > 0 ? fmt(cost) : ''}" placeholder="—">`;
-  const costEl = document.getElementById(`cost-${i}`);
-  costEl.addEventListener('focus', function() { this.select(); });
-  costEl.addEventListener('blur', function() { onCostEdit(i); });
-  costEl.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); onCostEdit(i); document.getElementById(`margin-${i}`)?.focus?.(); }
-  });
+  installCostInput(i, cost);
   const _mList = parseFloat(part.list) || 0;
   const _mCost = parseFloat(part.cost) || 0;
   const initialMargin = _mList > 0 && _mCost >= 0 ? marginPercent(_mCost, _mList) : null;
@@ -8421,7 +8496,7 @@ function clearRowData(i) {
   descEl.innerHTML = '—'; descEl.className = 'empty-cell'; descEl.contentEditable = 'false'; descEl.dataset.row = '';
   setPrintMake(i, '');
   const tr = tbody.querySelector(`tr[data-row="${i}"]`);
-  if (tr) { delete tr.dataset.orderDiscount; delete tr.dataset.warranty; delete tr.dataset.pkgUnits; delete tr.dataset.pkgDeal; delete tr.dataset.pkgPrice; delete tr.dataset.scanOrigin; }
+  if (tr) { delete tr.dataset.orderDiscount; delete tr.dataset.costPending; delete tr.dataset.warranty; delete tr.dataset.pkgUnits; delete tr.dataset.pkgDeal; delete tr.dataset.pkgPrice; delete tr.dataset.scanOrigin; }
   document.getElementById(`make-${i}`).textContent = '—';
   const costEl = document.getElementById(`cost-${i}`);
   if (costEl.tagName === 'INPUT') costEl.outerHTML = `<span class="cell-cost" id="cost-${i}">—</span>`;
@@ -10067,7 +10142,12 @@ function captureOrder() {
     const sub = parseFloat(document.getElementById(`sub-${i}`)?.dataset.val) || (ea * qty);
     const snTr = tbody.querySelector(`tr[data-sn-for="${i}"]`);
     const sn = snTr ? Array.from(snTr.querySelectorAll('.sn-input')).map(inp => inp.value.trim()).filter(Boolean) : [];
-    items.push({ pn, desc, make: printMake(i) || undefined, qty, ea, sub, sn: sn.length ? sn : undefined,
+    // Cost rides with the line (Transactions item column Q) so a reopened or copied sale keeps what it was saved with, not today's Master.
+    // A part line always has a cost cell (blank = 0); notes and discount lines have none.
+    const costEl = document.getElementById(`cost-${i}`);
+    const cost = costEl && costEl.tagName === 'INPUT' && pn !== 'Note' && pn !== 'Discount' ? (parseFloat(costEl.dataset.cost) || 0) : undefined;
+    items.push({ pn, desc, make: printMake(i) || undefined, cost, warranty: tbody.querySelector(`tr[data-row="${i}"]`)?.dataset.warranty === '1' || undefined,
+      qty, ea, sub, sn: sn.length ? sn : undefined,
       isOther: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.isOther === '1' || undefined,
       freeEntry: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.freeEntry === '1' || undefined,
       originalEa: discountPerUnit > 0 ? originalEa : undefined,
@@ -10282,7 +10362,7 @@ function historyContentFingerprint(order, docType = _docType) {
     customer: ['name', 'company', 'addr', 'city', 'state', 'zip', 'phone', 'email']
       .map(key => text(order.customer?.[key]).toUpperCase()),
     items: (order.items || []).map(item => [
-      text(item.pn), text(item.desc), number(item.qty), number(item.ea), number(item.sub),
+      text(item.pn), text(item.desc), number(item.qty), number(item.ea), number(item.sub), item.cost == null ? null : number(item.cost),
       (item.sn || []).map(text), number(item.originalEa), number(item.discountPerUnit),
     ]),
     total: number(order.total), cardFee: !!order.toggles?.cardFee,
@@ -10502,6 +10582,11 @@ function findPartByPn(pn) {
   return partsArray.find(p => norm(p.pn) === key || norm(p.og) === key) || null;
 }
 
+// The saved PO # (invoices) and Presold box come back with a sale opened from this computer's own history.
+function setDocPoAndPresold(order) {
+  const po = document.getElementById('docPO'); if (po) po.value = order.po || '';
+  const presellChk = document.getElementById('presellChk'); if (presellChk) presellChk.checked = (order.docType || 'receipt') !== 'internal' && !!order.presell;
+}
 async function reprintOrder(idx) {
   const history = getHistory();
   const order = history[idx];
@@ -10524,6 +10609,7 @@ async function reprintOrder(idx) {
     syncTenderReference();
     if (reference && !reference.disabled) reference.value = order.tender?.reference || '';
   }
+  setDocPoAndPresold(order);
   // Restore customer fields
   if (order.customer) {
     const map = { name: 'custName', company: 'custCompany', addr: 'custAddr', city: 'custCity', state: 'custState', zip: 'custZip', phone: 'custPhone', email: 'custEmail' };
@@ -10549,7 +10635,7 @@ async function reprintOrder(idx) {
     const input = tbody.querySelector(`[data-row="${i}"].part-input`);
     if (!input) return;
     const row = tbody.querySelector(`tr[data-row="${i}"]`);
-    if (item.kind === 'note') {
+    if (item.kind === 'note' || item.pn === 'Note') {
       applyNoteToRow(i);
       const noteInput = document.getElementById(`desc-${i}`)?.querySelector('.note-desc-input');
       if (noteInput) noteInput.value = item.desc || '';
@@ -10568,7 +10654,9 @@ async function reprintOrder(idx) {
       const pInput = priceEl.querySelector('.price-edit');
       if (pInput) pInput.value = fmt(ea);                        // charged price, not today's list
       // Margin off the charged price vs current cost — no price-change logging on reload
-      const cost = parseFloat(document.getElementById(`cost-${i}`)?.dataset.cost) || 0;
+      const costEl0 = document.getElementById(`cost-${i}`);
+      if (item.cost != null && costEl0 && costEl0.tagName === 'INPUT') { costEl0.dataset.cost = item.cost; costEl0.value = item.cost > 0 ? fmt(item.cost) : ''; }   // the cost this sale was saved with
+      const cost = parseFloat(costEl0?.dataset.cost) || 0;
       document.getElementById(`margin-${i}`).textContent = marginText(cost, ea);
     } else {
       // Not in Master (note / discount / discontinued) — restore saved values as-is.
@@ -10583,8 +10671,7 @@ async function reprintOrder(idx) {
       descEl.className = 'cell-desc cell-editable';
       descEl.contentEditable = 'true';
       descEl.dataset.row = i;
-      const costEl = document.getElementById(`cost-${i}`);
-      if (costEl) costEl.dataset.cost = item.cost || 0;
+      installCostInput(i, parseFloat(item.cost) || 0);
       const priceEl = document.getElementById(`price-${i}`);
       priceEl.dataset.price = ea;
       priceEl.innerHTML = `<input class="price-edit" data-row="${i}" value="${ea.toFixed(2)}" type="text" autocomplete="off" spellcheck="false">`;
@@ -11145,10 +11232,14 @@ async function editSessionLoad(req, fail, stop = () => null) {   // stop(): a re
   // Prove the sale screen reproduces the saved document exactly before touching it (card fee, deposit note, quote link, serials,
   // discounts, PO #). Any difference means the save would change more than the person asked for, so it is refused.
   const loadedRows = editSessionRows();
-  if (!loadedRows || transactionRowsFingerprint(loadedRows) !== req.loaded) {
+  // An old saved document has nothing in item columns Q-S (cost, brand, flags); the screen shows Master's for it. Compare those three as
+  // blank in that case only, so every old sale still opens; a document saved with them is compared in full.
+  const legacy = (() => { try { return JSON.parse(req.loaded).every(row => row[0].toLowerCase() !== 'item' || (!row[16] && !row[17] && !row[18])); } catch (_error) { return false; } })();
+  const comparable = rows => legacy ? rows.map(row => String(row[0]).toLowerCase() === 'item' ? row.map((value, col) => col >= 16 && col <= 18 ? '' : value) : row) : rows;
+  if (!loadedRows || transactionRowsFingerprint(comparable(loadedRows)) !== req.loaded) {
     let where = '';   // only where the first difference is (row and column), never the values
     try {
-      const a = JSON.parse(req.loaded), b = loadedRows ? JSON.parse(transactionRowsFingerprint(loadedRows)) : [];
+      const a = JSON.parse(req.loaded), b = loadedRows ? JSON.parse(transactionRowsFingerprint(comparable(loadedRows))) : [];
       outer: for (let r = 0; r < Math.max(a.length, b.length); r++) for (let c = 0; c < 24; c++) if (((a[r] || [])[c]) !== ((b[r] || [])[c])) { where = `row ${r} column ${c}`; break outer; }
       if (!where && a.length !== b.length) where = `${a.length} saved rows, ${b.length} on screen`;
     } catch (_error) { where = 'unreadable'; }
@@ -11895,7 +11986,7 @@ installRowDrag();
 buildRows();
 buildMobileRows();
 renderScannerModeCommandCodes();
-_scannerModeDefault = localStorage.getItem(SCANNER_DEFAULT_KEY) === '1';
+_scannerModeDefault = false; // Scanner Mode retired from the menu (Trevor, 2026-11-07)
 document.getElementById('scannerModeDefault').checked = _scannerModeDefault;
 setScannerModeActive(_scannerModeDefault);
 syncTenderUi();
@@ -12297,8 +12388,8 @@ const root=document.createElement('section');root.id='counterView';root.setAttri
 root.innerHTML=`<header class="cv-top"><strong class="cv-edit-title" id="cvEditTitle"></strong><span class="cv-edit-type" id="cvEditType"></span><div class="cv-tabs" id="cvTabs"></div><button class="cv-new" id="cvNew" type="button" title="New sale" aria-label="New sale">+</button><div class="cv-docs"></div><div class="cv-history"></div><button class="cv-icon" id="cvOptions" type="button">Options</button><button class="cv-icon" id="cvFullScreen" type="button" title="Full screen" aria-label="Full screen" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button><button class="cv-icon" id="cvFrontLock" type="button" title="Keep POS in front" aria-label="Keep POS in front" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 3 8 0-1 6 4 4v2H5v-2l4-4-1-6zM12 15v7"/></svg></button></header>
 <div class="cv-quote" hidden><label><input type="checkbox" data-cv-toggle="Signature">Signature</label><label><input type="checkbox" data-cv-toggle="SalesView">Sales View</label></div>
 <div class="cv-body"><div class="cv-work"><div class="cv-head"><span></span><span><span>Description</span><span class="cv-reorder-label">Need to reorder?</span></span><span class="cv-support">Cost</span><span class="cv-support">Margin %</span><span class="cv-support cv-discount-head">Discount</span><span>Ea.</span><span>Qty</span><span>Price</span><span></span></div><div id="cvItems"></div><div class="cv-entry"><input id="cvEntry" autocomplete="off" aria-label="New item" placeholder="Part number or description…"></div><div id="cvReview"></div></div>
-<aside class="cv-checkout"><div class="cv-fill"><div class="cv-card cv-card-cust"><div class="cv-customer-label">Customer</div><div id="cvCustomer"></div></div><div class="cv-card cv-card-po"><button class="cv-note" id="cvNote" type="button">Add note</button><div id="cvPo"></div><div class="cv-order"><button id="cvOrderToggle" type="button" aria-expanded="true">Order discount</button><div class="cv-discount-mode" role="group" aria-label="Order discount type"><button id="cvOrderMoney" type="button" aria-pressed="true">$</button><button id="cvOrderPercent" type="button" aria-pressed="false">%</button></div><input id="cvOrderValue" aria-label="Whole order discount" type="text" inputmode="decimal" value="0.00" autocomplete="off"></div><label class="cv-fee"><input id="cvCardFee" type="checkbox">Card fee · 3%</label></div><div id="cvLedger"></div></div><div class="cv-summary"><div id="cvTotals"></div></div><div id="cvFinalize"></div><div id="cvCharge"></div></aside></div>
-<div class="cv-deck"><button class="cv-command delete" type="button" data-cv-command="DELETE"><svg data-cv-qr="delete" role="img" aria-label="Clear / Price Check QR"></svg><span>Clear / Price Check</span></button><button class="cv-command print" type="button" data-cv-command="PRINT"><svg data-cv-qr="print" role="img" aria-label="Print QR"></svg><span>Print</span><span class="cv-mirror" aria-hidden="true">Print</span></button><button class="cv-command next" type="button" data-cv-command="SAVENEW"><svg data-cv-qr="clear" role="img" aria-label="Save / Next Transaction QR"></svg><span>Save / Next Transaction</span></button></div><div class="cv-feedback" role="status" id="cvFeedback"></div>`;
+<aside class="cv-checkout"><div class="cv-fill"><div class="cv-card cv-card-cust"><div class="cv-customer-label">Customer</div><div id="cvCustomer"></div></div><div class="cv-card cv-card-po"><button class="cv-note" id="cvNote" type="button">Add note</button><div id="cvPo"></div><div class="cv-order"><span class="cv-order-label">Discount</span><div class="cv-discount-mode" role="group" aria-label="Order discount type"><button id="cvOrderMoney" type="button" aria-pressed="true">$</button><button id="cvOrderPercent" type="button" aria-pressed="false">%</button></div><input id="cvOrderValue" aria-label="Whole order discount" type="text" inputmode="decimal" value="0" autocomplete="off"></div><label class="cv-fee"><input id="cvCardFee" type="checkbox">Card fee · 3%</label></div><div id="cvLedger"></div></div><div class="cv-summary"><div id="cvTotals"></div></div><div id="cvFinalize"></div><div id="cvCharge"></div></aside></div>
+<div class="cv-deck"><button class="cv-command delete" type="button" data-cv-command="DELETE"><svg data-cv-qr="delete" role="img" aria-label="Clear / Price Check QR"></svg><span>Clear / Price Check</span></button><button class="cv-command print" type="button" data-cv-command="PRINT"><svg data-cv-qr="print" role="img" aria-label="Print QR"></svg><span>Quick</span><span class="cv-mirror">Print</span></button><button class="cv-command next" type="button" data-cv-command="SAVENEW"><svg data-cv-qr="clear" role="img" aria-label="Save / Next Transaction QR"></svg><span>Save / Next Transaction</span></button></div><div class="cv-feedback" role="status" id="cvFeedback"></div>`;
 document.body.append(root);
 const saveOption=q('#saveBtn');saveOption.className='drive-btn hist-btn';q('#adminMenu .admin-control-grid').append(saveOption);
 const results=document.createElement('div');results.id='cvResults';results.className='cv-results';results.hidden=true;document.body.append(results);
@@ -12342,14 +12433,13 @@ if(nativeModes){
  full.onclick=()=>toggle(()=>nativeModes.toggleFullScreen());front.onclick=()=>toggle(()=>nativeModes.toggleFrontLock());
  nativeModes.onChange(renderModes);nativeModes.get().then(renderModes).catch(()=>{});
 }
-// Notes are ordinary lines kept in line order (D16): Add note puts one first, "Add note below" puts one right under an item.
+// Notes are ordinary lines kept in line order (D16): "Add note below" puts one right under an item; Add note puts one under the last item.
 function insertNote(under){if(!editable())return;const i=emptyRow();applyNoteToRow(i);const at=under==null?rowOrder()[0]:nextRowIndex(under);if(at!==i)moveRow(i,at);relabelRows();updateSummary();requestAnimationFrame(()=>q(`[data-cv-id="${i}"] .cv-description`)?.focus());return i;}
 window.cvInsertNote=insertNote;
-q('#cvNote').onclick=()=>insertNote();
+q('#cvNote').onclick=()=>{const ids=rowOrder().filter(i=>!rowIsEmpty(i)&&i!==orderRow());insertNote(ids.length?ids[ids.length-1]:null);};
 q('#cvCardFee').onchange=e=>toggleCardFee(e.target.checked);
 qa('[data-cv-toggle]').forEach(el=>el.onchange=()=>{const name=el.dataset.cvToggle;const original=q('#tg'+name);if(original){original.checked=el.checked;original.dispatchEvent(new Event('change',{bubbles:true}));}schedule();});
 q('#cvOrderValue').addEventListener('input',applyOrderDiscount);q('#cvOrderValue').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.target.blur();}});
-q('#cvOrderToggle').onclick=()=>{const open=q('#cvOrderToggle').getAttribute('aria-expanded')!=='true';q('#cvOrderToggle').setAttribute('aria-expanded',String(open));q('.cv-discount-mode').hidden=!open;q('#cvOrderValue').hidden=!open;if(open)q('#cvOrderValue').focus();};
 q('#cvOrderMoney').onclick=()=>{orderMode='amount';applyOrderDiscount();schedule();};q('#cvOrderPercent').onclick=()=>{orderMode='percent';applyOrderDiscount();schedule();};
 qa('[data-cv-command]').forEach(button=>button.onclick=()=>{commitFocused();const command=button.dataset.cvCommand;const payload=[...SCAN_COMMANDS].find(([,action])=>action===command)?.[0];if(payload)runScanCommand(payload);});
 function drawQR(svg,rows){const list=rows.split('/'),size=list.length+8;svg.setAttribute('viewBox',`0 0 ${size} ${size}`);let d='';list.forEach((r,y)=>[...r].forEach((v,x)=>{if(v==='1')d+=`M${x+4} ${y+4}h1v1h-1z`;}));svg.innerHTML=`<rect width="${size}" height="${size}" fill="#fff"/><path d="${d}" fill="#000"/>`;}window.mpeDrawQR=drawQR;
@@ -12359,18 +12449,18 @@ function schedule(){if(frame||!mounted||printing)return;frame=requestAnimationFr
 const observer=new MutationObserver(schedule);observer.observe(tbody,{childList:true,subtree:true,attributes:true,characterData:true});
 function rowInfo(i){const tr=tbody.querySelector(`tr[data-row="${i}"]`),part=tr?.querySelector('.part-input'),price=q(`#price-${i}`),desc=q(`#desc-${i}`),note=desc?.querySelector('.note-desc-input,.discount-desc-input');const sn=Array.from(tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`));return{i,tr,part,price,desc,note,sn,name:note?note.value:desc?.textContent||part?.value||'',qty:num(q(`#qty-${i}`)?.value)||1,base:num(price?.dataset.originalEa)||num(price?.dataset.price),charged:num(price?.dataset.price),cost:num(q(`#cost-${i}`)?.dataset.cost),off:num(price?.dataset.discountPerUnit),total:num(q(`#sub-${i}`)?.dataset.val)};}
 function field(r,key,cls,label){return `<input class="${cls}" data-cv-field="${key}" data-cv-row="${r.i}" aria-label="${label} line ${rowPos(r.i)}" autocomplete="off" spellcheck="false" ${key==='qty'?'inputmode="numeric"':'inputmode="decimal"'}${key==='cost'?' readonly tabindex="-1"':''}>`;}
-function makeArticle(r){const a=document.createElement('article');a.className='cv-article';a.dataset.cvId=r.i;a.innerHTML=`<div class="cv-line"><button class="cv-grip" type="button" draggable="true" data-cv-drag="${r.i}" aria-label="Reorder line ${rowPos(r.i)}" title="Drag to reorder; Alt + Up or Down">⠿</button><div class="cv-desc"><input class="cv-description" data-cv-field="desc" data-cv-row="${r.i}" aria-label="Description line ${rowPos(r.i)}" autocomplete="off"><div class="cv-pn"></div><div class="cv-meta"><div class="cv-sn-group"></div></div><input class="cv-reorder" type="checkbox" data-cv-field="restock" data-cv-row="${r.i}" aria-label="Need to reorder line ${rowPos(r.i)}"></div>${field(r,'cost','cv-cost cv-support','Cost')}${field(r,'margin','cv-margin cv-support','Margin percent')}${field(r,'discount','cv-discount cv-support','Discount per item')}${field(r,'ea','cv-ea','Each price')}${field(r,'qty','cv-qty','Quantity')}${field(r,'sub','cv-sub','Line total')}<button class="cv-clear" type="button" data-cv-clear="${r.i}" aria-label="Clear line ${rowPos(r.i)}">×</button></div><button class="cv-addnote" type="button" data-cv-note-below="${r.i}" aria-label="Add note below this line" title="Add note below">+ Note below</button><div class="cv-sn-overflow"></div>`;return a;}
+function makeArticle(r){const a=document.createElement('article');a.className='cv-article';a.dataset.cvId=r.i;a.innerHTML=`<div class="cv-line"><button class="cv-grip" type="button" draggable="true" data-cv-drag="${r.i}" aria-label="Reorder line ${rowPos(r.i)}" title="Drag to reorder; Alt + Up or Down">⠿</button><div class="cv-desc"><input class="cv-description" data-cv-field="desc" data-cv-row="${r.i}" aria-label="Description line ${rowPos(r.i)}" autocomplete="off"><input class="cv-pn" data-cv-pn="${r.i}" aria-label="Part number line ${rowPos(r.i)}" title="Edit to swap this item" autocomplete="off" spellcheck="false"><div class="cv-meta"><div class="cv-sn-group"></div></div><input class="cv-reorder" type="checkbox" data-cv-field="restock" data-cv-row="${r.i}" aria-label="Need to reorder line ${rowPos(r.i)}"></div>${field(r,'cost','cv-cost cv-support','Cost')}${field(r,'margin','cv-margin cv-support','Margin percent')}${field(r,'discount','cv-discount cv-support','Discount per item')}${field(r,'ea','cv-ea','Each price')}${field(r,'qty','cv-qty','Quantity')}${field(r,'sub','cv-sub','Line total')}<button class="cv-clear" type="button" data-cv-clear="${r.i}" aria-label="Clear line ${rowPos(r.i)}">×</button></div><button class="cv-addnote" type="button" data-cv-note-below="${r.i}" aria-label="Add note below this line" title="Add note below">+ Note below</button><div class="cv-sn-overflow"></div>`;return a;}
 function syncSerials(a,r){const group=a.querySelector('.cv-sn-group'),spill=a.querySelector('.cv-sn-overflow');let fields=[...a.querySelectorAll('[data-cv-sn]')];const count=r.sn.length;a.querySelector('.cv-meta').hidden=!count;if(!count){group.replaceChildren();spill.replaceChildren();spill.hidden=true;return;}if(fields.length!==count){group.innerHTML='';spill.innerHTML='';for(let n=0;n<count;n++){const label=document.createElement('label');label.className='cv-sn';label.innerHTML=`<span>${count===1?'SN:':`SN ${n+1}:`}</span><input data-cv-sn="${n}" data-cv-row="${r.i}" aria-label="Serial ${n+1} line ${rowPos(r.i)}" placeholder="Enter serial" autocomplete="off">`;group.append(label);}fields=[...group.querySelectorAll('input')];}else [...spill.children].forEach(l=>group.append(l));fields.forEach((el,n)=>{if(el!==document.activeElement)el.value=r.sn[n]?.value||'';});const width=group.getBoundingClientRect().width,capacity=Math.max(1,Math.floor((width+8)/164));[...group.children].slice(capacity).forEach(label=>spill.append(label));spill.hidden=!spill.children.length;}
 function sync(){
  if(!mounted||printing||busy)return;busy=true;try{
  const ids=rowOrder().filter(i=>!rowIsEmpty(i)&&i!==orderRow());const key=ids.join(',');const box=q('#cvItems');
  if(key!==lastIds){const existing=new Map([...box.children].map(a=>[+a.dataset.cvId,a]));ids.forEach(i=>{const a=existing.get(i)||makeArticle(rowInfo(i));box.append(a);existing.delete(i);});existing.forEach(a=>a.remove());lastIds=key;}
  if(_editLoadedRows)_editLoadedRows.forEach(i=>{if(rowIsEmpty(i))_editLoadedRows.delete(i);});
- for(const i of ids){const r=rowInfo(i),a=q(`[data-cv-id="${i}"]`);a.classList.toggle('cv-added',editLineAdded(i));const values={desc:r.name,cost:plain(r.cost),margin:r.charged>0?marginPercent(r.cost,r.charged).toFixed(1):'',discount:r.price?.dataset.cvDiscountRate?`${r.price.dataset.cvDiscountRate}%`:plain(r.off),ea:plain(r.base),qty:String(r.qty),sub:plain(r.total)};for(const [k,v] of Object.entries(values)){const el=a.querySelector(`[data-cv-field="${k}"]`);if(el!==document.activeElement)el.value=v;el.disabled=!!q(`#price-input-${i}`)?.disabled;}a.querySelector('.cv-discount').classList.toggle('cv-on',r.off>0||!!r.price?.dataset.cvDiscountRate);const pn=String(r.part?.dataset.partPn||'').trim();a.querySelector('.cv-pn').textContent=pn&&pn.toUpperCase()!==String(r.name).trim().toUpperCase()?pn:'';
+ for(const i of ids){const r=rowInfo(i),a=q(`[data-cv-id="${i}"]`);a.classList.toggle('cv-added',editLineAdded(i));a.classList.toggle('cv-note-line',!!r.desc?.querySelector('.note-desc-input'));const values={desc:r.name,cost:plain(r.cost),margin:r.charged>0?marginPercent(r.cost,r.charged).toFixed(1):'',discount:r.price?.dataset.cvDiscountRate?`${r.price.dataset.cvDiscountRate}%`:plain(r.off),ea:plain(r.base),qty:String(r.qty),sub:plain(r.total)};for(const [k,v] of Object.entries(values)){const el=a.querySelector(`[data-cv-field="${k}"]`);if(el!==document.activeElement)el.value=v;el.disabled=!!q(`#price-input-${i}`)?.disabled;}a.querySelector('.cv-discount').classList.toggle('cv-on',r.off>0||!!r.price?.dataset.cvDiscountRate);const pn=String(r.part?.dataset.partPn||'').trim();{const el=a.querySelector('.cv-pn');if(el!==document.activeElement){el.value=pn&&pn.toUpperCase()!==String(r.name).trim().toUpperCase()?pn:'';el.hidden=!el.value;}}
  const check=a.querySelector('[data-cv-field="restock"]'),source=r.tr.querySelector('.reorder-toggle');check.checked=!!source?.checked;check.disabled=!!source?.disabled;syncSerials(a,r);}
- const locked=!editable();qa('#cvEntry,#cvOrderValue,#cvOrderMoney,#cvOrderPercent,#cvNote,[data-cv-field],[data-cv-sn],[data-cv-clear],[data-cv-note-below],[data-cv-drag]').forEach(el=>el.disabled=locked||(el.matches('[data-cv-field]')&&!!q(`#price-input-${el.dataset.cvRow}`)?.disabled));
+ const locked=!editable();qa('#cvEntry,#cvOrderValue,#cvOrderMoney,#cvOrderPercent,#cvNote,[data-cv-field],[data-cv-sn],[data-cv-clear],[data-cv-note-below],[data-cv-drag],[data-cv-pn]').forEach(el=>el.disabled=locked||(el.matches('[data-cv-field]')&&!!q(`#price-input-${el.dataset.cvRow}`)?.disabled));
  const qv=q('.cv-quote');qv.hidden=_docType!=='quote';qa('[data-cv-toggle]').forEach(e=>e.checked=!!q('#tg'+e.dataset.cvToggle)?.checked);q('#cvCardFee').checked=q('#cardFeeBtn').classList.contains('active');
- if(document.activeElement!==q('#cvOrderValue')){orderStateFromRow();q('#cvOrderValue').value=plain(orderRequested);}for(const mode of ['Money','Percent']){const b=q('#cvOrder'+mode),active=(mode==='Percent')===(orderMode==='percent');b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}
+ if(document.activeElement!==q('#cvOrderValue')){orderStateFromRow();q('#cvOrderValue').value=orderRequested?plain(orderRequested):'0';}for(const mode of ['Money','Percent']){const b=q('#cvOrder'+mode),active=(mode==='Percent')===(orderMode==='percent');b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}
  const maximum=(get,base,cap)=>Math.min(cap,Math.max(base,...ids.map(i=>String(get(rowInfo(i))).length*9+12)));root.style.setProperty('--cv-columns',`22px minmax(150px,1fr) ${maximum(r=>plain(r.cost),64,110)}px 58px 68px ${maximum(r=>plain(r.base),92,140)}px 44px ${maximum(r=>fmt(r.total),104,154)}px 34px`);
  if(ids.length>lastCount){q('.cv-work').scrollTop=q('.cv-work').scrollHeight;}lastCount=ids.length;
  }finally{busy=false;}
@@ -12403,10 +12493,10 @@ const oldSnapshotOrigin=snapshotHardwareScanOrigin,oldRestoreOrigin=restoreHardw
 snapshotHardwareScanOrigin=function(target){const origin=oldSnapshotOrigin(target);if(origin&&target?.matches('[data-cv-field],[data-cv-sn]')){const r=rowInfo(+target.dataset.cvRow);origin.counterDraft={i:r.i,price:{...r.price.dataset},bulk:r.price._bulkPart,cost:{...q(`#cost-${r.i}`).dataset},costValue:q(`#cost-${r.i}`).value,qty:r.qty,serials:r.sn.map(el=>el.value)};}return origin;};
 restoreHardwareScanOrigin=function(origin){oldRestoreOrigin(origin);const saved=origin?.counterDraft;if(saved&&origin.element?.isConnected){const price=q(`#price-${saved.i}`),cost=q(`#cost-${saved.i}`);if(price&&cost){for(const key of Object.keys(price.dataset))delete price.dataset[key];Object.assign(price.dataset,saved.price);price._bulkPart=saved.bulk;for(const key of Object.keys(cost.dataset))delete cost.dataset[key];Object.assign(cost.dataset,saved.cost);if(cost.tagName==='INPUT')cost.value=saved.costValue;const input=price.querySelector('.price-edit');if(input)input.value=fmt(num(saved.price.price));q(`#qty-${saved.i}`).value=saved.qty;if(saved.serials.length){renderSNFields(saved.i,saved.serials.length);tbody.querySelectorAll(`tr[data-sn-for="${saved.i}"] .sn-input`).forEach((el,n)=>el.value=saved.serials[n]||'');}else removeSNRow(saved.i);updateSubtotal(saved.i);updateMarginForLine(saved.i);updateSummary();}}if(origin?.element?.closest('#counterView'))hideSearch();};
 function commitFocused(){const active=document.activeElement;if(active?.matches('[data-cv-field]'))updateField(active,true);if(active===q('#cvOrderValue'))applyOrderDiscount();}
-root.addEventListener('input',e=>{if(!editable())return;const el=e.target;if(el.matches('[data-cv-field="desc"]')){if(focusSnapshot?.input===el){if(!el.value)focusSnapshot.searching=true;if(focusSnapshot.searching)showSearch(el,+el.dataset.cvRow);}return;}if(el.matches('[data-cv-field]'))updateField(el);if(el.matches('[data-cv-sn]')){const i=+el.dataset.cvRow,n=+el.dataset.cvSn;let list=tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);if(!list.length){renderSNFields(i,num(q(`#qty-${i}`)?.value)||1);list=tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);}if(list[n])list[n].value=el.value;}});
-root.addEventListener('focusout',e=>{if(e.target.matches('[data-cv-field]'))updateField(e.target,true);});
+root.addEventListener('input',e=>{if(!editable())return;const el=e.target;if(el.matches('[data-cv-pn]')){showSearch(el,+el.dataset.cvPn);return;}if(el.matches('[data-cv-field="desc"]')){if(focusSnapshot?.input===el){if(!el.value)focusSnapshot.searching=true;if(focusSnapshot.searching)showSearch(el,+el.dataset.cvRow);}return;}if(el.matches('[data-cv-field]'))updateField(el);if(el.matches('[data-cv-sn]')){const i=+el.dataset.cvRow,n=+el.dataset.cvSn;let list=tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);if(!list.length){renderSNFields(i,num(q(`#qty-${i}`)?.value)||1);list=tbody.querySelectorAll(`tr[data-sn-for="${i}"] .sn-input`);}if(list[n])list[n].value=el.value;}});
+root.addEventListener('focusout',e=>{if(e.target.matches('[data-cv-pn]')){if(searchTarget?.input===e.target)hideSearch();schedule();}if(e.target.matches('[data-cv-field]'))updateField(e.target,true);});
 root.addEventListener('change',e=>{if(e.target.matches('[data-cv-field="restock"]'))updateField(e.target,true);});
-root.addEventListener('keydown',e=>{const el=e.target;if(el.matches('[data-cv-field="desc"]')&&e.key==='Escape'){e.preventDefault();e.stopPropagation();if(focusSnapshot?.input===el){el.value=focusSnapshot.value;focusSnapshot.searching=false;}hideSearch();return;}if(el.matches('[data-cv-field="desc"]')&&searchKey(e))return;if(el.matches('[data-cv-field]')&&e.key==='Enter'){e.preventDefault();updateField(el,true);q('#cvEntry').focus();}const handle=el.closest('[data-cv-drag]');if(handle&&editable()&&e.altKey&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const i=+handle.dataset.cvDrag,o=rowOrder().filter(n=>n!==orderRow()),pos=o.indexOf(i);if(e.key==='ArrowUp'&&pos>0)moveRow(i,o[pos-1]);else if(e.key==='ArrowDown'&&pos<o.length-1)moveRow(i,o[pos+2]??null);updateSummary();}});
+root.addEventListener('keydown',e=>{const el=e.target;if(el.matches('[data-cv-pn]')){if(e.key==='Escape'||((e.key==='Enter'||e.key==='Tab')&&!searchMatches.length)){e.preventDefault();e.stopPropagation();hideSearch();el.blur();return;}if(searchKey(e))return;if(e.key==='Enter'){e.preventDefault();el.blur();}return;}if(el.matches('[data-cv-field="desc"]')&&e.key==='Escape'){e.preventDefault();e.stopPropagation();if(focusSnapshot?.input===el){el.value=focusSnapshot.value;focusSnapshot.searching=false;}hideSearch();return;}if(el.matches('[data-cv-field="desc"]')&&searchKey(e))return;if(el.matches('[data-cv-field]')&&e.key==='Enter'){e.preventDefault();updateField(el,true);q('#cvEntry').focus();}const handle=el.closest('[data-cv-drag]');if(handle&&editable()&&e.altKey&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const i=+handle.dataset.cvDrag,o=rowOrder().filter(n=>n!==orderRow()),pos=o.indexOf(i);if(e.key==='ArrowUp'&&pos>0)moveRow(i,o[pos-1]);else if(e.key==='ArrowDown'&&pos<o.length-1)moveRow(i,o[pos+2]??null);updateSummary();}});
 root.addEventListener('click',e=>{const nb=e.target.closest('[data-cv-note-below]');if(nb){insertNote(+nb.dataset.cvNoteBelow);return;}const c=e.target.closest('[data-cv-clear]');if(c&&editable()){clearRow(+c.dataset.cvClear);compactRows();updateSummary();}});
 root.addEventListener('dragstart',e=>{const h=e.target.closest('[data-cv-drag]');if(!h||!editable()){e.preventDefault();return;}dragId=+h.dataset.cvDrag;e.dataTransfer.setData('text/plain','line '+dragId);e.dataTransfer.effectAllowed='move';});root.addEventListener('dragover',e=>{const a=e.target.closest('[data-cv-id]');if(dragId==null||!a)return;e.preventDefault();qa('.cv-drop').forEach(x=>x.classList.remove('cv-drop'));a.classList.add('cv-drop');const work=q('.cv-work'),r=work.getBoundingClientRect();if(e.clientY>r.bottom-40)work.scrollTop+=16;if(e.clientY<r.top+40)work.scrollTop-=16;});root.addEventListener('drop',e=>{const a=e.target.closest('[data-cv-id]');if(dragId==null||!a||!editable())return;e.preventDefault();const target=+a.dataset.cvId;if(target!==dragId){const r=a.getBoundingClientRect();moveRow(dragId,e.clientY>r.top+r.height/2?nextRowIndexSkipping(target,dragId):target);compactRows();updateSummary();}dragId=null;qa('.cv-drop').forEach(x=>x.classList.remove('cv-drop'));});root.addEventListener('dragend',()=>{dragId=null;qa('.cv-drop').forEach(x=>x.classList.remove('cv-drop'));});
 window.addEventListener('resize',()=>{schedule();positionSearch();});document.addEventListener('scroll',e=>{if(!results.contains(e.target))positionSearch();},true);document.addEventListener('pointerdown',e=>{if(!results.contains(e.target)&&e.target!==searchTarget?.input)hideSearch();});

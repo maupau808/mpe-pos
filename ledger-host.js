@@ -152,7 +152,9 @@
       completedContact: Array.isArray(r.completedContact) ? r.completedContact.slice() : null,
       items: (r.items || []).map(i => ({ pn: s(i.pn), desc: s(i.desc), qty: s(i.qty), ea: i.pn === 'Note' ? '' : m2(i.ea),
         sub: i.pn === 'Note' ? '' : m2(i.sub), sn: (i.serials || []).join(', '),
-        ...(i.off > 0 && i.origEa > 0 ? { originalEa: m2(i.origEa), discountPerUnit: m2(i.off) } : {}) })),
+        ...(i.off > 0 && i.origEa > 0 ? { originalEa: m2(i.origEa), discountPerUnit: m2(i.off) } : {}),
+        // saved cost, brand and flags (Transactions Q-S); a missing cost marks an old row, so the register falls back to Master
+        ...(i.cost != null ? { cost: m2(i.cost) } : {}), ...(s(i.make) ? { make: s(i.make) } : {}), ...(s(i.flags) ? { flags: s(i.flags) } : {}) })),
     };
   }
   function saleRequest(kind, record) {
