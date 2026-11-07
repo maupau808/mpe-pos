@@ -1183,8 +1183,9 @@
         const frame = paper.querySelector('iframe');
         frame.addEventListener('load', fitDocument, { once: true });
         frame.srcdoc = pages[0];
-      } catch (_) {
-        if (st.docKey === key) paper.innerHTML = '<div class="empty">Could not show this document. Reprint still works from the register.</div>';
+      } catch (e) {
+        // The reason rides along in small text so a failure on one computer can be diagnosed from a photo of the screen.
+        if (st.docKey === key) paper.innerHTML = `<div class="empty">Could not show this document. Reprint still works from the register.<div class="muted" style="font-size:11px;margin-top:6px">${esc(String((e && e.message) || e))}</div></div>`;
       }
     }
     // XHR, not fetch: fetch refuses file: pages (the local ?fixture=1 copy); over https both work.
