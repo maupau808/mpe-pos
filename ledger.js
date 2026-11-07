@@ -1175,7 +1175,7 @@
           const R = root.MPEDocumentRenderer;
           if (!R) throw new Error('no renderer');
           if (!st.template) st.template = await readText('document-template.html');
-          pages = documentPages(request, R, st.template, h.documentSettings);
+          pages = L.documentPages(request, R, st.template, h.documentSettings);
         }
         if (st.docKey !== key) return;
         st.pages = pages;
