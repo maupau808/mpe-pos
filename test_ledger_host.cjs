@@ -664,3 +664,25 @@ test('Review QR: the app host reads Settings!A:D, appends Settings!A1 and adds o
     assert.equal(web.tabs.Settings[1][3], 'browser');
   } finally { delete globalThis.MPEShopSettings; }
 });
+
+test('documentTools (the register\'s website Print, Save PDF and Email): fills the template once, one page per copy, and a template that will not load is an error the caller turns into the page layout', async () => {
+  const TEMPLATE = fs.readFileSync(path.join(__dirname, 'document-template.html'), 'utf8');
+  const renderer = require('../POSDesktop/src/document-renderer.js');
+  let fetches = 0;
+  const win = (status) => ({ MPEDocumentRenderer: renderer, XMLHttpRequest: function () {
+    this.open = () => {}; this.send = () => { fetches += 1; setTimeout(() => { this.status = status; this.responseText = TEMPLATE; (status === 200 ? this.onload : this.onerror)(); }, 0); };
+  } });
+  const request = { type: 'receipt', number: 'R21050', completionAt: '2026-11-06T20:00:00.000Z', warranty: true, signature: true,
+    customer: { name: 'KEONI', company: '', phone: '8085550142', email: '', address: '' },
+    lines: [{ kind: 'item', part_number: 'MS 271', description: 'Saw', quantity: '1', serials: ['A1'], original_unit_amount: '100.00', discount_amount: '0.00', unit_amount: '100.00', line_total: '100.00' }],
+    totals: { subtotal: '100.00', card_fee: '0.00', tax: '4.71', rounding: '0.00', total: '104.71' } };
+  const tools = K.documentTools(win(200));
+  const first = await tools.pages(request);
+  await tools.pages(request);
+  assert.equal(fetches, 1, 'the template is fetched once');
+  assert.equal(first.length, 2);
+  assert.match(first[0], /Customer copy/);
+  assert.match(first[1], /Shop copy[\s\S]*Warranty Registration/);
+  assert.match(first[1], /Received by:/);
+  await assert.rejects(K.documentTools(win(500)).pages(request), /template/);
+});

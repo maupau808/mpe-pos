@@ -5,6 +5,13 @@
 // from the template; this file only works out the values. Keep it line for line with the Python, because
 // test/document-renderer.test.js requires byte-identical output for the cases in test/fixtures/document_parity.json.
 
+// Loads two ways: require() in Node (Desktop, tests), and a plain <script> on the website register, which gets window.MPEDocumentRenderer
+// (nothing else leaks into the page: the file is wrapped).
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module && module.exports) module.exports = api;
+  else root.MPEDocumentRenderer = api;
+})(typeof globalThis === 'object' ? globalThis : this, function () {
 const PIECE = /<template data-name="([^"]+)">\n([\s\S]*?)\n<\/template>/g;
 const SLOT = /\{\{(\w+)\}\}/g;
 
@@ -131,6 +138,8 @@ function officialExtras(extras) {
   const revision = extras && extras.revision;
   if (Number.isInteger(revision) && revision >= 1) clean.revision = revision;
   if (extras && extras.review === true) clean.review = true;   // the shop-wide Review QR switch is on (POS/shop-settings.js)
+  if (extras && extras.warranty === true) clean.warranty = true;   // receipts: a serial was typed, so a shop copy with the warranty form prints
+  if (extras && extras.signature === true) clean.signature = true; // receipts and quotes: the Signature toggle (Received by / Print / Sign)
   return clean;
 }
 
@@ -156,7 +165,37 @@ function cleanSettings(value) {
   return strictSettings(value) || { ...DEFAULT_SETTINGS };
 }
 
-// copy: absent prints as before (Ledger parity); 'customer' keeps only the PO line, 'merchant' keeps the whole signature box.
+// A phone as the register shows it on the warranty form: 7 digits get area code 808, 10 digits are grouped; anything else as typed.
+function warrantyPhone(raw) {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (digits.length === 7) return `(808) ${digits.slice(0, 3)}-${digits.slice(3)}`;
+  if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return String(raw || '').trim();
+}
+
+// The copies a document prints, in order: an invoice is customer then merchant; a receipt with a typed serial is customer then
+// shop (the shop copy carries the warranty form); everything else is one page (copy undefined).
+function copiesFor(kind, extras) {
+  if (kind === 'invoice') return ['customer', 'merchant'];
+  if (kind === 'receipt' && extras && extras.warranty === true) return ['customer', 'shop'];
+  return [undefined];
+}
+
+// The warranty registration form for the shop copy: typed values print as text, an empty one keeps a handwriting line.
+function warrantyForm(customer, fill) {
+  const field = (value, cls = '') => (value ? fill('counter.wf.val', { text: escape(value), cls }) : fill('counter.wf.fill', { cls }));
+  const a = customer.billing_address;
+  const address = a ? [...a.lines.map((line) => String(line).trim()).filter(Boolean)].join(', ') : String(customer.address || '').trim();
+  const at = (key) => (a ? String(a[key] || '').trim() : '');
+  const phone = warrantyPhone(customer.phone);
+  return fill('counter.warranty', {
+    name: field([customer.name, customer.company].map((x) => String(x || '').trim()).filter(Boolean).join(' / ')),
+    address: field(address), town: field(at('city')), state: field(at('region'), ' wf-state'), zip: field(at('postal_code'), ' wf-zip'),
+    phone: field(phone), email: field(String(customer.email || '').trim()),
+  });
+}
+
+// copy: absent prints as before (Ledger parity); 'customer' keeps only the PO line, 'merchant' keeps the whole signature box; a receipt's 'shop' copy carries the warranty form.
 // Each copy is labeled when the template has the counter.copy piece (an older cached template simply has no label).
 function renderOfficialHtml(template, facts, extras, settings, copy) {
   const pieces = template instanceof Map ? template : parseTemplate(template);
@@ -299,23 +338,31 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
     ea: multi ? piece('counter.ea') : '',
     note: facts.message ? fill('counter.note', { text: escape(facts.message) }) : '',
     closing: escape(cfg.closing),
-    after: bill.length && kind === 'receipt' ? fill('counter.cust', { lines: lines(bill) }) : '',
+    after: bill.length && kind === 'receipt' && copy !== 'shop' ? fill('counter.cust', { lines: lines(bill) }) : '',
     pay: footers.length ? fill('counter.pay', { paragraphs: paragraphs(footers) }) : '',
     // The review request (text + Google review QR, Trevor 2026-11-05): receipts and invoices, the customer's copy only (an invoice's
     // copy 'customer'; a receipt has one copy). Never quotes or the merchant copy. An older cached template has no piece: none prints.
-    sig: (extra.review && pieces.has('counter.review') && (kind === 'receipt' ? copy !== 'merchant' : kind === 'invoice' && copy === 'customer')
+    sig: (extra.review && pieces.has('counter.review') && (kind === 'receipt' ? copy !== 'merchant' && copy !== 'shop' : kind === 'invoice' && copy === 'customer')
       ? piece('counter.review') : '')
       + (kind === 'invoice' && copy !== 'customer' ? fill('counter.sig', { po: escape(firstOf(extra.po, /[,;\n]/)) }) : '')
-      + (copy && pieces.has('counter.copy') ? fill('counter.copy', { label: copy === 'customer' ? 'Customer copy' : 'Merchant copy' }) : ''),
+      // Received by / Print / Sign (Signature toggle): receipts and quotes; on a two-copy receipt it goes on the shop copy. A template
+      // without the piece throws, so a requested signature is never silently left off.
+      + (extra.signature && (kind === 'quote' || (kind === 'receipt' && (extra.warranty ? copy === 'shop' : true))) ? piece('counter.sign') : '')
+      + (copy && pieces.has('counter.copy') ? fill('counter.copy', { label: { customer: 'Customer copy', shop: 'Shop copy' }[copy] || 'Merchant copy' }) : '')
+      // The warranty form: the receipt's shop copy, pinned to the bottom of the page by the piece's own CSS. A cached older template
+      // lacks the piece and throws, so POS prints its own page (with its warranty form) instead.
+      + (kind === 'receipt' && extra.warranty && copy === 'shop' ? warrantyForm(customer, fill) : ''),
   });
 }
 
-module.exports = {
+return {
   DEFAULT_SETTINGS,
   DocumentRenderError,
   cleanSettings,
+  copiesFor,
   longDate,
   parseTemplate,
   renderOfficialHtml,
   strictSettings,
 };
+});

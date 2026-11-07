@@ -127,6 +127,36 @@ Ea.
 <template data-name="counter.sig">
 <div class="sig"><div class="sig-received">Received by:</div><div class="sig-line">PO#: <span class="sig-underline">{{po}}</span></div><div class="sig-line">Print: <span class="sig-underline"></span></div><div class="sig-line">Sign: <span class="sig-underline"></span></div></div>
 </template>
+<template data-name="counter.sign">
+<div class="sig"><div class="sig-received">Received by:</div><div class="sig-line">Print: <span class="sig-underline"></span></div><div class="sig-line">Sign: <span class="sig-underline"></span></div></div>
+</template>
+<template data-name="counter.warranty">
+<style>
+  .wf{margin-top:30px;break-inside:avoid;page-break-inside:avoid}
+  @media print{.wrap:has(>.wf){display:flex;flex-direction:column;min-height:9.5in}.wrap>.wf{margin-top:auto}}
+  .wf-title{font-size:13px;font-weight:700;margin:6px 0 20px;letter-spacing:.02em}
+  .wf-line{font-size:14px;margin-bottom:30px;display:flex;align-items:flex-end;gap:8px;break-inside:avoid}
+  .wf-label{flex:0 0 auto}
+  .wf-fill{flex:1;border-bottom:1px solid #000;height:22px;min-width:0}
+  .wf-val{flex:1;font-weight:600;text-transform:uppercase;min-width:0}
+  .wf-gap{flex:0 0 auto;white-space:nowrap}
+  .wf-note{font-size:11px;font-weight:400;color:#444;white-space:nowrap}
+  .wf-state{flex:0 0 84px}.wf-zip{flex:0 0 180px}
+  .wf-contact{display:grid;grid-template-columns:50% 50%}
+  .wf-phone{display:flex;align-items:flex-end;gap:8px;min-width:0}
+</style>
+<div class="wf"><div class="wf-title">Warranty Registration &mdash; please print clearly, we have to read this. Mahalo!</div>
+<div class="wf-line"><span class="wf-label">Name / Organization:</span> {{name}}</div>
+<div class="wf-line"><span class="wf-label">Address:</span> {{address}}</div>
+<div class="wf-line"><span class="wf-label">Town:</span> {{town}} <span class="wf-gap">State:</span> {{state}} <span class="wf-gap">Zip:</span> {{zip}}</div>
+<div class="wf-line wf-contact"><div class="wf-phone"><span class="wf-label">Phone:</span> {{phone}} <span class="wf-label">Email <span class="wf-note">(optional)</span>:</span></div>{{email}}</div></div>
+</template>
+<template data-name="counter.wf.val">
+<span class="wf-val{{cls}}">{{text}}</span>
+</template>
+<template data-name="counter.wf.fill">
+<span class="wf-fill{{cls}}"></span>
+</template>
 <template data-name="counter.po">
 <div class="sig"><div class="sig-line">PO#: <span class="sig-underline">{{po}}</span></div></div>
 </template>

@@ -311,7 +311,7 @@
   function withDeposit(r) {
     // A register receipt paid partly with store credit: one note line, the same way as a quote deposit (no renderer change).
     if (r && r.kind === 'receipt' && r.creditUsed > 0 && !(r.items || []).some(i => i.pn === 'Note' && /^store credit/i.test(s(i.desc)))) {
-      const desc = `Store credit −${money(r.creditUsed)}. Amount paid ${money(Math.max(0, cents(r.total - r.creditUsed)))}.`;
+      const desc = L.storeCreditNote(r.creditUsed, r.total);
       return { ...r, items: [...(r.items || []), { pn: 'Note', desc, qty: '', ea: 0, sub: 0, serials: [], origEa: 0, off: 0 }] };
     }
     if (!(r && r.kind === 'quote' && r.deposit > 0) || (r.items || []).some(i => i.pn === 'Note' && /^deposit paid/i.test(s(i.desc)))) return r;
@@ -350,43 +350,9 @@
       totals: { subtotal: m2(subtotal), card_fee: m2(cardFee), tax: m2(tax),
         rounding: m2(cents(r.total) - cents(subtotal) - cents(tax) - cents(cardFee)), total: m2(r.total) },
       ...(opts && opts.review && (r.kind === 'receipt' || r.kind === 'invoice') ? { review: true } : {}),
+      // A receipt with a typed serial prints a shop copy with the warranty form, as the register does (Trevor, 2026-11-03).
+      ...(r.kind === 'receipt' && r.items.some(i => i.pn !== 'Note' && (i.serials || []).some(x => s(x) && !s(i.desc).toUpperCase().includes(x))) ? { warranty: true } : {}),
     };
-  }
-
-  // Request -> renderer facts: the same mapping as POSDesktop/src/document-print.js factsFromRequest (that file is Node-only).
-  // test_ledger_page.cjs proves documentPages() equals DocumentPrintService.build() for the same request.
-  function factsFromRequest(q) {
-    const day = L.honoluluToday(q.completionAt);
-    const c = q.customer || {};
-    const customer = { name: c.name || '', company: c.company || '', phone: c.phone || '', email: c.email || '' };
-    if (c.billing_address) {
-      const a = c.billing_address;
-      customer.billing_address = { lines: [...a.lines], city: a.city || '', region: a.region || '', postal_code: a.postal_code || '', country: a.country || '' };
-    } else customer.address = c.address || '';
-    const lines = q.lines.map(l => {
-      if (l.kind === 'note') return { kind: 'note', description: l.description || '' };
-      const make = s(l.make);
-      return { kind: 'item', part_number: l.part_number || '', ...(make ? { make } : {}), description: l.description || '', quantity: l.quantity,
-        serials: [...l.serials], unit_amount: l.unit_amount, line_total: l.line_total,
-        discount_amount: l.discount_amount == null ? '0.00' : l.discount_amount,
-        original_unit_amount: l.original_unit_amount == null ? l.unit_amount : l.original_unit_amount };
-    });
-    const t = q.totals;
-    return {
-      issued: { document_type: q.type, document_number: q.number, document_date: day, due_date: q.dueDate || null },
-      customer, lines,
-      totals: { subtotal: t.subtotal, card_fee: t.card_fee == null ? '0.00' : t.card_fee, tax: t.tax, rounding: t.rounding == null ? '0.00' : t.rounding, total: t.total },
-      message: '',
-    };
-  }
-  // The pages the app prints: invoice = customer copy then merchant copy; quote (and receipt) = one page.
-  function documentPages(request, renderer, template, settings) {
-    const facts = factsFromRequest(request);
-    const po = s(request.po);
-    const extras = { ...(po ? { po } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}), ...(request.type === 'quote' && request.deposit ? { deposit: request.deposit } : {}),
-      ...(request.review === true && (request.type === 'receipt' || request.type === 'invoice') ? { review: true } : {}) };
-    const copies = request.type === 'invoice' ? ['customer', 'merchant'] : [undefined];
-    return copies.map(copy => renderer.renderOfficialHtml(template, facts, extras, settings || renderer.DEFAULT_SETTINGS, copy));
   }
 
   // Take payment: one payment row. Payments add up; the default amount is what is still owed.
@@ -862,7 +828,7 @@
     return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
   }
   const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railMoneyHtml, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, embedFallsBack, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
-    buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest, documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
+    buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest: L.factsFromRequest, documentPages: L.documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
   function boot() {

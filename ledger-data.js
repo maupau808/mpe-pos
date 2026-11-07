@@ -70,6 +70,50 @@
   }
   const todayIso = t => (typeof t === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t)) ? t : honoluluToday(t);
 
+  // The one note line a receipt paid partly with store credit prints, in History and on the register (so the two match).
+  const usdText = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const storeCreditNote = (used, total) => `Store credit \u2212${usdText(used)}. Amount paid ${usdText(Math.max(0, Math.round((total - used) * 100) / 100))}.`;
+
+  // Request -> renderer facts: the same mapping as POSDesktop/src/document-print.js factsFromRequest (that file is Node-only).
+  // test_ledger_page.cjs proves documentPages() equals DocumentPrintService.build() for the same request.
+  function factsFromRequest(q) {
+    const day = honoluluToday(q.completionAt);
+    const c = q.customer || {};
+    const customer = { name: c.name || '', company: c.company || '', phone: c.phone || '', email: c.email || '' };
+    if (c.billing_address) {
+      const a = c.billing_address;
+      customer.billing_address = { lines: [...a.lines], city: a.city || '', region: a.region || '', postal_code: a.postal_code || '', country: a.country || '' };
+    } else customer.address = c.address || '';
+    const lines = q.lines.map(l => {
+      if (l.kind === 'note') return { kind: 'note', description: l.description || '' };
+      const make = s(l.make);
+      return { kind: 'item', part_number: l.part_number || '', ...(make ? { make } : {}), description: l.description || '', quantity: l.quantity,
+        serials: [...l.serials], unit_amount: l.unit_amount, line_total: l.line_total,
+        discount_amount: l.discount_amount == null ? '0.00' : l.discount_amount,
+        original_unit_amount: l.original_unit_amount == null ? l.unit_amount : l.original_unit_amount };
+    });
+    const t = q.totals;
+    return {
+      issued: { document_type: q.type, document_number: q.number, document_date: day, due_date: q.dueDate || null },
+      customer, lines,
+      totals: { subtotal: t.subtotal, card_fee: t.card_fee == null ? '0.00' : t.card_fee, tax: t.tax, rounding: t.rounding == null ? '0.00' : t.rounding, total: t.total },
+      message: '',
+    };
+  }
+  // The pages the app prints: invoice = customer copy then merchant copy; a receipt with a typed serial = customer copy then shop copy
+  // (warranty form); quote and every other receipt = one page. Shared by History (ledger.js) and the register (ledger-host.js documentTools).
+  function documentPages(request, renderer, template, settings) {
+    const facts = factsFromRequest(request);
+    const po = s(request.po);
+    const extras = { ...(po ? { po } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}), ...(request.type === 'quote' && request.deposit ? { deposit: request.deposit } : {}),
+      ...(request.review === true && (request.type === 'receipt' || request.type === 'invoice') ? { review: true } : {}),
+      ...(request.warranty === true && request.type === 'receipt' ? { warranty: true } : {}),
+      ...(request.signature === true && (request.type === 'receipt' || request.type === 'quote') ? { signature: true } : {}) };
+    const copies = renderer.copiesFor(request.type, extras);
+    return copies.map(copy => renderer.renderOfficialHtml(template, facts, extras, settings || renderer.DEFAULT_SETTINGS, copy));
+  }
+
+
   function isoDate(v) {
     const t = s(v);
     let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t);
@@ -770,5 +814,5 @@
     return !txn || cents(money(txn[12])) !== cents(r.total);
   }
   return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionBlockEnd, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow, helcimPaymentRows,
-    buildVoidRow, beforeNote, undoRows, honoluluToday, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, MEMO_NONE, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
+    buildVoidRow, beforeNote, undoRows, honoluluToday, factsFromRequest, documentPages, storeCreditNote, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, MEMO_NONE, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });

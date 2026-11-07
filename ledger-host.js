@@ -343,40 +343,14 @@
   }
 
   const newSessionId = () => 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-  // ---- The host the page uses (contract: POS/ledger.js header) ----
-  function createHost(env, w) {
-    const doc = w && w.document;
-    const store = createPaymentsStore({ get: env.get, append: env.append, storage: env.storage });
-    const customers = createRowStore({ get: env.get, append: env.append, storage: env.storage }, CUST_TAB);
-    let cycle = null;
-    function note(text) {
-      const el = doc && doc.getElementById('hostNote');
-      if (el) { el.textContent = text; el.hidden = !text; }
-    }
-    function payments() { // readPayments and readMarks share one read per load
-      if (cycle) return cycle;
-      const run = store.readAll().then(rows => { note(''); return rows; }, e => {
-        if (e.code !== 'payments_missing') throw e;
-        note(MISSING_TEXT);
-        return [L.PAYMENT_COLUMNS.slice()];
-      });
-      cycle = run;
-      run.then(() => { cycle = null; }, () => { cycle = null; });
-      return run;
-    }
-    async function signedIn() { if (!(await guard(env.signedIn()))) throw notSignedIn(); }
-    async function mark(kind, record) { // a mark that cannot be stored (no Payments tab) is skipped, never blocks
-      try { await store.appendRows([L.buildMarkRow({ kind, txnId: record.txnId, invoice_number: record.number, place: env.place })]); }
-      catch (e) { if (e.code !== 'payments_missing') throw e; }
-    }
-    // A timeline mark for an output (print, PDF): never blocks or fails the print itself.
-    async function quietMark(kind, record, note) {
-      try { await store.appendRows([L.buildMarkRow({ kind, txnId: record.txnId, invoice_number: record.number, place: env.place, note })]); }
-      catch (e) { if (w && w.console) w.console.warn('[MPE] History mark skipped:', e && e.message); }
-    }
+  // The shared print/PDF kit for the filled document template (History, and the register's website Print and Save PDF): the template is
+  // fetched once (document-template.html beside the page) and kept; pages() fills it with document-renderer.js; printPages() prints
+  // each page through a hidden frame and the browser's print dialog; pdfBlob() makes one page a PDF (needs html2canvas and html2pdf).
+  // w: the window. getSettings: optional, the app's saved Document settings (default: the renderer's own wording).
+  function documentTools(w, getSettings) {
+    const doc = w.document;
     function pages(request) {
-      const R = w.MPEDocumentRenderer, P = w.MPELedger;
-      return readTemplate().then(t => P.documentPages(request, R, t, host.documentSettings));
+      return readTemplate().then(t => L.documentPages(request, w.MPEDocumentRenderer, t, getSettings && getSettings()));
     }
     let template = null;
     function readTemplate() {
@@ -421,6 +395,41 @@
           .from(canvas, 'canvas').outputPdf('blob');
       } finally { frame.remove(); }
     }
+    return { pages, readTemplate, printPages, pdfBlob };
+  }
+
+  // ---- The host the page uses (contract: POS/ledger.js header) ----
+  function createHost(env, w) {
+    const doc = w && w.document;
+    const store = createPaymentsStore({ get: env.get, append: env.append, storage: env.storage });
+    const customers = createRowStore({ get: env.get, append: env.append, storage: env.storage }, CUST_TAB);
+    let cycle = null;
+    function note(text) {
+      const el = doc && doc.getElementById('hostNote');
+      if (el) { el.textContent = text; el.hidden = !text; }
+    }
+    function payments() { // readPayments and readMarks share one read per load
+      if (cycle) return cycle;
+      const run = store.readAll().then(rows => { note(''); return rows; }, e => {
+        if (e.code !== 'payments_missing') throw e;
+        note(MISSING_TEXT);
+        return [L.PAYMENT_COLUMNS.slice()];
+      });
+      cycle = run;
+      run.then(() => { cycle = null; }, () => { cycle = null; });
+      return run;
+    }
+    async function signedIn() { if (!(await guard(env.signedIn()))) throw notSignedIn(); }
+    async function mark(kind, record) { // a mark that cannot be stored (no Payments tab) is skipped, never blocks
+      try { await store.appendRows([L.buildMarkRow({ kind, txnId: record.txnId, invoice_number: record.number, place: env.place })]); }
+      catch (e) { if (e.code !== 'payments_missing') throw e; }
+    }
+    // A timeline mark for an output (print, PDF): never blocks or fails the print itself.
+    async function quietMark(kind, record, note) {
+      try { await store.appendRows([L.buildMarkRow({ kind, txnId: record.txnId, invoice_number: record.number, place: env.place, note })]); }
+      catch (e) { if (w && w.console) w.console.warn('[MPE] History mark skipped:', e && e.message); }
+    }
+    const { pages, printPages, pdfBlob } = documentTools(w, () => host.documentSettings);
     const pdfB64 = async html => w._blobToB64(await pdfBlob(html));
 
     const host = {
@@ -534,5 +543,5 @@
     return host;
   }
 
-  return { QBO_FILE_ID, SALE_KINDS, PENDING_KEY, MISSING_TEXT, CUST_PENDING_KEY, createPaymentsStore, createRowStore, CUST_TAB, setupPaymentsTab, toHistory, saleRequest, webEmbedSession, EMBED_READY_MS, environment, createHost };
+  return { QBO_FILE_ID, SALE_KINDS, PENDING_KEY, MISSING_TEXT, CUST_PENDING_KEY, createPaymentsStore, createRowStore, CUST_TAB, setupPaymentsTab, toHistory, saleRequest, webEmbedSession, EMBED_READY_MS, environment, createHost, documentTools };
 });

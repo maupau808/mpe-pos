@@ -1207,6 +1207,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   <script src="email-window.js"></script>
   <script src="ledger-data.js"></script>
   <script src="ledger-host.js"></script>
+  <script src="document-renderer.js"></script>
   <script src="shop-settings.js"></script>
   <script src="print-relay.js"></script>
 <script>
@@ -1218,7 +1219,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.07.1';
+const POS_RELEASE = '2026.11.07.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -8902,20 +8903,25 @@ function buildBillTo() {
     + (email ? `<div>${esc(email)}</div>` : '');
 }
 
-// Invoices and quotes print with Ledger's document template, filled by POS Desktop on this computer from the sale on screen
-// (POSDesktop/src/document-print.js; template: document-template.html). Returns null when the sale is not one of those, so the
-// POS page layout below prints as before. Desktop answers { fallback: true } (nothing printed) when its switch is off or it
+// Invoices, quotes and receipts print with the shared document template (History's layout), filled by POS Desktop on this computer from
+// the sale on screen (POSDesktop/src/document-print.js; template: document-template.html) or, on the website, in the browser
+// (docTools below). Returns null for Internal (it keeps the POS page layout, which also prints as before when the template cannot be used).
+// Receipt-only parts ride along as flags: review (Review QR switch), warranty (a serial was typed: shop copy with the warranty form),
+// signature (Signature toggle: Received by / Print / Sign, receipts and quotes), and applied store credit as the same note line History prints. Desktop answers { fallback: true } (nothing printed) when its switch is off or it
 // has no cached template yet. Money is rounded
 // the way the screen shows it; "rounding" carries any cent the three rounded parts differ from the shown total by.
 function ledgerDocumentRequest() {
-  if (_docType !== 'invoice' && _docType !== 'quote') return null;
+  if (_docType !== 'invoice' && _docType !== 'quote' && _docType !== 'receipt') return null;
+  // An app older than 0.3.73 cannot print a receipt's shop/warranty copy from the template: it keeps the page layout.
+  if (_docType === 'receipt' && window.mpeDesktop && !window.mpeDesktop.receiptDocuments) return null;
   const number = activeDocNumber();
   const order = captureOrder();
   if (!number || !order) return null;
   const cents = n => Math.round(n * 100) / 100;
   const m = n => cents(n).toFixed(2);
   const subtotal = order.items.reduce((sum, item) => sum + (Number(item.sub) || 0), 0);
-  const t = checkoutTotals(subtotal, order.toggles.cardFee);
+  const creditCents = _docType === 'receipt' ? regCreditApplied() : 0;   // store credit pays part: no card fee on it
+  const t = checkoutTotals(subtotal, order.toggles.cardFee, creditCents / 100);
   const completion = new Date(_currentTxnDate || _pendingTxnDate || Date.now());
   let dueDate = null;
   if (_docType === 'invoice') {
@@ -8940,10 +8946,14 @@ function ledgerDocumentRequest() {
       ? { kind: 'note', description: item.desc }
       : { kind: 'item', part_number: item.pn, make: item.make || '', description: item.desc, quantity: String(item.qty),
         serials: [...(item.sn || [])], original_unit_amount: m(item.discountPerUnit ? item.originalEa : item.ea),
-        discount_amount: m(item.discountPerUnit || 0), unit_amount: m(item.ea), line_total: m(item.sub) })),
+        discount_amount: m(item.discountPerUnit || 0), unit_amount: m(item.ea), line_total: m(item.sub) }))
+      .concat(creditCents ? [{ kind: 'note', description: window.MPELedgerData.storeCreditNote(creditCents / 100, cents(t.total)) }] : []),
     totals: { subtotal: m(subtotal), card_fee: m(t.cardFee), tax: m(t.tax),
       rounding: m(cents(t.total) - cents(subtotal) - cents(t.tax) - cents(t.cardFee)), total: m(t.total) },
-    ...(_docType === 'invoice' && shopReviewOn() ? { review: true } : {}), // shop-wide Review QR: customer copy only (renderer)
+    ...((_docType === 'invoice' || _docType === 'receipt') && shopReviewOn() ? { review: true } : {}), // shop-wide Review QR: customer copy only (renderer)
+    // Same test as the page layout's second copy: a serial number was actually typed (Trevor, 2026-11-03).
+    ...(_docType === 'receipt' && Array.from(tbody.querySelectorAll('.sn-input')).some(inp => inp.value.trim()) ? { warranty: true } : {}),
+    ...(_docType !== 'invoice' && document.getElementById('signatureBtn')?.classList.contains('active') ? { signature: true } : {}),
   };
 }
 
@@ -8953,6 +8963,35 @@ function buildInvoiceSig() {
     + `<div class="sig-line">Print: <span class="sig-underline"></span></div>`
     + `<div class="sig-line">Sign: <span class="sig-underline"></span></div>`;
 }
+
+// The shared template tools (ledger-host.js documentTools): fill the template in the browser, print it, make its PDF. Used on the website
+// register (no Desktop) and for Save PDF / Email. The template is fetched once and kept; on the website it is fetched shortly after load so
+// Print never waits on the network. Every user returns false/null when the template or renderer is unavailable, so the page layout prints.
+let _docTools = null;
+function docTools() {
+  if (!_docTools) {
+    if (!window.MPELedgerHostKit?.documentTools || !window.MPEDocumentRenderer || !window.MPELedgerData?.documentPages) return null;
+    _docTools = window.MPELedgerHostKit.documentTools(window);
+  }
+  return _docTools;
+}
+async function documentPagesFor(request) {   // the template pages, or null (no request, no tools, template not loadable, renderer refuses)
+  const tools = request ? docTools() : null;
+  if (!tools) return null;
+  try { return await tools.pages(request); } catch (_error) { return null; }
+}
+async function printDocumentInBrowser(request) {   // true once the browser print dialog for the template pages has closed
+  const list = await documentPagesFor(request);
+  if (!list) return false;
+  await docTools().printPages(list);
+  return true;
+}
+async function templatePdfBlob(request) {   // the customer copy as a PDF, or null (page layout then makes it)
+  const list = await documentPagesFor(request);
+  if (!list) return null;
+  try { return await docTools().pdfBlob(list[0]); } catch (_error) { return null; }
+}
+if (!window.mpeDesktop) setTimeout(() => { try { docTools()?.readTemplate().catch(() => {}); } catch (_error) { /* page layout prints instead */ } }, 3000);
 
 let _printMoneySnapshot = [];
 function applyPrintMoneyFormatting() {
@@ -9436,6 +9475,11 @@ async function manualPrint() {
       finally { cleanupPrint(); _printPrepared = false; }
       return;
     }
+    // Website (no Desktop): the template pages print in the browser, the same layout as History. If it cannot load, the page prints.
+    if (!window.mpeDesktop && await printDocumentInBrowser(ledgerDocumentRequest())) {
+      cleanupPrint(); _printPrepared = false; showPrintBanner();
+      return;
+    }
     browserLifecycle = Object.freeze({ physicalOutputOwner });
     _browserPrintLifecycle = browserLifecycle;
     try {
@@ -9551,6 +9595,23 @@ async function autoPrint() {
     setTimeout(() => setBtn(idleLabel, false), 4000);
   } catch (error) {
     noteToolFailure('Auto Print', error);
+  }
+  if (!printedByService && !window.mpeDesktop) {
+    // Website: after the localhost helper (if any) did not print, the template pages print in the browser, like History. Else the page below.
+    let shown = false;
+    try { shown = await printDocumentInBrowser(ledgerDocumentRequest()); } catch (error) { noteToolFailure('Print', error); }
+    if (shown) {
+      clearToolFailure();
+      setBtn(idleLabel, false);
+      cleanupPrint(); _printPrepared = false; showPrintBanner();
+      _directPrintInFlight = false;
+      releasePhysicalOutput(physicalOutputOwner);
+      if (_scannerModeActive || _scannerModeDefault) {
+        _scannerModeAwaitingClear = true;
+        setScannerModeActive(true, { message: 'Print window closed — sale kept. Scan Next Transaction for the next sale.', state: 'warn' });
+      }
+      return;
+    }
   }
   if (!printedByService) {
     // Preserve the existing unconfigured/legacy till behavior exactly.
@@ -9847,8 +9908,16 @@ async function exportPdf() {
     const number = activeDocNumber() || formatDocNumber(now, _docType);
     const title  = DOC_TITLES[_docType];
     updateScreenDocTitle();
-    holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
-    await _renderPdf(holder.firstElementChild, `MPE_${title}_${number}.pdf`, 'save');
+    const templatePdf = await templatePdfBlob(ledgerDocumentRequest());   // History's layout (customer copy); null: the page layout below
+    if (templatePdf) {
+      const link = document.createElement('a'), href = URL.createObjectURL(templatePdf);
+      link.href = href; link.download = `MPE_${title}_${number}.pdf`;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 60000);
+    } else {
+      holder.innerHTML = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
+      await _renderPdf(holder.firstElementChild, `MPE_${title}_${number}.pdf`, 'save');
+    }
     queueOutputMark('pdf');
     holder.innerHTML = '';
     setBtn('✓', false);
@@ -9894,7 +9963,8 @@ async function emailDoc() {
     updateScreenDocTitle();
     const identity = await _emailIdentity(accessToken || localStorage.getItem('gToken'));
     _emailScopeRetried = false;
-    const docHtml = buildEmailDocHTML(order, title, number, _pdfDateStr(now));
+    const templatePage = (await documentPagesFor(ledgerDocumentRequest()))?.[0] || null;   // History's layout; null: the page layout
+    const docHtml = templatePage || buildEmailDocHTML(order, title, number, _pdfDateStr(now));
     const opened = historyContentFingerprint(order);
     const desktop = desktopGoogleAvailable();
     const canSend = !desktop || typeof window.mpeDesktop.google.sendGmail === 'function';
@@ -9907,9 +9977,12 @@ async function emailDoc() {
       send: async f => {
         // A scan while the window is open can change the sale: then the PDF would not match what gets saved.
         if (historyContentFingerprint(captureOrder()) !== opened) throw new Error('The sale changed while this window was open. Close it and press Email again.');
-        holder.innerHTML = docHtml;
         let pdfB64;
-        try { pdfB64 = await _blobToB64(await _renderPdf(holder.firstElementChild, number + '.pdf', 'blob')); } finally { holder.innerHTML = ''; }
+        if (templatePage) pdfB64 = await _blobToB64(await docTools().pdfBlob(templatePage));
+        else {
+          holder.innerHTML = docHtml;
+          try { pdfB64 = await _blobToB64(await _renderPdf(holder.firstElementChild, number + '.pdf', 'blob')); } finally { holder.innerHTML = ''; }
+        }
         const raw = _b64UrlUtf8(_buildEmailMime(f.to, f.subject, f.text, number + '.pdf', pdfB64, f.html, identity.email, f.cc, f.bcc));
         if (desktop) { await window.mpeDesktop.google.sendGmail(raw); return; }
         const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {

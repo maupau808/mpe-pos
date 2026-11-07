@@ -17,7 +17,10 @@ assert.ok(start > 0 && end > start);
 const build = (docType, screen = {}) => {
   const sandbox = {
     _docType: docType,
-    document: { getElementById: (id) => (id === 'docPO' && screen.po !== undefined ? { value: screen.po } : null) },
+    document: { getElementById: (id) => (id === 'docPO' && screen.po !== undefined ? { value: screen.po }
+      : id === 'signatureBtn' && screen.signature ? { classList: { contains: (c) => c === 'active' } } : null) },
+    tbody: { querySelectorAll: () => (screen.serialTyped ? [{ value: ' ' }, { value: 'SN123' }] : [{ value: '' }]) },   // the typed serial boxes
+    regCreditApplied: () => screen.creditCents || 0, window: { MPELedgerData: require('./ledger-data.js') },
     captureOrder: () => screen.order || null, activeDocNumber: () => screen.number || null,
     ledgerBillingAddress: () => screen.billing || { lines: [], city: '', region: '', postal_code: '', country: '' },
     _currentTxnDate: screen.date || null, _pendingTxnDate: null, Intl, Date, Math, String, Number,
@@ -68,7 +71,7 @@ test('an invoice and a quote print from the sale screen with the new L/Q numbers
   assert.equal(quote.totals.card_fee, '6.85');
   assert.equal(quote.totals.total, '235.12');
   assert.equal(factsFromRequest(JSON.parse(JSON.stringify(quote))).issued.document_number, 'Q91002');
-  assert.equal(build('receipt', screen('R21003')), null);
+  assert.equal(build('receipt', screen('R21003')).type, 'receipt');
   assert.equal(build('internal', screen('L21001')), null);
   assert.equal(build('invoice', {}), null, 'no sale on screen: nothing to print');
   assert.equal(build('invoice', { ...screen('L21001'), billing: undefined }).customer.address, '');
@@ -101,5 +104,58 @@ test('Review QR: the invoice request carries review only when the shop switch is
   assert.equal(build('invoice', { ...screen, review: true }).review, true);
   assert.equal('review' in build('invoice', screen), false);
   assert.equal('review' in build('quote', { ...screen, number: 'Q21001', review: true }), false);
-  assert.equal(build('receipt', { ...screen, review: true }), null, 'receipts print the page layout at the register');
+  assert.equal(build('receipt', { ...screen, number: 'R21001', review: true }).review, true, 'receipts carry it too (customer copy)');
+  assert.equal('review' in build('receipt', { ...screen, number: 'R21001' }), false);
+});
+
+// Register receipts print with the shared template (History's layout), not the old POS page.
+const receiptScreen = (extra = {}) => ({ number: 'R21050', date: '2026-11-06T20:00:00.000Z',
+  order: { customer: { name: 'KEONI', company: '', phone: '8085550142', email: '' }, toggles: { cardFee: false },
+    items: [{ pn: 'MS 271', desc: 'Saw', qty: 1, ea: 100, sub: 100, sn: ['A1'] }] },
+  billing: { lines: ['PO Box 1'], city: 'Kahului', region: 'HI', postal_code: '96732', country: '' }, ...extra });
+
+test('a receipt gets a request (Internal never): warranty only when a serial was typed, signature only when the toggle is on', () => {
+  const plain = build('receipt', receiptScreen());
+  assert.equal(plain.type, 'receipt');
+  assert.equal('warranty' in plain, false);
+  assert.equal('signature' in plain, false);
+  assert.equal(build('receipt', receiptScreen({ serialTyped: true })).warranty, true);
+  assert.equal(build('receipt', receiptScreen({ signature: true })).signature, true);
+  assert.equal(build('quote', receiptScreen({ number: 'Q21050', signature: true })).signature, true);
+  assert.equal('signature' in build('invoice', receiptScreen({ number: 'L21050', signature: true })), false, 'an invoice has its own signature box');
+  assert.equal('warranty' in build('invoice', receiptScreen({ number: 'L21050', serialTyped: true })), false);
+  assert.equal(build('internal', receiptScreen({ serialTyped: true, signature: true })), null);
+  assert.equal(build('receipt', { ...receiptScreen(), order: null }), null);
+});
+
+test('store credit on a receipt: History\'s note line, a card fee only on what the card pays, totals unchanged', () => {
+  const none = build('receipt', receiptScreen());
+  const used = build('receipt', receiptScreen({ creditCents: 3000 }));
+  const note = used.lines[used.lines.length - 1];
+  assert.equal(note.kind, 'note');
+  assert.equal(note.description, 'Store credit \u2212$30.00. Amount paid $74.71.');
+  assert.equal(used.lines.length, none.lines.length + 1);
+  assert.equal(used.totals.total, '104.71');
+  const history = require('./ledger.js').withDeposit({ kind: 'receipt', creditUsed: 30, total: 104.71, items: [] });
+  assert.equal(history.items[0].desc, note.description, 'the register and History say the same words');
+  const withFee = build('receipt', receiptScreen({ creditCents: 3000, order: { ...receiptScreen().order, toggles: { cardFee: true } } }));
+  assert.equal(withFee.totals.card_fee, '2.24');   // 3% of (100 + 4.71 - 30)
+  assert.equal(build('quote', receiptScreen({ number: 'Q21050', creditCents: 3000 })).lines.length, none.lines.length, 'credit is a receipt thing');
+  assert.deepEqual(factsFromRequest(JSON.parse(JSON.stringify(used))).totals.total, '104.71');
+});
+
+test('the Print button, Manual print, Save PDF and Email try the template first and keep the page layout as the fallback', () => {
+  const auto = page.slice(page.indexOf('async function autoPrint()'), page.indexOf("window.addEventListener('beforeprint'"));
+  assert.match(auto, /!window\.mpeDesktop\) \{[\s\S]*printDocumentInBrowser\(ledgerDocumentRequest\(\)\)/, 'website Print');
+  assert.ok(auto.indexOf('printDocumentInBrowser') < auto.indexOf('Preserve the existing unconfigured/legacy till behavior'));
+  assert.match(auto, /fetch\(POS_PRINT_URL/, 'the localhost helper stays');
+  const manual = page.slice(page.indexOf('async function manualPrint()'), page.indexOf('const AUTO_PRINT_REPEAT_GUARD_MS'));
+  assert.match(manual, /!window\.mpeDesktop && await printDocumentInBrowser\(ledgerDocumentRequest\(\)\)/);
+  assert.match(manual, /window\.print\(\)/);
+  assert.match(page, /const templatePdf = await templatePdfBlob\(ledgerDocumentRequest\(\)\)/);
+  assert.match(page, /const templatePage = \(await documentPagesFor\(ledgerDocumentRequest\(\)\)\)\?\.\[0\] \|\| null/);
+  // Quick print: nothing the Desktop Print button runs waits on the network for the template.
+  const tools = page.slice(page.indexOf('let _docTools = null;'), page.indexOf('let _printMoneySnapshot'));
+  assert.match(tools, /if \(!window\.mpeDesktop\) setTimeout\(/, 'the website fetches the template shortly after load, not at Print');
+  assert.doesNotMatch(auto.slice(0, auto.indexOf('mpeDesktop.printDocument')), /documentPagesFor|templatePdfBlob|readTemplate/);
 });
