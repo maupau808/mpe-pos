@@ -119,12 +119,22 @@ function _signatureText(signature) {
   if (!signature) return '';
   return new DOMParser().parseFromString(signature.replace(/<br\s*\/?\s*>/gi, '\n').replace(/<\/(?:div|p|tr)>/gi, '\n'), 'text/html').body.textContent.trim();
 }
-// The email window's message as typed, plus the Gmail signature: { text, html } for the MIME builder.
-function buildTypedEmail(message, signature = '') {
+// What the email window's signature box starts with: the "-- " line and the Gmail signature, formatting kept.
+function signatureBlockStart(signature) {
+  return signature ? `<span class="gmail_signature_prefix">-- </span><br>${signature}` : '';
+}
+// The edited signature box as sent (opts.block): already holds its "-- " line; blank when everything in it was deleted.
+function _signatureBlockHtml(block) {
+  const text = _signatureText(block);
+  return text ? `<div style="margin-top:1em"><div dir="ltr" class="gmail_signature" data-smartmail="gmail_signature">${block}</div></div>` : '';
+}
+// The email window's message as typed, plus the Gmail signature: { text, html } for the MIME builder. opts.block: signature is the
+// email window's edited signature box (signatureBlockStart, then whatever was typed there).
+function buildTypedEmail(message, signature = '', opts = {}) {
   const esc = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const paras = String(message || '').replace(/\r/g, '').trim().split(/\n{2,}/).filter(Boolean);
   const html = `<div dir="ltr" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111">` +
-    paras.map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') + _signatureHtml(signature) + `</div>`;
+    paras.map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') + (opts.block ? _signatureBlockHtml(signature) : _signatureHtml(signature)) + `</div>`;
   const text = [String(message || '').trim(), _signatureText(signature)].filter(Boolean).join('\n\n');
   return { html, text };
 }

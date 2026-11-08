@@ -851,7 +851,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
  @media(max-width:1060px){body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 250px}body.embedded-edit #counterView .cv-reorder,body.embedded-edit #counterView .cv-reorder-label{display:none}body.embedded-edit #counterView .cv-desc input.cv-description{font-size:16px}body.embedded-edit #counterView .cv-checkout{gap:8px}body.embedded-edit #counterView .cv-head>.cv-support:not(.cv-discount-head),body.embedded-edit #counterView .cv-line>.cv-cost,body.embedded-edit #counterView .cv-line>.cv-margin{display:none}body.embedded-edit #counterView .cv-head,body.embedded-edit #counterView .cv-line{grid-template-columns:20px minmax(150px,1fr) 62px 80px 44px 88px 26px;gap:5px}}
  /* The one Edit (D14): only the sale lines, and under them a slim strip (Add note, PO #, order discount, card fee, subtotal, tax, total). History's panel holds the customer and its bar the Save, so this page's customer boxes, header and checkout column stay hidden. */
  body.embedded-edit #counterView .cv-top{display:none!important}body.embedded-edit #counterView .cv-body{display:flex;flex-direction:column}body.embedded-edit #counterView .cv-work{flex:1;min-height:0}body.embedded-edit #counterView .cv-checkout{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px 22px;padding:8px 16px;border-left:0;border-top:1px solid #d5ddd3;overflow:visible;flex-shrink:0}body.embedded-edit #counterView .cv-customer-label,body.embedded-edit #counterView #cvCustomer,body.embedded-edit #counterView #cvLedger,body.embedded-edit #counterView #cvFinalize,body.embedded-edit #counterView #cvCharge,body.embedded-edit #counterView #sumInternal{display:none!important}body.embedded-edit #counterView #cvPo .cust-input{width:170px;font-size:14px;padding:6px 8px}body.embedded-edit #counterView .cv-summary,body.embedded-edit #counterView .cv-fill{display:contents}body.embedded-edit #counterView .cv-order{margin:0;order:1}body.embedded-edit #counterView .cv-fee{order:2}body.embedded-edit #counterView #cvTotals{order:3;margin-left:auto}body.embedded-edit #counterView #presellWrap{margin:0;font-size:15px;display:flex;align-items:center;gap:6px;white-space:nowrap}body.embedded-edit #counterView #cvTotals .summary{display:flex;align-items:baseline;gap:20px}body.embedded-edit #counterView .sum-row{padding:0;gap:6px;white-space:nowrap}body.embedded-edit #counterView .sum-row.total{display:flex;border-top:0;margin:0;padding:0;font-weight:700}body.embedded-edit #counterView .sum-row.total .sum-val{display:inline;font-size:24px;margin:0;letter-spacing:-.01em}
- body.embedded-edit #counterView .cv-article.cv-added{background:#eef6f0}body.embedded-edit #counterView #cvEntry{border-color:#9cc3a8}body.embedded-edit tr.drop-before>td{box-shadow:inset 0 3px 0 #24683a}body.embedded-edit tr.drop-after>td{box-shadow:inset 0 -3px 0 #24683a}
+ body.embedded-edit #counterView .cv-article.cv-added{background:#eef6f0}body.embedded-edit #counterView .cv-article.cv-mismatch{box-shadow:inset 3px 0 0 #b26a00;background:#fff8ec}body.embedded-edit tr.edit-mismatch>td{background:#fff8ec}body.embedded-edit #counterView #cvEntry{border-color:#9cc3a8}body.embedded-edit tr.drop-before>td{box-shadow:inset 0 3px 0 #24683a}body.embedded-edit tr.drop-after>td{box-shadow:inset 0 -3px 0 #24683a}
 }
 @media screen{#counterView #cvFullScreen[aria-pressed="true"],#counterView #cvFrontLock[aria-pressed="true"]{background:#dce8dc;border-color:#8ca28b}body.dark #counterView #cvFullScreen[aria-pressed="true"],body.dark #counterView #cvFrontLock[aria-pressed="true"]{background:#3e5942;color:#eff5ec;border-color:#779379}}
 @media print{#counterView,.cv-results{display:none!important}tr[data-order-discount] td,tr[data-order-discount] input,tr.cv-order-print td,tr.cv-order-print input{font-weight:800!important;color:#000!important}}
@@ -1222,7 +1222,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.07.6';
+const POS_RELEASE = '2026.11.07.7';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -11220,8 +11220,43 @@ function editSessionBase(raw) {
   return { v: 1, sessionId: String(raw && raw.sessionId || '').slice(0, 64), txnId: String(raw && raw.txn && raw.txn.txnId || '').slice(0, 80) };
 }
 const editSessionFail = base => (code, message, extra) => ({ ...base, ok: false, code, message, ...extra });
+// History's Edit opens even when the screen does not rebuild the saved document exactly (Trevor, 2026-11-07: never fall back to a
+// new sale tab). Each difference is a reload bug, so the lines that differ are named (and outlined on the page) before anyone saves.
+var _editMismatch = null;   // [{ line, row, desc, fields: [{ name, saved, now }] }] or [] for the sale details; null when it matched
+const EDIT_FIELD_NAMES = { 8: 'part number', 9: 'description', 10: 'quantity', 11: 'each price', 12: 'line total', 13: 'serial numbers',
+  14: 'original price', 15: 'discount', 16: 'cost', 17: 'brand', 18: 'line type' };
+function editMismatchLines(savedFp, screenFp) {
+  let a = [], b = [];
+  try { a = JSON.parse(savedFp); b = JSON.parse(screenFp); } catch (_error) { return [{ line: 0, desc: '', fields: [] }]; }
+  const items = rows => rows.filter(row => String(row[0]).toLowerCase() === 'item');
+  const ia = items(a), ib = items(b), out = [];
+  if (JSON.stringify(a.find(row => String(row[0]).toUpperCase() === 'TXN')) !== JSON.stringify(b.find(row => String(row[0]).toUpperCase() === 'TXN'))) out.push({ line: 0, desc: '', fields: [] });
+  for (let k = 0; k < Math.max(ia.length, ib.length); k++) {
+    const x = ia[k] || [], y = ib[k] || [];
+    const fields = Object.keys(EDIT_FIELD_NAMES).map(Number).filter(c => (x[c] || '') !== (y[c] || '')).map(c => ({ name: EDIT_FIELD_NAMES[c], saved: x[c] || '', now: y[c] || '' }));
+    if (fields.length || !ia[k] || !ib[k]) out.push({ line: k + 1, desc: String(x[9] || y[9] || '').slice(0, 40), fields, missing: !ib[k], extra: !ia[k] });
+  }
+  return out.length ? out : [{ line: 0, desc: '', fields: [] }];
+}
+function editMismatchText(list) {   // one short line for History's panel (its problem box holds 200 characters)
+  if (!list || !list.length) return '';
+  const show = (f, v) => !v ? 'blank' : /price|total|discount|cost/.test(f.name) && /^-?\d/.test(v) ? '$' + v : f.name === 'quantity' ? v.replace(/\.0+$/, '') : v;
+  const one = m => m.line === 0 ? 'the sale details' : `line ${m.line}${m.desc ? ' (' + m.desc + ')' : ''}`
+    + (m.missing ? ' did not come back' : m.extra ? ' is extra' : m.fields.length ? ': ' + m.fields.map(f => `${f.name} ${show(f, f.now)}, saved ${show(f, f.saved)}`).join('; ') : '');
+  return ('Check before saving: ' + list.map(one).join(' · ')).slice(0, 200);
+}
+var _editMismatchRows = null;   // the data-row ids of those lines (the counter view outlines them as it draws)
+function editLineMismatch(i) { return !!_editMismatchRows && _editMismatchRows.has(i); }
+function markEditMismatch() {   // captureOrder's line order: the rows it keeps
+  _editMismatchRows = null;
+  if (!_editMismatch || typeof rowOrder !== 'function') return;
+  const kept = rowOrder().filter(i => document.querySelector(`[data-row="${i}"].part-input`)?.value.trim() && !rowIsEmpty(i));
+  _editMismatchRows = new Set(_editMismatch.filter(m => m.line > 0 && kept[m.line - 1] != null).map(m => kept[m.line - 1]));
+  _editMismatchRows.forEach(i => document.querySelector(`tr[data-row="${i}"]`)?.classList.add('edit-mismatch'));
+  if (typeof updateSummary === 'function') updateSummary();   // the counter view redraws its lines from here
+}
 // Shared load and proof (silent and embedded): returns a refusal result, or null once the screen holds exactly the saved document.
-async function editSessionLoad(req, fail, stop = () => null) {   // stop(): a result that ends the load early (History's Cancel), or null
+async function editSessionLoad(req, fail, stop = () => null, opts = {}) {   // stop(): a result that ends the load early (History's Cancel), or null; opts.tolerate: open anyway and list the lines that differ (_editMismatch)
   const txn = req.txn;
   if (!ledgerDraftTabIsEmpty()) return fail('not_empty', 'This page is not empty. Nothing was changed.');
   if (txn.contactConflict) return fail('contact_conflict', 'Customer changes for this sale need review first. Nothing was changed.');
@@ -11247,6 +11282,7 @@ async function editSessionLoad(req, fail, stop = () => null) {   // stop(): a re
       outer: for (let r = 0; r < Math.max(a.length, b.length); r++) for (let c = 0; c < 24; c++) if (((a[r] || [])[c]) !== ((b[r] || [])[c])) { where = `row ${r} column ${c}`; break outer; }
       if (!where && a.length !== b.length) where = `${a.length} saved rows, ${b.length} on screen`;
     } catch (_error) { where = 'unreadable'; }
+    if (opts.tolerate) { _editMismatch = editMismatchLines(req.loaded, loadedRows ? transactionRowsFingerprint(comparable(loadedRows)) : '[]'); return null; }
     return fail('open_sale_screen', 'This one has to be changed on the sale screen. Nothing was changed.', { detail: where });
   }
   return null;
@@ -11370,7 +11406,7 @@ function editStateNow() {
   const e = _embeddedEdit, lines = editSaveProblem(), dirty = hasUnsavedEdit(), customer = {};
   for (const [key, id] of Object.entries(EDIT_PATCH_FIELDS)) customer[key] = String(document.getElementById(id)?.value || '').slice(0, EDIT_PATCH_MAX);
   return { v: 1, sessionId: e.req.sessionId, seq: ++e.seq, ready: true, dirty, totalCents: orderTotalCents(captureOrder()),
-    originalTotalCents: e.originalTotalCents, canSave: !lines && !e.saving, saving: e.saving, problem: lines || e.error || '', customer };
+    originalTotalCents: e.originalTotalCents, canSave: !lines && !e.saving, saving: e.saving, problem: lines || e.error || editMismatchText(_editMismatch), customer };
 }
 function postEditState() {
   const e = _embeddedEdit;
@@ -11402,7 +11438,8 @@ async function startEmbeddedEdit(raw) {
   if (_embeddedEarlyCancel === req.sessionId) { _embeddedEarlyCancel = ''; return cancelled; }
   const loading = _embeddedLoading = { sessionId: req.sessionId, cancelled: false };
   try {
-    const refused = await editSessionLoad(req, fail, () => loading.cancelled ? cancelled : null);
+    _editMismatch = null;
+    const refused = await editSessionLoad(req, fail, () => loading.cancelled ? cancelled : null, { tolerate: true });
     if (refused) return refused;
     if (loading.cancelled) return cancelled;   // nothing was written: the load only fills this page
   } catch (error) {
@@ -11414,6 +11451,7 @@ async function startEmbeddedEdit(raw) {
   if (typeof document.body?.classList?.add === 'function') document.body.classList.add('embedded-edit');
   if (typeof rowOrder === 'function') _editLoadedRows = new Set(rowOrder().filter(i => !rowIsEmpty(i)));   // the lines the sale had when the edit opened (History marks the ones added after)
   if (typeof window.mountCounterViewForEdit === 'function') window.mountCounterViewForEdit(); // Classic view set in Admin: the edit still shows the lines layout
+  markEditMismatch();
   // The top bar (and the Presold box in it) is hidden here: show the same Presold box in the strip, next to PO #.
   const presell = document.getElementById('presellWrap'), po = document.getElementById('cvPo');
   if (presell && po && typeof po.after === 'function') po.after(presell);
@@ -12460,7 +12498,7 @@ function sync(){
  const ids=rowOrder().filter(i=>!rowIsEmpty(i)&&i!==orderRow());const key=ids.join(',');const box=q('#cvItems');
  if(key!==lastIds){const existing=new Map([...box.children].map(a=>[+a.dataset.cvId,a]));ids.forEach(i=>{const a=existing.get(i)||makeArticle(rowInfo(i));box.append(a);existing.delete(i);});existing.forEach(a=>a.remove());lastIds=key;}
  if(_editLoadedRows)_editLoadedRows.forEach(i=>{if(rowIsEmpty(i))_editLoadedRows.delete(i);});
- for(const i of ids){const r=rowInfo(i),a=q(`[data-cv-id="${i}"]`);a.classList.toggle('cv-added',editLineAdded(i));a.classList.toggle('cv-note-line',!!r.desc?.querySelector('.note-desc-input'));const values={desc:r.name,cost:plain(r.cost),margin:r.charged>0?marginPercent(r.cost,r.charged).toFixed(1):'',discount:r.price?.dataset.cvDiscountRate?`${r.price.dataset.cvDiscountRate}%`:plain(r.off),ea:plain(r.base),qty:String(r.qty),sub:plain(r.total)};for(const [k,v] of Object.entries(values)){const el=a.querySelector(`[data-cv-field="${k}"]`);if(el!==document.activeElement)el.value=v;el.disabled=!!q(`#price-input-${i}`)?.disabled;}a.querySelector('.cv-discount').classList.toggle('cv-on',r.off>0||!!r.price?.dataset.cvDiscountRate);const pn=String(r.part?.dataset.partPn||'').trim();{const el=a.querySelector('.cv-pn');if(el!==document.activeElement){el.value=pn&&pn.toUpperCase()!==String(r.name).trim().toUpperCase()?pn:'';el.hidden=!el.value;}}
+ for(const i of ids){const r=rowInfo(i),a=q(`[data-cv-id="${i}"]`);a.classList.toggle('cv-added',editLineAdded(i));a.classList.toggle('cv-mismatch',editLineMismatch(i));a.classList.toggle('cv-note-line',!!r.desc?.querySelector('.note-desc-input'));const values={desc:r.name,cost:plain(r.cost),margin:r.charged>0?marginPercent(r.cost,r.charged).toFixed(1):'',discount:r.price?.dataset.cvDiscountRate?`${r.price.dataset.cvDiscountRate}%`:plain(r.off),ea:plain(r.base),qty:String(r.qty),sub:plain(r.total)};for(const [k,v] of Object.entries(values)){const el=a.querySelector(`[data-cv-field="${k}"]`);if(el!==document.activeElement)el.value=v;el.disabled=!!q(`#price-input-${i}`)?.disabled;}a.querySelector('.cv-discount').classList.toggle('cv-on',r.off>0||!!r.price?.dataset.cvDiscountRate);const pn=String(r.part?.dataset.partPn||'').trim();{const el=a.querySelector('.cv-pn');if(el!==document.activeElement){el.value=pn&&pn.toUpperCase()!==String(r.name).trim().toUpperCase()?pn:'';el.hidden=!el.value;}}
  const check=a.querySelector('[data-cv-field="restock"]'),source=r.tr.querySelector('.reorder-toggle');check.checked=!!source?.checked;check.disabled=!!source?.disabled;syncSerials(a,r);}
  const locked=!editable();qa('#cvEntry,#cvOrderValue,#cvOrderMoney,#cvOrderPercent,#cvNote,[data-cv-field],[data-cv-sn],[data-cv-clear],[data-cv-note-below],[data-cv-drag],[data-cv-pn]').forEach(el=>el.disabled=locked||(el.matches('[data-cv-field]')&&!!q(`#price-input-${el.dataset.cvRow}`)?.disabled));
  const qv=q('.cv-quote');qv.hidden=_docType!=='quote';qa('[data-cv-toggle]').forEach(e=>e.checked=!!q('#tg'+e.dataset.cvToggle)?.checked);q('#cvCardFee').checked=q('#cardFeeBtn').classList.contains('active');

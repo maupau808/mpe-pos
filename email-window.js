@@ -30,6 +30,14 @@
 .mew label{display:block;font-size:13px;font-weight:600;color:#4f5d52}
 .mew input,.mew textarea{display:block;width:100%;margin-top:3px;padding:7px 9px;border:1px solid #d5ddd3;border-radius:5px;background:#fff;font:inherit;color:inherit}
 .mew textarea{flex:1;min-height:180px;resize:none}
+.mew .msg{flex:1;display:flex;flex-direction:column;margin-top:3px;border:1px solid #d5ddd3;border-radius:5px;background:#fff;overflow:auto}
+.mew .msg:focus-within{border-color:#9cc3a8}
+.mew .msg textarea{flex:0 0 auto;field-sizing:content;min-height:120px;margin:0;border:0;outline:none;overflow:hidden}
+.mew .msg .sig{margin-top:-2px}
+.mew .sig a{color:#1a5fb4}
+.mew .msg .fill{flex:1;min-height:20px;cursor:text}
+.mew .sig{padding:0 9px 9px;font:14px/1.4 Arial,Helvetica,sans-serif;color:#111;outline:none;min-height:1.4em;font-weight:400}
+.mew .lbl{font-size:13px;font-weight:600;color:#4f5d52}
 .mew .grow{flex:1;display:flex;flex-direction:column}
 .mew .link{background:none;border:0;padding:0;color:#24683a;text-decoration:underline;font:inherit;font-size:13px;cursor:pointer;align-self:flex-start}
 .mew .hint{font-size:12.5px;color:#5f6b61}
@@ -88,8 +96,7 @@
         <label data-cc hidden>Cc<input name="cc" autocomplete="off" spellcheck="false"></label>
         <label data-cc hidden>Bcc<input name="bcc" autocomplete="off" spellcheck="false"></label>
         <label>Subject<input name="subject" autocomplete="off"></label>
-        <label class="grow">Message<textarea name="message"></textarea></label>
-        ${opts.signature ? '<div class="hint">Your Gmail signature goes below the message.</div>' : ''}
+        <div class="grow"><span class="lbl">Message</span><div class="msg"><textarea name="message" aria-label="Message"></textarea>${opts.signature ? '<div class="sig" contenteditable="true" data-sig aria-label="Signature" spellcheck="true"></div>' : ''}<div class="fill" data-fill></div></div></div>
         ${opts.cannotSend ? `<div class="err">${esc(opts.cannotSend)}</div>` : ''}
         <div class="err" role="alert"></div>
         <div class="btns"><button type="button" class="btn primary" data-a="send"${opts.cannotSend ? ' disabled' : ''}>Send</button><button type="button" class="btn" data-a="save">Save draft</button><span class="sp"></span><button type="button" class="btn" data-a="close">Close</button></div>
@@ -104,10 +111,19 @@
     doc.body.append(d);
     const $ = sel => d.querySelector(sel), field = n => $(`[name="${n}"]`);
     const names = ['to', 'cc', 'bcc', 'subject', 'message'];
-    const values = () => Object.fromEntries(names.map(n => [n, field(n).value]));
-    const start = { to: opts.to || '', cc: '', bcc: '', subject: opts.subject || '', message: opts.message || '' };
+    // The Gmail signature sits in the same box under the message, formatting kept, and can be edited there (Trevor, 2026-11-07).
+    const sigEl = $('[data-sig]');
+    const values = () => ({ ...Object.fromEntries(names.map(n => [n, field(n).value])), ...(sigEl ? { signature: sigEl.innerHTML } : {}) });
+    const start = { to: opts.to || '', cc: '', bcc: '', subject: opts.subject || '', message: opts.message || '',
+      ...(sigEl ? { signature: root.signatureBlockStart(opts.signature) } : {}) };
     const saved = opts.key ? readSaved(opts.key) : null;
-    const fill = v => names.forEach(n => { field(n).value = v[n] || ''; });
+    const fill = v => { names.forEach(n => { field(n).value = v[n] || ''; }); if (sigEl) sigEl.innerHTML = typeof v.signature === 'string' ? v.signature : start.signature; };
+    const mailOf = v => root.buildTypedEmail(v.message, sigEl ? v.signature : '', { block: true });
+    $('[data-fill]').addEventListener('mousedown', e => { e.preventDefault(); (sigEl || field('message')).focus(); });   // the empty space under it types at the end
+    if (sigEl) {   // paste and drop come in as plain text, so only the signature's own formatting is ever in it
+      sigEl.addEventListener('paste', e => { e.preventDefault(); doc.execCommand('insertText', false, (e.clipboardData && e.clipboardData.getData('text/plain')) || ''); });
+      sigEl.addEventListener('drop', e => e.preventDefault());
+    }
     fill(saved || start);
     let clean = JSON.stringify(values()), busy = false;
     const showCc = on => { d.querySelectorAll('[data-cc]').forEach(el => { el.hidden = !on; }); $('[data-a="ccbcc"]').hidden = on; };
@@ -121,7 +137,7 @@
     // Preview: the email as sent (message + signature) and each document page, scaled to the column.
     let timer = 0;
     function preview() {
-      const v = values(), mail = root.buildTypedEmail(v.message, opts.signature || '');
+      const v = values(), mail = mailOf(v);
       $('[data-p="to"]').textContent = v.to; $('[data-p="subject"]').textContent = v.subject;
       $('[data-p="cc"]').textContent = v.cc; $('[data-p="cc"]').hidden = $('[data-p="cclabel"]').hidden = !v.cc.trim();
       $('.body').srcdoc = '<!doctype html><meta charset="utf-8"><body style="margin:12px 14px">' + mail.html;
@@ -189,7 +205,7 @@
         if (a === 'send') {
           const v = values(), why = wrongAccount(opts) || check(v);
           if (why) return err(why);
-          const mail = root.buildTypedEmail(v.message, opts.signature || '');
+          const mail = mailOf(v);
           const list = k => root.parseEmailList(v[k]).list.join(', ');
           busy = true; err('');
           const btn = $('[data-a="send"]'); btn.disabled = true; btn.textContent = 'Sending…';

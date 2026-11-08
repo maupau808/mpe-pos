@@ -656,8 +656,6 @@
     f.result = one.result.then(res => { f.done = true; if (opts.ended) opts.ended(res, f); return res; });
     return f;
   }
-  // R10: the sale screen could not prove the saved rows before it opened (open_sale_screen, never ready): edit in a new sale tab instead.
-  const embedFallsBack = (res, f) => !!(res && !res.ok && res.code === 'open_sale_screen' && !(f && f.everReady));
   // App 0.3.66 only: the items are saved; now the customer goes through the silent session, on the freshly loaded record.
   // Returns the customer's result, or null when it must not run (the items were kept on this computer only, or nothing to save).
   const followUpRuns = (f, res) => !!(f && f.followUp && res && res.ok && !res.pending && (!res.cancelled || f.viaCancel));
@@ -827,7 +825,7 @@
     const live = L.livePayments(L.parsePayments(payRows));
     return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
   }
-  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railMoneyHtml, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, embedFallsBack, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railMoneyHtml, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest: L.factsFromRequest, documentPages: L.documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
@@ -1362,11 +1360,9 @@
       draw();
     }
     // The one result: back to the same row (section, sub-tab, search and scroll as they were), a toast, then one fresh load.
-    // The sale screen could not prove the saved rows before it opened: the old way, a new sale tab (R10).
     function endEmbed(r, res) {
       const f = st.edit;
       st.edit = null;
-      if (embedFallsBack(res, f)) { draw(); return openSale('edit', r, `${r.number} cannot be edited here, so it`); }
       ui.sel = r.txnId;
       if (followUpRuns(f, res)) return saveCustomerAfter(r, res, f);
       toast(f && f.followUp && res && res.ok && res.pending ? `${editOutcomeText(r, res)} The customer details were not saved yet. Open Edit again once it is shared.` : editOutcomeText(r, res));
