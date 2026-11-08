@@ -112,7 +112,8 @@ function buildEmailBody(order, title, number, dateStr, signature = '') {
   return { html, text };
 }
 function _signatureHtml(signature) {
-  return signature ? `<br clear="all"><div><br></div><span class="gmail_signature_prefix">-- </span><br><div dir="ltr" class="gmail_signature" data-smartmail="gmail_signature">${signature}</div>` : '';
+  // One blank line before the signature (Trevor, 2026-11-07): the 1em top margin merges with the last paragraph's bottom margin.
+  return signature ? `<div style="margin-top:1em"><span class="gmail_signature_prefix">-- </span><br><div dir="ltr" class="gmail_signature" data-smartmail="gmail_signature">${signature}</div></div>` : '';
 }
 function _signatureText(signature) {
   if (!signature) return '';
