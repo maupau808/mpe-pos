@@ -258,7 +258,7 @@
       const store = storageOf(w);
       let digit = '';
       try { digit = s(store && store.getItem('mpeRegisterDigitV1')); } catch (_) { /* blocked storage */ }
-      if (!/^[123]$/.test(digit)) digit = /Macintosh/.test((w.navigator && w.navigator.userAgent) || '') ? '1' : '';
+      if (!/^[1234]$/.test(digit)) digit = /Macintosh/.test((w.navigator && w.navigator.userAgent) || '') ? '1' : '';
       return {
         kind: 'app', place: digit, storage: store,
         signedIn: async () => { const st = await d.google.getStatus(); return !!(st && st.connected); },

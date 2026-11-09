@@ -1,5 +1,5 @@
 /* Document numbers: one letter for the type (Q quote, R receipt, L invoice), one place digit
- * (1 Mac app, 2 PC Left app, 3 PC Right app, 9 any web browser), then a count. No dashes or spaces: L21001.
+ * (1 Mac app, 2 PC Left app, 3 PC Right app, 4 Tech Dept app, 9 any web browser), then a count. No dashes or spaces: L21001.
  * Each letter+place pair has its own count, first number 1001 (the count never restarts per letter+digit).
  * The Desktop app keeps its count in its main process (POSDesktop/src/place-numbering.js) so two sale tabs can never
  * match; after a reinstall it continues from the highest number for its digit already in Transactions column P.
@@ -12,8 +12,8 @@
 })(typeof globalThis === 'object' ? globalThis : this, function() {
   'use strict';
   const LETTERS = Object.freeze({ quote: 'Q', receipt: 'R', invoice: 'L' });
-  const FORMAT = /^[QRL][1239]\d+$/;
-  const PARSE = /^([QRL])([1239])(\d+)$/;
+  const FORMAT = /^[QRL][12349]\d+$/;
+  const PARSE = /^([QRL])([12349])(\d+)$/;
   const BASE = 1000;
   const BROWSER = 9;
   const MAX_TRIES = 6;

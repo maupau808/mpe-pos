@@ -21,7 +21,7 @@
  *                                customer goes through editSession after the items. Without editEmbed Edit opens a new sale tab.
  *   editSession(record, patch, extra) (optional) -> Promise<one result>; customer fields saved by a hidden register page (0.3.66 fallback).
  *   honoluluToday()           -> 'YYYY-MM-DD'
- *   place         (optional)  -> '1' Mac, '2' PC Left, '3' PC Right, '9' web; stamped on payment rows
+ *   place         (optional)  -> '1' Mac, '2' PC Left, '3' PC Right, '4' Tech Dept, '9' web; stamped on payment rows
  *   documentSettings (optional) -> the app's saved Document settings; defaults to the renderer's DEFAULT_SETTINGS
  * A rejected call whose error has code 'not_signed_in' shows the signed-out state.
  */
@@ -34,7 +34,7 @@
   'use strict';
   const TAX_RATE = 0.04712; // POS/index.html TAX_RATE
   const QUOTE_DAYS = 30;
-  const PLACES = { 1: 'Mac', 2: 'PC Left', 3: 'PC Right', 9: 'Web' };
+  const PLACES = { 1: 'Mac', 2: 'PC Left', 3: 'PC Right', 4: 'Tech Dept', 9: 'Web' };
   const METHOD_LABEL = { cash: 'Cash', check: 'Check', card_terminal: 'Card terminal', helcim_card: 'Card online', helcim_ach: 'Bank transfer', ...L.CREDIT_LABELS }; // + credit_given / credit_used
   const KIND_LABEL = { invoice: 'Invoice', quote: 'Quote', receipt: 'Sale' };
   const STORE_KEY = 'mpe.ledger.ui';
