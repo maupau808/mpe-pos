@@ -217,6 +217,7 @@ tr.drop-after > td { box-shadow: inset 0 -3px 0 #1a73e8; }
    document type reveals them. */
 .sum-internal { display: none; margin-top: 9px; padding-top: 8px; border-top: 2px solid #2f4339; }
 body.doc-internal .sum-internal { display: block; }
+body.doc-quote .sn-tr, body.doc-quote #counterView .cv-meta, body.doc-quote #counterView .cv-sn-overflow { display: none !important; }
 .sum-internal .sum-row { padding: 3px 0; }
 .sum-internal .sum-row + .sum-row { border-top: none; }
 .sum-internal .sum-label { font-size: 13px; }
@@ -1222,7 +1223,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.07.7';
+const POS_RELEASE = '2026.11.08.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -3067,7 +3068,7 @@ function likelySecondUnitSerial(rawValue) {
 }
 
 function rowNeedsUnitSerial(row) {
-  if (!Number.isInteger(row)) return false;
+  if (!Number.isInteger(row) || _docType === 'quote') return false;
   const tr = tbody.querySelector(`tr[data-row="${row}"]`);
   const fields = tbody.querySelectorAll(`tr[data-sn-for="${row}"] .sn-input`);
   return tr?.dataset.warranty === '1' && fields.length > 0 && Array.from(fields).some(input => !input.value.trim());
@@ -8879,7 +8880,7 @@ function buildCopy2HTML() {
     </tr>`;
 
     const snTr = tbody.querySelector(`tr[data-sn-for="${i}"]`);
-    if (snTr) {
+    if (snTr && _docType !== 'quote') {
       const snInputs = Array.from(snTr.querySelectorAll('.sn-input'));
       if (snInputs.some(inp => inp.value.trim())) {
         let snInner = '<div class="sn-row">';
@@ -10151,7 +10152,7 @@ function captureOrder() {
     const costEl = document.getElementById(`cost-${i}`);
     const cost = costEl && costEl.tagName === 'INPUT' && pn !== 'Note' && pn !== 'Discount' ? (parseFloat(costEl.dataset.cost) || 0) : undefined;
     items.push({ pn, desc, make: printMake(i) || undefined, cost, warranty: tbody.querySelector(`tr[data-row="${i}"]`)?.dataset.warranty === '1' || undefined,
-      qty, ea, sub, sn: sn.length ? sn : undefined,
+      qty, ea, sub, sn: sn.length && _docType !== 'quote' ? sn : undefined,
       isOther: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.isOther === '1' || undefined,
       freeEntry: document.querySelector(`[data-row="${i}"].part-input`)?.dataset.freeEntry === '1' || undefined,
       originalEa: discountPerUnit > 0 ? originalEa : undefined,
@@ -10240,6 +10241,8 @@ function historyDocTypeTag(type) {
     // the print-only `internal-print` class so switching back to Receipt/Invoice/
     // Quote takes those figures off the screen too.
     document.body.classList.toggle('doc-internal', t === 'internal');
+    // Quotes never take serial numbers (Trevor, 2026-11-06); values stay for a switch back.
+    document.body.classList.toggle('doc-quote', t === 'quote');
     // Invoices & quotes need customer info — surface the panel automatically.
     // (Only reveal the panel; do NOT enable the Warranty toggle, or a quote would
     //  print the warranty form.)
