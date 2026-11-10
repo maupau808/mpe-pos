@@ -733,6 +733,7 @@ button:focus-visible, a:focus-visible { outline:2px solid var(--focus); outline-
 <div class="toast" id="toast"></div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="part-number.js"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
    MPE Scan — phone lookup + list tool.
@@ -785,12 +786,6 @@ const NEWITEMS_SHEET = 'New Items';
 // what keeps a cleared shelf find from being offered for filing twice.
 const NEWITEMS_HEADER = ['Captured', 'UPC', 'Item', 'Make', 'Price note', 'Other note', 'Source', 'Filed'];
 
-const DISTRIBUTOR_PART_PREFIXES = [
-  { prefix: 'SC', make: 'SCAG' },
-  { prefix: 'GV', make: 'SCAG' },
-  { prefix: 'WR', make: 'WRIGHT' },
-  { prefix: 'BB', make: 'BLUEBIRD' }
-];
 const STRUCTURED_SCAN_DELIMITERS = /[;|\t\x1D]/;
 
 // Camera tuning lifted verbatim from the POS's proven fallback loop. The
@@ -869,8 +864,9 @@ try { list = JSON.parse(localStorage.getItem(K_LIST) || '[]') || []; } catch (e)
 const $ = id => document.getElementById(id);
 
 // ── SMALL HELPERS ─────────────────────────────────────────────────────────
+// The one shared cleaner (part-number.js, a copy of Tools/part_number.js).
 function normalizePN(pn) {
-  return String(pn || '').replace(/[\s\-\.]/g, '').toUpperCase().trim();
+  return MPEPartNumber.norm(pn);
 }
 function canonicalScannedCode(value) {
   const s = String(value || '').trim();
@@ -1732,12 +1728,26 @@ function buildScanExactIndex() {
     if (bucket.length > 1) bucket.sort((a, b) => (b.f || 0) - (a.f || 0));  // stable: ties keep Master order
     scanExactIndex.set(key, uniqueScanParts(bucket));
   }
+  scanLooseIndex = new Map();
+  for (const [key, bucket] of scanExactIndex) {
+    const looseKey = MPEPartNumber.looseKey(key), loose = scanLooseIndex.get(looseKey);
+    scanLooseIndex.set(looseKey, loose ? uniqueScanParts([...loose, ...bucket]) : bucket);
+  }
 }
 function exactScanParts(value) {
   const key = normalizePN(value);
   if (!key || !loaded) return [];
   if (!scanExactIndex) buildScanExactIndex();
   return scanExactIndex.get(key) || [];
+}
+// The shared loose lookup: exact cleaned number, then a label payload's part-number
+// field, PACE's brand prefix (exact PN and Make), then the punctuation-blind key.
+let scanLooseIndex = new Map();
+function lookupScanParts(value) {
+  if (!loaded) return [];
+  if (!scanExactIndex) buildScanExactIndex();
+  return MPEPartNumber.lookup(value, key => scanExactIndex.get(key) || [],
+    key => scanLooseIndex.get(key) || [], part => part.make);
 }
 
 function buildWarrantyModelMap() {
@@ -1805,43 +1815,17 @@ function toroUnitQr(rawValue) {
   return { model, serial, candidates };
 }
 
-function structuredScanParts(rawValue) {
-  const raw = String(rawValue || '');
-  if (!STRUCTURED_SCAN_DELIMITERS.test(raw)) return [];
-  const hits = []; const seen = new Set();
-  for (const field of raw.split(STRUCTURED_SCAN_DELIMITERS)) {
-    const key = normalizePN(field);
-    if (key.length < 4 || seen.has(key)) continue;
-    seen.add(key);
-    const candidates = exactScanParts(key);
-    if (candidates.length) hits.push(candidates);
-  }
-  return hits.length === 1 ? hits[0] : [];
-}
-
-function distributorPartCandidates(value) {
-  const code = String(value || '').toUpperCase().replace(/[\s\-.]/g, '');
-  if (!code || !loaded) return [];
-  for (const rule of DISTRIBUTOR_PART_PREFIXES) {
-    if (!code.startsWith(rule.prefix) || code.length === rule.prefix.length) continue;
-    const hits = exactScanParts(code.slice(rule.prefix.length))
-      .filter(p => String(p.make || '').trim().toUpperCase() === rule.make);
-    if (hits.length) return hits;
-  }
-  return [];
-}
-
 function unitSerialCandidates(rawValue) {
   const maruyama = maruyamaSerialScan(rawValue);
   if (maruyama) return maruyama.candidates;
   const serial = canonicalSerialNumber(rawValue);
   if (!serial) return [];
   const exactPN = serialNumberMap[serial];
-  if (exactPN) return exactScanParts(exactPN);
+  if (exactPN) return lookupScanParts(exactPN);
   const exactPrefix = unitSerialPrefixRules.find(rule => serial.startsWith(rule.prefix));
-  if (exactPrefix) return uniqueScanParts(exactPrefix.pns.flatMap(exactScanParts));
+  if (exactPrefix) return uniqueScanParts(exactPrefix.pns.flatMap(lookupScanParts));
   const candidatePrefix = unitSerialCandidateRules.find(rule => serial.startsWith(rule.prefix));
-  return candidatePrefix ? uniqueScanParts(candidatePrefix.pns.flatMap(exactScanParts)) : [];
+  return candidatePrefix ? uniqueScanParts(candidatePrefix.pns.flatMap(lookupScanParts)) : [];
 }
 
 // Every parts label prints more than one barcode — a quantity ("1"), a country
@@ -1889,10 +1873,8 @@ function resolveScannedValue(rawValue) {
   const mappedPN = code ? partCodeMap[code] : '';
   // A bound code is authoritative and never falls through: if its part is gone
   // from Master that is an orphan to report, not a reason to guess again.
-  if (mappedPN) return { code, mappedPN, candidates: exactScanParts(mappedPN), via: 'code' };
-  let c = exactScanParts(rawValue);        if (c.length) return { code, mappedPN, candidates: c, via: 'direct' };
-  c = structuredScanParts(rawValue);       if (c.length) return { code, mappedPN, candidates: c, via: 'structured' };
-  c = distributorPartCandidates(rawValue); if (c.length) return { code, mappedPN, candidates: c, via: 'distributor' };
+  if (mappedPN) return { code, mappedPN, candidates: lookupScanParts(mappedPN), via: 'code' };
+  let c = lookupScanParts(rawValue);       if (c.length) return { code, mappedPN, candidates: c, via: 'direct' };
   c = exactWarrantyModelParts(rawValue);   if (c.length) return { code, mappedPN, candidates: c, via: 'model' };
   // Last, so a real part number never loses to a serial rule.
   c = unitSerialCandidates(rawValue);      if (c.length) return { code, mappedPN, candidates: c, via: 'serial' };
@@ -2004,7 +1986,7 @@ function bridgeChangeCell(value, index) {
 }
 function bridgeChangeKey(value) {
   const row = Array.isArray(value) ? value : bridgeChangeRow(value);
-  const pn = bridgeChangeCell(row[0], 0).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const pn = MPEPartNumber.looseKey(bridgeChangeCell(row[0], 0));
   return JSON.stringify([pn, bridgeChangeCell(row[1], 1),
     bridgeChangeCell(row[2], 2).replace(/\s+/g, ' '), bridgeChangeCell(row[5], 5)]);
 }
@@ -3434,10 +3416,11 @@ const STOCK_POLL_MS = 3000, STOCK_WAIT_MS = 180000, STOCK_APPLYING_MS = 90000;
 const STOCK_STALE_MS = 900000, STOCK_HOLD_MS = 600000, STOCK_REFRESH_MS = 60000;
 var stockData = null;            // last good /api/stock (or the cached copy); var because showHero can run before this line
 let stockMap = new Map();        // normalized PN -> group
+let stockIndex = null;           // shared loose lookup over the same groups
 let stockPending = [];           // { cid, gid, kind: 'adjust'|'count', n, state: 'wait'|'ok', resultAt, at }
 let stockTracking = new Set();   // normalized PNs with a Start tracking in flight
 let stockBusy = false, stockSheet = null;
-const stockKey = v => String(v ?? '').replace(/-US\s*$/i, '').toUpperCase().replace(/[\s.\-]+/g, '');
+const stockKey = v => MPEPartNumber.norm(v);
 function stockId() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 function stockIso(d) {
   const p = n => String(Math.abs(n)).padStart(2, '0'), off = -d.getTimezoneOffset();
@@ -3448,17 +3431,25 @@ function stockSetData(data) {
   const ok = data && Array.isArray(data.groups);
   stockData = ok ? data : null;
   stockMap = new Map();
+  stockIndex = MPEPartNumber.index([], () => []);
   if (!ok) return;
   for (const g of data.groups) for (const m of g.members || []) stockMap.set(stockKey(m.partNumber), g);
   for (const g of data.groups) for (const a of g.aliases || []) if (!stockMap.has(stockKey(a))) stockMap.set(stockKey(a), g);
+  stockIndex = MPEPartNumber.index(data.groups, g => [...(g.members || []).map(m => m.partNumber), ...(g.aliases || [])]);
   const seen = Date.parse(data.at) || 0, now = Date.now();
   // A confirmed change keeps showing until a newer snapshot carries it.
   stockPending = stockPending.filter(p => p.state !== 'ok' || (seen < p.resultAt && now - p.at < STOCK_HOLD_MS));
 }
 function stockGroupFor(part) {
-  for (const v of [part?.pn, part?.og, part?._salePn]) {
+  const values = [part?.pn, part?.og, part?._salePn];
+  for (const v of values) {
     const k = stockKey(v);
     if (k && stockMap.has(k)) return stockMap.get(k);
+  }
+  // Nothing matched exactly: the shared loose lookup (punctuation-blind), one group only.
+  for (const v of values) {
+    const hits = stockIndex.lookup(v);
+    if (hits.length === 1) return hits[0];
   }
   return null;
 }

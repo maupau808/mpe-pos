@@ -35,6 +35,7 @@ function harness(kind) {
     normalizePN:v=>String(v||'').replace(/[\s.-]/g,'').toUpperCase(),
     uniqueScanParts:items=>[...new Map(items.map(p=>[p.pn,p])).values()],
     exactScanParts:pn=>c.partsArray.filter(p=>p.pn===pn),
+    lookupScanParts:pn=>c.partsArray.filter(p=>p.pn===pn),
     stihlUnitDataMatrix:()=>null,toroUnitQr:()=>null,structuredScanParts:()=>[],distributorPartCandidates:()=>[],exactWarrantyModelParts:()=>[],
     isOtherPart:p=>p.pn==='OTHER',normalizeSaleRules:x=>x||[],rebuildCustomCodeMap(){},buildWarrantyModelMap(){},
     overlayPendingSerialMatches(){},warmUpSearch(){},flushPendingCatalogScans(){},refreshStatusUI(){},setFeedState(){},renderBindPool(){},

@@ -1211,6 +1211,7 @@ function mpeLoadLib(kind) {
 </script>
 <!-- Google Identity Services -->
 <script src="https://accounts.google.com/gsi/client" async="" defer=""></script>
+  <script src="part-number.js"></script>
   <script src="ledger-contact.js"></script>
   <script src="ledger-numbering.js"></script>
   <script src="ledger-tab.js"></script>
@@ -1230,7 +1231,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.09.3';
+const POS_RELEASE = '2026.11.10.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1285,12 +1286,6 @@ let serialNumberMap = {};
 let unitSerialPrefixRules = [];
 let unitSerialCandidateRules = [];
 let warrantyModelMap = new Map();
-const DISTRIBUTOR_PART_PREFIXES = [
-  { prefix: 'SC', make: 'SCAG' },
-  { prefix: 'GV', make: 'SCAG' },
-  { prefix: 'WR', make: 'WRIGHT' },
-  { prefix: 'BB', make: 'BLUEBIRD' }
-];
 let loaded = false;
 let tokenClient = null;
 let _pendingAction = null; // action to fire after sign-in completes
@@ -2344,8 +2339,9 @@ document.getElementById('fileInput').addEventListener('change', function(e) {
 });
 
 // ─── SEARCH UI ─────────────────────────────────────────────────────────────
+// The one shared cleaner (part-number.js, a copy of Tools/part_number.js).
 function normalizePN(pn) {
-  return String(pn || '').replace(/[\s\-\.]/g, '').toUpperCase().trim();
+  return MPEPartNumber.norm(pn);
 }
 
 // ─── CONTINUOUS BARCODE SCANNER ───────────────────────────────────────────
@@ -3062,9 +3058,9 @@ function unitSerialCandidates(rawValue) {
   const serial = canonicalSerialNumber(rawValue);
   if (!serial) return [];
   const exactPN = serialNumberMap[serial];
-  if (exactPN) return exactScanParts(exactPN);
+  if (exactPN) return lookupScanParts(exactPN);
   const exactPrefix = unitSerialPrefixRules.find(rule => serial.startsWith(rule.prefix));
-  if (exactPrefix) return uniqueScanParts(exactPrefix.pns.flatMap(exactScanParts));
+  if (exactPrefix) return uniqueScanParts(exactPrefix.pns.flatMap(lookupScanParts));
   const candidatePrefix = unitSerialCandidateRules.find(rule => serial.startsWith(rule.prefix));
   return candidatePrefix
     ? uniqueScanParts(candidatePrefix.pns.flatMap(exactScanParts))
@@ -3129,10 +3125,11 @@ function uniqueScanParts(parts) {
 // This index precomputes the exact-PN bucket searchParts would have produced —
 // same supersede/alias handling, same sales-frequency order, same final filter —
 // so a scan resolves in one Map lookup. Rebuilt with the catalog.
-let scanExactIndex = null;
+let scanExactIndex = null, scanLooseIndex = new Map();
 
 function buildScanExactIndex() {
   scanExactIndex = new Map();
+  scanLooseIndex = new Map();
   if (!Array.isArray(partsArray) || !partsArray.length) return;
   // First real row (in Master order) that owns each number, aliases excluded —
   // the same row `partsArray.find(...)` picks inside searchParts.
@@ -3215,6 +3212,10 @@ function buildScanExactIndex() {
     if (list.length > 1) list.sort((a, b) => (b.f || 0) - (a.f || 0));
     scanExactIndex.set(key, uniqueScanParts(list));
   }
+  for (const [key, list] of scanExactIndex) {
+    const looseKey = MPEPartNumber.looseKey(key), loose = scanLooseIndex.get(looseKey);
+    scanLooseIndex.set(looseKey, loose ? uniqueScanParts([...loose, ...list]) : list);
+  }
 }
 
 function exactScanParts(value) {
@@ -3222,6 +3223,16 @@ function exactScanParts(value) {
   if (!key || !loaded) return [];
   if (!scanExactIndex) buildScanExactIndex();
   return scanExactIndex.get(key) || [];
+}
+
+// The shared loose lookup (MPEPartNumber.lookup): exact cleaned number first, then one
+// field of a label payload, a distributor prefix (PACE's SC/GV/WR/BB with the same Make),
+// then the punctuation-blind key. Same index, same order, as the exact scan.
+function lookupScanParts(value) {
+  if (!loaded) return [];
+  if (!scanExactIndex) buildScanExactIndex();
+  return MPEPartNumber.lookup(value, key => scanExactIndex.get(key) || [],
+    key => scanLooseIndex.get(key) || [], part => part.make);
 }
 
 function exactWarrantyModelParts(value) {
@@ -3278,45 +3289,10 @@ function toroUnitQr(rawValue) {
   return { model, serial, candidates };
 }
 
-function distributorPartCandidates(value) {
-  const code = String(value || '').toUpperCase().replace(/[\s\-.]/g, '');
-  if (!code || !loaded) return [];
-  for (const rule of DISTRIBUTOR_PART_PREFIXES) {
-    if (!code.startsWith(rule.prefix) || code.length === rule.prefix.length) continue;
-    const candidates = exactScanParts(code.slice(rule.prefix.length)).filter(part =>
-      String(part.make || '').trim().toUpperCase() === rule.make
-    );
-    if (candidates.length) return candidates;
-  }
-  return [];
-}
-
-// Honda's 2D parts-label code is not a bare part number — it packs the printed
-// label into one delimited string:
-//   00HB;;17701-ZM3-003;1;MB4H17G;JAPAN;JP;392;;;;
-// header, part number, quantity, lot code, country, country code. Rather than
-// trust a field position that could move between suppliers or label revisions,
-// take the one field Master actually knows. Two matches or none means we stay
-// out of it: an unrecognized scan costs a keystroke, a confidently wrong part
-// costs a wrong invoice line.
+// Honda's 2D parts-label code packs the printed label into one delimited string
+// (00HB;;17701-ZM3-003;1;MB4H17G;JAPAN;JP;392;;;;). The shared lookup takes the one
+// field Master knows; two matches or none stays out of it.
 const STRUCTURED_SCAN_DELIMITERS = /[;|\t\x1D]/;
-
-function structuredScanParts(rawValue) {
-  const raw = String(rawValue || '');
-  if (!STRUCTURED_SCAN_DELIMITERS.test(raw)) return [];
-  const hits = [];
-  const seen = new Set();
-  for (const field of raw.split(STRUCTURED_SCAN_DELIMITERS)) {
-    const key = normalizePN(field);
-    // Under four characters is a quantity or a country code, never a field
-    // worth testing — and Master does carry real two-digit numbers (Felco 23).
-    if (key.length < 4 || seen.has(key)) continue;
-    seen.add(key);
-    const candidates = exactScanParts(key);
-    if (candidates.length) hits.push(candidates);
-  }
-  return hits.length === 1 ? hits[0] : [];
-}
 
 // Every parts label prints more than one barcode. Beside the part number sit a
 // quantity ("1"), a country code ("840"), a lot code — all scannable, none of
@@ -3634,18 +3610,13 @@ function resolveScannedValue(rawValue) {
   const customPart = code ? partCodeCustomMap[code] : null;
   // An imported or counter-bound barcode is authoritative. Direct matching is
   // for Code 128 / similar labels whose decoded text is the part number itself.
-  let candidates = customPart ? [customPart] : mappedPN ? exactScanParts(mappedPN) : exactScanParts(rawValue);
+  // The shared lookup also takes a label payload's part-number field and PACE's brand
+  // prefix (exact PN and Make), so other brands' same digits never resolve.
+  let candidates = customPart ? [customPart] : lookupScanParts(mappedPN || rawValue);
   // Legacy bindings saved only UPC→"Other". They are incomplete by design:
   // send them through review once more so the operator can enter the custom
   // product, after which the complete details replace the old binding.
   if (!customPart && mappedPN && candidates.length === 1 && isOtherPart(candidates[0])) candidates = [];
-  // A structured label payload carries the part number inside it. Pull it out
-  // before any prefix or model guess gets a look at the whole string.
-  if (!mappedPN && candidates.length === 0) candidates = structuredScanParts(rawValue);
-  // PACE prepends a brand code that Master intentionally omits. Strip only a
-  // known distributor prefix, then require an exact PN and Make match so the
-  // same digits under another brand cannot resolve accidentally.
-  if (!mappedPN && candidates.length === 0) candidates = distributorPartCandidates(rawValue);
   // Some unit labels encode the printed model rather than the supplier item
   // number. Exact first-token matching is intentionally warranty-only so a
   // model scan can safely become the first half of model-then-serial entry.
@@ -8153,7 +8124,8 @@ function searchParts(val) {
   const qCollapsed = lowerVal.replace(/[\s\-\.\/,]/g, '');
   const useCollapsed = qCollapsed.length >= 4 && /[a-z]\d|\d[a-z]/.test(qCollapsed);
 
-  const exact = exactScanParts(raw).slice(), startsWith = [], wordMatch = [], more = [];
+  const exact = lookupScanParts(raw).slice(), startsWith = [], wordMatch = [], more = [];
+  const shown = new Set(exact);
   for (let p of partsArray) {
     // Normalizing both numbers for every row was two regex passes per part per
     // keystroke. Cached once with the catalog (see buildScanExactIndex).
@@ -8161,7 +8133,7 @@ function searchParts(val) {
     const normOG = p._nOG !== undefined ? p._nOG : (p._nOG = normalizePN(p.og));
     // 1) Part-number first — typing a PN (or its start) stays the priority workflow.
     // Typed exact lookups and hardware/phone scans use the same replacement index.
-    if (normVal && (normPN === normVal || normOG === normVal)) continue;
+    if (shown.has(p) || (normVal && (normPN === normVal || normOG === normVal))) continue;
     if (p._supersedeAlias || /\bNLA\b|\bDISCONTINUED\b|\bOBSOLETE\b|\bREPLACED BY\b/i.test(p.desc || '')) continue;
     if (normVal && (normPN.startsWith(normVal) || normOG.startsWith(normVal))) { startsWith.push(p); continue; }
     const hiddenSaw = hideStihlSawFromTextSearch(p);
@@ -10596,10 +10568,10 @@ function toggleHistEntry(idx) {
 // both the raw part number and the OG-format field. Returns null if not found.
 function findPartByPn(pn) {
   if (!pn || !Array.isArray(partsArray) || !partsArray.length) return null;
-  const norm = s => String(s == null ? '' : s).replace(/[^a-z0-9]/gi, '').toUpperCase();
-  const key = norm(pn);
+  const key = normalizePN(pn), loose = MPEPartNumber.looseKey(pn);
   if (!key) return null;
-  return partsArray.find(p => norm(p.pn) === key || norm(p.og) === key) || null;
+  return partsArray.find(p => normalizePN(p.pn) === key || normalizePN(p.og) === key)
+    || partsArray.find(p => MPEPartNumber.looseKey(p.pn) === loose || MPEPartNumber.looseKey(p.og) === loose) || null;
 }
 
 // The saved PO # (invoices) and Presold box come back with a sale opened from this computer's own history.
