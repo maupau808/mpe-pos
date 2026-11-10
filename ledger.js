@@ -517,7 +517,7 @@
 
   // ---- Customer fields typed on a saved document (F01) ----
   const CUST_KEYS = ['company', 'name', 'phone', 'email', 'street', 'city', 'region', 'zip'];
-  const isPlaceholderBuyer = r => s(r.name).toLowerCase() === 'jana yamashiro' && !s(r.company) && !s(r.phone); // the register's stand-in: nobody's customer (D10)
+  const isPlaceholderBuyer = L.isPlaceholderBuyer; // the register's stand-in: nobody's customer (D10); one check shared with ledger-data.js (X11)
   const savedField = (r, key) => (isPlaceholderBuyer(r) && key === 'name' ? '' : s(key === 'region' ? regionOf(r) : r[key]));
   // Only the fields whose typed value differs from the saved one (case aside). A field cleared on purpose is ''.
   function customerPatch(r, typed) {
@@ -1698,7 +1698,8 @@
     });
     const q = $('q');
     q.value = ui.q;
-    q.addEventListener('input', () => { ui.q = q.value; ui.sel = ''; $('list').scrollTop = 0; draw(); });
+    let qTimer = 0; // P15: redraw once typing pauses
+    q.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(() => { ui.q = q.value; ui.sel = ''; $('list').scrollTop = 0; draw(); }, 150); });
     let pending = 0;
     $('list').addEventListener('scroll', () => { if (pending) return; pending = root.requestAnimationFrame(() => { pending = 0; ui.scroll = $('list').scrollTop; remember(); }); });
     // Column handles: drag, double-click to reset, arrows when focused. `mine` holds only what was changed, so an untouched edge keeps following the screen's default.

@@ -741,7 +741,7 @@
   // ---- Missing info (F02): register sales that sold a serial-numbered item but lack a buyer or one contact field. Read-only; writes nothing.
   // field: 'any' | 'name' | 'phone' | 'address' | 'email'. Quotes, void/cancelled and QuickBooks-only records never qualify.
   // A name is missing when name and company are blank, or the register's stand-in buyer (D10) with no company or phone.
-  const isPlaceholderBuyer = r => s(r.name).toLowerCase() === PLACEHOLDER_BUYER && !s(r.company) && !s(r.phone);
+  const isPlaceholderBuyer = r => isJana(r.name) && !s(r.company) && !s(r.phone); // also "Yamashiro, Jana" (X11)
   const MISSING_TESTS = {
     name: r => isPlaceholderBuyer(r) || !(s(r.name) || s(r.company)),
     phone: r => !s(r.phone), email: r => !s(r.email), address: r => !s(r.street) && !s(r.city),

@@ -420,7 +420,7 @@ body.dark .review-qr-sw[aria-checked="true"] { background: #2c3d30; border-color
 .menu-panel .drive-btn { display: block; width: 100%; text-align: left; margin: 0; border-radius: 6px; }
 .menu-panel .scan-btn { display: block; width: 100%; text-align: left; margin: 0 0 6px; padding: 6px 9px; border-radius: 6px; }
 .admin-menu { min-width: 304px !important; }
-#adminMenu #scannerModeBtn, #adminMenu #scanBtn, #adminMenu #scanCameraSelect, #adminMenu #partsLookupBtn, #adminMenu #desktopSettingsBtn, #adminMenu #saveBtn, #adminMenu label:has(#scannerModeDefault) { display: none !important; }
+#adminMenu #scannerModeBtn, #adminMenu #scanBtn, #adminMenu #scanCameraSelect, #adminMenu #desktopSettingsBtn, #adminMenu #saveBtn, #adminMenu label:has(#scannerModeDefault) { display: none !important; }
 #adminMenu .admin-control-grid > *, #adminMenu .admin-control-grid .menu-check, #adminMenu > .menu-check { font-size: 13px !important; font-weight: 500 !important; line-height: 1.3; font-family: inherit !important; color: #333; }
 body.dark #adminMenu .admin-control-grid > *, body.dark #adminMenu > .menu-check { color: #e1e8dd; }
 .pos-update-notice {
@@ -953,7 +953,6 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
               <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
               <!-- Read-only parts catalog lookup. Separate page on purpose: it has no sale,
                    customer, price, or transaction path and never touches a line item. -->
-              <a class="drive-btn hist-btn" id="partsLookupBtn" href="parts.html" target="_blank" rel="noopener" title="STIHL parts catalog lookup — read only">🔎 Parts Lookup</a>
               <button class="drive-btn hist-btn" id="desktopScanBtn" style="display:none" onclick="window.mpeDesktop?.openScan()">▣ MPE Scan</button>
               <button class="drive-btn hist-btn" id="desktopSettingsBtn" style="display:none" onclick="window.mpeDesktop?.openSettings()">⚙ Desktop Settings</button>
               <!-- Card terminal state. Never claims ready on its own: it only
@@ -1200,10 +1199,17 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
   </div>
 </div>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// P14: spreadsheet and PDF libraries load at first use, not with every new sale tab.
+var MPE_LIBS = { xlsx: ['https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'],
+  pdf: ['https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'] }, _mpeLibP = {};
+function mpeLoadLib(kind) {
+  return _mpeLibP[kind] || (_mpeLibP[kind] = Promise.all(MPE_LIBS[kind].map(src => new Promise((ok, no) => {
+    const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('Could not load ' + kind)); document.head.appendChild(s);
+  }))).catch(e => { delete _mpeLibP[kind]; throw e; }));
+}
+</script>
 <!-- Google Identity Services -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async="" defer=""></script>
   <script src="ledger-contact.js"></script>
   <script src="ledger-numbering.js"></script>
@@ -1224,7 +1230,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.09.2';
+const POS_RELEASE = '2026.11.09.3';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1905,7 +1911,8 @@ setInterval(flushPendingPriceChanges, PRICE_CHANGE_RETRY_MS);
 setInterval(flushPendingReorders, PRICE_CHANGE_RETRY_MS);
 setInterval(flushStockSessionQueue, PRICE_CHANGE_RETRY_MS);
 setInterval(retryTransactionSync, 60 * 1000);
-setInterval(syncCustomersFromSheet, 60 * 1000);
+setInterval(() => { if (!document.hidden) syncCustomersFromSheet(); }, 60 * 1000); // P13: a hidden tab skips the cycle
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncCustomersFromSheet(); }); // and catches up once when shown
 window.addEventListener('online', retryTransactionSync);
 }
 
@@ -2255,6 +2262,7 @@ function parseAndLoad(name, binaryData) {
 
 function parseAndLoadSync(name, binaryData) {
   const pc = document.getElementById('partsCount');
+  if (typeof XLSX === 'undefined') { mpeLoadLib('xlsx').then(() => parseAndLoadSync(name, binaryData), () => { if (pc) { pc.textContent = 'Error loading file'; pc.style.color = '#e53935'; } }); return; }
   try {
     const wb = XLSX.read(binaryData, { type: 'binary' });
     const targetName = wb.SheetNames.find(n => /master.?price|price.?master|master prices|master parts|^prices$/i.test(n))
@@ -9929,6 +9937,7 @@ async function _renderPdf(el, filename, mode) {
     return mode === 'save' ? worker.save() : worker.outputPdf('blob');
   };
   try {
+    await mpeLoadLib('pdf');
     if (typeof html2canvas !== 'function') throw new Error('html2canvas library did not load');
     await Promise.all([...el.querySelectorAll('img')].map(img => {
       if (typeof img.decode === 'function') return img.decode().catch(() => {});
@@ -9973,6 +9982,7 @@ async function exportPdf() {
   let order = captureOrder();
   if (!order || !order.items.length) { alert('Add at least one item before exporting.'); return; }
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
+  try { await mpeLoadLib('pdf'); } catch (_e) {}
   if (typeof html2pdf === 'undefined') {
     noteToolFailure('PDF export', new Error('html2pdf library did not load'));
     setBtn('✕', false); setTimeout(() => setBtn('⬇', false), 4000);
@@ -10027,6 +10037,7 @@ async function emailDoc() {
   const order = captureOrder();
   if (!order || !order.items.length) { alert('Add at least one item before emailing.'); return; }
   const setBtn = (txt, dis) => { if (btn) { btn.textContent = txt; btn.disabled = !!dis; } };
+  try { await mpeLoadLib('pdf'); } catch (_e) {}
   if (typeof html2pdf === 'undefined' || !window.MPEEmailWindow) {
     noteToolFailure('Email', new Error('The email window or PDF maker did not load'));
     setBtn('✕', false); setTimeout(() => setBtn('✉', false), 4000);
@@ -12009,7 +12020,7 @@ async function syncCustomersFromSheet(){
       const missing=batch.map(_custRecToRow).filter(row=>!rows.some(r=>same(row,Array.from({length:10},(_,i)=>r[i]||''))));
       if(missing.length)await store.appendRows(missing);
       if(store.pending().length)throw Error('Shared customer update is still waiting');
-      rows=await store.readAll();
+      if(missing.length)rows=await store.readAll(); // P13: nothing appended means the first read is still current
       _custSheet=rows.map(_custRowToRec).filter(Boolean);_persistCustSheet();
       const sent=new Set(batch.map(rec=>JSON.stringify(_custRecToRow(rec))));
       _custPending=_custPending.filter(rec=>!sent.has(JSON.stringify(_custRecToRow(rec))));
