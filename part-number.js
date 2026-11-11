@@ -8,7 +8,7 @@
   const DELIMITERS = /[;|\t\x1D]/;
   // PACE prints a brand code that Master leaves off; strip only these, and only
   // with the matching Make, so the same digits under another brand never match.
-  const DISTRIBUTOR_PREFIXES = [['SC', 'SCAG'], ['GV', 'SCAG'], ['WR', 'WRIGHT'], ['BB', 'BLUEBIRD']];
+  const DISTRIBUTOR_PREFIXES = [['SC', 'SCAG'], ['SC', 'HYDRO-GEAR'], ['GV', 'SCAG'], ['WR', 'WRIGHT'], ['BB', 'BLUEBIRD']];
 
   // Master's key (pn_norm): drop a trailing "-US", remove spaces and dashes, uppercase.
   // Dots, slashes and stars stay: they tell real parts apart (BCS 20.9 vs Felco 209).
