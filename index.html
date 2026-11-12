@@ -1231,7 +1231,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.11.1';
+const POS_RELEASE = '2026.11.11.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -5994,7 +5994,7 @@ function onPriceEdit(i, commitBridge = false) {
   const raw = (pInput ? pInput.value : priceEl.textContent).replace(/[$,]/g, '').replace(/^-\s+/, '-').trim();
   const price = parseFloat(raw);
   const discounted = parseFloat(priceEl.dataset.discountPerUnit) > 0;
-  if (!isNaN(price) && (price !== 0 || discounted)) {
+  if (!isNaN(price)) {   // a typed 0 is a real $0 line (Trevor, 2026-11-11: 100% off still prints); only an empty box is blank
     priceEl.dataset.price = price;
     const _pInput = tbody.querySelector(`[data-row="${i}"].part-input`);
     const _listP = parseFloat(_pInput?.dataset.list) || 0;
@@ -6002,7 +6002,7 @@ function onPriceEdit(i, commitBridge = false) {
     const unchangedPackagePrice = pkgRow?.dataset.pkgUnits && Number(pkgRow.dataset.pkgPrice) === price;
     if (commitBridge && !unchangedPackagePrice) {
       if (_pInput?.dataset.isOther === '1') logOtherSuggestion(i);
-      else if (_listP && Math.abs(price - _listP) > 0.001) logPriceChange(i, price, _listP);
+      else if (_listP && price && Math.abs(price - _listP) > 0.001) logPriceChange(i, price, _listP);   // $0 is a giveaway, not a new price
       else clearPriceChange(i);
     }
     const cost = parseFloat(document.getElementById(`cost-${i}`)?.dataset.cost) || 0;
@@ -8593,7 +8593,7 @@ function updateSubtotal(i) {
   const subEl = document.getElementById(`sub-${i}`);
   const isInput = subEl && subEl.tagName === 'INPUT';
   const discounted = parseFloat(priceEl.dataset.discountPerUnit) > 0;
-  if (!isNaN(price) && (price !== 0 || discounted)) {
+  if (!isNaN(price)) {   // a typed 0 is a real $0 line (Trevor, 2026-11-11: 100% off still prints); only an empty box is blank
     const s = price * qty;
     if (isInput) subEl.value = fmt(s); else subEl.textContent = fmt(s);
     subEl.dataset.val = s;
@@ -8605,7 +8605,7 @@ function updateSubtotal(i) {
   const anyPart = Array.from({length: NUM_ROWS}, (_, r) => {
     const el = document.getElementById(`price-${r}`);
     const p = parseFloat(el?.dataset.price);
-    return p > 0 || parseFloat(el?.dataset.discountPerUnit) > 0;
+    return !isNaN(p) || parseFloat(el?.dataset.discountPerUnit) > 0;
   }).some(Boolean);
   const hdr = document.getElementById('hdr-unitprice');
   if (hdr) hdr.classList.toggle('ea-hidden', !anyPart);
@@ -10132,13 +10132,18 @@ function upperText(value) {
   return String(value == null ? '' : value).trim().toUpperCase();
 }
 
+function priceCellValue(priceEl) {   // { ea, blank }: blank = nothing entered (a $0 line is priced)
+  const pInput = priceEl.querySelector('.price-edit');
+  const raw = String(pInput ? pInput.value.replace(/[$,]/g, '').replace(/^-\s+/, '-') : priceEl.dataset.price).trim();
+  const ea = parseFloat(raw);
+  return { ea: ea || 0, blank: isNaN(ea) };
+}
 function captureOrder() {
   const items = [];
   for (const i of rowOrder()) {
     const priceEl = document.getElementById(`price-${i}`);
     if (!priceEl) continue;
-    const pInput = priceEl.querySelector('.price-edit');
-    const ea = parseFloat(pInput ? pInput.value.replace(/[$,]/g, '').replace(/^-\s+/, '-') : priceEl.dataset.price) || 0;
+    const { ea, blank } = priceCellValue(priceEl);
     const pn = document.querySelector(`[data-row="${i}"].part-input`)?.value.trim() || '';
     if (!pn) continue;
     // For note rows inline, desc is an input inside the cell
@@ -10148,8 +10153,8 @@ function captureOrder() {
     const desc = noteInput ? (noteInput.value.trim() || '(note)') : discInput ? (discInput.value.trim() || 'Discount') : (descEl?.textContent || '');
     const originalEa = parseFloat(priceEl.dataset.originalEa) || 0;
     const discountPerUnit = parseFloat(priceEl.dataset.discountPerUnit) || 0;
-    // Keep a fully discounted item ($0 charged) so receipt/history still show it.
-    if (!ea && pn !== 'Note' && !(discountPerUnit > 0)) continue;
+    // A $0 line (typed 0 or fully discounted) stays on every copy; only a blank price box is left out (and blocked before output).
+    if (pn !== 'Note' && !(discountPerUnit > 0) && (pn === 'Discount' ? !ea : blank)) continue;
     const qty = parseFloat(document.getElementById(`qty-${i}`)?.value) || 1;
     const sub = parseFloat(document.getElementById(`sub-${i}`)?.dataset.val) || (ea * qty);
     const snTr = tbody.querySelector(`tr[data-sn-for="${i}"]`);
@@ -11398,14 +11403,13 @@ function editScreenLines() {   // what captureOrder reads per line, before it dr
   return rowOrder().map(i => {
     const priceEl = document.getElementById(`price-${i}`);
     if (!priceEl) return null;
-    const pInput = priceEl.querySelector('.price-edit');
     return { pn: document.querySelector(`[data-row="${i}"].part-input`)?.value.trim() || '',
-      ea: parseFloat(pInput ? pInput.value.replace(/[$,]/g, '').replace(/^-\s+/, '-') : priceEl.dataset.price) || 0,
+      ...priceCellValue(priceEl),
       discountPerUnit: parseFloat(priceEl.dataset.discountPerUnit) || 0 };
   }).filter(Boolean);
 }
 function blankPriceProblem(lines) {   // '' or the first line captureOrder would silently leave out (notes and discount lines are not blank)
-  const at = lines.findIndex(line => !line.ea && line.pn !== 'Note' && line.pn !== 'Discount' && !(line.discountPerUnit > 0));
+  const at = lines.findIndex(line => line.blank && line.pn !== 'Note' && line.pn !== 'Discount' && !(line.discountPerUnit > 0));
   return at < 0 ? '' : `Line ${at + 1} has no price`;
 }
 const saleBlankPrice = () => blankPriceProblem(editScreenLines().filter(line => line.pn));   // local read of the rows; no wait
