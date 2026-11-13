@@ -1,6 +1,6 @@
 'use strict';
 // Ledger tab for the browser register (the app has its own native tab, POSDesktop/src/pos-tabs.js).
-// Last of the fixed tabs (after Parts), never closed, no count. It shows ledger.html in one iframe over the
+// First tab in the row, left of Sale 1; never closed, no count. It shows ledger.html in one iframe over the
 // sale area, kept loaded so search, selection and scroll survive. The Ledger page asks for a new
 // sale tab with parent.postMessage({ kind, txn }, location.origin); only that exact same-origin
 // frame is heard, and the register opens a NEW tab for it, so a sale in progress is never cleared.
@@ -75,7 +75,7 @@
       button.classList.remove('active');
     }
     button.onclick = show;
-    tabs.prepend(button);   // the page's row decides the order: index.html passes #cvFixedTabs and moves this button last, after Parts
+    tabs.prepend(button);   // index.html passes the tab bar itself, so History comes first, left of Sale 1
     window.addEventListener('resize', () => { if (shown) place(); });
     window.addEventListener('message', (event) => {
       if (!frame || event.source !== frame.contentWindow || event.origin !== window.location.origin) return;
