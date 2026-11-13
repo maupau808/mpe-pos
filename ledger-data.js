@@ -1,6 +1,6 @@
 /* Ledger tab data logic (pure, no DOM, no network). Browser: window.MPELedgerData. Node: module.exports.
  *
- * Transactions A:X (0-based; 23 = invoice PO number): 0 type, 1 txnId, 2 date, 3 time, 4 name/company, 5 phone, 6 email, 7 addr,
+ * Transactions A:Y (0-based; 23 = invoice PO number, 24 = received by): 0 type, 1 txnId, 2 date, 3 time, 4 name/company, 5 phone, 6 email, 7 addr,
  *   12 total (TXN) / sub (item), 13 fromQuote (TXN) / serials (item), 14 docType, 15 number (P),
  *   16-21 name, company, street, city, state, zip (Q-V); item rows: 8 pn, 9 desc, 10 qty, 11 ea, 14 original ea, 15 off per unit.
  * Only TXN and item rows are read; REORDER, STOCK_SESSION, CUSTOMER_*, blank and unknown rows are ignored.
@@ -121,7 +121,7 @@
   function documentPages(request, renderer, template, settings) {
     const facts = factsFromRequest(request);
     const po = s(request.po);
-    const receivedBy = s(request.received_by);   // the signature's Print line (register prints only)
+    const receivedBy = s(request.received_by);   // the signature's Print line (the register, and History from Transactions column Y)
     const extras = { ...(po ? { po } : {}), ...(receivedBy ? { received_by: receivedBy } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}), ...(request.type === 'quote' && request.deposit ? { deposit: request.deposit } : {}),
       ...(request.review === true && (request.type === 'receipt' || request.type === 'invoice') ? { review: true } : {}),
       ...(request.warranty === true && request.type === 'receipt' ? { warranty: true } : {}),
@@ -141,7 +141,9 @@
   const dayNum = iso => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d) / 864e5; };
   const addDays = (iso, n) => new Date((dayNum(iso) + n) * 864e5).toISOString().slice(0, 10);
   // ---- Transactions ----
-  function parseTransactions(rows, states) {
+  // yKnown (default true): false when the rows came through a fallback read (A:X or A:W) from a shell that cannot read column Y, so a
+  // row of 24 cells or fewer has an UNKNOWN Received by (undefined, never ''), and its fingerprint stays 24 wide.
+  function parseTransactions(rows, states, { yKnown = true } = {}) {
     const out = [], seen = new Set();
     const updated = new Set((rows || []).filter(x => s(x && x[0]) === 'CUSTOMER_UPDATE').map(x => s(x[1]))); // once, not per document
     let cur = null;
@@ -156,13 +158,14 @@
         const sameAsParts = e === [parts[0], parts[1]].filter(Boolean).join(' / ');
         const split = e.split(' / ');
         const st = states && states.get && states.get(id);
+        const unknownY = !yKnown && r.length <= 24; // a fallback read cannot show column Y; unsent rows are always 25 cells
         cur = {
           txnId: id, number: s(r[15]), docType: s(r[14]).toLowerCase(), date: isoDate(r[2]), time: s(r[3]),
           name: sameAsParts ? parts[0] : s(split[0]), company: sameAsParts ? parts[1] : s(split.slice(1).join(' / ')),
           street: parts[2], city: parts[3], region: parts[4], zip: parts[5],
           addr: s(r[7]), phone: s(r[5]), email: s(r[6]),
           total: money(r[12]), fromQuote: s(r[13]), items: [],
-          presell: s(r[22]).toUpperCase() === 'PRESELL', po: s(r[23]),
+          presell: s(r[22]).toUpperCase() === 'PRESELL', po: s(r[23]), receivedBy: unknownY ? undefined : s(r[24]), _yWide: !unknownY,
           completedContact: st && !st.conflict ? st.contact : null,
           contactConflict: st ? !!st.conflict : updated.has(id),
           _ph: s(r[5]).replace(/\D/g, ''),
@@ -185,15 +188,16 @@
     for (const t of out) { // same haystacks as History's _parseTxnRows
       t._hay = t._hayParts.filter(Boolean).join(' ').toLowerCase();
       t._serialHay = t.items.flatMap(i => i.serials).map(alnum).filter(Boolean).join(' ');
-      t.fingerprint = transactionRowsFingerprint(t._raw); // the saved rows as read: an edit is refused if the sheet no longer matches
-      delete t._hayParts; delete t._raw;
+      t.fingerprint = transactionRowsFingerprint(t._raw, t._yWide ? 25 : 24); // the saved rows as read: an edit is refused if the sheet no longer matches
+      delete t._hayParts; delete t._raw; delete t._yWide;
     }
     return out;
   }
-  // The token for "the saved rows of one document" (Transactions A:X). The register's save and History's edit request use this one
-  // function: an in-place rewrite is refused when the sheet block no longer has the fingerprint it was loaded or last verified with.
-  function transactionRowsFingerprint(rows) {
-    return JSON.stringify(rows.map(row => Array.from({ length: 24 }, (_, col) => {
+  // The token for "the saved rows of one document" (Transactions A:Y, 24 = received by). The register's save and History's edit request use
+  // this one function: an in-place rewrite is refused when the sheet block no longer has the fingerprint it was loaded or last verified with.
+  // width 24 leaves Received by out (a record read by an app that cannot read column Y); transactionRowsMatch picks the width from the token.
+  function transactionRowsFingerprint(rows, width = 25) {
+    return JSON.stringify(rows.map(row => Array.from({ length: width }, (_, col) => {
       let value = String(row[col] ?? '').trim().replace(/^'/, '');
       if (col === 12 || (String(row[0]).toLowerCase() === 'item' && [10, 11, 14, 15, 16].includes(col))) {
         return value === '' ? '' : Number(value.replace(/[$,]/g, '')).toFixed(2);
@@ -202,6 +206,15 @@
       if (col === 2) value = value.replace(/^0(?=\d\/)/, '').replace(/\/0(?=\d\/)/, '/'); // 11/04/2026 and 11/4/2026 are the same day (Sheets shows either)
       return value;
     })));
+  }
+  // Do these sheet rows still match the token fp? They are fingerprinted at fp's own width (24 or 25), so a token taken without column Y
+  // still matches a sheet that now has a name there, and a 25-wide token refuses any difference in Received by. Unreadable fp -> false.
+  // The one matcher for stale / edit-load checks (History's email check, the register's edit session).
+  function transactionRowsMatch(rows, fp) {
+    let width;
+    try { const first = JSON.parse(fp)[0]; width = Array.isArray(first) ? first.length : 0; } catch (_) { return false; }
+    if (width !== 24 && width !== 25) return false;
+    return transactionRowsFingerprint(rows, width) === fp;
   }
   function transactionBlockEnd(rows, start, id) {
     let end = start + 1;
@@ -237,7 +250,9 @@
       // W: a quote, receipt or invoice marked Presold (Unit Stock presale).
       ['quote', 'receipt', 'invoice'].includes(savedDocType) && order.presell ? 'PRESELL' : '',
       // X: the invoice's PO number. Past W (PRESELL) so A:P and Q–V stay as they were; readers that need it read A:X.
-      savedDocType === 'invoice' ? String(order.po || '').trim() : '']);
+      savedDocType === 'invoice' ? String(order.po || '').trim() : '',
+      // Y: Received by (printed on the signature's Print line; Trevor 2026-11-13). Any document type; readers that need it read A:Y.
+      String(order.receivedBy ?? '').trim()]);
 
     // Item rows
     for (const item of order.items) {
@@ -812,13 +827,13 @@
 
   // One call for the page: rows in, ready model out. displayRows: optional (defaults to the page's
   // MPETransactionContact.displayRows) so CUSTOMER_UPDATE fixes and conflict flags match History.
-  async function create({ txnRows, paymentRows, drafts, today, displayRows }) {
+  async function create({ txnRows, paymentRows, drafts, today, displayRows, yKnown }) {
     const owner = typeof globalThis === 'object' ? globalThis.MPETransactionContact : null;
     const fn = displayRows || (owner && owner.displayRows && (rows => owner.displayRows(rows)));
     let rows = txnRows, states = null;
     if (fn) { const d = await fn(txnRows); rows = d.rows; states = d.states; }
     const marks = parseMarks(paymentRows);
-    const records = derive(parseTransactions(rows, states), parsePayments(paymentRows), today, drafts, marks.cancels, marks.editLog, marks.dues, marks.orderNotes);
+    const records = derive(parseTransactions(rows, states, { yKnown: yKnown !== false }), parsePayments(paymentRows), today, drafts, marks.cancels, marks.editLog, marks.dues, marks.orderNotes);
     const model = {
       records,
       list: (name, query) => search(filter(model.records, name), query),
@@ -907,6 +922,6 @@
     const txn = (after[0].rows || []).find(row => s(row && row[0]).toUpperCase() === 'TXN');
     return !txn || cents(money(txn[12])) !== cents(r.total);
   }
-  return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionBlockEnd, transactionRowsForOrder, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, orderNoteText, buildPaymentRow, helcimPaymentRows,
+  return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionRowsMatch, transactionBlockEnd, transactionRowsForOrder, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, orderNoteText, buildPaymentRow, helcimPaymentRows,
     buildVoidRow, beforeNote, undoRows, honoluluToday, factsFromRequest, documentPages, storeCreditNote, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, MEMO_NONE, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });

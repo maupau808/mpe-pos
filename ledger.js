@@ -1,7 +1,8 @@
 /* Ledger page (POS/ledger.html). Pure view model + the page's UI. Browser: window.MPELedger. Node: module.exports (pure parts).
  *
  * Data: MPELedgerData (ledger-data.js) only. Every outside effect goes through ONE adapter, window.MPELedgerHost:
- *   readTransactions()        -> Promise<rows A:W of the Transactions tab>
+ *   readTransactions()        -> Promise<rows A:Y of the Transactions tab (A:X or A:W from an older app: then yKnown() is false)>
+ *   yKnown()      (optional)  -> false when the last readTransactions() could not see column Y (Received by); records then have no receivedBy
  *   readPayments()            -> Promise<rows of the Payments tab (PAYMENT_COLUMNS order; header row allowed)>
  *   readMarks()   (optional)  -> Promise<{ drafts: {txnId|number: 'YYYY-MM-DD'}, edits: {txnId: 'YYYY-MM-DD'} }>
  *   appendPaymentRows(rows)   -> Promise; resolves only after the durable write (save locally, append, read back)
@@ -353,6 +354,8 @@
     const rest = cents(r.total) - cents(subtotal) - cents(subtotal * TAX_RATE);
     return Math.abs(rest) >= 0.05 ? rest : 0;
   }
+  // Could the host's last Transactions read see column Y (Received by)? Hosts without yKnown() always can.
+  const yKnownOf = h => !(h && typeof h.yKnown === 'function' && h.yKnown() === false);
   // opts.review: the shop-wide Review QR switch is on; it rides only on receipts and invoices (the renderer prints it on the customer copy).
   function requestFromRecord(rec, opts) {
     const r = rec.kind === 'quote' ? rec : withDeposit(rec); // a quote's deposit prints in the totals (deposit below), not as a note
@@ -366,6 +369,8 @@
       : { address: r.addr || '' };
     return {
       po: r.kind === 'invoice' ? s(r.po) : '', type: r.kind, number: r.number || r.txnId, completionAt: completion.toISOString(), documentTime: s(r.time),
+      // Received by (Transactions Y) prints on the signature's Print line; a receipt or quote prints the signature box only with signature: true.
+      ...(s(r.receivedBy) ? { received_by: s(r.receivedBy), ...(r.kind === 'receipt' || r.kind === 'quote' ? { signature: true } : {}) } : {}),
       ...(r.kind === 'invoice' && r.paid > 0 ? { paid: m2(r.paid) } : {}), // part or full payments print as Amount paid / Balance due
       ...(r.kind === 'quote' && r.deposit > 0 ? { deposit: m2(r.deposit) } : {}), // Subtotal, tax, Deposit paid -$X, Total (what is left)
       dueDate: r.kind === 'invoice' ? (r.dueDate || null) : null,
@@ -426,7 +431,7 @@
     let fresh;
     try {
       const freshRows = await h.readPayments();
-      const fm = await L.create({ txnRows: await h.readTransactions(), paymentRows: freshRows, today: h.honoluluToday ? h.honoluluToday() : undefined });
+      const fm = await L.create({ txnRows: await h.readTransactions(), paymentRows: freshRows, today: h.honoluluToday ? h.honoluluToday() : undefined, yKnown: yKnownOf(h) });
       fresh = { rows: freshRows, byId: new Map(fm.records.map(x => [x.txnId, x])) };
     } catch (_) { state.at = 0; return { looks: {}, added: 0, error: 'Could not read the Payments tab.' }; }
     const rows = [], looks = {};
@@ -586,7 +591,7 @@
     let rows;
     try { rows = await h.readTransactions(); } catch (_) { throw new Error('Could not check that this document is still current. Try again.'); }
     const at = (rows || []).findIndex(row => String(row[0]).toLowerCase() === 'txn' && String(row[1]) === r.txnId);
-    if (at < 0 || L.transactionRowsFingerprint(rows.slice(at, L.transactionBlockEnd(rows, at, r.txnId))) !== r.fingerprint) throw new Error('This document changed. Close and open Email again.');
+    if (at < 0 || !L.transactionRowsMatch(rows.slice(at, L.transactionBlockEnd(rows, at, r.txnId)), r.fingerprint)) throw new Error('This document changed. Close and open Email again.');
   }
   // The customer form in the panel during an edit (D14). Its state lives in st.edit.cust so a redraw never loses what was typed; the HTML is rebuilt from it.
   const CUST_LABELS = { company: 'Company', name: 'Contact', phone: 'Phone', email: 'Email', street: 'Street', city: 'City', region: 'State', zip: 'Zip' };
@@ -887,7 +892,7 @@
   // now lower than asked, nothing is written and the sentence says how much is left. Returns { ok, cents } or { ok: false, cap, message }.
   async function takeCredit(h, r, amountCents, key, ctx, now) {
     const freshRows = await h.readPayments();
-    const fm = await L.create({ txnRows: await h.readTransactions(), paymentRows: freshRows, today: h.honoluluToday ? h.honoluluToday() : undefined });
+    const fm = await L.create({ txnRows: await h.readTransactions(), paymentRows: freshRows, today: h.honoluluToday ? h.honoluluToday() : undefined, yKnown: yKnownOf(h) });
     const fresh = fm.records.find(x => x.txnId === r.txnId);
     if (!fresh || !UNPAID.has(fresh.state)) return { ok: false, cap: 0, message: `${r.number} is not owing any more. Nothing was taken.` };
     const cap = L.creditCap(freshRows, key, Math.round(fresh.balance * 100), fm.records, ctx);
@@ -996,7 +1001,7 @@
     const creditOf = key => { const b = credits(); return b && key ? b[key] || 0 : 0; };
 
     // The model from sheet rows plus what the last full load kept (payments, marks, customers). Shared by load() and the local refresh.
-    const createModel = tx => L.create({ txnRows: tx || [], paymentRows: st.payRows, drafts: st.marks.drafts, today: st.today });
+    const createModel = tx => L.create({ txnRows: tx || [], paymentRows: st.payRows, drafts: st.marks.drafts, today: st.today, yKnown: yKnownOf(host()) });
     function adopt(model) {
       st.model = model;
       if (st.qbo) model.addQbo(st.qbo, st.today); // QuickBooks copy already downloaded: merge before the first draw

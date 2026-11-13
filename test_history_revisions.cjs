@@ -29,7 +29,7 @@ function setup() {
     getSheetNumericId: async () => 7,
     sheetsGet: async range => {
       if(range === 'Transactions') return clone(sheet);
-      const match=range.match(/A(\d+):[BPVWX](\d+)/);assert.ok(match,range);
+      const match=range.match(/A(\d+):[BPVWXY](\d+)/);assert.ok(match,range);
       const result=clone(sheet.slice(Number(match[1])-1, Number(match[2])));
       if(corruptRead && result[1]) result[1][10]='999';
       return result;
@@ -797,4 +797,20 @@ test('T10 edit-session greens: scoped to the embedded edit; loaded lines unmarke
  assert.ok(css('body.embedded-edit #counterView #cvEntry{border-color:#9cc3a8}'));
  assert.ok(css('body.embedded-edit tr.drop-before>td{box-shadow:inset 0 3px 0 #24683a}') && css('body.embedded-edit tr.drop-after>td{box-shadow:inset 0 -3px 0 #24683a}'));
  assert.equal(html.split('cv-added{').length, html.split('body.embedded-edit #counterView .cv-article.cv-added{').length, 'no unscoped cv-added rule');
+});
+// Received by (Trevor, 2026-11-13): saved in the summary row's column Y; a Received-by-only change is saved; a sale opened without
+// column Y (receivedBy undefined, nothing typed) keeps what the sheet has; formula-like names are stored as text.
+test('Received by is saved in column Y, kept when unknown, and stored as typed',async()=>{
+ const c=setup();c.connect();const txnRow=()=>c.sheet().find(r=>r[0]==='TXN');
+ c.s.draft.receivedBy='KEONI';assert.equal(c.save(),true);await c.sync();
+ assert.equal(txnRow()[24],'KEONI');assert.equal(txnRow().length,25);
+ c.s.draft.receivedBy='KAI';assert.equal(c.save(),true,'a Received-by-only change is a change');await c.sync();
+ assert.equal(txnRow()[24],'KAI');
+ delete c.s.draft.receivedBy;c.s.draft.items[0].qty=2;c.s.draft.items[0].sub=1059.98;c.s.draft.total='1109.93';
+ assert.equal(c.save(),true);await c.sync();
+ assert.equal(txnRow()[10],'',`summary row only`);assert.equal(c.sheet()[1][10],2,'the edit landed');
+ assert.equal(txnRow()[24],'KAI','unknown Received by never blanks the sheet');
+ c.s.draft.receivedBy='=X';c.save();await c.sync();
+ assert.equal(txnRow()[24],'=X','stored as text, read back as typed');
+ assert.equal(vm.runInContext("transactionUserEnteredRows([['TXN','t',...Array(22).fill(''),'=X'],['item','t']])",c.s)[0][24],"'=X");
 });

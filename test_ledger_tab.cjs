@@ -90,10 +90,11 @@ test('register: History button gone, Ledger loads in the tab row, sale tabs unch
   assert.doesNotMatch(html, /q\('#txnHistoryBtn'\)/, 'counter view no longer looks it up');
   assert.match(html, /<script src="ledger-tab\.js"><\/script>/);
   // The browser row adds Sale 1 first, then Ledger is prepended; the app keeps its native strip.
-  // An app shell with mpeDesktop.tabs lets the page draw the row (K5, Trevor 2026-11-13); an older shell or an edit page hides it.
-  assert.match(html, /if\(window\.mpeDesktop\)\{if\(MPE_EDIT_SESSION_PAGE\|\|!desktopTabRow\(\)\)\{q\('#cvTabs'\)\.hidden=true;q\('#cvNew'\)\.hidden=true;q\('#cvFixedTabs'\)\.hidden=true;\}window\.mpeDesktop\.onLedgerSale\?\.\(openLedgerSale\);window\.mpeDesktop\.onEditSession\?\.\(runEditSessionAndReport\);\}else\{if\(MPE_EDIT_SESSION_PAGE\)\{.*?\}nextTab=1;addTab\(\);q\('#cvNew'\)\.onclick=addTab;ledgerTab=MPE_EDIT_SESSION_PAGE\?null:window\.MPELedgerTab\?\.install\(\{document,window,tabs:q\('#cvFixedTabs'\),/);
+  // K8 (Trevor 2026-11-13): the app's own strip is the one static tab bar, so the app always hides the page's bar.
+  assert.match(html, /if\(window\.mpeDesktop\)\{q\('\.cv-tabbar'\)\.hidden=true;window\.mpeDesktop\.onLedgerSale\?\.\(openLedgerSale\);window\.mpeDesktop\.onEditSession\?\.\(runEditSessionAndReport\);\}else\{if\(MPE_EDIT_SESSION_PAGE\)\{.*?\}nextTab=1;addTab\(\);q\('#cvNew'\)\.onclick=addTab;ledgerTab=MPE_EDIT_SESSION_PAGE\?null:window\.MPELedgerTab\?\.install\(\{document,window,tabs:q\('#cvFixedTabs'\),/);
   assert.match(html, /fx\.prepend\(pt\);if\(ledgerTab\)fx\.append\(ledgerTab\.button\);/, 'History is the last tab of the fixed group, after Parts');
-  assert.match(html, /id="cvFixedTabs"/, 'fixed group sits in the header');
+  assert.match(html, /<nav class="cv-tabbar"[^>]*><div class="cv-tabs" id="cvTabs"><\/div><button class="cv-new"[^>]*>\+<\/button><span class="cv-spacer"><\/span><div class="cv-tabs cv-fixed-tabs" id="cvFixedTabs"><\/div><\/nav>/, 'sale tabs, + and the gold group sit in the tab bar');
+  assert.match(html, /header:q\('\.cv-tabbar'\),host:root/, 'History opens under the tab bar, so the bar stays put');
   assert.match(html, /function activateTab\(id\)\{ledgerTab\?\.hide\(\);commitFocused\(\);/, 'any sale tab returns to that sale');
   assert.match(html, /const ids=qa\('#cvTabs \.cv-tab\[data-cv-tab\]'\)/, 'closing a sale never picks Ledger');
   assert.match(html, /if\(hasContent&&!confirm\('Close Sale '\+id/, 'sale tabs still warn before closing');

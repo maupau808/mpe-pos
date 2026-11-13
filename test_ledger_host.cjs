@@ -835,3 +835,82 @@ test('a note or due mark: signed out queues nothing; a failed append is queued o
     assert.deepEqual(JSON.parse(storage.getItem(K.PENDING_KEY)), []);
   }
 });
+
+// ---- Received by (Transactions column Y): the read chain, unknown vs known, and the carried name ----
+test('History reads A:Y first; an app that refuses A:Y falls back to A:X then A:W and marks the saved name unknown', async () => {
+  const head = (id, y) => ['TXN', id, '11/12/2026', '9:05 AM', 'Lani Testcase', '', '', '', '', '', '', '', '$10.00', '', 'receipt', 'R1', 'Lani', 'Testcase', '', '', '', '', '', '', ...(y === undefined ? [] : [y])];
+  const item = id => ['item', id, '', '', '', '', '', '', 'A', 'Saw', '1', '$10.00', '$10.00'];
+  const run = async allowed => {
+    const asked = [];
+    const get = async range => {
+      asked.push(range);
+      if (range.startsWith('Transactions!')) {
+        if (!allowed.includes(range)) throw new Error('Range ' + range + ' is not allowed for Ledger');
+        return [head('T-1', range === 'Transactions!A:Y' ? 'KAI' : undefined), item('T-1')];
+      }
+      return [L.PAYMENT_COLUMNS.slice()];
+    };
+    const host = K.createHost({ kind: 'desktop', place: '1', storage: memoryStorage(), signedIn: async () => true, get, append: async () => true }, {});
+    assert.equal(host.yKnown(), true, 'known before any read');
+    const rows = await host.readTransactions();
+    return { asked: asked.filter(a => a.startsWith('Transactions')), host, rec: L.parseTransactions(rows, undefined, { yKnown: host.yKnown() })[0] };
+  };
+  const y = await run(['Transactions!A:Y', 'Transactions!A:X', 'Transactions!A:W']);
+  assert.deepEqual(y.asked, ['Transactions!A:Y']);
+  assert.equal(y.host.yKnown(), true);
+  assert.equal(y.rec.receivedBy, 'KAI', 'A:Y answered: the name is kept');
+  const x = await run(['Transactions!A:X', 'Transactions!A:W']);
+  assert.deepEqual(x.asked, ['Transactions!A:Y', 'Transactions!A:X']);
+  assert.equal(x.host.yKnown(), false);
+  assert.equal(x.rec.receivedBy, undefined, 'unknown, not blank');
+  const w = await run(['Transactions!A:W']);
+  assert.deepEqual(w.asked, ['Transactions!A:Y', 'Transactions!A:X', 'Transactions!A:W']);
+  assert.equal(w.host.yKnown(), false);
+  assert.equal(w.rec.receivedBy, undefined);
+  // the next read on a shell that now answers A:Y is known again
+  let allowY = false;
+  const sheetRows = () => [head('T-1', allowY ? 'KAI' : undefined), item('T-1')];
+  const host = K.createHost({ kind: 'desktop', place: '1', storage: memoryStorage(), signedIn: async () => true, append: async () => true,
+    get: async range => { if (/^Transactions!A:Y$/.test(range) && !allowY) throw new Error('not allowed'); return range.startsWith('Transactions') ? sheetRows() : [L.PAYMENT_COLUMNS.slice()]; } }, {});
+  await host.readTransactions(); assert.equal(host.yKnown(), false);
+  allowY = true; await host.readTransactions(); assert.equal(host.yKnown(), true);
+});
+
+test('a network error or a missing tab on A:Y does not fall back (the saved name is never silently dropped)', async () => {
+  for (const message of ['network down', 'Failed to fetch', 'Unable to parse range: Transactions!A:Y']) {
+    const asked = [];
+    const host = K.createHost({ kind: 'desktop', place: '1', storage: memoryStorage(), signedIn: async () => true, append: async () => true,
+      get: async range => { asked.push(range); throw new Error(message); } }, {});
+    await assert.rejects(host.readTransactions(), new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.deepEqual(asked, ['Transactions!A:Y'], message);
+    assert.equal(host.yKnown(), true, 'a failed read changes nothing');
+  }
+  // a network error on the A:X step (after A:Y was refused) stops there too
+  const asked = [];
+  const host = K.createHost({ kind: 'desktop', place: '1', storage: memoryStorage(), signedIn: async () => true, append: async () => true,
+    get: async range => { asked.push(range); throw new Error(range.endsWith('A:Y') ? 'not allowed' : 'network down'); } }, {});
+  await assert.rejects(host.readTransactions(), /network down/);
+  assert.deepEqual(asked, ['Transactions!A:Y', 'Transactions!A:X']);
+  assert.equal(host.yKnown(), true);
+});
+
+test('unsent documents stay known on a fallback read, carry their Received by, and toHistory keeps undefined as undefined', async () => {
+  const storage = memoryStorage();
+  const order = { txnId: 'T-NEW', docType: 'receipt', docNumber: 'R9', date: '2026-11-13T19:05:07.000Z', total: 10, receivedBy: ' KAI ', customer: { name: 'Lani' }, historySyncPending: true,
+    items: [{ pn: 'A-1', desc: 'Saw', qty: 1, ea: 10, sub: 10 }] };
+  storage.setItem('mpe_print_history', JSON.stringify([order]));
+  const get = async range => { if (range === 'Transactions!A:Y') throw new Error('not allowed'); return range.startsWith('Transactions') ? [['Type']] : [L.PAYMENT_COLUMNS.slice()]; };
+  const host = K.createHost({ kind: 'desktop', place: '1', storage, signedIn: async () => true, get, append: async () => true }, {});
+  const rows = await host.readTransactions();
+  assert.equal(host.yKnown(), false);
+  const rec = L.parseTransactions(rows, undefined, { yKnown: false }).find(r => r.txnId === 'T-NEW');
+  assert.equal(rec.receivedBy, 'KAI', 'a document built here is 25 cells: known');
+  assert.equal(K.toHistory(rec).receivedBy, 'KAI');
+  assert.equal(K.toHistory({ ...rec, receivedBy: '' }).receivedBy, '', 'a known blank stays blank');
+  for (const r of [{ ...rec, receivedBy: undefined }, (() => { const c = { ...rec }; delete c.receivedBy; return c; })()]) {
+    const h = K.toHistory(r);
+    assert.equal(h.receivedBy, undefined);
+    assert.ok(!('receivedBy' in h), 'unknown is not turned into a blank');
+    assert.ok(!('receivedBy' in K.saleRequest('edit', r).txn));
+  }
+});

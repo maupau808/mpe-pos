@@ -32,7 +32,8 @@
   }
 })(typeof globalThis === 'object' ? globalThis : this, function (root, L) {
   'use strict';
-  const TXN_RANGE = 'Transactions!A:X';
+  const TXN_RANGE = 'Transactions!A:Y';
+  const TXN_RANGES_OLD = ['Transactions!A:X', 'Transactions!A:W']; // an app older than the Received by column refuses A:Y (older than the PO column, A:X): read narrower, and the saved name is unknown
   const PAY_RANGE = 'Payments!A:K';
   const PAY_RANGE_OLD = 'Payments!A:J'; // an app older than 0.3.67 refuses A:K: read A:J, and store credit stays off (creditReady false)
   const PAY_APPEND = 'Payments!A1';
@@ -150,6 +151,7 @@
       txnId: s(r.txnId), date: /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}` : d,
       time: s(r.time), name: [s(r.name), s(r.company)].filter(Boolean).join(' / '), phone: s(r.phone), email: s(r.email),
       addr: s(r.addr), total: m2(r.total), docType: s(r.docType), docNumber: s(r.number), fromQuote: s(r.fromQuote), po: s(r.po),
+      ...(r.receivedBy !== undefined ? { receivedBy: s(r.receivedBy) } : {}), // undefined = unknown (an older app could not read column Y): never turned into a blank
       customer: customer.some(Boolean) ? customer : null, presell: !!r.presell, contactConflict: !!r.contactConflict,
       ...(r.cardFee === true ? { cardFee: true } : {}), // the sale carried the 3% card fee: the register turns it on (it has no other copy on another computer)
       ...(Number(r.storeCredit) > 0 ? { storeCredit: Number(r.storeCredit) } : {}), // store credit this receipt used (dollars): the register shows it locked
@@ -430,7 +432,7 @@
     const doc = w && w.document;
     const store = createPaymentsStore({ get: env.get, append: env.append, storage: env.storage });
     const customers = createRowStore({ get: env.get, append: env.append, storage: env.storage }, CUST_TAB);
-    let cycle = null, sheet = null, shown = []; // the last sheet read, and the unsent rows shown with it (readTransactionsLocal)
+    let cycle = null, sheet = null, shown = [], yKnownNow = true; // the last sheet read, and the unsent rows shown with it (readTransactionsLocal)
     function note(text) {
       const el = doc && doc.getElementById('hostNote');
       if (el) { el.textContent = text; el.hidden = !text; }
@@ -463,16 +465,23 @@
       environment: env.kind,
       place: env.place,
       honoluluToday: () => L.honoluluToday(),
-      // An app older than the PO column refuses A:X; fall back to A:W so History still opens (PO # blank) until it updates.
+      // An app older than the Received by column refuses A:Y, one older than the PO column refuses A:X too: fall back A:Y -> A:X -> A:W so
+      // History still opens (saved name, then PO #, blank) until it updates. Only the app's "not allowed" answer falls back; any other
+      // error (a network blip) stops the read, so a name is never silently dropped. yKnown() says whether the last read could see column Y.
       async readTransactions() {
         await signedIn();
-        let rows;
-        try { rows = await guard(env.get(TXN_RANGE)); } catch (e) { if (e && e.code === 'not_signed_in') throw e; rows = await guard(env.get('Transactions!A:W')); }
+        let rows, known = true;
+        for (const range of [TXN_RANGE, ...TXN_RANGES_OLD]) {
+          try { rows = await guard(env.get(range)); break; }
+          catch (e) { if (e && e.code === 'not_signed_in') throw e; if (!/not allowed/i.test(s(e && e.message)) || range === TXN_RANGES_OLD[1]) throw e; known = false; }
+        }
         if (!Array.isArray(rows)) return rows;
+        yKnownNow = known;
         sheet = rows;
         shown = unsentRows(env.storage, rows);
         return rows.concat(shown);
       },
+      yKnown: () => yKnownNow, // false when the last read came through A:X / A:W: a saved Received by cannot be seen
       // The same rows with no Sheets call: the sheet rows of the last readTransactions() plus this computer's documents as they are now
       // (History runs it when the register's storage changes). A document that was shown unsent and has since been pushed stays until
       // the next full read brings the sheet's copy, so it never blinks out. null before the first read.
