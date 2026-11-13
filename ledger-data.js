@@ -77,6 +77,7 @@
   // Request -> renderer facts: the same mapping as POSDesktop/src/document-print.js factsFromRequest (that file is Node-only).
   // test_ledger_page.cjs proves documentPages() equals DocumentPrintService.build() for the same request.
   function factsFromRequest(q) {
+    const renderer = typeof module === 'object' && module.exports ? require('./document-renderer') : globalThis.MPEDocumentRenderer;
     const day = honoluluToday(q.completionAt);
     const c = q.customer || {};
     const customer = { name: c.name || '', company: c.company || '', phone: c.phone || '', email: c.email || '' };
@@ -94,7 +95,7 @@
     });
     const t = q.totals;
     return {
-      issued: { document_type: q.type, document_number: q.number, document_date: day, due_date: q.dueDate || null },
+      issued: { document_type: q.type, document_number: q.number, document_date: day, document_time: renderer.documentTime(q), due_date: q.dueDate || null },
       customer, lines,
       totals: { subtotal: t.subtotal, card_fee: t.card_fee == null ? '0.00' : t.card_fee, tax: t.tax, rounding: t.rounding == null ? '0.00' : t.rounding, total: t.total },
       message: '',

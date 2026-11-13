@@ -95,6 +95,17 @@ function longDate(value) {
   const [year, month, day] = isoParts(value);
   return `${MONTHS[month - 1]} ${day}, ${year}`;
 }
+// Explicit saved times (History) may be blank; never turn a date-only record into noon.
+function documentTime(request) {
+  if (request.documentTime !== undefined) {
+    const m = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP]M)?$/i.exec(String(request.documentTime).trim());
+    if (!m || +m[2] > 59 || +m[1] > (m[3] ? 12 : 23) || (m[3] && +m[1] < 1)) return '';
+    const hour = m[3] ? +m[1] % 12 + (/p/i.test(m[3]) ? 12 : 0) : +m[1];
+    return `${hour % 12 || 12}:${m[2]} ${hour < 12 ? 'AM' : 'PM'}`;
+  }
+  const d = new Date(request.completionAt);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('en-US', {timeZone:'Pacific/Honolulu', hour:'numeric', minute:'2-digit'});
+}
 function plusDays(value, days) {
   const [year, month, day] = isoParts(value);
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
@@ -332,7 +343,7 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
   return fill('counter.page', {
     ...page,
     contact: address + (address && contact ? piece('sep.br') : '') + contactHtml,
-    logo: piece('logo'), date: escape(longDate(day)),
+    logo: piece('logo'), date: escape([longDate(day), issued.document_time].filter(Boolean).join(' · ')),
     numbered: kind === 'receipt' ? fill('counter.no', { number: escape(number) }) : '',
     info: kind === 'receipt' ? '' : fill('counter.info', { content: infoBlocks }),
     ea: multi ? piece('counter.ea') : '',
@@ -361,6 +372,7 @@ return {
   cleanSettings,
   copiesFor,
   longDate,
+  documentTime,
   parseTemplate,
   renderOfficialHtml,
   strictSettings,

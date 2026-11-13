@@ -338,7 +338,7 @@
       ? { billing_address: { lines: r.addrLines || (r.street ? [r.street] : []), city: r.city, region: regionOf(r), postal_code: r.zip, country: '' } }
       : { address: r.addr || '' };
     return {
-      po: r.kind === 'invoice' ? s(r.po) : '', type: r.kind, number: r.number || r.txnId, completionAt: completion.toISOString(),
+      po: r.kind === 'invoice' ? s(r.po) : '', type: r.kind, number: r.number || r.txnId, completionAt: completion.toISOString(), documentTime: s(r.time),
       ...(r.kind === 'invoice' && r.paid > 0 ? { paid: m2(r.paid) } : {}), // part or full payments print as Amount paid / Balance due
       ...(r.kind === 'quote' && r.deposit > 0 ? { deposit: m2(r.deposit) } : {}), // Subtotal, tax, Deposit paid -$X, Total (what is left)
       dueDate: r.kind === 'invoice' ? (r.dueDate || null) : null,

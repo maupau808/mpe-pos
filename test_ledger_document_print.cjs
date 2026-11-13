@@ -159,3 +159,27 @@ test('the Print button, Manual print, Save PDF and Email try the template first 
   assert.match(tools, /if \(!window\.mpeDesktop\) setTimeout\(/, 'the website fetches the template shortly after load, not at Print');
   assert.doesNotMatch(auto.slice(0, auto.indexOf('mpeDesktop.printDocument')), /documentPagesFor|templatePdfBlob|readTemplate/);
 });
+
+test('the shared printed heading uses the saved Hawaii time, including register and History copies', () => {
+  const L = require('./ledger-data.js');
+  const P = require('./ledger.js');
+  const R = require('./document-renderer.js');
+  const template = R.parseTemplate(fs.readFileSync(path.join(__dirname,'document-template.html'),'utf8'));
+  const order = {customer:{name:'TEST CUSTOMER'},toggles:{},items:[{pn:'TEST',desc:'Test part',qty:1,ea:10,sub:10,sn:[]}]};
+  const request = build('invoice',{order,number:'L21001',date:'2026-11-13T05:03:00Z'});
+  const desktop = factsFromRequest(request), website = L.factsFromRequest(request);
+  assert.equal(desktop.issued.document_date,'2026-11-12');
+  assert.equal(desktop.issued.document_time,'7:03 PM');
+  assert.deepEqual(JSON.parse(JSON.stringify(website)),JSON.parse(JSON.stringify(desktop)));
+  for(const type of ['invoice','receipt','quote']) {
+    const rec={kind:type,date:'2026-11-12',time:'19:03:00',number:'L21001',name:'TEST CUSTOMER',items:[{pn:'TEST',desc:'Test part',qty:1,ea:10,sub:10,serials:[],off:0}],total:10.47};
+    const q=P.requestFromRecord(rec);
+    const pages=L.documentPages(q,R,template,R.DEFAULT_SETTINGS);
+    assert(pages.length>0);
+    for(const page of pages) assert.match(page.html || page, /class="date">November 12, 2026 · 7:03 PM<\/span>/);
+    assert.equal(factsFromRequest(q).issued.document_time,'7:03 PM');
+    rec.time='';const noTime=P.requestFromRecord(rec);
+    assert.equal(factsFromRequest(noTime).issued.document_time,'');
+    for(const page of L.documentPages(noTime,R,template,R.DEFAULT_SETTINGS)) assert.doesNotMatch(page.html || page,/12:00 PM/);
+  }
+});
