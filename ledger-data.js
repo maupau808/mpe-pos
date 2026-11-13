@@ -67,7 +67,7 @@
   const METHODS = Object.freeze(['cash', 'check', 'card_terminal', 'helcim_card', 'helcim_ach', 'credit_given', 'credit_used']); // helcim_*: payments Helcim reported (helcimPaymentRows); credit_*: store credit
   // Labels for the two store-credit methods (ledger.js owns the rest in its METHOD_LABEL). credit_given on a sale = an overpayment moved off it.
   const CREDIT_LABELS = Object.freeze({ credit_given: 'Moved to store credit', credit_used: 'Store credit' });
-  const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs', email_sent: 'sent', paylink: 'paylinks', due: 'dues', note: 'orderNotes' }); // paylink: note = url|helcimInvoiceId (parseMarks.paylinks)
+  const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs', email_sent: 'sent', paylink: 'paylinks', due: 'dues', date: 'dates', note: 'orderNotes' }); // paylink: note = url|helcimInvoiceId (parseMarks.paylinks)
   const LOGGED = new Set(['email_draft', 'email_sent', 'print', 'pdf', 'pdf_open', 'paylink']); // each one shows in History's timeline
   const PAYMENT_COLUMNS = Object.freeze(['payment_id', 'invoice_number', 'txnId', 'date', 'amount', 'method',
     'note', 'place', 'recorded_at', 'voids', 'customer']); // customer (K): store credit's owner (QuickBooks id, else register key); blank on every other row
@@ -325,6 +325,9 @@
   const parsePayments = rows => paymentRows(rows).filter(o => !MARKS[o.method]);
   // A mark: kind 'email_draft', 'edit', 'cancel', 'uncancel', 'print', 'pdf' (saved/downloaded), 'pdf_open' or 'due', amount 0, never a payment.
   // due: note = the new due date YYYY-MM-DD (a real day) or '' for automatic; voids (J) = 'due' so an older History page never reads it as a payment.
+  // A sale's date (History's Change date): a real day from DATE_MIN to today. Used by buildMarkRow, derive and the editor.
+  const DATE_MIN = '2026-01-01';
+  const dateOk = (d, today) => validDay(d) && d >= DATE_MIN && d <= today;
   const validDay = t => /^\d{4}-\d{2}-\d{2}$/.test(t) && addDays(t, 0) === t;
   // An order note as it is saved and read: \r\n and \r become \n, a tab becomes one space, other control characters and half emoji go, trimmed, 2000 characters at most.
   // The row store's read-back compares cells exactly, so the text written must be the text the sheet gives back.
@@ -332,16 +335,16 @@
     .replace(/[\u0000-\u0009\u000B-\u001F\u007F]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '').trim()).slice(0, 2000).join('').trim();
   function buildMarkRow(m, now) {
     if (!MARKS[m.kind]) throw new Error('mark must be email_draft, email_sent, edit, cancel, uncancel, print, pdf, pdf_open, paylink, due or note');
-    if (m.kind === 'due' && s(m.note) && !validDay(s(m.note))) throw new Error('due date must be YYYY-MM-DD or empty');
+    if ((m.kind === 'due' || m.kind === 'date') && s(m.note) && !validDay(s(m.note))) throw new Error((m.kind === 'due' ? 'due date' : 'date') + ' must be YYYY-MM-DD or empty'); // both kinds: note = a real day or ''
     const at = (now ? new Date(now) : new Date()).toISOString();
     return [m.id ? s(m.id) : 'mark_' + Date.parse(at).toString(36) + Math.random().toString(36).slice(2, 8), s(m.invoice_number), s(m.txnId),
-      honoluluToday(at), '0.00', m.kind, m.kind === 'note' ? orderNoteText(m.note) : s(m.note), s(m.place), at, m.kind === 'due' || m.kind === 'note' ? m.kind : '', ''];
+      honoluluToday(at), '0.00', m.kind, m.kind === 'note' ? orderNoteText(m.note) : s(m.note), s(m.place), at, m.kind === 'due' || m.kind === 'date' || m.kind === 'note' ? m.kind : '', ''];
   }
   const BEFORE = 'before:';
   // The note for an edit mark: the sale's Transactions rows before the edit. Over Sheets' cell limit: no copy (the edit still saves).
   const beforeNote = rows => { const t = BEFORE + JSON.stringify(rows || []); return t.length <= 45000 ? t : ''; };
   function parseMarks(rows) {
-    const out = { dues: {}, orderNotes: {}, drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {}, editLog: {} };
+    const out = { dues: {}, dates: {}, orderNotes: {}, drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {}, editLog: {} };
     for (const o of paymentRows(rows)) {
       // Every edit mark with its time and the rows before it (null when it has no readable copy): the pay-link check (payLinkStale).
       if (o.method === 'edit' && o.txnId) {
@@ -361,6 +364,11 @@
       if (o.method === 'due') { // newest recorded_at wins; a later row wins a tie; '' = automatic; any other note is ignored
         const prev = out.dues[o.txnId];
         if (o.txnId && (!o.note || validDay(o.note)) && !(prev && prev.at > o.recorded_at)) out.dues[o.txnId] = { date: o.note, at: o.recorded_at };
+        continue;
+      }
+      if (o.method === 'date') { // the sale's date: newest recorded_at wins; a later row wins a tie; '' = the sheet's own date; a note that is not a real day is ignored
+        const prev = out.dates[o.txnId];
+        if (o.txnId && (!o.note || validDay(o.note)) && !(prev && prev.at > o.recorded_at)) out.dates[o.txnId] = { date: o.note, at: o.recorded_at };
         continue;
       }
       if (o.method === 'note') { // order note: newest recorded_at wins; a later row wins a tie; '' = cleared
@@ -421,7 +429,8 @@
 
   // ---- Status ----
   const newestFirst = (a, b) => b.recorded_at.localeCompare(a.recorded_at) || b.payment_id.localeCompare(a.payment_id);
-  function derive(txns, payments, today, drafts, cancels, editLog, dues, notes) { // cancels, editLog, dues, notes: parseMarks(...).cancels / .editLog / .dues / .orderNotes
+  const kindOf = t => (t.docType === 'invoice' || t.docType === 'quote' ? t.docType : 'receipt');
+  function derive(txns, payments, today, drafts, cancels, editLog, dues, notes, dates) { // cancels, editLog, dues, notes, dates: parseMarks(...).cancels / .editLog / .dues / .orderNotes / .dates
     today = todayIso(today);
     payments = payments || [];
     const live = livePayments(payments);
@@ -448,7 +457,7 @@
       return out;
     };
     return txns.map(t => {
-      const kind = t.docType === 'invoice' || t.docType === 'quote' ? t.docType : 'receipt';
+      const kind = kindOf(t);
       const r = { ...t, kind, draftMade: draftSet.has(t.txnId) || (!!t.number && draftSet.has(t.number)) };
       r.orderNote = noteOf(t.txnId); r.orderNoteFrom = null; // shop only: never copied into a print, email or sale request
       if (r.orderNote) r._hay = s(t._hay) + ' ' + r.orderNote.toLowerCase();
@@ -456,6 +465,12 @@
         if (noteOf(c.txnId)) { r.orderNoteFrom = { number: c.number || c.txnId, text: noteOf(c.txnId) }; break; }
       }
       r.draftText = r.draftMade ? 'Draft made' : '';
+      // The sale's date mark (receipts and invoices only): the date moves everywhere (printed date, lists, owed, due + 30); the time of day stays.
+      r.sheetDate = t.date; r.dateIsCustom = false;
+      const dm = (kindOf(t) === 'invoice' || kindOf(t) === 'receipt') && t.date && dates && dates[t.txnId] ? dates[t.txnId].date : '';
+      if (dm && dateOk(dm, today) && dm !== t.date) { r.date = dm; r.dateIsCustom = true;
+        r._hay = s(r._hay || t._hay) + ' ' + dm + ' ' + dm.slice(5, 7).replace(/^0/, '') + '/' + dm.slice(8, 10).replace(/^0/, '') + '/' + dm.slice(0, 4); // the new date is searchable too
+      }
       const gone = cancels && cancels[t.txnId] && cancels[t.txnId].cancelled ? cancels[t.txnId] : null;
       const mine = (ids, nums) => live.filter(p => ids.has(p.txnId) || (!p.txnId && nums.has(p.invoice_number)));
       if (kind === 'quote') { // a deposit on a quote (Trevor, Nov 1): payment rows on the quote; the sale made from it counts them
@@ -491,7 +506,7 @@
       r.paidDate = latest ? latest.date : '';
       r.paidMethod = latest ? latest.method : '';
       r.balance = Math.max(0, (cents(t.total) - sum) / 100);
-      r.dueAuto = t.date ? addDays(t.date, NET_DAYS) : '';
+      r.dueAuto = r.date ? addDays(r.date, NET_DAYS) : '';
       const custom = dues && dues[t.txnId] ? dues[t.txnId].date : '';
       r.dueIsCustom = !!custom; r.dueDate = custom || r.dueAuto;
       const next = replacedBy.get(t.txnId);
@@ -499,7 +514,7 @@
       if (gone) { r.state = 'cancelled'; r.cancelledAt = gone.date; r.cancelledTs = gone.at; r.balance = 0; return r; }
       if (r.balance <= 0) { r.state = 'paid'; return r; }
       // Trevor: money owed on invoices dated before 2026 is never tallied or flagged; it shows only on that invoice.
-      if (t.date && t.date < COUNT_FROM) { r.state = 'old'; return r; }
+      if (r.date && r.date < COUNT_FROM) { r.state = 'old'; return r; }
       const left = r.dueDate ? dayNum(r.dueDate) - dayNum(today) : Infinity;
       r.daysLate = left < 0 ? -left : 0;
       r.state = left < 0 ? 'overdue' : left <= SOON_DAYS ? 'dueSoon' : 'unpaid';
@@ -833,7 +848,7 @@
     let rows = txnRows, states = null;
     if (fn) { const d = await fn(txnRows); rows = d.rows; states = d.states; }
     const marks = parseMarks(paymentRows);
-    const records = derive(parseTransactions(rows, states, { yKnown: yKnown !== false }), parsePayments(paymentRows), today, drafts, marks.cancels, marks.editLog, marks.dues, marks.orderNotes);
+    const records = derive(parseTransactions(rows, states, { yKnown: yKnown !== false }), parsePayments(paymentRows), today, drafts, marks.cancels, marks.editLog, marks.dues, marks.orderNotes, marks.dates);
     const model = {
       records,
       list: (name, query) => search(filter(model.records, name), query),
@@ -922,6 +937,6 @@
     const txn = (after[0].rows || []).find(row => s(row && row[0]).toUpperCase() === 'TXN');
     return !txn || cents(money(txn[12])) !== cents(r.total);
   }
-  return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionRowsMatch, transactionBlockEnd, transactionRowsForOrder, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, orderNoteText, buildPaymentRow, helcimPaymentRows,
+  return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionRowsMatch, transactionBlockEnd, transactionRowsForOrder, DATE_MIN, dateOk, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, orderNoteText, buildPaymentRow, helcimPaymentRows,
     buildVoidRow, beforeNote, undoRows, honoluluToday, factsFromRequest, documentPages, storeCreditNote, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, MEMO_NONE, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });

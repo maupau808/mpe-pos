@@ -146,7 +146,7 @@
 
   // ---- Ledger record -> the parsed shape History used (POS/index.html _parseTxnRows), for fillTxnIntoPOS ----
   function toHistory(r) {
-    const d = s(r.date), customer = [r.name, r.company, r.street, r.city, r.region, r.zip].map(s);
+    const d = s(r.sheetDate || r.date), customer = [r.name, r.company, r.street, r.city, r.region, r.zip].map(s);
     return {
       txnId: s(r.txnId), date: /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(5, 7)}/${d.slice(8, 10)}/${d.slice(0, 4)}` : d,
       time: s(r.time), name: [s(r.name), s(r.company)].filter(Boolean).join(' / '), phone: s(r.phone), email: s(r.email),

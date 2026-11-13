@@ -93,7 +93,7 @@ test('no Payments tab: the page says so, everything else loads, Mark paid keeps 
   const host = K.createHost(env, { document: { getElementById: id => (id === 'hostNote' ? note : null) } });
   const [pays, marks] = await Promise.all([host.readPayments(), host.readMarks()]);
   assert.deepEqual(pays, [L.PAYMENT_COLUMNS.slice()]);
-  assert.deepEqual(marks, { dues: {}, orderNotes: {}, drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {}, editLog: {} });
+  assert.deepEqual(marks, { dues: {}, dates: {}, orderNotes: {}, drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {}, editLog: {} });
   assert.equal(note.textContent, 'Payments tab not set up yet');
   assert.equal(note.hidden, false);
   await assert.rejects(host.appendPaymentRows([pay('pay_e')]), e => e.code === 'payments_missing');
@@ -109,7 +109,7 @@ test('marks: email_draft and edit rows never count as payments; readMarks return
   assert.throws(() => L.buildMarkRow({ kind: 'cash', txnId: 'T-1' }));
   const rows = [L.PAYMENT_COLUMNS.slice(), draft, edit];
   assert.deepEqual(L.parsePayments(rows), []);
-  assert.deepEqual(L.parseMarks(rows), { dues: {}, orderNotes: {}, drafts: { 'T-1': '2026-10-20' }, edits: { 'T-1': '2026-10-25' }, cancels: {}, before: {}, prints: {}, pdfs: {}, sent: {}, paylinks: {}, editLog: { 'T-1': [{ at: '2026-10-25T20:00:00.000Z', date: '2026-10-25', rows: null }] },
+  assert.deepEqual(L.parseMarks(rows), { dues: {}, dates: {}, orderNotes: {}, drafts: { 'T-1': '2026-10-20' }, edits: { 'T-1': '2026-10-25' }, cancels: {}, before: {}, prints: {}, pdfs: {}, sent: {}, paylinks: {}, editLog: { 'T-1': [{ at: '2026-10-25T20:00:00.000Z', date: '2026-10-25', rows: null }] },
     log: { 'T-1': [{ kind: 'email_draft', date: '2026-10-20', at: '2026-10-20T20:00:00.000Z', place: '9', note: '' }] } });
   // Prints, PDFs and PDF opens: never payments, one timeline entry each, oldest stays first.
   const out = [L.buildMarkRow({ kind: 'print', txnId: 'T-1', invoice_number: 'L21001', place: '2' }, Date.parse('2026-10-21T20:00:00Z')),
@@ -226,6 +226,10 @@ test('a Ledger record becomes the History shape the register fills from; both br
   assert.equal(h.docNumber, 'L21007');
   assert.match(h.date, /^\d{2}\/\d{2}\/\d{4}$/);
   assert.equal(h.name, 'Kainoa Akana / Akana Landscaping LLC');
+  // A sale whose date History moved still goes to the register with the SHEET's date: Edit rewrites column C from it, and a moved date there
+  // would break Unit Stock's clock check and the customer-update hash (the date mark is the only place the new date lives).
+  const moved = K.toHistory({ ...r, date: '2026-11-10', sheetDate: r.date, dateIsCustom: true });
+  assert.equal(moved.date, h.date, 'the register gets the sheet date, not the moved one');
   assert.deepEqual(h.customer, ['Kainoa Akana', 'Akana Landscaping LLC', 'PO Box 1182', 'Makawao', 'HI', '96768']);
   assert.deepEqual(h.items[0], { pn: 'FS131', desc: 'Stihl FS 131 trimmer', qty: '1', ea: '499.95', sub: '499.95', sn: '520114873' });
   assert.ok(!('paymentsLive' in h) && !('_hay' in h), 'only the fields the register reads');

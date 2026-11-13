@@ -328,6 +328,8 @@
     if (r.state === 'void' && !isQbo(r)) { const n = (records || []).find(x => (x.number || x.txnId) === r.replacedBy); ev.push({ t: `Corrected, replaced by ${r.replacedBy}`, d: n ? n.date : '', at: n ? placeOf(n.number) : '' }); }
     const due = r.dueIsCustom && marks && marks.dues && marks.dues[r.txnId];
     if (due && due.date) ev.push({ t: `Due date changed to ${fmtD(due.date)}`, d: due.at ? L.honoluluToday(due.at) : '', at: timeOf(due.at) });
+    const dm = r.dateIsCustom && marks && marks.dates && marks.dates[r.txnId];
+    if (dm && dm.date) ev.push({ t: `Date changed to ${fmtD(dm.date)} (was ${fmtD(r.sheetDate)})`, d: dm.at ? L.honoluluToday(dm.at) : '', at: timeOf(dm.at) });
     if (r.state === 'cancelled') ev.push({ t: 'Cancelled', d: r.cancelledAt, at: '' });
     if (r.convertedTo) { const n = (records || []).find(x => (x.number || x.txnId) === r.convertedTo); ev.push({ t: `Turned into sale ${r.convertedTo}`, d: n ? n.date : '', at: n ? placeOf(n.number) : '' }); }
     return ev.sort((a, b) => (a.d || '').localeCompare(b.d || ''));
@@ -767,13 +769,13 @@
   const customerRef = (c, f) => c.qboId || (c.id.startsWith('k:') && L.customerKey(f.phone, f.company, f.name) !== c.id.slice(2) ? c.id : '');
   // Top of the panel, right under the doc line (Trevor, Nov 13): the big amount (left to pay on an owing invoice, else the total) and one
   // dark status line (red dot only when overdue), then on a register invoice the Change due date control (due: dueEditHtml's editor state).
-  function railTopHtml(r, today, due) {
+  function railTopHtml(r, today, due, dateEd) {
     const t = statusOf(r, today), owing = r.kind === 'invoice' && UNPAID.has(r.state), gone = r.state === 'void' || r.state === 'cancelled';
     const unit = owing ? 'left to pay' : r.kind === 'invoice' && r.state === 'paid' ? 'paid' : `${KIND_LABEL[r.kind].toLowerCase()} total`;
     const n = r.daysLate, status = r.state === 'overdue' ? `${n} day${n === 1 ? '' : 's'} overdue · due ${fmtD(r.dueDate)}`
       : r.state === 'dueSoon' ? `${t.text} · ${fmtD(r.dueDate)}` : r.state === 'unpaid' ? `${t.text} · ${fmtD(r.dueDate)}` : s(t.pill).replace(/^Quote · (.)/, (_, c) => c.toUpperCase());
     return `<div class="money"><div class="amt num${gone ? ' gone' : ''}">${money(owing ? r.balance : r.total)}<span>${esc(unit)}</span></div>`
-      + (status ? `<div class="od">${r.state === 'overdue' ? '<i aria-hidden="true"></i>' : ''}${esc(status)}</div>` : '') + (canEditDue(r) ? dueEditHtml(r, due) : '') + '</div>';
+      + (status ? `<div class="od">${r.state === 'overdue' ? '<i aria-hidden="true"></i>' : ''}${esc(status)}</div>` : '') + (canEditDue(r) ? dueEditHtml(r, due) : '') + (canEditDate(r) ? dateEditHtml(r, dateEd, today) : '') + '</div>';
   }
   // The rest of the money, below the customer card: the total and each payment, deposit, store credit line, then notes
   // ([{ text, tone: ''|'warn'|'late'|'ok' }], the quiet status lines). Nothing to show: ''.
@@ -803,6 +805,30 @@
       + `<button type="button" class="btn quiet sm" data-act="dueCancel"${busy}>Cancel</button></div>`
       + (ed.err ? `<div class="err" id="dueErr" role="alert">${esc(ed.err)}</div>` : '') + '</div>';
   }
+  // Change date (Trevor, Nov 13: "set date when something was picked up"): receipts and invoices made on the register that are not void or
+  // cancelled. One 'date' mark on the Payments tab; the sheet's date cell and the txn id are never touched. The sale moves to that day
+  // everywhere (list, print, owed, the automatic due date = date + 30) and Unit Stock judges it at that day. ed: { txnId, value, err } while open.
+  const canEditDate = r => (r.kind === 'invoice' || r.kind === 'receipt') && !isQbo(r) && !isGone(r);
+  function dateEditHtml(r, ed, today) {
+    if (!ed || ed.txnId !== r.txnId) return '<button type="button" class="btn quiet due-ch" data-act="dateOpen">Change date</button>';
+    const busy = ed.busy ? ' disabled' : '';
+    return `<div class="due-ed"><label for="dateIn">Sale date</label><input type="date" id="dateIn" value="${esc(ed.value)}" min="${L.DATE_MIN}" max="${esc(today || '')}"${busy}${ed.err ? ' aria-invalid="true" aria-describedby="dateErr"' : ''}>`
+      + `<div class="due-h">Moves this sale to that day everywhere, Unit Stock too.${r.kind === 'invoice' ? ' The due date follows unless you set it by hand.' : ''}</div>`
+      + `<div class="due-f"><button type="button" class="btn primary sm" data-act="dateSave"${busy}>${ed.busy ? 'Saving…' : 'Save'}</button>`
+      + (r.dateIsCustom ? `<button type="button" class="btn sm" data-act="dateAuto"${busy}>Back to ${esc(fmtD(r.sheetDate))}</button>` : '')
+      + `<button type="button" class="btn quiet sm" data-act="dateCancel"${busy}>Cancel</button></div>`
+      + (ed.err ? `<div class="err" id="dateErr" role="alert">${esc(ed.err)}</div>` : '') + '</div>';
+  }
+  // The typed sale date: { date } to save ('' = back to the sheet's own date), { same: true } (nothing written) or { error } to show.
+  function checkDate(r, text, today) {
+    const v = s(text);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || addDays(v, 0) !== v) return { error: 'Pick a real date.' };
+    if (v < L.DATE_MIN) return { error: `The date cannot be before ${fmtD(L.DATE_MIN)}.` };
+    if (v > today) return { error: 'The date cannot be in the future.' };
+    if (v === r.date) return { same: true };
+    return { date: v === r.sheetDate ? '' : v };
+  }
+  const dateRows = (r, date, place, now) => [L.buildMarkRow({ kind: 'date', invoice_number: r.number, txnId: r.txnId, note: date, place: place || '' }, now)];
   const dueMax = date => (date ? String(Number(date.slice(0, 4)) + 5) + date.slice(4) : '');
   // The typed due date: { date } to save, { same: true } (unchanged: nothing written) or { error } to show.
   function checkDue(r, text) {
@@ -919,7 +945,7 @@
     const live = L.livePayments(L.parsePayments(payRows));
     return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
   }
-  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, driveNote, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, canEditDate, dateEditHtml, checkDate, dateRows, driveNote, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest: L.factsFromRequest, documentPages: L.documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
@@ -1298,11 +1324,13 @@
         r.kind === 'invoice' && staleLink(r) && { text: 'Pay link needs a new link: the total changed', tone: 'warn' },
         look && { text: look === STALE_LOOK ? STALE_LOOK : 'Needs a look: ' + look, tone: 'late' }].filter(Boolean);
       if (st.dueEdit && st.dueEdit.txnId !== r.txnId) st.dueEdit = null; // another record: the due date box closes
+      if (st.dateEdit && st.dateEdit.txnId !== r.txnId) st.dateEdit = null;
+      const ded = st.dateEdit, dtyping = doc.activeElement && doc.activeElement.id === 'dateIn';
       const ed = st.dueEdit, typing = doc.activeElement && doc.activeElement.id === 'dueIn';
       const ned = st.noteEdits[r.txnId] || null, nta = doc.activeElement && doc.activeElement.id === 'oNoteText' ? doc.activeElement : null; // a redraw keeps the caret
       const ncaret = nta ? [nta.selectionStart, nta.selectionEnd] : null;
       // Total and due date first (Trevor, Nov 13), then the customer card, the other money lines and notes, the buttons, the timeline.
-      $('rail').innerHTML = docLineHtml(r) + railTopHtml(r, st.today, ed) + custCardHtml(r, key ? creditOf(key) : 0) + railMoneyHtml(r, st.today, notes)
+      $('rail').innerHTML = docLineHtml(r) + railTopHtml(r, st.today, ed, ded) + custCardHtml(r, key ? creditOf(key) : 0) + railMoneyHtml(r, st.today, notes)
         + `<div class="acts">${railActsHtml(acts, st.busy)}${shop() ? reviewSwitchHtml(reviewOn(), shop().status(), root.MPEShopSettings.OLD_APP_TEXT) : ''}${isQbo(r) ? qboRefreshHtml(!!(host() && host().refreshQbo), st.refreshing) : ''}</div>` + orderNoteHtml(r, ned) + timelineHtml(historyFor(r, st.payRows, st.marks, st.records));
       const nt = $('oNoteText');
       if (nt && ned) { // the typed text exactly (the HTML copy loses a leading new line); the caret goes to the end when the box opens or a save is refused
@@ -1313,6 +1341,10 @@
       if (noteBtn) { st.noteBack = false; noteBtn.focus(); }
       const di = $('dueIn');
       if (di && ed && (ed.focus || typing)) { ed.focus = false; di.focus(); }
+      const dni = $('dateIn');
+      if (dni && ded && (ded.focus || dtyping)) { ded.focus = false; dni.focus(); }
+      const dateBtn = st.dateBack && !ded && $('rail').querySelector('[data-act="dateOpen"]');
+      if (dateBtn) { st.dateBack = false; dateBtn.focus(); }
       const openBtn = st.dueBack && !ed && $('rail').querySelector('[data-act="dueOpen"]'); // the editor just closed: focus returns to its button
       if (openBtn) { st.dueBack = false; openBtn.focus(); }
     }
@@ -1321,10 +1353,41 @@
     function dueCancel() { if (st.dueEdit && !st.dueEdit.busy) { st.dueEdit = null; st.dueBack = true; draw(); } }
     // Replace the invoice's Drive PDF with the same document and the new due date. Only an app that can (host.saveDrivePdf, app 0.3.80+)
     // and only a PDF that already exists; a failure never undoes the saved date. Returns the sentence to add ('' = nothing to say).
-    async function driveCopy(r, due) {
+    async function driveCopy(r, patch) {
       const h = host();
-      if (typeof h.saveDrivePdf !== 'function') return '';
-      try { return driveNote(await h.saveDrivePdf(requestFromRecord({ ...r, dueDate: due }))); } catch (_) { return driveNote(null); }
+      if (typeof h.saveDrivePdf !== 'function' || r.kind !== 'invoice') return '';
+      try { return driveNote(await h.saveDrivePdf(requestFromRecord({ ...r, ...patch }))); } catch (_) { return driveNote(null); }
+    }
+    // A register Edit re-files the invoice's Drive PDF with the SHEET's date and date + 30. After it, a record whose date or due date History
+    // changed gets its own PDF back (the saved sale was just reloaded). Nothing for other records or an Edit that did not save.
+    async function refileDrive(r, res) {
+      if (r.kind !== 'invoice' || !(r.dateIsCustom || r.dueIsCustom) || !(res && res.ok && !res.pending)) return;
+      const fresh = recById(r.txnId);
+      if (fresh && (fresh.dateIsCustom || fresh.dueIsCustom)) { const note = await driveCopy(fresh, {}); if (/not updated/.test(note)) toast(`Saved.${note}`); }
+    }
+    // Change date: open, save (one 'date' mark, then reload; the invoice's Drive PDF is replaced with the new date and due date), back to
+    // the sheet's date, cancel. Nothing unchanged is written.
+    function dateOpen(r) { if (canEditDate(r)) { st.dateEdit = { txnId: r.txnId, value: r.date || '', err: '', focus: true }; draw(); } }
+    function dateCancel() { if (st.dateEdit && !st.dateEdit.busy) { st.dateEdit = null; st.dateBack = true; draw(); } }
+    function dateSave(r, auto) {
+      const ed = st.dateEdit;
+      if (!ed || ed.txnId !== r.txnId) return;
+      if (ed.busy || st.busy) return toast('Wait for the current action to finish.');
+      const c = auto ? { date: '' } : checkDate(r, ($('dateIn') || {}).value ?? ed.value, st.today);
+      if (c.error) { ed.err = c.error; ed.focus = true; return draw(); }
+      if (c.same) { st.dateEdit = null; st.dateBack = true; return draw(); }
+      ed.busy = true;
+      run('date', async () => {
+        let kept = false; // as dueSave: only a row the host marked `queued` was saved here
+        try { await host().appendPaymentRows(dateRows(r, c.date, host().place, Date.now())); }
+        catch (e) { if (e && e.queued) kept = true; else throw e; }
+        finally { ed.busy = false; }
+        st.dateEdit = null; st.dateBack = true;
+        const day = c.date || r.sheetDate;
+        const drive = await driveCopy(r, { date: day, dueDate: r.dueIsCustom ? r.dueDate : addDays(day, L.NET_DAYS) });
+        if (kept) return SAVED_HERE + drive;
+        return (c.date ? `Date changed to ${fmtD(day)}.` : `Date back to ${fmtD(day)}.`) + drive;
+      });
     }
     function dueSave(r, auto) {
       const ed = st.dueEdit;
@@ -1340,7 +1403,7 @@
         catch (e) { if (e && e.queued) kept = true; else throw e; }
         finally { ed.busy = false; }
         st.dueEdit = null; st.dueBack = true;
-        const drive = await driveCopy(r, c.date || r.dueAuto); // the Drive PDF shows the new date too (Trevor, Nov 13)
+        const drive = await driveCopy(r, { dueDate: c.date || r.dueAuto }); // the Drive PDF shows the new date too (Trevor, Nov 13)
         if (kept) return SAVED_HERE + drive;
         return (auto ? `Due date back to 30 days: ${fmtD(r.dueAuto)}.` : `Due date changed to ${fmtD(c.date)}.`) + drive;
       });
@@ -1586,9 +1649,9 @@
       const f = st.edit;
       st.edit = null;
       ui.sel = r.txnId;
-      if (followUpRuns(f, res)) return saveCustomerAfter(r, res, f);
+      if (followUpRuns(f, res)) return saveCustomerAfter(r, res, f).then(() => refileDrive(r, res));
       toast(f && f.followUp && res && res.ok && res.pending ? `${editOutcomeText(r, res)} The customer details were not saved yet. Open Edit again once it is shared.` : editOutcomeText(r, res));
-      load();
+      return load().then(() => refileDrive(r, res));
     }
     function drawEdit() {
       const f = st.edit, on = !!f;
@@ -1653,6 +1716,10 @@
       if (k === 'retype') return typeMenu(r, el);
       if (k === 'cancel') return confirmCancel(r);
       if (k === 'uncancel') return setCancel(r, 'uncancel');
+      if (k === 'dateOpen') return dateOpen(r);
+      if (k === 'dateCancel') return dateCancel();
+      if (k === 'dateSave') return dateSave(r, false);
+      if (k === 'dateAuto') return dateSave(r, true);
       if (k === 'dueOpen') return dueOpen(r);
       if (k === 'dueCancel') return dueCancel();
       if (k === 'dueSave') return dueSave(r, false);
@@ -1852,7 +1919,7 @@
     const rail = $('rail');
     // The panel's customer fields during an edit: typing goes to st.edit.cust; the panel's Save and Cancel follow it.
     // The due date box: what is typed is kept (a background redraw keeps it); Enter saves, Escape cancels.
-    rail.addEventListener('input', e => { if (e.target.id === 'dueIn' && st.dueEdit) st.dueEdit.value = e.target.value; });
+    rail.addEventListener('input', e => { if (e.target.id === 'dueIn' && st.dueEdit) st.dueEdit.value = e.target.value; if (e.target.id === 'dateIn' && st.dateEdit) st.dateEdit.value = e.target.value; });
     // The order note box: typing is kept in st.noteEdits (per record, so another row and back keeps it); its keys stay in the box.
     rail.addEventListener('input', e => { const r = e.target.id === 'oNoteText' && byId(ui.sel), ed = r && st.noteEdits[r.txnId]; if (ed) ed.text = e.target.value; });
     rail.addEventListener('keydown', e => {
@@ -1862,6 +1929,11 @@
       if (k && r) { e.preventDefault(); if (k === 'save') noteSave(r); else noteCancel(r); }
     });
     rail.addEventListener('keydown', e => {
+      if (e.target.id === 'dateIn') {
+        if (e.key === 'Enter') { e.preventDefault(); const r = byId(ui.sel); if (r) dateSave(r, false); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dateCancel(); }
+        return;
+      }
       if (e.target.id !== 'dueIn') return;
       if (e.key === 'Enter') { e.preventDefault(); const r = byId(ui.sel); if (r) dueSave(r, false); }
       else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dueCancel(); }
