@@ -291,6 +291,7 @@
         scan: typeof d.scan === 'function' ? value => d.scan(value) : undefined, // app 0.3.49+
         setType: typeof d.setType === 'function' ? (id, num, from, to) => d.setType(id, num, from, to) : undefined, // app 0.3.57+
         openPdf: typeof d.openPdf === 'function' ? number => d.openPdf(number) : undefined, // app 0.3.52+
+        saveDrivePdf: typeof d.saveDrivePdf === 'function' ? request => d.saveDrivePdf(request) : undefined, // app 0.3.80+: replaces an invoice's Drive PDF after a due date change
         // Mac app only: main exposes qboRefresh on darwin, so Windows has none and History says "Refresh on the Mac".
         refreshQbo: typeof d.qboRefresh === 'function' ? () => d.qboRefresh() : undefined,
         // Main downloads, gunzips and keeps the copy; { unchanged: true } or { text, modifiedTime }.
@@ -586,6 +587,7 @@
       // Change a sale's type in place (invoice, receipt, quote). Missing on app 0.3.56 and older.
       setType: env.setType ? (record, to) => guard(env.setType(record.txnId, record.number, record.kind, to)) : undefined,
       refreshQbo: env.refreshQbo,
+      saveDrivePdf: env.saveDrivePdf ? request => guard(env.saveDrivePdf(request)) : undefined,
       helcim: env.helcim, // { ready, payLink, status } or undefined
       readQboHistory: env.qboHistory ? known => guard(env.qboHistory(known)) : undefined,
       // One-time, by hand, after Trevor's go (website only: the app's Ledger tab has no tab-adding permission).

@@ -229,7 +229,8 @@
       const rows = byNewest(records).filter(r => r.kind === 'receipt');
       return { groups: rows.length ? [group('sales', 'Register sales', rows)] : [], empty: 'No register sales yet.' };
     }
-    const rows = byNewest(records);
+    // Recent leaves out open quotes older than 30 days too (Trevor, Nov 13); searching still finds them
+    const rows = byNewest(records).filter(r => s(ui.q) || !(r.kind === 'quote' && openQuote(r) && archived(r, today)));
     return { groups: rows.length ? [group('recent', '', rows, { noTotal: true })] : [], empty: 'No sales yet.' };
   }
 
@@ -811,6 +812,8 @@
     if (r.date && v > dueMax(r.date)) return { error: 'Pick a date within 5 years of the invoice date.' };
     return v === r.dueDate ? { same: true } : { date: v };
   }
+  // The sentence added after a due date change for the Drive PDF: nothing when there is no PDF yet, else updated / will update / not updated.
+  const driveNote = res => (res && res.ok ? (res.skipped ? '' : res.queued ? ' The Drive PDF will update when Google answers.' : ' The Drive PDF now shows the new date.') : ' The Drive PDF was not updated.');
   // The one Payments row for a due date change: date '' = back to automatic (invoice date + 30). Column J reads 'due'.
   const dueRows = (r, date, place, now) => [L.buildMarkRow({ kind: 'due', invoice_number: r.number, txnId: r.txnId, note: date, place: place || '' }, now)];
   // Order note (Trevor, Nov 13: "only saved per order", never printed): one quiet line under the panel's buttons, above the timeline, on
@@ -916,7 +919,7 @@
     const live = L.livePayments(L.parsePayments(payRows));
     return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
   }
-  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, driveNote, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest: L.factsFromRequest, documentPages: L.documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
@@ -1316,6 +1319,13 @@
     // Change due date: open (focus in the date box), save (one 'due' mark, then reload), back to 30 days, cancel. Nothing unchanged is written.
     function dueOpen(r) { if (canEditDue(r)) { st.dueEdit = { txnId: r.txnId, value: r.dueDate || '', err: '', focus: true }; draw(); } }
     function dueCancel() { if (st.dueEdit && !st.dueEdit.busy) { st.dueEdit = null; st.dueBack = true; draw(); } }
+    // Replace the invoice's Drive PDF with the same document and the new due date. Only an app that can (host.saveDrivePdf, app 0.3.80+)
+    // and only a PDF that already exists; a failure never undoes the saved date. Returns the sentence to add ('' = nothing to say).
+    async function driveCopy(r, due) {
+      const h = host();
+      if (typeof h.saveDrivePdf !== 'function') return '';
+      try { return driveNote(await h.saveDrivePdf(requestFromRecord({ ...r, dueDate: due }))); } catch (_) { return driveNote(null); }
+    }
     function dueSave(r, auto) {
       const ed = st.dueEdit;
       if (!ed || ed.txnId !== r.txnId) return;
@@ -1330,8 +1340,9 @@
         catch (e) { if (e && e.queued) kept = true; else throw e; }
         finally { ed.busy = false; }
         st.dueEdit = null; st.dueBack = true;
-        if (kept) return SAVED_HERE;
-        return auto ? `Due date back to 30 days: ${fmtD(r.dueAuto)}.` : `Due date changed to ${fmtD(c.date)}.`;
+        const drive = await driveCopy(r, c.date || r.dueAuto); // the Drive PDF shows the new date too (Trevor, Nov 13)
+        if (kept) return SAVED_HERE + drive;
+        return (auto ? `Due date back to 30 days: ${fmtD(r.dueAuto)}.` : `Due date changed to ${fmtD(c.date)}.`) + drive;
       });
     }
     // Order note: open (an unsaved draft for this record is kept, also while another row is shown), save (one 'note' mark, then reload;
