@@ -894,11 +894,11 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 #counterView .cv-tabbar .cv-new{flex:none;width:32px;height:29px;padding:0;border:0;border-radius:7px 7px 0 0;background:transparent;font-size:20px;font-weight:400;color:#d6e4da}
 #counterView .cv-tabbar .cv-new:hover{background:rgba(255,255,255,.1)}
 #counterView .cv-tabbar .cv-fixed-tabs{flex:none;align-self:center;gap:8px;overflow:visible;margin-right:85px}
-/* History first, left of Sale 1 (Trevor, 2026-11-13): a quiet brass outline, calmer than Parts' gold; Parts keeps its spot (the right margin is History's old room). */
-#counterView .cv-tabbar>.cv-ledger-tab{flex:none;align-self:center;height:26px;padding:0 14px;margin:0 7px 0 0;border:0;border-radius:6px;background:rgba(226,178,60,.14);box-shadow:inset 0 0 0 1px rgba(226,178,60,.5);color:#ecd594;font-size:13.5px;font-weight:700;white-space:nowrap}
-#counterView .cv-tabbar>.cv-ledger-tab:hover{background:rgba(226,178,60,.22)}
-#counterView .cv-tabbar>.cv-ledger-tab.active{background:rgba(226,178,60,.3);color:#fff3cf;box-shadow:inset 0 0 0 2px #fff}
-#counterView .cv-tabbar>.cv-ledger-tab svg{display:none}
+/* History first, left of Sale 1 (Trevor, 2026-11-13): Trevor's pick C: a tab like the sale tabs, outlined, white text and a book icon; open, it turns white with a gold top edge. Parts keeps its spot (the right margin is History's old room). */
+#counterView .cv-tabbar>.cv-ledger-tab{flex:none;align-self:flex-end;height:29px;display:flex;align-items:center;gap:7px;padding:0 15px 0 12px;margin:0 6px 0 0;border:0;border-radius:7px 7px 0 0;background:transparent;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.6);color:#fff;font-size:13.5px;font-weight:700;white-space:nowrap}
+#counterView .cv-tabbar>.cv-ledger-tab:hover{background:rgba(255,255,255,.1)}
+#counterView .cv-tabbar>.cv-ledger-tab.active{background:#fff;color:#1c4a2c;box-shadow:inset 0 3px 0 #c9971f}
+#counterView .cv-tabbar>.cv-ledger-tab svg{display:block;width:16px;height:16px;stroke-width:1.8}
 #counterView .cv-tabbar .cv-fixed-tabs .cv-ledger-tab{height:26px;padding:0 14px;margin:0;border:0;border-radius:6px;background:#e2b23c;color:#2a2108;font-size:13.5px;font-weight:700;white-space:nowrap}
 #counterView .cv-tabbar .cv-fixed-tabs .cv-ledger-tab:hover{background:#ecc04f}
 #counterView .cv-tabbar .cv-fixed-tabs .cv-ledger-tab.active{background:#f3c955;box-shadow:inset 0 0 0 2px #fff}
@@ -1325,7 +1325,7 @@ function mpeLoadLib(kind) {
   <script src="ledger-tab.js"></script>
   <script src="email-draft.js"></script>
   <script src="email-window.js"></script>
-  <script src="ledger-data.js?v=2026.11.13.6"></script>
+  <script src="ledger-data.js?v=2026.11.13.7"></script>
   <script src="ledger-host.js"></script>
   <script src="document-renderer.js"></script>
   <script src="shop-settings.js"></script>
@@ -1339,7 +1339,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.13.6';
+const POS_RELEASE = '2026.11.13.7';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
