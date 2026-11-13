@@ -1,5 +1,5 @@
 /* Document numbers: one letter for the type (Q quote, R receipt, L invoice), one place digit
- * (1 Mac app, 2 PC Left app, 3 PC Right app, 4 Tech Dept app, 9 any web browser), then a count. No dashes or spaces: L21001.
+ * (1 Mac app, 2 PC Left app, 3 PC Right app, 4 Tech Dept app, 5 back_office app, 9 any web browser), then a count. No dashes or spaces: L21001.
  * Each letter+place pair has its own count, first number 1001 (the count never restarts per letter+digit).
  * The Desktop app keeps its count in its main process (POSDesktop/src/place-numbering.js) so two sale tabs can never
  * match; after a reinstall it continues from the highest number for its digit already in Transactions column P.
@@ -12,8 +12,8 @@
 })(typeof globalThis === 'object' ? globalThis : this, function() {
   'use strict';
   const LETTERS = Object.freeze({ quote: 'Q', receipt: 'R', invoice: 'L' });
-  const FORMAT = /^[QRL][12349]\d+$/;
-  const PARSE = /^([QRL])([12349])(\d+)$/;
+  const FORMAT = /^[QRL][123459]\d+$/;
+  const PARSE = /^([QRL])([123459])(\d+)$/;
   const BASE = 1000;
   const BROWSER = 9;
   const MAX_TRIES = 6;
@@ -37,10 +37,10 @@
   const sheetNumbers = rows => txnRows(rows).map(({ row }) => row[NUMBER_COLUMN]);
   const defaultSleep = (attempt) => new Promise(resolve => setTimeout(resolve, Math.random() * 250 * attempt));
 
-  // place: { digit() -> 0|1|2|3, next({ letter, floor? }) -> { ok, count } | { needFloor } } (Desktop main process), or absent in a browser.
+  // place: { digit() -> 0-5, next({ letter, floor? }) -> { ok, count } | { needFloor } } (Desktop main process), or absent in a browser.
   // readRows() -> Transactions A:P rows. writeNumber(sheetRowNumber, number) writes column P of that 1-based row.
   // localNumbers() -> numbers saved on this device but maybe not on the sheet yet.
-  // chosen() -> the register digit picked in Admin ('2' or '3'), or ''; an app with no digit adopts it at numbering time.
+  // chosen() -> the register digit picked in Admin ('2'..'5'), or ''; an app with no digit adopts it at numbering time.
   function create({ place = null, chosen = () => '', readRows, writeNumber, localNumbers = () => [], log = () => {}, sleep = defaultSleep, timeoutMs = 3000 } = {}) {
     const issued = new Map(); // browser only: last count handed out by this page, per letter
 
@@ -102,10 +102,10 @@
     return { next, settle };
   }
 
-  // A PC whose register was chosen as 2 or 3 in Admin (page storage) but whose Desktop has no digit yet adopts it. Mac (already 1) is untouched.
+  // A PC whose register was chosen as 2, 3, 4 or 5 in Admin (page storage) but whose Desktop has no digit yet adopts it (also when an older Desktop shell rejected the choice earlier). Mac (already 1) is untouched.
   async function syncDigit({ place, chosen }) {
     const digit = Number(chosen);
-    if (!place || ![2, 3].includes(digit)) return false;
+    if (!place || ![2, 3, 4, 5].includes(digit)) return false;
     if (Number(await place.digit()) !== 0) return false;
     await place.setDigit(digit);
     return true;

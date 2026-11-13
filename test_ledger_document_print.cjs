@@ -18,6 +18,7 @@ const build = (docType, screen = {}) => {
   const sandbox = {
     _docType: docType,
     document: { getElementById: (id) => (id === 'docPO' && screen.po !== undefined ? { value: screen.po }
+      : id === 'docReceivedBy' && screen.receivedBy !== undefined ? { value: screen.receivedBy }
       : id === 'signatureBtn' && screen.signature ? { classList: { contains: (c) => c === 'active' } } : null) },
     tbody: { querySelectorAll: () => (screen.serialTyped ? [{ value: ' ' }, { value: 'SN123' }] : [{ value: '' }]) },   // the typed serial boxes
     regCreditApplied: () => screen.creditCents || 0, window: { MPELedgerData: require('./ledger-data.js') },
@@ -182,4 +183,31 @@ test('the shared printed heading uses the saved Hawaii time, including register 
     assert.equal(factsFromRequest(noTime).issued.document_time,'');
     for(const page of L.documentPages(noTime,R,template,R.DEFAULT_SETTINGS)) assert.doesNotMatch(page.html || page,/12:00 PM/);
   }
+});
+
+// Received by (K5, Trevor 2026-11-13): the name typed on the sale screen prints on the Print line above the signature, on the
+// invoice's merchant copy and on a receipt or quote with Signature. An older cached template (no '.received' pieces) prints the blank line.
+test('Received by fills the signature Print line on the app and the website; an older template still prints', () => {
+  const L = require('./ledger-data.js');
+  const R = require('./document-renderer.js');
+  const { extrasFromRequest } = require('../POSDesktop/src/document-print');
+  const text = fs.readFileSync(path.join(__dirname, 'document-template.html'), 'utf8');
+  const template = R.parseTemplate(text);
+  const order = { customer: { name: 'TEST CUSTOMER' }, toggles: {}, items: [{ pn: 'TEST', desc: 'Test part', qty: 1, ea: 10, sub: 10, sn: [] }] };
+  const named = (type, extra = {}) => ({ ...build(type, { order, number: type === 'invoice' ? 'L21001' : 'R21001', date: '2026-11-13T05:03:00Z' }), received_by: 'KEONI <K>', ...extra });
+  const line = /Print: <span class="sig-underline">KEONI &lt;K&gt;<\/span>/;
+  const invoice = L.documentPages(named('invoice'), R, template, R.DEFAULT_SETTINGS);
+  assert.doesNotMatch(invoice[0], line, 'customer copy has no signature box');
+  assert.match(invoice[1], line, 'merchant copy prints the name');
+  assert.match(L.documentPages(named('receipt', { signature: true }), R, template, R.DEFAULT_SETTINGS)[0], line);
+  assert.doesNotMatch(L.documentPages(named('receipt'), R, template, R.DEFAULT_SETTINGS)[0], /Print:/, 'no Signature toggle: no box');
+  assert.deepEqual(extrasFromRequest(named('invoice')).received_by, 'KEONI <K>', 'the app passes it to the renderer');
+  assert.equal(extrasFromRequest({ type: 'invoice' }).received_by, undefined);
+  assert.equal(build('receipt', { order, number: 'R21001', receivedBy: ' keoni ' }).received_by, 'KEONI', 'the register sends the typed name, uppercase');
+  assert.equal('received_by' in build('receipt', { order, number: 'R21001', receivedBy: '  ' }), false, 'blank: not sent');
+  const old = R.parseTemplate(text.replace(/<template data-name="counter\.sig?n?\.received">[\s\S]*?<\/template>\n/g, ''));
+  assert.equal(old.has('counter.sig.received') || old.has('counter.sign.received'), false);
+  assert.match(L.documentPages(named('invoice'), R, old, R.DEFAULT_SETTINGS)[1], /Print: <span class="sig-underline"><\/span>/);
+  // An older renderer fills the unchanged pieces: they carry no new slot.
+  assert.doesNotMatch(template.get('counter.sig') + template.get('counter.sign'), /\{\{received\}\}/);
 });

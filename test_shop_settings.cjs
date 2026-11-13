@@ -53,8 +53,9 @@ const check = async (name, fn) => { await fn(); results.push(name); console.log(
     assert.equal(S.get('review_qr', st), 'on');
   });
 
-  await check('place labels: Mac app / PC Left / PC Right / app / browser', () => {
-    assert.deepEqual(['1', '2', '3', '4', ''].map(d => S.placeLabel(d, true)), ['Mac app', 'PC Left', 'PC Right', 'Tech Dept', 'app']);
+  await check('place labels: Mac app / PC Left / PC Right / Tech Dept / back_office / app / browser', () => {
+    assert.deepEqual(['1', '2', '3', '4', '5', ''].map(d => S.placeLabel(d, true)), ['Mac app', 'PC Left', 'PC Right', 'Tech Dept', 'back_office', 'app']);
+    assert.equal(S.placeLabel('6', true), 'app');
     assert.equal(S.placeLabel('1', false), 'browser');
   });
 

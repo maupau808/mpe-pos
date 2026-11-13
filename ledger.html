@@ -49,7 +49,7 @@ svg.i.sm{width:14px;height:14px}
 .left{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
 .lt{padding:12px 14px 10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
 .lf{padding:8px 14px 10px;border-top:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column;gap:2px}
-.owed{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lf:not(:has(>:not([hidden]))){display:none}
 .seg{display:flex;flex-wrap:nowrap;gap:0;border-bottom:1px solid var(--line);margin:-4px -14px 0;padding:0 8px}
 .seg button{flex:1 1 auto;min-width:0;height:36px;padding:0 3px;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .seg button:hover{color:var(--ink)}
@@ -148,6 +148,16 @@ a.rec{color:var(--green);font-weight:700;text-decoration:underline;text-underlin
 .rail .money .amt.gone span{text-decoration:none;display:inline-block}
 .rail .od{display:flex;align-items:center;gap:8px;margin:4px 0 6px;font-size:14px;font-weight:600;color:var(--ink)}
 .rail .od i{width:9px;height:9px;border-radius:50%;background:var(--red);flex:none}
+.rail .due-ch{align-self:flex-start;height:28px;margin:-2px 0 0 -8px;padding:0 8px;font-size:13px;color:var(--green)}
+.rail .due-ch:hover:not(:disabled){background:var(--tint)}
+.rail .due-ed{margin-top:4px;padding:10px 11px 11px;border:1px solid #9cc3a8;border-radius:7px;background:#eef6f0}
+.rail .due-ed label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-2);margin-bottom:3px}
+.rail .due-ed input{display:block;width:100%;height:34px;padding:0 9px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:14px;color:var(--ink)}
+.rail .due-ed input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 2px #e8f2eb}
+.rail .due-ed input[aria-invalid=true]{border-color:var(--red)}
+.rail .due-f{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.rail .due-ed .err{margin-top:6px;font-size:13px;color:var(--red)}
+.rail .qr .btn{height:30px;font-size:13px}
 .rail .money .ln{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:3px 0;font-size:14px;color:var(--ink-2)}
 .rail .money .ln.tot{margin-top:2px;padding-top:6px;border-top:1px solid var(--line);font-size:17px;font-weight:700;color:var(--ink)}
 .rail .nt{display:flex;align-items:baseline;gap:7px;margin-top:4px;font-size:13px;color:var(--ink-2)}
@@ -163,7 +173,25 @@ a.rec{color:var(--green);font-weight:700;text-decoration:underline;text-underlin
 .rail .box.wide{grid-column:1/-1;flex-direction:row;min-height:42px;font-size:14px}
 .rail .acts>.btn.mbtn{width:auto;align-self:center;min-height:30px;height:30px;padding:0 10px;font-size:13px;color:var(--ink-2)}
 .rail .acts>.btn.mbtn svg{margin-left:-4px}
-.owed[hidden]{display:none}
+/* Order note (shop only, never printed): a quiet line under the buttons, above the timeline. */
+.rail .onote-w{display:flex;flex-direction:column;gap:6px}
+.rail .onote{display:block;width:100%;padding:7px 10px;border:1px solid transparent;border-radius:6px;background:#eef6f0;text-align:left;font:inherit;font-size:14px;color:var(--ink);cursor:text}
+.rail .onote:hover{border-color:#9cc3a8}
+.rail .onote-l{display:block;margin-bottom:2px;font-size:12px;font-weight:600;color:var(--ink-3)}
+.rail .onote-t{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.35}
+.rail .onote.add{display:flex;align-items:center;gap:6px;width:auto;align-self:flex-start;margin-left:-2px;padding:4px 8px;background:transparent;font-size:13.5px;font-weight:600;color:var(--green);cursor:pointer}
+.rail .onote.add:hover{background:#eef6f0;border-color:transparent}
+.rail .onote-h{font-size:12.5px;font-weight:400;color:var(--ink-3)}
+.rail .onote.add .onote-h{margin-left:4px}
+.rail .onote-from{padding:0 10px;font-size:13px;color:var(--ink-2)}
+.rail .onote-from .onote-t{-webkit-line-clamp:3}
+.rail .onote.editing{padding:9px 10px 10px;border:1px solid #9cc3a8;background:#fff;cursor:auto}
+.rail .onote textarea{display:block;width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;font-size:14px;line-height:1.35;color:var(--ink);resize:vertical}
+.rail .onote textarea:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 2px #e8f2eb}
+.rail .onote textarea[aria-invalid=true]{border-color:var(--red)}
+.rail .onote-f{display:flex;align-items:center;gap:6px;margin-top:6px}
+.rail .onote-f .onote-h{flex:1;min-width:0}
+.rail .onote .err{margin-top:6px;font-size:13px;color:var(--red)}
 .rail .tl{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
 .rail .tl h3{font-size:13px;color:var(--ink);margin-bottom:10px}
 .rail ol{list-style:none;font-size:14px;font-weight:600;color:var(--ink);border-left:2px solid #56625a;margin-left:5px}
@@ -291,7 +319,7 @@ body.dragging{cursor:col-resize;user-select:none}
 .rq-sw:disabled{cursor:default;color:var(--ink-3)}.rq-sw:disabled i{opacity:.55}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
-<script src="ledger-data.js"></script>
+<script src="ledger-data.js?v=2026.11.13.1"></script>
 <script src="shop-settings.js"></script>
 <!-- document-renderer.js is a byte-for-byte copy of POSDesktop/src/document-renderer.js (test_document_renderer_copy.cjs). -->
 <script>var module = { exports: {} };</script>
@@ -324,7 +352,6 @@ else {
     </div>
     <div class="list" id="list" role="listbox" aria-label="Sales"></div>
     <div class="lf">
-      <div class="owed" id="owed"></div>
       <div class="qb-note" id="qbNote" role="status" hidden></div>
       <div class="qb-asof" id="qbAsOf" role="status" hidden></div>
       <div class="qb-asof" id="hcBar" role="status" hidden></div>

@@ -855,13 +855,13 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 @media(max-width:1100px) and (min-width:900px){:where(body:not(.embedded-edit)) #counterView .cv-body{grid-template-columns:minmax(0,1fr) 321px}:where(body:not(.embedded-edit)) #counterView .cv-top{gap:4px;padding-left:10px;padding-right:10px}:where(body:not(.embedded-edit)) #counterView #docTypeSel button{padding:7px}:where(body:not(.embedded-edit)) #counterView #txnHistoryBtn{font-size:15px;padding:9px 10px;margin-left:14px}:where(body:not(.embedded-edit)) #counterView .cv-top .cv-icon,:where(body:not(.embedded-edit)) #counterView .cv-top .icon-btn{width:32px}}
  @media(max-width:899px){body.counter-view:where(:not(.embedded-edit)){overflow:auto}body.counter-view:where(:not(.embedded-edit)) #counterView{position:relative;min-height:100dvh;height:auto}:where(body:not(.embedded-edit)) #counterView .cv-top{height:auto;flex-wrap:wrap;padding:8px 12px}:where(body:not(.embedded-edit)) #counterView .cv-docs{margin-left:0}:where(body:not(.embedded-edit)) #counterView #txnHistoryBtn{margin-left:8px;font-size:15px;padding:8px}:where(body:not(.embedded-edit)) #counterView .cv-body{display:flex;flex-direction:column}:where(body:not(.embedded-edit)) #counterView .cv-work{overflow:visible;padding:10px 12px;min-height:400px}:where(body:not(.embedded-edit)) #counterView .cv-head,:where(body:not(.embedded-edit)) #counterView .cv-line{grid-template-columns:18px minmax(95px,1fr) 52px 34px 65px 22px;gap:4px}:where(body:not(.embedded-edit)) #counterView .cv-head>.cv-support,:where(body:not(.embedded-edit)) #counterView .cv-line>.cv-support,:where(body:not(.embedded-edit)) #counterView .cv-reorder-label{display:none}:where(body:not(.embedded-edit)) #counterView .cv-desc input.cv-description{font-size:16px}:where(body:not(.embedded-edit)) #counterView .cv-head>span:nth-child(7){text-align:center}:where(body:not(.embedded-edit)) #counterView .cv-checkout{border-left:0;border-top:1px solid #d5ddd3;padding:16px;overflow:visible}:where(body:not(.embedded-edit)) #counterView .cv-fill{overflow:visible}:where(body:not(.embedded-edit)) #counterView .cv-deck{gap:6px;padding:8px}:where(body:not(.embedded-edit)) #counterView .cv-command{flex-direction:column;gap:8px;padding:8px 2px;min-height:100px;font-size:18px}:where(body:not(.embedded-edit)) #counterView .cv-command.next{font-size:16px}:where(body:not(.embedded-edit)) #counterView .cv-command.next svg,:where(body:not(.embedded-edit)) #counterView .cv-command.print svg{order:0}:where(body:not(.embedded-edit)) #counterView .cv-command.next span{white-space:normal}:where(body:not(.embedded-edit)) #counterView .cv-command.print{display:flex;font-size:18px}:where(body:not(.embedded-edit)) #counterView .cv-feedback{bottom:16px}:where(body:not(.embedded-edit)) #counterView .cv-command svg{width:58px;height:58px;flex-basis:58px}:where(body:not(.embedded-edit)) #counterView .cv-sn{flex-basis:126px}:where(body:not(.embedded-edit)) #counterView .cv-sn input{width:92px;max-width:92px;flex-basis:92px}:where(body:not(.embedded-edit)) #counterView .cv-summary{margin-top:6px}}
  /* History edit (embedded in History's middle column): always the desktop layout, no tab row, History button, command deck or output icons. */
- #counterView #cvEditTitle,#counterView #cvEditType{display:none}body.embedded-edit #counterView #cvEditTitle{display:block;font-size:17px;font-weight:700;white-space:nowrap}body.embedded-edit #counterView #cvEditType{display:block;font-size:16px;white-space:nowrap;margin-right:auto;padding-left:4px}body.embedded-edit #counterView #docTypeSel{display:none!important}body.embedded-edit #counterView .cv-tabs,body.embedded-edit #counterView #cvNew,body.embedded-edit #counterView .cv-history,body.embedded-edit #counterView .cv-deck,body.embedded-edit #counterView .cv-top .icon-btn,body.embedded-edit #counterView .cv-top .menu-wrap,body.embedded-edit #counterView #cvOptions,body.embedded-edit #counterView #cvFullScreen,body.embedded-edit #counterView #cvFrontLock,body.embedded-edit #counterView #themeToggle,body.embedded-edit #counterView #printBtn,body.embedded-edit #counterView #chargeCardBtn{display:none!important}body.embedded-edit #counterView .cv-top{padding-left:12px;padding-right:12px}body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 300px}body.embedded-edit #counterView .cv-work{padding:8px 10px}body.embedded-edit #counterView .cv-checkout{padding:12px}body.embedded-edit #counterView .sum-row.total .sum-val{font-size:32px}
+ #counterView #cvEditTitle,#counterView #cvEditType{display:none}body.embedded-edit #counterView #cvEditTitle{display:block;font-size:17px;font-weight:700;white-space:nowrap}body.embedded-edit #counterView #cvEditType{display:block;font-size:16px;white-space:nowrap;margin-right:auto;padding-left:4px}body.embedded-edit #counterView #docTypeSel{display:none!important}body.embedded-edit #counterView .cv-tabs,body.embedded-edit #counterView #cvNew,body.embedded-edit #counterView .cv-history,body.embedded-edit #counterView .cv-deck,body.embedded-edit #counterView .cv-top .icon-btn,body.embedded-edit #counterView .cv-top .menu-wrap,body.embedded-edit #counterView #cvOptions,body.embedded-edit #counterView #themeToggle,body.embedded-edit #counterView #printBtn,body.embedded-edit #counterView #chargeCardBtn{display:none!important}body.embedded-edit #counterView .cv-top{padding-left:12px;padding-right:12px}body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 300px}body.embedded-edit #counterView .cv-work{padding:8px 10px}body.embedded-edit #counterView .cv-checkout{padding:12px}body.embedded-edit #counterView .sum-row.total .sum-val{font-size:32px}
  @media(max-width:1060px){body.embedded-edit #counterView .cv-body{grid-template-columns:minmax(0,1fr) 250px}body.embedded-edit #counterView .cv-reorder,body.embedded-edit #counterView .cv-reorder-label{display:none}body.embedded-edit #counterView .cv-desc input.cv-description{font-size:16px}body.embedded-edit #counterView .cv-checkout{gap:8px}body.embedded-edit #counterView .cv-head>.cv-support:not(.cv-discount-head),body.embedded-edit #counterView .cv-line>.cv-cost,body.embedded-edit #counterView .cv-line>.cv-margin{display:none}body.embedded-edit #counterView .cv-head,body.embedded-edit #counterView .cv-line{grid-template-columns:20px minmax(150px,1fr) 62px 80px 44px 88px 26px;gap:5px}}
  /* The one Edit (D14): only the sale lines, and under them a slim strip (Add note, PO #, order discount, card fee, subtotal, tax, total). History's panel holds the customer and its bar the Save, so this page's customer boxes, header and checkout column stay hidden. */
  body.embedded-edit #counterView .cv-top{display:none!important}body.embedded-edit #counterView .cv-body{display:flex;flex-direction:column}body.embedded-edit #counterView .cv-work{flex:1;min-height:0}body.embedded-edit #counterView .cv-checkout{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px 22px;padding:8px 16px;border-left:0;border-top:1px solid #d5ddd3;overflow:visible;flex-shrink:0}body.embedded-edit #counterView .cv-customer-label,body.embedded-edit #counterView #cvCustomer,body.embedded-edit #counterView #cvLedger,body.embedded-edit #counterView #cvFinalize,body.embedded-edit #counterView #cvCharge,body.embedded-edit #counterView #sumInternal{display:none!important}body.embedded-edit #counterView #cvPo .cust-input{width:170px;font-size:14px;padding:6px 8px}body.embedded-edit #counterView .cv-summary,body.embedded-edit #counterView .cv-fill,body.embedded-edit #counterView .cv-card-po{display:contents}body.embedded-edit #counterView .cv-card-cust{display:none!important}body.embedded-edit #counterView .cv-order{margin:0;order:1}body.embedded-edit #counterView .cv-fee{order:2}body.embedded-edit #counterView #cvTotals{order:3;margin-left:auto}body.embedded-edit #counterView #presellWrap{margin:0;font-size:15px;display:flex;align-items:center;gap:6px;white-space:nowrap}body.embedded-edit #counterView #cvTotals .summary{display:flex;align-items:baseline;gap:20px}body.embedded-edit #counterView .sum-row{padding:0;gap:6px;white-space:nowrap}body.embedded-edit #counterView .sum-row.total{display:flex;border-top:0;margin:0;padding:0;font-weight:700}body.embedded-edit #counterView .sum-row.total .sum-val{display:inline;font-size:24px;margin:0;letter-spacing:-.01em}
  body.embedded-edit #counterView .cv-article.cv-added{background:#eef6f0}body.embedded-edit #counterView .cv-article.cv-mismatch{box-shadow:inset 3px 0 0 #b26a00;background:#fff8ec}body.embedded-edit tr.edit-mismatch>td{background:#fff8ec}body.embedded-edit #counterView #cvEntry{border-color:#9cc3a8}body.embedded-edit tr.drop-before>td{box-shadow:inset 0 3px 0 #24683a}body.embedded-edit tr.drop-after>td{box-shadow:inset 0 -3px 0 #24683a}
 }
-@media screen{#counterView #cvFullScreen[aria-pressed="true"],#counterView #cvFrontLock[aria-pressed="true"]{background:#dce8dc;border-color:#8ca28b}body.dark #counterView #cvFullScreen[aria-pressed="true"],body.dark #counterView #cvFrontLock[aria-pressed="true"]{background:#3e5942;color:#eff5ec;border-color:#779379}}
+@media screen{#counterView #adminFullScreen[aria-pressed="true"],#counterView #adminFrontLock[aria-pressed="true"]{background:#dce8dc;border-color:#8ca28b;font-weight:600!important}body.dark #counterView #adminFullScreen[aria-pressed="true"],body.dark #counterView #adminFrontLock[aria-pressed="true"]{background:#3e5942;color:#eff5ec;border-color:#779379}#counterView .cv-tabs.cv-fixed-tabs{max-width:none;overflow:visible;flex-shrink:0}}
 @media print{#counterView,.cv-results{display:none!important}tr[data-order-discount] td,tr[data-order-discount] input,tr.cv-order-print td,tr.cv-order-print input{font-weight:800!important;color:#000!important}}
 
 
@@ -875,6 +875,64 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
 
 @media screen{#counterView .cv-tabs{max-width:330px}#counterView .cv-tabs .cv-ledger-tab{display:flex;align-items:center;gap:6px;flex-shrink:0;border-radius:5px 5px 0 0;padding:8px 12px}#counterView .cv-tabs .cv-ledger-tab svg{width:15px;height:15px}#counterView .cv-ledger-frame{position:absolute;left:0;right:0;bottom:0;width:100%;border:0;background:#fffdfa;z-index:5}#counterView .cv-ledger-frame[hidden]{display:none!important}}
 @media screen{#counterView .cv-tab-group{display:flex;align-items:stretch;flex-shrink:0;border:1px solid #bccbb8;border-radius:5px 5px 0 0;overflow:hidden}#counterView .cv-tab-group .cv-tab{border:0;border-radius:0;padding:8px}#counterView .cv-close-tab{border:0!important;border-radius:0;padding:3px!important;width:22px;font-size:18px!important;background:#eef3e9}#counterView .cv-close-tab:hover{background:#eadbd5;color:#853b30}}
+/* K5 (Trevor, 2026-11-13): one top row (sale chips, +, Receipt..Internal, gold Parts Lookup / History, icons); short one-line part
+   search list; PO # and Received by side by side over Discount and Card fee in a light green card; Add note and Presold on a slim bar. */
+@media screen{
+#counterView .cv-sep{width:1px;height:24px;background:#dde3de;margin:0 4px;flex:none}
+#counterView .cv-gold-slot{display:contents}
+#counterView .cv-tabs{max-width:520px;gap:6px;align-items:center;overflow-x:auto;scrollbar-width:thin}
+#counterView #cvNew[hidden]+.cv-sep{display:none}
+#counterView .cv-tab-group{height:32px;align-items:center;border:1px solid #dde3de;border-radius:7px;background:#fff}
+#counterView .cv-tab-group .cv-tab{height:100%;padding:0 5px 0 11px;background:transparent;font-size:13.5px;font-weight:600;color:#525d55;border-radius:0}
+#counterView .cv-tab-group .cv-close-tab{height:100%;width:22px;background:transparent!important;font-size:15px!important;color:inherit;opacity:.75}
+#counterView .cv-tab-group .cv-close-tab:hover{opacity:1}
+#counterView .cv-tab-group:only-child .cv-close-tab{display:none}
+#counterView .cv-tab-group:only-child .cv-tab{padding-right:11px}
+#counterView .cv-tab-group:has(.cv-tab.active){background:#24683a;border-color:#24683a}
+#counterView .cv-tab-group .cv-tab.active,#counterView .cv-tab-group:has(.cv-tab.active) .cv-close-tab{color:#fff;background:transparent}
+#counterView .cv-new{width:32px;height:32px;padding:0;border:1px solid #dde3de;border-radius:7px;background:#fff;font-size:19px;color:#3f4a42}
+#counterView .cv-tabs.cv-fixed-tabs{max-width:none;gap:8px;overflow:visible}
+#counterView .cv-tabs.cv-fixed-tabs .cv-ledger-tab,#counterView .cv-top #partsBtn,body.dark #counterView .cv-top #partsBtn{height:38px;padding:0 16px;margin:0;border:0;border-radius:8px;background:#e2b23c;color:#2a2108;font-size:15px;font-weight:700;white-space:nowrap;box-shadow:inset 0 -2px 0 rgba(0,0,0,.08)}
+#counterView .cv-tabs.cv-fixed-tabs .cv-ledger-tab:hover,#counterView .cv-top #partsBtn:hover{background:#d9a72d}
+#counterView .cv-tabs.cv-fixed-tabs .cv-ledger-tab.active{background:#f0c64f;box-shadow:inset 0 0 0 2px #9a7417}
+#counterView .cv-fixed-tabs .cv-ledger-tab svg,#counterView .cv-top #partsBtn svg{display:none}
+#counterView .cv-workbar{display:flex;align-items:center;gap:14px;min-height:40px;padding:0 8px 0 4px;border-bottom:1px solid #edf0ed;flex-shrink:0}
+#counterView .cv-workbar .cv-note{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid #9cc3a8;border-radius:7px;background:#e8f2eb;color:#1b5230;font-size:14px;font-weight:700}
+#counterView .cv-workbar #presellWrap{margin:0}
+#counterView .cv-card.cv-card-po{background:#f3f8f4;border-color:#cfe2d5;gap:8px}
+#counterView #cvPo{display:grid;grid-template-columns:96px minmax(0,1fr);gap:3px 8px}
+#counterView .cv-lbl,#counterView .cv-kf .cv-order-label{font-size:13px;font-weight:600;color:#2f4a37}
+#counterView #cvPo .cust-input{width:100%;min-width:0;height:32px;padding:4px 8px;font-size:14px;font-weight:600}
+#counterView #cvPo #docReceivedBy{font-weight:500}
+#counterView .cv-kf{display:grid;grid-template-columns:76px minmax(0,1fr);gap:6px 8px;align-items:center}
+#counterView .cv-kf .cv-order{margin:0;flex-wrap:nowrap}
+#counterView .cv-kf .cv-fee{color:#525d55}
+#counterView .cv-card-po .cv-discount-mode button{height:30px;min-width:32px;border:1px solid #cfe2d5;background:#fff}
+#counterView .cv-card-po .cv-discount-mode button.active,body.dark #counterView .cv-card-po .cv-discount-mode button.active{background:#24683a;border-color:#24683a;color:#fff}
+#counterView .cv-card-po #cvOrderValue{height:30px}
+body.dark #counterView .cv-sep{background:#48544a}
+body.dark #counterView .cv-tab-group,body.dark #counterView .cv-new{background:#273229;border-color:#48544a;color:#e1e8dd}
+body.dark #counterView .cv-tab-group .cv-tab{color:#e1e8dd}
+body.dark #counterView .cv-tab-group:has(.cv-tab.active){background:#24683a;border-color:#24683a}
+body.dark #counterView .cv-workbar{border-color:#48544a}
+body.dark #counterView .cv-workbar .cv-note{background:#2c4433;border-color:#4f7a5c;color:#d7ecdc}
+body.dark #counterView .cv-card.cv-card-po{background:#1f2a22;border-color:#3d5444}
+body.dark #counterView .cv-card-po .cv-discount-mode button{background:#273229;border-color:#48544a;color:#eff3ed}
+body.dark #counterView .cv-workbar #presellWrap{color:#e1e8dd!important}
+body.dark #counterView .cv-lbl,body.dark #counterView .cv-kf .cv-order-label,body.dark #counterView .cv-kf .cv-fee{color:#b9d2c0}
+body.embedded-edit #counterView .cv-lbl,body.embedded-edit #counterView #docReceivedBy{display:none!important}
+body.embedded-edit #counterView #cvPo{display:block}
+body.embedded-edit #counterView .cv-kf{display:flex;align-items:center;gap:6px 10px;order:1}
+body.embedded-edit #counterView .cv-kf>*{order:0!important}
+}
+.cv-results{padding:4px;border-color:#c7d0c9;border-radius:8px;box-shadow:0 8px 22px rgba(20,40,25,.16);font-size:13.5px}
+.cv-results button[data-cv-pick]{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:10px;align-items:center;height:30px;padding:0 8px;border-radius:5px}
+.cv-results button:not([data-cv-pick]){padding:6px 8px;font-size:13.5px}
+.cv-results button[data-cv-pick]>b,.cv-results button[data-cv-pick]>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.cv-results button[data-cv-pick] small{display:inline;font-size:12px;margin:0}
+.cv-results button[data-cv-pick] strong{font-weight:400;color:#525d55}
+.cv-results button:hover,.cv-results button.active{background:#e8f2eb}
+body.dark .cv-results button[data-cv-pick] strong{color:#c9d3cc}
 </style>
 <script defer src="http://localhost:8765/bug-report.js"></script>
 </head>
@@ -937,6 +995,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
             <div class="data-status" style="display:none"><span class="stat-dot" id="dotParts" title="Parts catalog"></span> <span class="parts-count" id="partsCount"></span> <span class="stat-dot" id="dotAuth" title="Google sign-in"></span></div>
             <div id="dataStatus" class="data-status"></div>
             <div class="admin-control-grid">
+              <button class="drive-btn hist-btn" id="adminPhoneListBtn" type="button" onclick="document.getElementById('adminMenu').classList.remove('open');openPhoneLists()" title="Pick a list sent from MPE Scan on the phone">Phone list<span class="admin-dot" id="adminPhoneListDot" style="display:none" aria-hidden="true"></span></button>
               <button class="drive-btn hist-btn" id="printBtn" type="button" onclick="manualPrint()" title="Open the system print dialog">Manual print</button>
               <button class="drive-btn hist-btn" id="scannerModeBtn" type="button" onclick="setScannerModeActive(true)">Scanner Mode</button>
               <div id="togglesMenu" style="display:contents">
@@ -950,6 +1009,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
                 <option value="2">Register 2 · PC Left</option>
                 <option value="3">Register 3 · PC Right</option>
                 <option value="4">Register 4 · Tech Dept</option>
+                <option value="5">Register 5 · back_office</option>
               </select>
               <label class="menu-check"><input type="checkbox" id="scannerModeDefault" onchange="setScannerModeDefault(this.checked)"> Scanner on startup</label>
               <button class="scan-btn" id="scanBtn" type="button" onclick="toggleScanner()">Scan items</button>
@@ -959,6 +1019,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
               <button class="drive-btn signin" id="driveSignInBtn" onclick="handleSignIn()">Sign in</button>
               <button class="drive-btn refresh hidden" id="driveRefreshBtn" onclick="fetchFromDrive()">↻ Refresh</button>
               <button class="drive-btn manual-load" id="loadFileBtn" onclick="document.getElementById('fileInput').click()" style="display:none">Load file</button>
+              <button class="drive-btn hist-btn" id="adminFullScreen" type="button" aria-pressed="false" hidden>Full screen</button>
+              <button class="drive-btn hist-btn" id="adminFrontLock" type="button" aria-pressed="false" hidden>Keep in front</button>
               <button class="drive-btn hist-btn" id="partsMenuBtn" type="button" style="display:none" onclick="openPartsBooks()">Parts Lookup</button>
               <button class="drive-btn hist-btn" id="desktopScanBtn" style="display:none" onclick="window.mpeDesktop?.openScan()">▣ MPE Scan</button>
               <button class="drive-btn hist-btn" id="desktopSettingsBtn" style="display:none" onclick="window.mpeDesktop?.openSettings()">⚙ Desktop Settings</button>
@@ -1067,6 +1129,8 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
       <div class="credit-note" id="creditNote" role="status"></div>
     </div>
     <input class="cust-input" id="docPO" placeholder="PO #" autocomplete="off" maxlength="60">
+    <input class="cust-input" id="docReceivedBy" placeholder="Received by" autocomplete="off" maxlength="60" title="Prints on the Print line above the signature">
+
     <div class="dropdown cust-dd" id="custDD"></div>
   </div>
 
@@ -1162,7 +1226,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
     <div class="sig-received" id="sig-received">Received by:</div>
     <div id="sig-warranty-form" style="display:none;"></div>
     <div id="sig-signature-section" style="display:none;">
-      <div class="sig-line">Print: <span class="sig-underline"></span></div>
+      <div class="sig-line">Print: <span class="sig-underline" id="sigPrintName"></span></div>
       <div class="sig-line">Sign: <span class="sig-underline"></span></div>
     </div>
   </div>
@@ -1224,7 +1288,7 @@ function mpeLoadLib(kind) {
   <script src="ledger-tab.js"></script>
   <script src="email-draft.js"></script>
   <script src="email-window.js"></script>
-  <script src="ledger-data.js"></script>
+  <script src="ledger-data.js?v=2026.11.13.1"></script>
   <script src="ledger-host.js"></script>
   <script src="document-renderer.js"></script>
   <script src="shop-settings.js"></script>
@@ -1238,7 +1302,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.12.3';
+const POS_RELEASE = '2026.11.13.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1756,8 +1820,12 @@ function clearToolFailure() {}
 // A failed Drive push is not red: the sale stays local and retries later.
 function adminAlertLevel() {
   if (!(typeof loaded !== 'undefined' && loaded && partsArray && partsArray.length)) return 'err';
-  if (_posUpdateRelease || authState() !== 'in' || registerDigitMissing() || appNumberingMissing()) return 'warn';
+  if (_posUpdateRelease || authState() !== 'in' || registerDigitMissing() || appNumberingMissing() || phoneListWaiting()) return 'warn';
   return '';
+}
+// A phone list is waiting and the counter view shows Phone list only inside Admin.
+function phoneListWaiting() {
+  return !!window._phoneListNew && document.body.classList.contains('counter-view');
 }
 // Only the counter app asks; a phone or browser tab keeps plain numbers.
 function registerDigitMissing() {
@@ -1779,7 +1847,8 @@ function updateAdminDot() {
     : _posUpdateRelease ? 'POS update ready — open Admin after the current sale'
     : registerDigitMissing() ? 'Choose which register this is — open Admin'
     : appNumberingMissing() ? 'Counter app out of date — update it in Settings (receipts print slower until then)'
-    : 'Not signed in to Google — open Admin';
+    : authState() !== 'in' ? 'Not signed in to Google — open Admin'
+    : 'New phone list — open Admin, then Phone list';
 }
 
 function renderPosUpdateNotice() {
@@ -5108,7 +5177,7 @@ function runScanCommand(raw) {
     // Undo clear brings back everything on the screen, not only the lines.
     const el = id => document.getElementById(id);
     lines.screen = { customer: custFields.map(id => el(id)?.value || ''), customerRef: el('custPanel')?.dataset.customerRef || '',
-      po: el('docPO')?.value || '', doc: _docType === 'internal' ? 'receipt' : _docType, presell: !!el('presellChk')?.checked, stock };
+      po: el('docPO')?.value || '', received: el('docReceivedBy')?.value || '', doc: _docType === 'internal' ? 'receipt' : _docType, presell: !!el('presellChk')?.checked, stock };
     cartStockSession = null;   // nothing for Unit Stock to review on a deliberate discard
     if (clearAll() === false) { cartStockSession = stock; return; }
     _clearedSale = lines;
@@ -6842,53 +6911,8 @@ async function reconcileUnpushedTxns() {
   try { updatePriceChangesBadge(); } catch (e) {}
 }
 
-function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(order.date)) {
-  // Always use the original transaction date/time, not the push time
-  const dateStr = txnDate.toLocaleDateString('en-US');
-  const timeStr = txnDate.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
-
-  const c = order.customer || {};
-  const addr = [c.addr, c.city, c.state, c.zip].filter(Boolean).join(', ');
-
-  // Build rows: TXN summary row first, then item rows
-  const rows = [];
-
-  // Summary row: Type | TxnID | Date | Time | Name | Phone | Email | Address |
-  // — | — | — | — | Total | From quote TxnID | Document Type | Document Number |
-  // Name | Company | Street | City | State | Zip | Presell  (Q–V: the same customer, unjoined.
-  // E and H stay joined for older readers; Ledger reads only A:P.)
-  const savedDocType = DOC_TITLES[order.docType] ? order.docType : '';
-  const savedDocNumber = order.docNumber ? String(order.docNumber) : '';
-  rows.push(['TXN', txnId, dateStr, timeStr,
-    [c.name, c.company].filter(Boolean).join(' / ') || '',
-    c.phone || '', c.email || '', addr,
-    '', '', '', '', order.total, order.fromQuote?.txnId || '', savedDocType,
-    savedDocNumber,
-    ...[c.name, c.company, c.addr, c.city, c.state, c.zip].map(v => v || ''),
-    // W: a quote, receipt or invoice marked Presold (Unit Stock presale).
-    ['quote', 'receipt', 'invoice'].includes(savedDocType) && order.presell ? 'PRESELL' : '',
-    // X: the invoice's PO number. Past W (PRESELL) so A:P and Q–V stay as they were; readers that need it read A:X.
-    savedDocType === 'invoice' ? String(order.po || '').trim() : '']);
-
-  // Item rows
-  for (const item of order.items) {
-    rows.push(['item', txnId, '', '', '', '', '', '',
-      item.pn, item.desc, item.qty,
-      item.ea !== '' && item.ea != null ? '$' + parseFloat(item.ea).toFixed(2) : '',
-      item.sub !== '' && item.sub != null ? '$' + parseFloat(item.sub).toFixed(2) : '',
-      (item.sn && item.sn.length) ? item.sn.join(', ') : '',
-      // Per-item discount evidence for Ledger: original Ea. and the amount off each unit.
-      parseFloat(item.discountPerUnit) > 0 && item.originalEa != null && item.originalEa !== '' ? '$' + parseFloat(item.originalEa).toFixed(2) : '',
-      parseFloat(item.discountPerUnit) > 0 ? '$' + parseFloat(item.discountPerUnit).toFixed(2) : '',
-      // Q, R, S (past P, so A:P and the contact hash are unchanged; older readers ignore them): the line's cost, its brand, and flags
-      // W warranty unit / O editable custom line / F typed free-entry line. A part line always writes a cost ($0.00 when none); a blank Q is an old row.
-      item.cost != null && item.cost !== '' && Number.isFinite(Number(item.cost)) ? '$' + Number(item.cost).toFixed(2) : '',
-      String(item.make || '').trim(),
-      (item.warranty ? 'W' : '') + (item.isOther ? 'O' : '') + (item.freeEntry ? 'F' : '')]);
-  }
-
-  return rows;
-}
+// The register's one writer of a document's Transactions rows lives in ledger-data.js, so History builds this computer's unsent documents the same way.
+function transactionRowsForOrder(order, txnId, txnDate) { return window.MPELedgerData.transactionRowsForOrder(order, txnId, txnDate); }
 
 // Compare all saved fields, tolerating only Sheets' number/date display formatting.
 // One shared function with History (ledger-data.js), so an edit's "loaded" token and the register's check always agree.
@@ -9008,6 +9032,7 @@ function ledgerDocumentRequest() {
   const billing = ledgerBillingAddress();
   return {
     po: _docType === 'invoice' ? String(document.getElementById('docPO')?.value || '').trim() : '',
+    ...(receivedByName() ? { received_by: receivedByName() } : {}),   // prints on the signature's Print line
     type: _docType,
     number,
     completionAt: completion.toISOString(),
@@ -9033,10 +9058,15 @@ function ledgerDocumentRequest() {
   };
 }
 
+// Received by (K5, Trevor 2026-11-13): the name typed on the sale screen prints on the Print line above the signature. Printed only, never saved.
+function receivedByName() {
+  return String(document.getElementById('docReceivedBy')?.value || '').trim().toUpperCase();   // shown and printed uppercase like the customer
+}
+
 function buildInvoiceSig() {
   return '<div class="inv-billedto">Terms: Net 30</div>'
     + '<div class="sig-received">Received by:</div>'
-    + `<div class="sig-line">Print: <span class="sig-underline"></span></div>`
+    + `<div class="sig-line">Print: <span class="sig-underline">${String(receivedByName()).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';')}</span></div>`
     + `<div class="sig-line">Sign: <span class="sig-underline"></span></div>`;
 }
 
@@ -9197,6 +9227,7 @@ function preparePrint() {
   const receivedEl = document.getElementById('sig-received');
   const invoiceEl = document.getElementById('sig-invoice');
   const isInvoice = _docType === 'invoice';
+  const printName = document.getElementById('sigPrintName'); if (printName) printName.textContent = receivedByName();
   // Warranty form (the "lines/info" shop copy) prints on RECEIPTS only, and only with the
   // second copy: when a serial number was typed. Never on quotes/invoices/internal.
   const showWarranty = copy2On;
@@ -10326,13 +10357,13 @@ const REGISTER_DIGIT_KEY = 'mpeRegisterDigitV1';
 function registerDigit() {
   let value = '';
   try { value = String(localStorage.getItem(REGISTER_DIGIT_KEY) || ''); } catch (e) {}
-  if (/^[1234]$/.test(value)) return value;
+  if (/^[12345]$/.test(value)) return value;
   const desktopMac = typeof window !== 'undefined' && !!window.mpeDesktop
     && /Macintosh/.test(navigator.userAgent || '');
   return desktopMac ? '1' : '';
 }
 function setRegisterDigit(value) {
-  if (!/^[1234]$/.test(value)) return;
+  if (!/^[12345]$/.test(value)) return;
   try { localStorage.setItem(REGISTER_DIGIT_KEY, value); } catch (e) {}
   // The Desktop app keeps the document-number digit in its own settings (main process).
   try { Promise.resolve(window.mpeDesktop?.placeNumbering?.setDigit(Number(value))).catch(() => {}); } catch (e) {}
@@ -10611,6 +10642,7 @@ function findPartByPn(pn) {
 // The saved PO # (invoices) and Presold box come back with a sale opened from this computer's own history.
 function setDocPoAndPresold(order) {
   const po = document.getElementById('docPO'); if (po) po.value = order.po || '';
+  const rb = document.getElementById('docReceivedBy'); if (rb) rb.value = '';   // printed only, never saved: an opened sale starts blank
   const presellChk = document.getElementById('presellChk'); if (presellChk) presellChk.checked = (order.docType || 'receipt') !== 'internal' && !!order.presell;
 }
 async function reprintOrder(idx) {
@@ -10782,6 +10814,11 @@ function setPhoneListNotice(show) {
   const dot = document.getElementById('phoneListDot');
   const btn = document.getElementById('phoneListBtn');
   if (dot) dot.style.display = show ? '' : 'none';
+  // Counter view: Phone list lives in the Admin menu (K5, Trevor 2026-11-13), so a new list also dots Admin.
+  const menuDot = document.getElementById('adminPhoneListDot');
+  if (menuDot) menuDot.style.display = show ? '' : 'none';
+  window._phoneListNew = !!show;
+  updateAdminDot();
   if (btn) {
     btn.title = show
       ? 'New phone list available'
@@ -11012,6 +11049,7 @@ function restoreClearedScreen(lines) {
   custFields.forEach((id, n) => { const el = $one('#' + id); if (el) el.value = sc.customer[n] || ''; });
   if ($one('#custPanel')) $one('#custPanel').dataset.customerRef = sc.customerRef || '';
   if ($one('#docPO')) $one('#docPO').value = sc.po || '';
+  if ($one('#docReceivedBy')) $one('#docReceivedBy').value = sc.received || '';
   setDocType(sc.doc || 'receipt');
   if ($one('#presellChk')) $one('#presellChk').checked = !!sc.presell;
   cartStockSession = sc.stock || null;   // the same cart session, so a later Print's FINAL replaces its review
@@ -12046,6 +12084,7 @@ function clearCustFields() {
   setRegCredit(null);
   custFields.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const po = document.getElementById('docPO'); if (po) po.value = '';   // the PO number belongs to one sale, like the customer
+  const rb = document.getElementById('docReceivedBy'); if (rb) rb.value = '';   // Received by too (printed only, never saved)
 }
 
 installRowDrag();
@@ -12448,13 +12487,13 @@ const q=s=>document.querySelector(s), qa=s=>Array.from(document.querySelectorAll
 const num=x=>parseFloat(String(x??'').replace(/[$,%\s]/g,''))||0;
 const enc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const plain=n=>Number(n||0).toFixed(2);
-let mounted=false,printing=false,frame=0,busy=false,lastIds=null,lastCount=0,searchTarget=null,searchMatches=[],searchActive=0,dragId=null,focusSnapshot=null;
+let mounted=false,desktopRowClaimed=false,printing=false,frame=0,busy=false,lastIds=null,lastCount=0,searchTarget=null,searchMatches=[],searchActive=0,dragId=null,focusSnapshot=null;
 const originals=[];
 const root=document.createElement('section');root.id='counterView';root.setAttribute('aria-label','Counter POS');
-root.innerHTML=`<header class="cv-top"><strong class="cv-edit-title" id="cvEditTitle"></strong><span class="cv-edit-type" id="cvEditType"></span><div class="cv-tabs" id="cvTabs"></div><button class="cv-new" id="cvNew" type="button" title="New sale" aria-label="New sale">+</button><div class="cv-docs"></div><div class="cv-history"></div><span class="cv-spacer"></span><button class="cv-icon" id="cvOptions" type="button">Options</button><button class="cv-icon" id="cvFullScreen" type="button" title="Full screen" aria-label="Full screen" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button><button class="cv-icon" id="cvFrontLock" type="button" title="Keep POS in front" aria-label="Keep POS in front" aria-pressed="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 3 8 0-1 6 4 4v2H5v-2l4-4-1-6zM12 15v7"/></svg></button></header>
+root.innerHTML=`<header class="cv-top"><strong class="cv-edit-title" id="cvEditTitle"></strong><span class="cv-edit-type" id="cvEditType"></span><div class="cv-tabs" id="cvTabs"></div><button class="cv-new" id="cvNew" type="button" title="New sale" aria-label="New sale">+</button><span class="cv-sep"></span><div class="cv-docs"></div><div class="cv-history"></div><span class="cv-spacer"></span><div class="cv-tabs cv-fixed-tabs" id="cvFixedTabs"></div><span class="cv-gold-slot"></span><span class="cv-sep"></span><button class="cv-icon" id="cvOptions" type="button">Options</button></header>
 <div class="cv-quote" hidden><label><input type="checkbox" data-cv-toggle="Signature">Signature</label><label><input type="checkbox" data-cv-toggle="SalesView">Sales View</label></div>
-<div class="cv-body"><div class="cv-work"><div class="cv-head"><span></span><span><span>Description</span><span class="cv-reorder-label">Need to reorder?</span></span><span class="cv-support">Cost</span><span class="cv-support">Margin %</span><span class="cv-support cv-discount-head">Discount</span><span>Ea.</span><span>Qty</span><span>Price</span><span></span></div><div id="cvItems"></div><div class="cv-entry"><input id="cvEntry" autocomplete="off" aria-label="New item" placeholder="Part number or description…"></div><div id="cvReview"></div></div>
-<aside class="cv-checkout"><div class="cv-fill"><div class="cv-card cv-card-cust"><div class="cv-customer-label">Customer</div><div id="cvCustomer"></div></div><div class="cv-card cv-card-po"><button class="cv-note" id="cvNote" type="button">Add note</button><div id="cvPo"></div><div class="cv-order"><span class="cv-order-label">Discount</span><div class="cv-discount-mode" role="group" aria-label="Order discount type"><button id="cvOrderMoney" type="button" aria-pressed="true">$</button><button id="cvOrderPercent" type="button" aria-pressed="false">%</button></div><input id="cvOrderValue" aria-label="Whole order discount" type="text" inputmode="decimal" value="0" autocomplete="off"></div><label class="cv-fee"><input id="cvCardFee" type="checkbox">Card fee · 3%</label></div><div id="cvLedger"></div></div><div class="cv-summary"><div id="cvTotals"></div></div><div id="cvFinalize"></div><div id="cvCharge"></div></aside></div>
+<div class="cv-body"><div class="cv-work"><div class="cv-workbar"><button class="cv-note" id="cvNote" type="button"><span aria-hidden="true">+</span> Add note</button><span class="cv-spacer"></span></div><div class="cv-head"><span></span><span><span>Description</span><span class="cv-reorder-label">Need to reorder?</span></span><span class="cv-support">Cost</span><span class="cv-support">Margin %</span><span class="cv-support cv-discount-head">Discount</span><span>Ea.</span><span>Qty</span><span>Price</span><span></span></div><div id="cvItems"></div><div class="cv-entry"><input id="cvEntry" autocomplete="off" aria-label="New item" placeholder="Part number or description…"></div><div id="cvReview"></div></div>
+<aside class="cv-checkout"><div class="cv-fill"><div class="cv-card cv-card-cust"><div class="cv-customer-label">Customer</div><div id="cvCustomer"></div></div><div class="cv-card cv-card-po"><div id="cvPo"><label class="cv-lbl" for="docPO">PO #</label><label class="cv-lbl" for="docReceivedBy">Received by</label></div><div class="cv-kf"><span class="cv-order-label">Discount</span><div class="cv-order"><div class="cv-discount-mode" role="group" aria-label="Order discount type"><button id="cvOrderMoney" type="button" aria-pressed="true">$</button><button id="cvOrderPercent" type="button" aria-pressed="false">%</button></div><input id="cvOrderValue" aria-label="Whole order discount" type="text" inputmode="decimal" value="0" autocomplete="off"></div><span class="cv-order-label">Card fee</span><label class="cv-fee"><input id="cvCardFee" type="checkbox">3%</label></div></div><div id="cvLedger"></div></div><div class="cv-summary"><div id="cvTotals"></div></div><div id="cvFinalize"></div><div id="cvCharge"></div></aside></div>
 <div class="cv-deck"><button class="cv-command delete" type="button" data-cv-command="DELETE"><svg data-cv-qr="delete" role="img" aria-label="Clear / Price Check QR"></svg><span>Clear / Price Check</span></button><button class="cv-command print" type="button" data-cv-command="PRINT"><svg data-cv-qr="print" role="img" aria-label="Print QR"></svg><span>Quick</span><span class="cv-mirror">Print</span></button><button class="cv-command next" type="button" data-cv-command="SAVENEW"><svg data-cv-qr="clear" role="img" aria-label="Save / Next Transaction QR"></svg><span>Save / Next Transaction</span></button></div><div class="cv-feedback" role="status" id="cvFeedback"></div>`;
 document.body.append(root);
 const saveOption=q('#saveBtn');saveOption.className='drive-btn hist-btn';q('#adminMenu .admin-control-grid').append(saveOption);
@@ -12479,12 +12518,12 @@ function applyOrderDiscount(){
  let base=0;for(const n of rowOrder()){if(n!==i)base+=num(q(`#sub-${n}`)?.dataset.val);}const off=Math.min(Math.max(0,base),orderMode==='percent'?base*amount/100:amount);const price=q(`#price-${i}`);price.dataset.price=-Math.round(off*100)/100;price.querySelector('.price-edit').value=fmt(-off);q(`#qty-${i}`).value=1;updateSubtotal(i);updateSummary();
 }
 function move(selector,target){const node=typeof selector==='string'?q(selector):selector;if(!node||originals.some(x=>x.node===node))return;const marker=document.createComment('counter-view original');node.before(marker);originals.push({node,marker,target});if(mounted)target.append(node);}
-function mount(){if(mounted||printing)return;mounted=true;originals.forEach(x=>x.target.append(x.node));q('#adminMenuBtn').closest('.menu-wrap').before(q('#cvOptions'),q('#cvFullScreen'),q('#cvFrontLock'));document.body.classList.add('counter-view');document.body.classList.remove('scanner-mode-active');_scannerModeActive=false;clearTimeout(_scannerIdleTimer);sync();}
-function unmount(){if(!mounted)return;mounted=false;originals.slice().reverse().forEach(x=>x.marker.after(x.node));document.body.classList.remove('counter-view');hideSearch();}
+function mount(){if(mounted||printing)return;mounted=true;if(desktopRowClaimed)window.mpeDesktop.tabs.claim?.();originals.forEach(x=>x.target.append(x.node));q('#adminMenuBtn').closest('.menu-wrap').before(q('#cvOptions'));document.body.classList.add('counter-view');document.body.classList.remove('scanner-mode-active');_scannerModeActive=false;clearTimeout(_scannerIdleTimer);sync();updateAdminDot();}
+function unmount(){if(!mounted)return;mounted=false;originals.slice().reverse().forEach(x=>x.marker.after(x.node));document.body.classList.remove('counter-view');hideSearch();if(desktopRowClaimed)window.mpeDesktop.tabs.release?.();updateAdminDot();}
 window.setCounterClassicView=function(classic){localStorage.setItem(VIEW_KEY,classic?'1':'0');q('#cvClassic').checked=!!classic;if(classic)unmount();else mount();};window.mountCounterViewForEdit=()=>mount();/* History's edit always uses the compact lines layout, without changing the saved view choice */
 const classic=document.createElement('label');classic.className='menu-check';classic.innerHTML='<input type="checkbox" id="cvClassic"> Classic view';q('#adminMenu').append(classic);q('#cvClassic').addEventListener('change',e=>window.setCounterClassicView(e.target.checked));
-move('#docTypeSel',q('.cv-docs'));move('#docPO',q('#cvPo'));
-const top=q('.cv-top');move('#partsBtn',top);move('#phoneListBtn',top);move('#emailDocBtn',top);move('#exportPdfBtn',top);move('#printBtn',top);move('#reviewQrSwitch',top);move(q('#adminMenuBtn')?.closest('.menu-wrap'),top);move('#themeToggle',top);move('#custPanel',q('#cvCustomer'));move(q('.checkout-summary .summary'),q('#cvTotals'));move('#presellWrap',q('.cv-docs'));move('#chargeCardBtn',q('#cvCharge'));move('#finalizeInvoiceBtn',q('#cvFinalize'));move('#ledgerCustomerChooser',q('#cvLedger'));move('#ledgerInvoiceStatus',q('#cvLedger'));move('#licenseDiag',q('#cvCustomer'));move('#scanPanel',q('#cvReview'));
+move('#docTypeSel',q('.cv-docs'));move('#docPO',q('#cvPo'));move('#docReceivedBy',q('#cvPo'));
+const top=q('.cv-top');move('#partsBtn',q('.cv-gold-slot'));move('#emailDocBtn',top);move('#exportPdfBtn',top);move('#printBtn',top);move('#reviewQrSwitch',top);move(q('#adminMenuBtn')?.closest('.menu-wrap'),top);move('#themeToggle',top);move('#custPanel',q('#cvCustomer'));move(q('.checkout-summary .summary'),q('#cvTotals'));move('#presellWrap',q('.cv-workbar'));move('#chargeCardBtn',q('#cvCharge'));move('#finalizeInvoiceBtn',q('#cvFinalize'));move('#ledgerCustomerChooser',q('#cvLedger'));move('#ledgerInvoiceStatus',q('#cvLedger'));move('#licenseDiag',q('#cvCustomer'));move('#scanPanel',q('#cvReview'));
 q('#printBtn').classList.add('cv-icon');q('#printBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 8V3h12v5M6 17H3V9h18v8h-3M6 14h12v7H6zM17 11h1"/></svg>';q('#printBtn').setAttribute('aria-label','Manual print');q('#printBtn').title='Manual print';
 q('#emailDocBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg>';q('#emailDocBtn').setAttribute('aria-label','Email PDF');
 q('#exportPdfBtn').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M13 3H5v18h14V9zM13 3v6h6M8 14h8M12 11v7m-3-3 3 3 3-3"/></svg>';q('#exportPdfBtn').setAttribute('aria-label','Download PDF');
@@ -12493,8 +12532,8 @@ const customerPanel=q('#custPanel');['custName','custCompany','custAddr','custCi
 q('#cvOptions').onclick=e=>{e.stopPropagation();if(typeof window.mpeDesktop?.openSettings==='function'){Promise.resolve().then(()=>window.mpeDesktop.openSettings()).catch(()=>flashScanCommand('Could not open Desktop Settings — try Admin → Desktop Settings','warn'));return;}q('#adminMenuBtn').click();};
 const nativeModes=window.mpeDesktop?.windowModes;
 if(nativeModes){
- const full=q('#cvFullScreen'),front=q('#cvFrontLock');full.hidden=false;front.hidden=false;
- const renderModes=value=>{for(const [button,key,label] of [[full,'fullScreen','Full screen'],[front,'alwaysOnTop','Keep POS in front']]){const active=value?.[key]===true;button.setAttribute('aria-pressed',String(active));const name=active?(key==='fullScreen'?'Exit full screen':'Release front lock'):label;button.title=name;button.setAttribute('aria-label',name);}};
+ const full=q('#adminFullScreen'),front=q('#adminFrontLock');full.hidden=false;front.hidden=false;
+ const renderModes=value=>{for(const [button,key,off,on] of [[full,'fullScreen','Full screen','Exit full screen'],[front,'alwaysOnTop','Keep in front','Release front lock']]){const active=value?.[key]===true;button.setAttribute('aria-pressed',String(active));button.textContent=active?on:off;}};
  const toggle=async action=>{full.disabled=true;front.disabled=true;try{renderModes(await action());}catch(error){flashScanCommand('Could not change the window — open Options and try again','warn');}finally{full.disabled=false;front.disabled=false;}};
  full.onclick=()=>toggle(()=>nativeModes.toggleFullScreen());front.onclick=()=>toggle(()=>nativeModes.toggleFrontLock());
  nativeModes.onChange(renderModes);nativeModes.get().then(renderModes).catch(()=>{});
@@ -12532,9 +12571,11 @@ function sync(){
  }finally{busy=false;}
 }
 function hideSearch(){results.hidden=true;results.replaceChildren();searchTarget=null;searchMatches=[];}
-function positionSearch(){if(results.hidden||!searchTarget?.input?.isConnected)return;const anchor=searchTarget.input.getBoundingClientRect();const width=Math.min(innerWidth-16,Math.max(360,anchor.width));results.style.width=width+'px';results.style.maxHeight='320px';const wanted=Math.min(320,results.scrollHeight),below=innerHeight-anchor.bottom-8,above=anchor.top-8,up=below<wanted&&above>below;const room=Math.max(40,up?above:below),height=Math.min(wanted,room);results.style.maxHeight=room+'px';results.style.left=Math.min(Math.max(8,anchor.left),innerWidth-width-8)+'px';results.style.top=(up?anchor.top-height-6:anchor.bottom+6)+'px';results.dataset.direction=up?'up':'down';}
+// K5 (Trevor, 2026-11-13): a short list of one-line matches, about six rows tall; the rest scroll inside it.
+const CV_RESULTS_HEIGHT=206;
+function positionSearch(){if(results.hidden||!searchTarget?.input?.isConnected)return;const anchor=searchTarget.input.getBoundingClientRect();const width=Math.min(innerWidth-16,Math.max(420,Math.min(560,anchor.width)));results.style.width=width+'px';results.style.maxHeight=CV_RESULTS_HEIGHT+'px';const wanted=Math.min(CV_RESULTS_HEIGHT,results.scrollHeight),below=innerHeight-anchor.bottom-8,above=anchor.top-8,up=below<wanted&&above>below;const room=Math.max(40,up?above:below),height=Math.min(wanted,room);results.style.maxHeight=Math.min(room,CV_RESULTS_HEIGHT)+'px';results.style.left=Math.min(Math.max(8,anchor.left),innerWidth-width-8)+'px';results.style.top=(up?anchor.top-height-6:anchor.bottom+6)+'px';results.dataset.direction=up?'up':'down';}
 function showSearch(input,row){if(!editable())return;if(!loaded){flashScanCommand('Prices are still loading','warn');return;}const text=input.value.trim();if(!text){hideSearch();return;}searchTarget={input,row,text};searchMatches=searchParts(text);searchActive=0;renderResults();}
-function renderResults(){if(!searchTarget)return;const matches=searchMatches.slice(0,MAX_RESULTS);results.innerHTML=matches.map((p,n)=>`<button type="button" data-cv-pick="${n}" class="${n===searchActive?'active':''}"><span>${enc(p.desc||p.pn)}<small>${enc(p.og||p.pn)}${p.make?' · '+enc(p.make):''}</small></span><strong>${p.list?enc(fmt(p.list)):''}</strong></button>`).join('')+(!matches.length?`<button type="button" data-cv-custom="1">Use “${enc(searchTarget.text)}” as a custom item</button>`:'')+(searchMatches._more?.length?`<button type="button" data-cv-more="1">Show ${searchMatches._more.length} other variants</button>`:'');results.hidden=false;positionSearch();}
+function renderResults(){if(!searchTarget)return;const matches=searchMatches.slice(0,MAX_RESULTS);results.innerHTML=matches.map((p,n)=>`<button type="button" data-cv-pick="${n}" class="${n===searchActive?'active':''}"><b>${enc(p.og||p.pn)}</b><span>${enc(p.desc||p.pn)}${p.make?`<small> · ${enc(p.make)}</small>`:''}</span><strong>${p.list?enc(fmt(p.list)):''}</strong></button>`).join('')+(!matches.length?`<button type="button" data-cv-custom="1">Use “${enc(searchTarget.text)}” as a custom item</button>`:'')+(searchMatches._more?.length?`<button type="button" data-cv-more="1">Show ${searchMatches._more.length} other variants</button>`:'');results.hidden=false;positionSearch();}
 function pick(part,tabToQty=false){if(!editable())return;const target=searchTarget;if(!target)return;const i=target.row==null?emptyRow():target.row;const input=tbody.querySelector(`[data-row="${i}"].part-input`);input.value=part.og||part.pn;ensureScannerMobileRow(i);applyMobilePart(i,part,{skipFocus:true});hideSearch();q('#cvEntry').value='';schedule();if(tabToQty)focusLineField(i,'[data-cv-field="qty"]');else requestAnimationFrame(()=>q('#cvEntry').focus());}
 function customPick(){if(!editable())return;const target=searchTarget;if(!target)return;const i=target.row==null?emptyRow():target.row;clearRowData(i);const input=tbody.querySelector(`[data-row="${i}"].part-input`);input.readOnly=false;input.value=target.text;input.className='part-input no-match';commitFreeItem(i,false);hideSearch();q('#cvEntry').value='';schedule();requestAnimationFrame(()=>q(`[data-cv-id="${i}"] .cv-description`)?.focus());}
 results.addEventListener('mousedown',e=>e.preventDefault());results.addEventListener('click',e=>{const pickBtn=e.target.closest('[data-cv-pick]');if(pickBtn){pick(searchMatches[+pickBtn.dataset.cvPick]);return;}if(e.target.closest('[data-cv-custom]'))customPick();if(e.target.closest('[data-cv-more]')){searchMatches=[...searchMatches,...searchMatches._more];renderResults();}});
@@ -12599,8 +12640,8 @@ const oldClear=clearAll;clearAll=function(){const result=oldClear();if(result!==
 // Desktop continues to own its independent native sale tabs. Browser sessions
 // retain detached canonical rows per tab; switching never saves/clears a sale.
 const browserTabs=new Map();let activeTab=1,nextTab=2;
-function snapshotTab(){return{rows:[...tbody.childNodes],mobile:[...q('#mobileRows').childNodes],count:NUM_ROWS,customer:custFields.map(id=>q('#'+id)?.value||''),customerRef:q('#custPanel').dataset.customerRef||'',po:q('#docPO')?.value||'',doc:_docType,toggles:['signatureBtn','salesViewBtn','cardFeeBtn'].map(id=>q('#'+id).classList.contains('active')),pendingDate:_pendingTxnDate,pendingNumber:_pendingDocNumber,entry:q('#cvEntry').value,txn:_currentTxnId,date:_currentTxnDate,number:_currentDocNumber,reprint:_reprintSource,quote:_quoteSource,baseline:_historyContentBaseline,cleared:_clearedSale,stock:cartStockSession,tender:readTenderSelection(),scanIssues:new Map(scanIssues),presell:q('#presellChk').checked,credit:_regCredit};}
-function activateTab(id){ledgerTab?.hide();commitFocused();_undoOfferAt=0;browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);q('#custPanel').dataset.customerRef=s.customerRef||'';q('#docPO').value=s.po||'';_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));_regCredit=s.credit||null;setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}orderMode='amount';orderRequested=0;lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
+function snapshotTab(){return{rows:[...tbody.childNodes],mobile:[...q('#mobileRows').childNodes],count:NUM_ROWS,customer:custFields.map(id=>q('#'+id)?.value||''),customerRef:q('#custPanel').dataset.customerRef||'',po:q('#docPO')?.value||'',received:q('#docReceivedBy')?.value||'',doc:_docType,toggles:['signatureBtn','salesViewBtn','cardFeeBtn'].map(id=>q('#'+id).classList.contains('active')),pendingDate:_pendingTxnDate,pendingNumber:_pendingDocNumber,entry:q('#cvEntry').value,txn:_currentTxnId,date:_currentTxnDate,number:_currentDocNumber,reprint:_reprintSource,quote:_quoteSource,baseline:_historyContentBaseline,cleared:_clearedSale,stock:cartStockSession,tender:readTenderSelection(),scanIssues:new Map(scanIssues),presell:q('#presellChk').checked,credit:_regCredit};}
+function activateTab(id){ledgerTab?.hide();commitFocused();_undoOfferAt=0;browserTabs.set(activeTab,snapshotTab());activeTab=id;const s=browserTabs.get(id);if(s){NUM_ROWS=s.count;tbody.replaceChildren(...s.rows);q('#mobileRows').replaceChildren(...s.mobile);custFields.forEach((key,n)=>q('#'+key).value=s.customer[n]);q('#custPanel').dataset.customerRef=s.customerRef||'';q('#docPO').value=s.po||'';q('#docReceivedBy').value=s.received||'';_pendingTxnDate=s.pendingDate;_pendingDocNumber=s.pendingNumber;_currentTxnId=s.txn;_currentTxnDate=s.date;_currentDocNumber=s.number;_reprintSource=s.reprint;_quoteSource=s.quote;_historyContentBaseline=s.baseline;_clearedSale=s.cleared;cartStockSession=s.stock;const tt=q('#tenderType'),tr=q('#tenderReference');if(tt)tt.value=s.tender.type;if(tr)tr.value=s.tender.reference||'';scanIssues.clear();s.scanIssues.forEach((v,k)=>scanIssues.set(k,v));['signatureBtn','salesViewBtn','cardFeeBtn'].forEach((key,n)=>q('#'+key).classList.toggle('active',s.toggles[n]));_regCredit=s.credit||null;setDocType(s.doc==='internal'?'receipt':s.doc);q('#presellChk').checked=s.presell;}else{NUM_ROWS=DEFAULT_ROWS;buildRows();buildMobileRows();clearCustFields();_pendingTxnDate=null;_pendingDocNumber=null;_currentTxnId=null;_currentTxnDate=null;_currentDocNumber=null;_reprintSource=null;_quoteSource=null;_historyContentBaseline=null;_clearedSale=null;cartStockSession=null;scanIssues.clear();resetTenderUi();setDocType('receipt');['signatureBtn','salesViewBtn','cardFeeBtn'].forEach(key=>q('#'+key).classList.remove('active'));q('#presellChk').checked=false;}orderMode='amount';orderRequested=0;lastIds=null;lastCount=0;hideSearch();q('#cvEntry').value=s?.entry||'';updateSummary();qa('.cv-tab').forEach(b=>b.classList.toggle('active',+b.dataset.cvTab===id));}
 function closeBrowserTab(id){
  const state=id===activeTab?snapshotTab():browserTabs.get(id);
  const hasContent=state&&(state.rows.some(row=>row.nodeType===1&&(row.querySelector('.part-input')?.value.trim()||row.querySelector('.note-desc-input,.discount-desc-input')?.value.trim()))||state.customer.some(Boolean)||state.entry.trim());
@@ -12611,10 +12652,32 @@ function closeBrowserTab(id){
 }
 // A History edit frame (website) sits over History: the sale tabs wait until it is saved or cancelled.
 function editFrameOpen(){if(!document.querySelector('iframe[data-mpe-embed]'))return false;flashScanCommand('Finish or cancel the edit first','warn');return true;}
-function addTab(){if(editFrameOpen())return;const id=nextTab++,b=document.createElement('button');b.type='button';b.className='cv-tab';b.dataset.cvTab=id;b.textContent='Sale '+id;b.onclick=()=>{if(!editFrameOpen())activateTab(id);};const group=document.createElement('div');group.className='cv-tab-group';const close=document.createElement('button');close.type='button';close.className='cv-close-tab';close.textContent='×';close.setAttribute('aria-label','Close sale '+id);close.title='Close sale '+id;close.onclick=()=>{if(!editFrameOpen())closeBrowserTab(id);};group.append(b,close);q('#cvTabs').append(group);if(id!==1)activateTab(id);else b.classList.add('active');}
-// Ledger tab: first, never closed. The app shows it in its native tab strip instead.
+function addTab(){if(editFrameOpen())return;const id=nextTab++,b=document.createElement('button');b.type='button';b.className='cv-tab';b.dataset.cvTab=id;b.textContent='Sale '+id;b.onclick=()=>{if(!editFrameOpen())activateTab(id);};const group=document.createElement('div');group.className='cv-tab-group';const close=document.createElement('button');close.type='button';close.className='cv-close-tab';close.textContent='×';close.setAttribute('aria-label','Close sale '+id);close.title='Close sale '+id;close.onclick=()=>{if(!editFrameOpen())closeBrowserTab(id);};group.append(b,close);q('#cvTabs').append(group);if(id!==1)activateTab(id);else b.classList.add('active');group.scrollIntoView({inline:'nearest',block:'nearest'});}
+// K5 one top row (Trevor 2026-11-13; app shells with mpeDesktop.tabs): this sale page draws the app's sale tabs as chips and gold Parts Lookup /
+// History buttons; the app hides its own tab row while a sale shows (and keeps it for Parts and History). Main owns the tabs:
+// the page only shows its state and asks it to open, show or close one. An older app keeps its own row (false here).
+function desktopTabRow(){
+ const api=window.mpeDesktop.tabs;if(!api||typeof api.onState!=='function')return false;
+ const fx=q('#cvFixedTabs');
+ const gold=(id,label,title)=>{const b=document.createElement('button');b.type='button';b.className='cv-tab cv-ledger-tab';b.title=title;b.hidden=true;const s=document.createElement('span');s.textContent=label;b.append(s);b.onclick=()=>api.activate(id);fx.append(b);return b;};
+ const parts=gold(-1,'Parts Lookup','Parts Lookup — open the parts books'),history=gold(0,'History','History — saved sales, invoices and quotes');
+ q('#cvNew').onclick=()=>api.create();
+ api.onState(state=>{
+  const tabs=Array.isArray(state?.tabs)?state.tabs:[];
+  q('#cvTabs').replaceChildren(...tabs.filter(t=>!t.role).map(t=>{
+   const group=document.createElement('div');group.className='cv-tab-group';
+   const b=document.createElement('button');b.type='button';b.className='cv-tab'+(t.id===state.activeId?' active':'');b.textContent=String(t.label||'Sale');b.onclick=()=>api.activate(t.id);group.append(b);
+   if(t.closable){const x=document.createElement('button');x.type='button';x.className='cv-close-tab';x.textContent='×';x.title=x.ariaLabel='Close '+b.textContent;x.onclick=()=>api.close(t.id);group.append(x);}
+   return group;}));
+  parts.hidden=!tabs.some(t=>t.role==='parts');history.hidden=!tabs.some(t=>t.role==='ledger');
+  q('#cvTabs .cv-tab.active')?.closest('.cv-tab-group')?.scrollIntoView({inline:'nearest',block:'nearest'});   // many sales: the active chip stays in sight
+ });
+ desktopRowClaimed=true;if(!mounted)api.release?.();   // Classic view saved: the app keeps its own row
+ return true;
+}
+// History (Ledger) tab: last of the fixed tabs, never closed. The app shows it in its native tab strip instead.
 let ledgerTab=null;
-if(window.mpeDesktop){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;window.mpeDesktop.onLedgerSale?.(openLedgerSale);window.mpeDesktop.onEditSession?.(runEditSessionAndReport);}else{if(MPE_EDIT_SESSION_PAGE){window.addEventListener('message',e=>{if(e.source!==window.parent||e.origin!==location.origin||!e.data)return;if(e.data.type==='edit-session')void runEditSessionAndReport(e.data.request);else if(e.data.type==='edit-command')void runEditCommand(e.data.command);else if(e.data.type==='edit-key')runEditKey(e.data);else if(e.data.type==='edit-scan')runEditScan(e.data);});window.parent.postMessage({type:'edit-ready'},location.origin);}nextTab=1;addTab();q('#cvNew').onclick=addTab;ledgerTab=MPE_EDIT_SESSION_PAGE?null:window.MPELedgerTab?.install({document,window,tabs:q('#cvTabs'),header:q('.cv-top'),host:root,onShow:()=>qa('#cvTabs .cv-tab[data-cv-tab]').forEach(b=>b.classList.remove('active')),onOpenSale:sale=>{addTab();openLedgerSale(sale);},scanKeydown:onHardwareScanKeydown,onScan:()=>activateTab(activeTab)})||null;}
+if(window.mpeDesktop){if(MPE_EDIT_SESSION_PAGE||!desktopTabRow()){q('#cvTabs').hidden=true;q('#cvNew').hidden=true;q('#cvFixedTabs').hidden=true;}window.mpeDesktop.onLedgerSale?.(openLedgerSale);window.mpeDesktop.onEditSession?.(runEditSessionAndReport);}else{if(MPE_EDIT_SESSION_PAGE){window.addEventListener('message',e=>{if(e.source!==window.parent||e.origin!==location.origin||!e.data)return;if(e.data.type==='edit-session')void runEditSessionAndReport(e.data.request);else if(e.data.type==='edit-command')void runEditCommand(e.data.command);else if(e.data.type==='edit-key')runEditKey(e.data);else if(e.data.type==='edit-scan')runEditScan(e.data);});window.parent.postMessage({type:'edit-ready'},location.origin);}nextTab=1;addTab();q('#cvNew').onclick=addTab;ledgerTab=MPE_EDIT_SESSION_PAGE?null:window.MPELedgerTab?.install({document,window,tabs:q('#cvFixedTabs'),header:q('.cv-top'),host:root,onShow:()=>qa('#cvTabs .cv-tab[data-cv-tab]').forEach(b=>b.classList.remove('active')),onOpenSale:sale=>{addTab();openLedgerSale(sale);},scanKeydown:onHardwareScanKeydown,onScan:()=>activateTab(activeTab)})||null;if(!MPE_EDIT_SESSION_PAGE){const fx=q('#cvFixedTabs'),pt=document.createElement('button');pt.type='button';pt.id='cvPartsTab';pt.className='cv-tab cv-ledger-tab';pt.title='Parts Lookup — open the parts books';pt.hidden=true;pt.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><circle cx="12" cy="12" r="3"/></svg><span>Parts Lookup</span>';pt.onclick=()=>openPartsBooks();fx.prepend(pt);if(ledgerTab)fx.append(ledgerTab.button);}}
 if(window.mpeDesktop){if(MPE_EDIT_SESSION_PAGE&&typeof window.mpeDesktop.onEditCommand==='function')window.mpeDesktop.onEditCommand(c=>void runEditCommand(c));}else if(!MPE_EDIT_SESSION_PAGE)root.addEventListener('load',e=>{if(e.target.classList?.contains('cv-ledger-frame'))qa('iframe[data-mpe-embed]').forEach(f=>f.remove());},true);   // A4: a (re)loaded History frame drops any orphaned edit frame
 const oldIdle=posRegisterIsIdleAndEmpty;posRegisterIsIdleAndEmpty=function(){if(document.querySelector('iframe[data-mpe-embed]')||q('#cvEntry').value.trim())return false;for(const [id,state] of browserTabs){if(id!==activeTab&&(state.entry.trim()||state.customer.some(Boolean)||state.rows.some(row=>row.nodeType===1&&row.querySelector('.part-input')?.value.trim())))return false;}return oldIdle();};
 q('#cvClassic').checked=localStorage.getItem(VIEW_KEY)==='1';if(!q('#cvClassic').checked)mount();
@@ -12628,8 +12691,9 @@ const partsNote=(m,kind)=>flashScanCommand(m,kind||'err');
 function partsSend(msg){msg={...msg,v:1};try{if(partsDesk)partsDesk.send(msg);else if(partsWin&&!partsWin.closed)partsWin.postMessage(msg,PARTS_ORIGIN);}catch(_){}}
 function partsSalesView(){return partsDesk||partsOpenerTab==null||partsOpenerTab===activeTab?q('#salesViewBtn').classList.contains('active'):!!browserTabs.get(partsOpenerTab)?.toggles?.[1];}
 function partsSendState(force){if(!partsLive&&!partsDesk)return;const v=partsSalesView();if(!force&&v===partsLastView)return;partsLastView=v;partsSend({type:'mpe-parts:pos-state',salesView:v,sale:partsDesk?PARTS_PAGE_SALE:'w'+partsOpenerTab});}   // desktop: main forwards only the opener's, so no live gate (a reloaded tab still syncs)
-function syncPartsButtons(){const here=partsDesk?typeof partsDesk.open==='function':!window.mpeDesktop&&!editFrameOpen();let flag=false;try{flag=localStorage.getItem('mpe.parts.here')==='1';}catch(_){}
- q('#partsBtn').style.display=here&&(partsDesk||flag)?'':'none';q('#partsMenuBtn').style.display=here?'':'none';}
+function syncPartsButtons(){const web=!window.mpeDesktop&&!editFrameOpen(),here=partsDesk?typeof partsDesk.open==='function':web;let flag=false;try{flag=localStorage.getItem('mpe.parts.here')==='1';}catch(_){}
+ q('#partsBtn').style.display=partsDesk&&here&&partsDesk.inTab!==true?'':'none';   // green button: old app shells only; the new shell has a Parts tab, the website a Parts tab in the tab row
+ const tab=q('#cvPartsTab');if(tab)tab.hidden=!(web&&flag);q('#partsMenuBtn').style.display=here?'':'none';}
 window.openPartsBooks=async function(){
  if(partsDesk){if(typeof partsDesk.open!=='function')return;try{const r=await partsDesk.open();if(r&&r.ok===false){partsNote(r.reason||'MPE Parts did not start.');return;}partsLive=true;partsSendState(true);}catch(_){partsNote('MPE Parts did not start.');}return;}
  if(window.mpeDesktop||editFrameOpen())return;

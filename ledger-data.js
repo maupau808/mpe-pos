@@ -34,6 +34,21 @@
  * cancelledIds(paymentRows) -> Set of currently cancelled txnIds is THE CONTRACT the stock poll mirrors. A cancelled receipt or invoice
  * gets state 'cancelled' (cancelledAt = the mark's date), owes nothing, and stays out of Customers balances and Awaiting pickup.
  *
+ * DUE DATE (History's Edit due date, append-only): a mark of kind 'due' on the Payments tab: note = the new due date YYYY-MM-DD, or '' for
+ * back to automatic (date + NET_DAYS). Column J (voids) is ALWAYS 'due' (buildMarkRow): a History page from before this mark existed reads the
+ * row as a payment, and a row with voids set is dropped by its livePayments, so it never counts as paid and Undo has nothing to undo. parseMarks gives
+ * dues {txnId: {date, at}} (date '' = automatic); the newest recorded_at wins, a later row wins a tie; a note that is neither a real date nor ''
+ * is ignored. derive gives a register invoice dueDate = the mark's date else date + 30, with dueAuto (the automatic date) and dueIsCustom.
+ * QuickBooks records are never derived here, so they ignore it. Cancelled records also get cancelledTs (the cancel mark's recorded_at).
+ *
+ * ORDER NOTE (History's "Order note · shop only", append-only): a mark of kind 'note' on the Payments tab: note (G) = the text (orderNoteText:
+ * newlines kept, a tab becomes one space, other control characters dropped, trimmed, at most 2000 characters; '' = cleared). Column J is ALWAYS 'note', for
+ * the same reason as 'due' (an older page would count the row as a payment). Not a timeline entry. parseMarks gives orderNotes {txnId: {text, at}}
+ * (newest recorded_at wins, a later row wins a tie). derive gives every register record orderNote (its own text, '') and orderNoteFrom
+ * ({ number, text } of the nearest record it was made from (fromQuote: a quote or a replaced invoice) that has a note, when it has none; null)
+ * and adds orderNote to _hay. Never on a printed, emailed or saved document: no request builder copies it. Not to be confused with the
+ * printed line notes (items with pn 'Note') or ledger.js's status lines.
+ *
  * CUSTOMERS (buildCustomers): QuickBooks customers (the nightly file's `customers` array), rows of the sheet's Customers tab
  * (CUSTOMER_COLUMNS: the register's 9 plus J "QBO Id", written only by History) and the customers seen on Transactions / QuickBooks
  * records, grouped into one customer each. Group = QuickBooks id when known, else the register's key (customerKey). The newest
@@ -52,7 +67,7 @@
   const METHODS = Object.freeze(['cash', 'check', 'card_terminal', 'helcim_card', 'helcim_ach', 'credit_given', 'credit_used']); // helcim_*: payments Helcim reported (helcimPaymentRows); credit_*: store credit
   // Labels for the two store-credit methods (ledger.js owns the rest in its METHOD_LABEL). credit_given on a sale = an overpayment moved off it.
   const CREDIT_LABELS = Object.freeze({ credit_given: 'Moved to store credit', credit_used: 'Store credit' });
-  const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs', email_sent: 'sent', paylink: 'paylinks' }); // paylink: note = url|helcimInvoiceId (parseMarks.paylinks)
+  const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs', email_sent: 'sent', paylink: 'paylinks', due: 'dues', note: 'orderNotes' }); // paylink: note = url|helcimInvoiceId (parseMarks.paylinks)
   const LOGGED = new Set(['email_draft', 'email_sent', 'print', 'pdf', 'pdf_open', 'paylink']); // each one shows in History's timeline
   const PAYMENT_COLUMNS = Object.freeze(['payment_id', 'invoice_number', 'txnId', 'date', 'amount', 'method',
     'note', 'place', 'recorded_at', 'voids', 'customer']); // customer (K): store credit's owner (QuickBooks id, else register key); blank on every other row
@@ -106,7 +121,8 @@
   function documentPages(request, renderer, template, settings) {
     const facts = factsFromRequest(request);
     const po = s(request.po);
-    const extras = { ...(po ? { po } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}), ...(request.type === 'quote' && request.deposit ? { deposit: request.deposit } : {}),
+    const receivedBy = s(request.received_by);   // the signature's Print line (register prints only)
+    const extras = { ...(po ? { po } : {}), ...(receivedBy ? { received_by: receivedBy } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}), ...(request.type === 'quote' && request.deposit ? { deposit: request.deposit } : {}),
       ...(request.review === true && (request.type === 'receipt' || request.type === 'invoice') ? { review: true } : {}),
       ...(request.warranty === true && request.type === 'receipt' ? { warranty: true } : {}),
       ...(request.signature === true && (request.type === 'receipt' || request.type === 'quote') ? { signature: true } : {}) };
@@ -127,6 +143,7 @@
   // ---- Transactions ----
   function parseTransactions(rows, states) {
     const out = [], seen = new Set();
+    const updated = new Set((rows || []).filter(x => s(x && x[0]) === 'CUSTOMER_UPDATE').map(x => s(x[1]))); // once, not per document
     let cur = null;
     (rows || []).forEach(r => {
       const type = s(r && r[0]).toLowerCase();
@@ -147,7 +164,7 @@
           total: money(r[12]), fromQuote: s(r[13]), items: [],
           presell: s(r[22]).toUpperCase() === 'PRESELL', po: s(r[23]),
           completedContact: st && !st.conflict ? st.contact : null,
-          contactConflict: st ? !!st.conflict : (rows || []).some(x => s(x && x[0]) === 'CUSTOMER_UPDATE' && s(x[1]) === id),
+          contactConflict: st ? !!st.conflict : updated.has(id),
           _ph: s(r[5]).replace(/\D/g, ''),
           _hayParts: [id, s(r[2]), e, s(r[5]), s(r[6]), s(r[7]), s(r[12]), DOC_TITLES[s(r[14]).toLowerCase()] || s(r[14]), s(r[15])],
         };
@@ -192,6 +209,55 @@
     return end;
   }
   const DOC_TITLES = { receipt: 'Receipt', invoice: 'Invoice', quote: 'Quote', internal: 'Internal' };
+  // The register's ONE writer of a saved document's Transactions rows (moved here from index.html so History can show this
+  // computer's unsent documents with the very same rows; the register calls this through MPELedgerData).
+  function transactionRowsForOrder(order, txnId = order.txnId, txnDate = new Date(order.date)) {
+    // Always use the original transaction date/time, not the push time
+    const dateStr = txnDate.toLocaleDateString('en-US');
+    const timeStr = txnDate.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+
+    const c = order.customer || {};
+    const addr = [c.addr, c.city, c.state, c.zip].filter(Boolean).join(', ');
+
+    // Build rows: TXN summary row first, then item rows
+    const rows = [];
+
+    // Summary row: Type | TxnID | Date | Time | Name | Phone | Email | Address |
+    // — | — | — | — | Total | From quote TxnID | Document Type | Document Number |
+    // Name | Company | Street | City | State | Zip | Presell  (Q–V: the same customer, unjoined.
+    // E and H stay joined for older readers; Ledger reads only A:P.)
+    const savedDocType = DOC_TITLES[order.docType] ? order.docType : '';
+    const savedDocNumber = order.docNumber ? String(order.docNumber) : '';
+    rows.push(['TXN', txnId, dateStr, timeStr,
+      [c.name, c.company].filter(Boolean).join(' / ') || '',
+      c.phone || '', c.email || '', addr,
+      '', '', '', '', order.total, order.fromQuote?.txnId || '', savedDocType,
+      savedDocNumber,
+      ...[c.name, c.company, c.addr, c.city, c.state, c.zip].map(v => v || ''),
+      // W: a quote, receipt or invoice marked Presold (Unit Stock presale).
+      ['quote', 'receipt', 'invoice'].includes(savedDocType) && order.presell ? 'PRESELL' : '',
+      // X: the invoice's PO number. Past W (PRESELL) so A:P and Q–V stay as they were; readers that need it read A:X.
+      savedDocType === 'invoice' ? String(order.po || '').trim() : '']);
+
+    // Item rows
+    for (const item of order.items) {
+      rows.push(['item', txnId, '', '', '', '', '', '',
+        item.pn, item.desc, item.qty,
+        item.ea !== '' && item.ea != null ? '$' + parseFloat(item.ea).toFixed(2) : '',
+        item.sub !== '' && item.sub != null ? '$' + parseFloat(item.sub).toFixed(2) : '',
+        (item.sn && item.sn.length) ? item.sn.join(', ') : '',
+        // Per-item discount evidence for Ledger: original Ea. and the amount off each unit.
+        parseFloat(item.discountPerUnit) > 0 && item.originalEa != null && item.originalEa !== '' ? '$' + parseFloat(item.originalEa).toFixed(2) : '',
+        parseFloat(item.discountPerUnit) > 0 ? '$' + parseFloat(item.discountPerUnit).toFixed(2) : '',
+        // Q, R, S (past P, so A:P and the contact hash are unchanged; older readers ignore them): the line's cost, its brand, and flags
+        // W warranty unit / O editable custom line / F typed free-entry line. A part line always writes a cost ($0.00 when none); a blank Q is an old row.
+        item.cost != null && item.cost !== '' && Number.isFinite(Number(item.cost)) ? '$' + Number(item.cost).toFixed(2) : '',
+        String(item.make || '').trim(),
+        (item.warranty ? 'W' : '') + (item.isOther ? 'O' : '') + (item.freeEntry ? 'F' : '')]);
+    }
+
+    return rows;
+  }
 
   // ---- Payments ----
   function newPaymentId(now) {
@@ -242,18 +308,25 @@
     return o;
   });
   const parsePayments = rows => paymentRows(rows).filter(o => !MARKS[o.method]);
-  // A mark: kind 'email_draft', 'edit', 'cancel', 'uncancel', 'print', 'pdf' (saved/downloaded) or 'pdf_open', amount 0, never a payment.
+  // A mark: kind 'email_draft', 'edit', 'cancel', 'uncancel', 'print', 'pdf' (saved/downloaded), 'pdf_open' or 'due', amount 0, never a payment.
+  // due: note = the new due date YYYY-MM-DD (a real day) or '' for automatic; voids (J) = 'due' so an older History page never reads it as a payment.
+  const validDay = t => /^\d{4}-\d{2}-\d{2}$/.test(t) && addDays(t, 0) === t;
+  // An order note as it is saved and read: \r\n and \r become \n, a tab becomes one space, other control characters and half emoji go, trimmed, 2000 characters at most.
+  // The row store's read-back compares cells exactly, so the text written must be the text the sheet gives back.
+  const orderNoteText = v => Array.from(String(v == null ? '' : v).replace(/\r\n?/g, '\n').replace(/\t/g, ' ')
+    .replace(/[\u0000-\u0009\u000B-\u001F\u007F]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '').trim()).slice(0, 2000).join('').trim();
   function buildMarkRow(m, now) {
-    if (!MARKS[m.kind]) throw new Error('mark must be email_draft, email_sent, edit, cancel, uncancel, print, pdf, pdf_open or paylink');
+    if (!MARKS[m.kind]) throw new Error('mark must be email_draft, email_sent, edit, cancel, uncancel, print, pdf, pdf_open, paylink, due or note');
+    if (m.kind === 'due' && s(m.note) && !validDay(s(m.note))) throw new Error('due date must be YYYY-MM-DD or empty');
     const at = (now ? new Date(now) : new Date()).toISOString();
     return [m.id ? s(m.id) : 'mark_' + Date.parse(at).toString(36) + Math.random().toString(36).slice(2, 8), s(m.invoice_number), s(m.txnId),
-      honoluluToday(at), '0.00', m.kind, s(m.note), s(m.place), at, '', ''];
+      honoluluToday(at), '0.00', m.kind, m.kind === 'note' ? orderNoteText(m.note) : s(m.note), s(m.place), at, m.kind === 'due' || m.kind === 'note' ? m.kind : '', ''];
   }
   const BEFORE = 'before:';
   // The note for an edit mark: the sale's Transactions rows before the edit. Over Sheets' cell limit: no copy (the edit still saves).
   const beforeNote = rows => { const t = BEFORE + JSON.stringify(rows || []); return t.length <= 45000 ? t : ''; };
   function parseMarks(rows) {
-    const out = { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {}, editLog: {} };
+    const out = { dues: {}, orderNotes: {}, drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {}, editLog: {} };
     for (const o of paymentRows(rows)) {
       // Every edit mark with its time and the rows before it (null when it has no readable copy): the pay-link check (payLinkStale).
       if (o.method === 'edit' && o.txnId) {
@@ -268,6 +341,16 @@
       if (o.method === 'cancel' || o.method === 'uncancel') { // newest recorded_at wins; a later row wins a tie
         const prev = out.cancels[o.txnId];
         if (o.txnId && !(prev && prev.at > o.recorded_at)) out.cancels[o.txnId] = { cancelled: o.method === 'cancel', at: o.recorded_at, date: o.date };
+        continue;
+      }
+      if (o.method === 'due') { // newest recorded_at wins; a later row wins a tie; '' = automatic; any other note is ignored
+        const prev = out.dues[o.txnId];
+        if (o.txnId && (!o.note || validDay(o.note)) && !(prev && prev.at > o.recorded_at)) out.dues[o.txnId] = { date: o.note, at: o.recorded_at };
+        continue;
+      }
+      if (o.method === 'note') { // order note: newest recorded_at wins; a later row wins a tie; '' = cleared
+        const prev = out.orderNotes[o.txnId];
+        if (o.txnId && !(prev && prev.at > o.recorded_at)) out.orderNotes[o.txnId] = { text: orderNoteText(o.note), at: o.recorded_at };
         continue;
       }
       const key = o.txnId || o.invoice_number, bucket = out[MARKS[o.method]];
@@ -323,12 +406,13 @@
 
   // ---- Status ----
   const newestFirst = (a, b) => b.recorded_at.localeCompare(a.recorded_at) || b.payment_id.localeCompare(a.payment_id);
-  function derive(txns, payments, today, drafts, cancels, editLog) { // cancels, editLog: parseMarks(...).cancels / .editLog
+  function derive(txns, payments, today, drafts, cancels, editLog, dues, notes) { // cancels, editLog, dues, notes: parseMarks(...).cancels / .editLog / .dues / .orderNotes
     today = todayIso(today);
     payments = payments || [];
     const live = livePayments(payments);
     const draftSet = new Set(Array.isArray(drafts) ? drafts : Object.keys(drafts || {}));
     const byId = new Map(txns.map(t => [t.txnId, t]));
+    const noteOf = id => (notes && notes[id] && notes[id].text) || '';
     const replacedBy = new Map(), replaces = new Map(); // old txnId -> new record ; new txnId -> [old records]
     for (const t of txns) {
       const old = byId.get(t.fromQuote);
@@ -351,6 +435,11 @@
     return txns.map(t => {
       const kind = t.docType === 'invoice' || t.docType === 'quote' ? t.docType : 'receipt';
       const r = { ...t, kind, draftMade: draftSet.has(t.txnId) || (!!t.number && draftSet.has(t.number)) };
+      r.orderNote = noteOf(t.txnId); r.orderNoteFrom = null; // shop only: never copied into a print, email or sale request
+      if (r.orderNote) r._hay = s(t._hay) + ' ' + r.orderNote.toLowerCase();
+      else for (let c = byId.get(t.fromQuote), seen = new Set([t.txnId]); c && !seen.has(c.txnId); seen.add(c.txnId), c = byId.get(c.fromQuote)) {
+        if (noteOf(c.txnId)) { r.orderNoteFrom = { number: c.number || c.txnId, text: noteOf(c.txnId) }; break; }
+      }
       r.draftText = r.draftMade ? 'Draft made' : '';
       const gone = cancels && cancels[t.txnId] && cancels[t.txnId].cancelled ? cancels[t.txnId] : null;
       const mine = (ids, nums) => live.filter(p => ids.has(p.txnId) || (!p.txnId && nums.has(p.invoice_number)));
@@ -359,7 +448,7 @@
         r.deposit = Math.min(r.paymentsLive.reduce((a, p) => a + cents(p.amount), 0), cents(t.total)) / 100;
       }
       if (kind === 'receipt') r.creditUsed = live.filter(p => p.method === 'credit_used' && p.txnId === t.txnId).reduce((a, p) => a + cents(p.amount), 0) / 100;
-      if (kind !== 'invoice') { r.state = gone ? 'cancelled' : kind; if (gone) r.cancelledAt = gone.date; return r; }
+      if (kind !== 'invoice') { r.state = gone ? 'cancelled' : kind; if (gone) { r.cancelledAt = gone.date; r.cancelledTs = gone.at; } return r; }
       const ids = new Set(), nums = new Set();
       for (const c of chain(t)) {
         ids.add(c.txnId); if (c.number) nums.add(c.number);
@@ -387,10 +476,12 @@
       r.paidDate = latest ? latest.date : '';
       r.paidMethod = latest ? latest.method : '';
       r.balance = Math.max(0, (cents(t.total) - sum) / 100);
-      r.dueDate = t.date ? addDays(t.date, NET_DAYS) : '';
+      r.dueAuto = t.date ? addDays(t.date, NET_DAYS) : '';
+      const custom = dues && dues[t.txnId] ? dues[t.txnId].date : '';
+      r.dueIsCustom = !!custom; r.dueDate = custom || r.dueAuto;
       const next = replacedBy.get(t.txnId);
       if (next) { r.state = 'void'; r.replacedBy = next.number || next.txnId; r.balance = 0; r.overpaid = 0; return r; }
-      if (gone) { r.state = 'cancelled'; r.cancelledAt = gone.date; r.balance = 0; return r; }
+      if (gone) { r.state = 'cancelled'; r.cancelledAt = gone.date; r.cancelledTs = gone.at; r.balance = 0; return r; }
       if (r.balance <= 0) { r.state = 'paid'; return r; }
       // Trevor: money owed on invoices dated before 2026 is never tallied or flagged; it shows only on that invoice.
       if (t.date && t.date < COUNT_FROM) { r.state = 'old'; return r; }
@@ -727,7 +818,7 @@
     let rows = txnRows, states = null;
     if (fn) { const d = await fn(txnRows); rows = d.rows; states = d.states; }
     const marks = parseMarks(paymentRows);
-    const records = derive(parseTransactions(rows, states), parsePayments(paymentRows), today, drafts, marks.cancels, marks.editLog);
+    const records = derive(parseTransactions(rows, states), parsePayments(paymentRows), today, drafts, marks.cancels, marks.editLog, marks.dues, marks.orderNotes);
     const model = {
       records,
       list: (name, query) => search(filter(model.records, name), query),
@@ -816,6 +907,6 @@
     const txn = (after[0].rows || []).find(row => s(row && row[0]).toUpperCase() === 'TXN');
     return !txn || cents(money(txn[12])) !== cents(r.total);
   }
-  return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionBlockEnd, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, buildPaymentRow, helcimPaymentRows,
+  return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionBlockEnd, transactionRowsForOrder, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, orderNoteText, buildPaymentRow, helcimPaymentRows,
     buildVoidRow, beforeNote, undoRows, honoluluToday, factsFromRequest, documentPages, storeCreditNote, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, MEMO_NONE, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });

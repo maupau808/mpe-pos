@@ -130,6 +130,12 @@ Ea.
 <template data-name="counter.sign">
 <div class="sig"><div class="sig-received">Received by:</div><div class="sig-line">Print: <span class="sig-underline"></span></div><div class="sig-line">Sign: <span class="sig-underline"></span></div></div>
 </template>
+<template data-name="counter.sig.received">
+<div class="sig"><div class="sig-received">Received by:</div><div class="sig-line">PO#: <span class="sig-underline">{{po}}</span></div><div class="sig-line">Print: <span class="sig-underline">{{received}}</span></div><div class="sig-line">Sign: <span class="sig-underline"></span></div></div>
+</template>
+<template data-name="counter.sign.received">
+<div class="sig"><div class="sig-received">Received by:</div><div class="sig-line">Print: <span class="sig-underline">{{received}}</span></div><div class="sig-line">Sign: <span class="sig-underline"></span></div></div>
+</template>
 <template data-name="counter.warranty">
 <style>
   .wf{margin-top:30px;break-inside:avoid;page-break-inside:avoid}

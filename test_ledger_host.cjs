@@ -93,7 +93,7 @@ test('no Payments tab: the page says so, everything else loads, Mark paid keeps 
   const host = K.createHost(env, { document: { getElementById: id => (id === 'hostNote' ? note : null) } });
   const [pays, marks] = await Promise.all([host.readPayments(), host.readMarks()]);
   assert.deepEqual(pays, [L.PAYMENT_COLUMNS.slice()]);
-  assert.deepEqual(marks, { drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {}, editLog: {} });
+  assert.deepEqual(marks, { dues: {}, orderNotes: {}, drafts: {}, edits: {}, cancels: {}, before: {}, prints: {}, pdfs: {}, log: {}, sent: {}, paylinks: {}, editLog: {} });
   assert.equal(note.textContent, 'Payments tab not set up yet');
   assert.equal(note.hidden, false);
   await assert.rejects(host.appendPaymentRows([pay('pay_e')]), e => e.code === 'payments_missing');
@@ -109,7 +109,7 @@ test('marks: email_draft and edit rows never count as payments; readMarks return
   assert.throws(() => L.buildMarkRow({ kind: 'cash', txnId: 'T-1' }));
   const rows = [L.PAYMENT_COLUMNS.slice(), draft, edit];
   assert.deepEqual(L.parsePayments(rows), []);
-  assert.deepEqual(L.parseMarks(rows), { drafts: { 'T-1': '2026-10-20' }, edits: { 'T-1': '2026-10-25' }, cancels: {}, before: {}, prints: {}, pdfs: {}, sent: {}, paylinks: {}, editLog: { 'T-1': [{ at: '2026-10-25T20:00:00.000Z', date: '2026-10-25', rows: null }] },
+  assert.deepEqual(L.parseMarks(rows), { dues: {}, orderNotes: {}, drafts: { 'T-1': '2026-10-20' }, edits: { 'T-1': '2026-10-25' }, cancels: {}, before: {}, prints: {}, pdfs: {}, sent: {}, paylinks: {}, editLog: { 'T-1': [{ at: '2026-10-25T20:00:00.000Z', date: '2026-10-25', rows: null }] },
     log: { 'T-1': [{ kind: 'email_draft', date: '2026-10-20', at: '2026-10-20T20:00:00.000Z', place: '9', note: '' }] } });
   // Prints, PDFs and PDF opens: never payments, one timeline entry each, oldest stays first.
   const out = [L.buildMarkRow({ kind: 'print', txnId: 'T-1', invoice_number: 'L21001', place: '2' }, Date.parse('2026-10-21T20:00:00Z')),
@@ -289,7 +289,7 @@ test('register: an in-place save of a Ledger edit leaves an edit mark; nothing e
   assert.match(html, /if \(identity\.ledgerEdit\) order\.ledgerEdit = true;/);
   assert.match(html, /if \(order\.ledgerEdit\) \{\s*const kept = peekEditBefore\(txnId\);\s*if \(writeMode === '\(updated existing\)' \|\| kept !== null\)/);
   assert.match(html, /queueLedgerEditMark\(order, txnId, note, editMarkId\(txnId, rows\)\)/);
-  assert.match(html, /<script src="ledger-data\.js"><\/script>\s*<script src="ledger-host\.js"><\/script>/);
+  assert.match(html, /<script src="ledger-data\.js\?v=\d{4}\.\d{2}\.\d{2}\.\d+"><\/script>\s*<script src="ledger-host\.js"><\/script>/);
 });
 
 test('scanner: a burst the register proves is a scan leaves Ledger, restores the search, and shows the sale tab', () => {
@@ -335,6 +335,14 @@ test('scan clock: a scan in the Ledger frame and one on the register share one r
   assert.equal(ctx.claimScannedValue('70421', registerAt, 'hardware'), false, 'the same code 50 ms later is a repeat');
   assert.equal(ctx.claimScannedValue('70421', registerAt + 150, 'hardware'), true);
   assert.equal(ctx.hardwareKeyTime({ timeStamp: 1234 }), 1234, 'an event with no window uses the register clock as before');
+});
+
+test('app: the register digit chosen in Admin (1-5) is the place stamped on payment rows; others fall back', () => {
+  const env = (digit, ua = '') => K.environment({ mpeDesktop: { role: 'ledger', google: {} }, navigator: { userAgent: ua },
+    localStorage: { getItem: k => (k === 'mpeRegisterDigitV1' ? digit : null) } }).place;
+  assert.deepEqual(['1', '2', '3', '4', '5'].map(d => env(d)), ['1', '2', '3', '4', '5']);
+  assert.equal(env('6'), ''); assert.equal(env('0'), ''); assert.equal(env('9'), '');
+  assert.equal(env('6', 'Macintosh'), '1');
 });
 
 // ---- QuickBooks history: app IPC and website Drive read ----
@@ -685,4 +693,145 @@ test('documentTools (the register\'s website Print, Save PDF and Email): fills t
   assert.match(first[1], /Shop copy[\s\S]*Warranty Registration/);
   assert.match(first[1], /Received by:/);
   await assert.rejects(K.documentTools(win(500)).pages(request), /template/);
+});
+
+// History shows this computer's unsent documents at once (the register pushes about 2 s after Save, so the sheet read alone misses them).
+test('readTransactions adds documents saved here that are not on the sheet yet, and only those', async () => {
+  const sheet = fakeSheet(), storage = memoryStorage();
+  const line = (pn, qty, ea) => ({ pn, desc: pn + ' desc', qty, ea, sub: qty * ea });
+  const order = (txnId, docType, docNumber, items, extra = {}) => ({ txnId, docType, docNumber, date: '2026-11-12T19:05:07.000Z', total: items.reduce((a, i) => a + i.sub, 0),
+    customer: { name: 'Lani Testcase', phone: '8085550199' }, items, historySyncPending: true, ...extra });
+  const onSheet = L.transactionRowsForOrder(order('T-SHEET', 'receipt', 'R1', [line('A-1', 1, 10)]));
+  sheet.tabs.Transactions = [['Type', 'TxnID'], ...onSheet];
+  storage.setItem('mpe_print_history', JSON.stringify([
+    order('T-QUOTE', 'quote', 'Q11007', [line('SAW-1', 1, 100), line('BLADE-2', 2, 12.5)]),
+    order('T-INV', 'invoice', 'L21001', [line('BOLT', 3, 2)], { po: 'PO-9' }),
+    order('T-SHEET', 'receipt', 'R1', [line('A-1', 1, 99)]),                    // already on the sheet: the sheet copy wins
+    order('T-PUSHED', 'quote', 'Q2', [line('X', 1, 1)]),                         // pushed earlier and gone from the sheet: not brought back
+    order('T-LOOK', 'quote', 'Q3', [line('X', 1, 1)], { needsLook: true }),     // needs a look: not shown
+    order('T-DONE', 'quote', 'Q4', [line('X', 1, 1)], { historySyncPending: false }),
+    order('T-NODATE', 'quote', 'Q5', [line('X', 1, 1)], { date: undefined }),
+  ]));
+  storage.setItem('mpe_pushed_txn', JSON.stringify(['T-PUSHED']));
+  const host = K.createHost({ kind: 'web', place: '9', storage, signedIn: async () => true, get: sheet.get, append: sheet.append }, {});
+  const before = JSON.stringify(storage.m.get('mpe_print_history')) + storage.m.get('mpe_pushed_txn');
+  const rows = await host.readTransactions();
+  const got = L.parseTransactions(rows);
+  assert.deepEqual(got.map(r => r.txnId).sort(), ['T-INV', 'T-QUOTE', 'T-SHEET']);
+  const quote = got.find(r => r.txnId === 'T-QUOTE'), inv = got.find(r => r.txnId === 'T-INV');
+  assert.deepEqual([quote.number, quote.docType, quote.total, quote.items.map(i => i.pn)], ['Q11007', 'quote', 125, ['SAW-1', 'BLADE-2']]);
+  assert.deepEqual([inv.number, inv.po, inv.items.length], ['L21001', 'PO-9', 1]);
+  assert.equal(got.find(r => r.txnId === 'T-SHEET').items[0].ea, 10, 'the sheet copy wins, no double count');
+  assert.deepEqual([...host.pendingTxnIds()].sort(), ['T-INV', 'T-NODATE', 'T-PUSHED', 'T-QUOTE', 'T-SHEET'], 'the "not shared yet" pill can now show');
+  assert.equal(JSON.stringify(storage.m.get('mpe_print_history')) + storage.m.get('mpe_pushed_txn'), before, 'History only reads this computer\'s storage');
+  assert.equal(sheet.calls.append, 0, 'and writes nothing');
+  // once the push lands, the sheet has it and nothing is duplicated
+  sheet.tabs.Transactions.push(...L.transactionRowsForOrder(order('T-QUOTE', 'quote', 'Q11007', [line('SAW-1', 1, 100), line('BLADE-2', 2, 12.5)])));
+  assert.equal(L.parseTransactions(await host.readTransactions()).filter(r => r.txnId === 'T-QUOTE').length, 1);
+});
+
+test('readTransactions with nothing saved here, or unreadable storage, is just the sheet', async () => {
+  for (const storage of [memoryStorage(), { getItem: () => '{not json' }, undefined]) {
+    const sheet = fakeSheet(); sheet.tabs.Transactions = [['Type', 'TxnID']];
+    const host = K.createHost({ kind: 'web', place: '9', storage, signedIn: async () => true, get: sheet.get, append: sheet.append }, {});
+    assert.deepEqual(await host.readTransactions(), [['Type', 'TxnID']]);
+  }
+});
+
+// readTransactionsLocal: History rebuilds on the register's 'storage' event with no Sheets call.
+test('readTransactionsLocal: the last sheet rows plus the documents saved here now, with no Sheets read; a landed document is not doubled', async () => {
+  const sheet = fakeSheet(), storage = memoryStorage();
+  const line = (pn, qty, ea) => ({ pn, desc: pn + ' desc', qty, ea, sub: qty * ea });
+  const order = (txnId, num, extra = {}) => ({ txnId, docType: 'quote', docNumber: num, date: '2026-11-12T19:05:07.000Z', total: 10,
+    customer: { name: 'Lani Testcase' }, items: [line('A-1', 1, 10)], historySyncPending: true, ...extra });
+  sheet.tabs.Transactions = [['Type', 'TxnID'], ...L.transactionRowsForOrder(order('T-SHEET', 'Q1', { historySyncPending: false }))];
+  let reads = 0;
+  const get = async r => { reads++; return sheet.get(r); };
+  const host = K.createHost({ kind: 'web', place: '9', storage, signedIn: async () => true, get, append: sheet.append }, {});
+  assert.equal(host.readTransactionsLocal(), null, 'before the first full read there is nothing to rebuild from');
+  await host.readTransactions();
+  const after = reads;
+  const ids = rows => L.parseTransactions(rows).map(r => r.txnId).sort();
+  assert.deepEqual(ids(host.readTransactionsLocal()), ['T-SHEET']);
+  storage.setItem('mpe_print_history', JSON.stringify([order('T-NEW', 'Q2')]));
+  assert.deepEqual(ids(host.readTransactionsLocal()), ['T-NEW', 'T-SHEET'], 'a document saved after the last read shows');
+  // the push lands in the register (flag cleared, id recorded) but the sheet copy is not read yet: it stays shown, once
+  storage.setItem('mpe_print_history', JSON.stringify([order('T-NEW', 'Q2', { historySyncPending: false })]));
+  storage.setItem('mpe_pushed_txn', JSON.stringify(['T-NEW']));
+  assert.deepEqual(ids(host.readTransactionsLocal()), ['T-NEW', 'T-SHEET'], 'a document that was shown does not blink out when its push lands');
+  assert.equal(reads, after, 'no Sheets call');
+  // the next full read brings the sheet copy; a local rebuild then shows it once
+  sheet.tabs.Transactions.push(...L.transactionRowsForOrder(order('T-NEW', 'Q2')));
+  await host.readTransactions();
+  assert.deepEqual(ids(host.readTransactionsLocal()), ['T-NEW', 'T-SHEET']);
+  assert.equal(host.readTransactionsLocal().filter(r => r[0] === 'TXN' && r[1] === 'T-NEW').length, 1, 'one TXN row, not two');
+  // a document that landed on the sheet while it was still pending is not doubled either
+  storage.setItem('mpe_pushed_txn', '[]');
+  storage.setItem('mpe_print_history', JSON.stringify([order('T-NEW', 'Q2')]));
+  assert.equal(host.readTransactionsLocal().filter(r => r[0] === 'TXN' && r[1] === 'T-NEW').length, 1);
+});
+
+// ---- Order note (History, shop only): its row reads back exactly; it never reaches a sale request or the email window ----
+test('order notes with new lines, a leading =, +, \' and an emoji are appended as text, read back exactly and leave the queue empty; a later payment still saves', async () => {
+  const sheet = fakeSheet(), storage = memoryStorage();
+  const store = K.createPaymentsStore({ get: sheet.get, append: sheet.append, storage });
+  const texts = ['Call Keoni first.\r\nGate code 4471\n\nDog in yard', '=SUM(A1:A9)', '+808 555 0101', "'quoted", 'Aloha 🌺 mahalo', '\tpadded\u0001 '];
+  const rows = texts.map((text, i) => L.buildMarkRow({ id: 'mark_n' + i, kind: 'note', invoice_number: 'L21001', txnId: 'T-' + i, note: text, place: '9' }, Date.parse('2026-11-13T20:00:00Z') + i));
+  await store.appendRows(rows);
+  assert.deepEqual(store.pending(), [], 'every row read back exactly');
+  assert.deepEqual(sheet.tabs.Payments.slice(1), rows);
+  const notes = L.parseMarks(sheet.tabs.Payments).orderNotes;
+  assert.deepEqual(texts.map((_, i) => notes['T-' + i].text), ['Call Keoni first.\nGate code 4471\n\nDog in yard', '=SUM(A1:A9)', '+808 555 0101', "'quoted", 'Aloha 🌺 mahalo', 'padded']);
+  await store.appendRows([pay('pay_after')]);
+  assert.deepEqual(store.pending(), [], 'the next payment save is not held up');
+});
+test('order note privacy: toHistory, every sale request kind and the real host\'s emailPrepare never carry the note or _hay', async () => {
+  const P = require('./ledger.js');
+  const { createFixtureHost: fixture } = require('./ledger-host-fixture.js');
+  const renderer = require('../POSDesktop/src/document-renderer.js');
+  const TEMPLATE = fs.readFileSync(path.join(__dirname, 'document-template.html'), 'utf8');
+  const SENTINEL = 'ZQXNOTE Gate code 4471 shop-only';
+  const fx = fixture({ today: '2026-10-31' });
+  const load = async () => L.create({ txnRows: await fx.readTransactions(), paymentRows: await fx.readPayments(), today: '2026-10-31' });
+  const nums = ['R21044', 'L21007', 'Q21003'];
+  for (const n of nums) { const r = (await load()).records.find(x => x.number === n); await fx.appendPaymentRows(P.noteRows(r, SENTINEL, '9', Date.now())); }
+  const records = (await load()).records;
+  const emailWin = { document: {}, MPEDocumentRenderer: renderer, XMLHttpRequest: class { open() {} send() { this.status = 200; this.responseText = TEMPLATE; this.onload(); } } };
+  const ctx = { console, URL, TextEncoder, btoa: x => Buffer.from(x, 'binary').toString('base64') };
+  vm.createContext(ctx); vm.runInContext(fs.readFileSync(path.join(__dirname, 'email-draft.js'), 'utf8'), ctx);
+  emailWin.buildEmailBody = ctx.buildEmailBody;
+  const host = K.createHost({ kind: 'web', place: '9', storage: memoryStorage(), signedIn: async () => true, get: async () => [], append: async () => true,
+    identity: async () => ({ email: 'info@example.test', signature: '' }) }, emailWin);
+  const clean = (what, v) => { const j = JSON.stringify(v); assert.ok(!/zqxnote/i.test(j) && !j.includes('_hay') && !j.includes('orderNote'), what); };
+  for (const n of nums) {
+    const r = records.find(x => x.number === n);
+    assert.equal(r.orderNote, SENTINEL, n);
+    clean(n + ' toHistory', K.toHistory(r));
+    for (const kind of Object.keys(K.SALE_KINDS)) clean(`${n} ${kind}`, K.saleRequest(kind, r));
+    const prep = await host.emailPrepare(r, P.requestFromRecord(r), '');
+    assert.ok(prep.pages[0] && prep.message.length > 20, 'the real email window content was built');
+    clean(n + ' emailPrepare', prep);
+  }
+});
+
+test('a note or due mark: signed out queues nothing; a failed append is queued once, closes as saved here, and saving again never doubles it', async () => {
+  const mark = (kind, note) => L.buildMarkRow({ kind, txnId: 'T-1', invoice_number: 'L1', note, place: '9' }, Date.parse('2026-11-13T20:00:00Z'));
+  const out = fakeSheet({ signedIn: false }), outStore = memoryStorage();
+  const h1 = K.createHost({ kind: 'web', place: '9', storage: outStore, signedIn: async () => false, get: out.get, append: out.append }, {});
+  await assert.rejects(h1.appendPaymentRows([mark('note', 'Call first')]), e => e.code === 'not_signed_in' && !e.queued);
+  assert.deepEqual(JSON.parse(outStore.getItem(K.PENDING_KEY) || '[]'), [], 'signed out: nothing queued, so the box must stay open');
+  for (const kind of ['note', 'due']) {
+    const sheet = fakeSheet(), storage = memoryStorage();
+    const host = K.createHost({ kind: 'web', place: '9', storage, signedIn: async () => true, get: sheet.get, append: sheet.append }, {});
+    const row = mark(kind, kind === 'due' ? '2026-12-01' : 'Call first');
+    sheet.failAppend = true;
+    await assert.rejects(host.appendPaymentRows([row]), e => e.code !== 'not_signed_in' && e.queued === true); // queued: the page may say "saved on this computer"
+    assert.equal(JSON.parse(storage.getItem(K.PENDING_KEY)).length, 1, kind + ': queued exactly once although the append failed');
+    await assert.rejects(host.appendPaymentRows([row]));
+    assert.equal(JSON.parse(storage.getItem(K.PENDING_KEY)).length, 1, kind + ': saving again does not queue it twice');
+    sheet.failAppend = false;
+    await host.readPayments();
+    assert.equal(sheet.tabs.Payments.filter(r => r[0] === row[0]).length, 1, kind + ': lands on the sheet once');
+    assert.deepEqual(JSON.parse(storage.getItem(K.PENDING_KEY)), []);
+  }
 });

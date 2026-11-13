@@ -610,18 +610,21 @@ test('F03 embedded: Save with no change answers unchanged and writes nothing', a
 });
 test('F03 embedded: a line with no price is refused by name, Save stays off and nothing is written', async () => {
  const c = await embeddedEdit(), sheet = c.sheet(); c.twoLines();
- const lines = c.s.editScreenLines; c.s.editScreenLines = () => [...lines(), {pn: 'CUSTOM', ea: 0, discountPerUnit: 0}, {pn: 'Note', ea: 0, discountPerUnit: 0}, {pn: 'FREE', ea: 0, discountPerUnit: 5}];
+ const lines = c.s.editScreenLines; c.s.editScreenLines = () => [...lines(), {pn: 'GIVEAWAY', ea: 0, blank: false, discountPerUnit: 0}, {pn: 'CUSTOM', ea: 0, blank: true, discountPerUnit: 0}, {pn: 'Note', ea: 0, blank: true, discountPerUnit: 0}, {pn: 'FREE', ea: 0, discountPerUnit: 5}];
  assert.equal(await c.cmd('save', {updateInfo: false}), null);
- const st = c.states.at(-1); assert.equal(st.problem, 'Line 2 has no price'); assert.equal(st.canSave, false); assert.equal(st.dirty, true);
+ const st = c.states.at(-1); assert.equal(st.problem, 'Line 3 has no price'); assert.equal(st.canSave, false); assert.equal(st.dirty, true);
  await flush2(); assert.deepEqual(c.sheet(), sheet); assert.deepEqual(c.results, []);
  c.s.editScreenLines = () => []; c.s.postEditState(); assert.equal(c.states.at(-1).problem, 'Add at least one line');
 });
-test('F03 embedded: a second edit while one is open is busy; a proof mismatch answers open_sale_screen', async () => {
+test('F03 embedded: a second edit while one is open is busy; a proof mismatch still opens (no new sale tab, Trevor 2026-11-07) and names the line', async () => {
  const c = await embeddedEdit();
  assert.equal((await c.s.runEditSession(c.request({phone: '1'}))).code, 'busy');
- const d = await savedInvoice(); d.s.window.mpeDesktop = {editSessionResult() {}, editSessionState() {}}; d.s.MPE_EDIT_SESSION_PAGE = true;
+ const d = await savedInvoice(); const states = []; d.s.window.mpeDesktop = {editSessionResult() {}, editSessionState(m) { states.push(m); }}; d.s.MPE_EDIT_SESSION_PAGE = true;
+ Object.assign(d.s, {updateScreenDocTitle() {}, editSaveProblem: () => ''});   // the harness has no sale-screen DOM
  const req = d.request({}); delete req.patch; req.mode = 'embedded'; d.s.draft.items[0].qty = 5;
- const r = await d.s.runEditSessionAndReport(req); assert.equal(r.code, 'open_sale_screen'); assert.equal(vm.runInContext('_embeddedEdit', d.s), null);
+ const r = await d.s.runEditSessionAndReport(req); assert.equal(r, null, JSON.stringify(r)); assert.ok(vm.runInContext('_embeddedEdit', d.s));
+ assert.ok(vm.runInContext('_editMismatch', d.s).some(m => m.line === 1 && m.fields.some(f => f.name === 'quantity')));
+ assert.match(states.at(-1).problem, /^Check before saving: line 1 .*quantity 5, saved /);
 });
 test('F03 embedded: hasUnsavedEdit is null-safe', () => {
  const c = sessionHarness(); vm.runInContext('_historyContentBaseline = null', c.s); c.s.draft = null;

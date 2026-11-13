@@ -14,6 +14,10 @@
  * row here through the same store (createRowStore with the Customers settings), so the durability is identical. A missing
  * Customers tab reads as no rows; saving then says so. History never creates the tab or its header.
  *
+ * readTransactions also appends this computer's unsent documents (mpe_print_history entries still waiting to sync, built by the
+ * register's own row writer, MPELedgerData.transactionRowsForOrder) so a document just saved shows at once; the sheet's copy wins
+ * once it lands. It only reads local storage. readTransactionsLocal() rebuilds that list from the last sheet read with no Sheets call.
+ *
  * Also loaded by index.html (no host there): MPELedgerHostKit.createPaymentsStore writes the 'edit' mark after an in-place
  * save of a record opened from Ledger's Edit.
  * Browser: window.MPELedgerHostKit, and window.MPELedgerHost on ledger.html. Node: module.exports. Test: node POS/test_ledger_host.cjs
@@ -107,7 +111,7 @@
         const sheet = await read(); // a missing tab or signed-out stops here, before anything is kept
         const waiting = new Set(pending().map(idOf)); // the same row sent again (a retry after a crash) is never queued twice
         keep([...pending(), ...rows.filter(r => !waiting.has(idOf(r)))]);
-        await flush(sheet);
+        try { await flush(sheet); } catch (e) { if (e && typeof e === 'object') e.queued = true; throw e; } // the row is already kept here: callers say "saved on this computer"
       }),
       // Sheet rows plus anything still waiting on this computer (so the screen matches what will land).
       readAll: () => serial(async () => {
@@ -258,7 +262,7 @@
       const store = storageOf(w);
       let digit = '';
       try { digit = s(store && store.getItem('mpeRegisterDigitV1')); } catch (_) { /* blocked storage */ }
-      if (!/^[1234]$/.test(digit)) digit = /Macintosh/.test((w.navigator && w.navigator.userAgent) || '') ? '1' : '';
+      if (!/^[12345]$/.test(digit)) digit = /Macintosh/.test((w.navigator && w.navigator.userAgent) || '') ? '1' : '';
       return {
         kind: 'app', place: digit, storage: store,
         signedIn: async () => { const st = await d.google.getStatus(); return !!(st && st.connected); },
@@ -400,12 +404,33 @@
     return { pages, readTemplate, printPages, pdfBlob };
   }
 
+  // Documents saved on THIS computer and not on the sheet yet (the register pushes in the background, about 2 s after Save), built with
+  // the register's own row writer so History shows them at once. Read-only: only reads this computer's storage, writes nothing.
+  // Skipped: a txnId already on the sheet (the sheet's copy wins), an entry that needs a look, one not waiting to sync, and one the
+  // register already pushed (so a sale removed from the sheet is never brought back). parseTransactions keeps the first copy of an id.
+  function unsentRows(storage, sheetRows) {
+    try {
+      const list = JSON.parse((storage && storage.getItem('mpe_print_history')) || '[]');
+      if (!Array.isArray(list)) return [];
+      const onSheet = new Set(sheetRows.filter(r => r && String(r[0]).toUpperCase() === 'TXN').map(r => s(r[1])));
+      const pushed = new Set(JSON.parse((storage && storage.getItem('mpe_pushed_txn')) || '[]'));
+      const out = [];
+      for (const o of list) {
+        if (!o || !o.historySyncPending || o.needsLook || !o.txnId || onSheet.has(s(o.txnId)) || pushed.has(o.txnId) || !Array.isArray(o.items)) continue;
+        const at = new Date(o.date);
+        if (!Number.isFinite(+at)) continue;
+        try { out.push(...L.transactionRowsForOrder(o, o.txnId, at)); } catch (_) { /* one bad entry never hides History */ }
+      }
+      return out;
+    } catch (_) { return []; }
+  }
+
   // ---- The host the page uses (contract: POS/ledger.js header) ----
   function createHost(env, w) {
     const doc = w && w.document;
     const store = createPaymentsStore({ get: env.get, append: env.append, storage: env.storage });
     const customers = createRowStore({ get: env.get, append: env.append, storage: env.storage }, CUST_TAB);
-    let cycle = null;
+    let cycle = null, sheet = null, shown = []; // the last sheet read, and the unsent rows shown with it (readTransactionsLocal)
     function note(text) {
       const el = doc && doc.getElementById('hostNote');
       if (el) { el.textContent = text; el.hidden = !text; }
@@ -439,7 +464,25 @@
       place: env.place,
       honoluluToday: () => L.honoluluToday(),
       // An app older than the PO column refuses A:X; fall back to A:W so History still opens (PO # blank) until it updates.
-      async readTransactions() { await signedIn(); try { return await guard(env.get(TXN_RANGE)); } catch (e) { if (e && e.code === 'not_signed_in') throw e; return guard(env.get('Transactions!A:W')); } },
+      async readTransactions() {
+        await signedIn();
+        let rows;
+        try { rows = await guard(env.get(TXN_RANGE)); } catch (e) { if (e && e.code === 'not_signed_in') throw e; rows = await guard(env.get('Transactions!A:W')); }
+        if (!Array.isArray(rows)) return rows;
+        sheet = rows;
+        shown = unsentRows(env.storage, rows);
+        return rows.concat(shown);
+      },
+      // The same rows with no Sheets call: the sheet rows of the last readTransactions() plus this computer's documents as they are now
+      // (History runs it when the register's storage changes). A document that was shown unsent and has since been pushed stays until
+      // the next full read brings the sheet's copy, so it never blinks out. null before the first read.
+      readTransactionsLocal() {
+        if (!sheet) return null;
+        const fresh = unsentRows(env.storage, sheet), have = new Set(fresh.map(r => s(r[1])));
+        const onSheet = new Set(sheet.filter(r => r && String(r[0]).toUpperCase() === 'TXN').map(r => s(r[1])));
+        shown = fresh.concat(shown.filter(r => !have.has(s(r[1])) && !onSheet.has(s(r[1]))));
+        return sheet.concat(shown);
+      },
       readPayments: () => payments(),
       // Store credit needs Payments column K; false on an app that refuses A:K (older than 0.3.67). Known after the first read.
       creditReady: () => store.wide(),

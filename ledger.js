@@ -20,8 +20,10 @@
  *                                (editFlow). saveCustomer: the save command carries the customer (app 0.3.67+, website). Without it the
  *                                customer goes through editSession after the items. Without editEmbed Edit opens a new sale tab.
  *   editSession(record, patch, extra) (optional) -> Promise<one result>; customer fields saved by a hidden register page (0.3.66 fallback).
+ *   readTransactionsLocal() (optional) -> rows (or null before the first readTransactions): the last sheet rows plus this computer's
+ *                                unsent documents, with no Sheets call. Run on the register's 'storage' event (see localRefresh).
  *   honoluluToday()           -> 'YYYY-MM-DD'
- *   place         (optional)  -> '1' Mac, '2' PC Left, '3' PC Right, '4' Tech Dept, '9' web; stamped on payment rows
+ *   place         (optional)  -> '1' Mac, '2' PC Left, '3' PC Right, '4' Tech Dept, '5' back_office, '9' web; stamped on payment rows
  *   documentSettings (optional) -> the app's saved Document settings; defaults to the renderer's DEFAULT_SETTINGS
  * A rejected call whose error has code 'not_signed_in' shows the signed-out state.
  */
@@ -34,7 +36,9 @@
   'use strict';
   const TAX_RATE = 0.04712; // POS/index.html TAX_RATE
   const QUOTE_DAYS = 30;
-  const PLACES = { 1: 'Mac', 2: 'PC Left', 3: 'PC Right', 4: 'Tech Dept', 9: 'Web' };
+  const ARCHIVE_DAYS = 30; // Trevor (Nov 13): an open quote dated more than 30 days ago moves to the collapsed Archived quotes group (hide only)
+  const HIDE_CANCELLED_MS = 5 * 60 * 1000; // Trevor (Nov 13): a cancelled sale stays struck through this long, then leaves the lists (search still finds it)
+  const PLACES = { 1: 'Mac', 2: 'PC Left', 3: 'PC Right', 4: 'Tech Dept', 5: 'back_office', 9: 'Web' };
   const METHOD_LABEL = { cash: 'Cash', check: 'Check', card_terminal: 'Card terminal', helcim_card: 'Card online', helcim_ach: 'Bank transfer', ...L.CREDIT_LABELS }; // + credit_given / credit_used
   const KIND_LABEL = { invoice: 'Invoice', quote: 'Quote', receipt: 'Sale' };
   const STORE_KEY = 'mpe.ledger.ui';
@@ -83,7 +87,6 @@
     }
     return c;
   }
-  const byDue = (a, b) => lt(a.dueDate || '9', b.dueDate || '9') || lt(s(a.number), s(b.number));
   const isQbo = r => r.source === 'qbo';
   const qboOpenQuote = r => r.kind === 'quote' && isQbo(r) && (!r.qboStatus || r.qboStatus === 'pending');
 
@@ -128,7 +131,7 @@
   }
 
   const SECTIONS = [['recent', 'Recent'], ['invoices', 'Invoices'], ['quotes', 'Quotes'], ['sales', 'Sales'], ['customers', 'Customers']];
-  const INVOICE_SUBS = [['overdue', 'Past due'], ['unpaid', 'Open or unpaid'], ['paid', 'Paid or closed']]; // Trevor, Nov 6: no due-soon split; void and cancelled are closed
+  const INVOICE_SUBS = [['all', 'All'], ['overdue', 'Past due'], ['unpaid', 'Open or unpaid'], ['paid', 'Paid or closed']]; // Trevor, Nov 6: no due-soon split; void and cancelled are closed. Nov 13: All first, the default
   const QUOTE_SUBS = [['open', 'Open'], ['converted', 'Turned into sale'], ['closed', 'Closed in QuickBooks'], ['deleted', 'Deleted']];
   const SALES_SUBS = [['all', 'All'], ['missing', 'Missing info']];
   const MISSING_FIELDS = [['any', 'Any'], ['name', 'Name'], ['phone', 'Phone'], ['address', 'Address'], ['email', 'Email']];
@@ -154,46 +157,68 @@
   const isGone = r => r.state === 'void' || r.state === 'cancelled';
   const amountOf = r => (UNPAID.has(r.state) ? r.balance : r.total);
   const group = (key, label, rows, opts = {}) => ({ key, label, rows, count: rows.length,
-    total: opts.noTotal ? null : cents(rows.reduce((a, r) => a + amountOf(r), 0)), tone: opts.tone || '' });
+    total: opts.noTotal ? null : cents(rows.reduce((a, r) => a + amountOf(r), 0)), tone: opts.tone || '', ...(opts.collapsed ? { collapsed: true } : {}) });
 
-  function subCounts(records) {
+  // Cancelled more than HIDE_CANCELLED_MS ago (a cancel with no readable time counts as long ago).
+  const cancelGone = (r, now) => r.state === 'cancelled' && !(Date.parse(r.cancelledTs) > now - HIDE_CANCELLED_MS);
+  // When the next cancelled record leaves the lists (ms), or 0. times: the cancel times (ms) of the cancelled records.
+  const nextHideAt = (times, now) => times.reduce((a, t) => (t + HIDE_CANCELLED_MS > now && (!a || t + HIDE_CANCELLED_MS < a) ? t + HIDE_CANCELLED_MS : a), 0);
+  const openQuote = r => !isGone(r) && !r.convertedTo && !(isQbo(r) && !qboOpenQuote(r));
+  const archived = (r, today) => !!r.date && r.date < addDays(today, -ARCHIVE_DAYS); // strictly older than 30 days
+  // The row selected after a redraw: a record that left the view (just paid) stays; one that is gone, or a cancelled one that was on
+  // screen (shown: the id selected and listed at the last draw) and timed out, gives way to the first row.
+  const keepSelection = (sel, cur, rows, shown, now) => (!cur || (shown === sel && cancelGone(cur, now) && !rows.includes(cur)) ? (rows[0] ? rows[0].txnId : '') : sel);
+  // A collapsed group (Archived quotes) is shut until opened or searching. The rows of a shut group are not walked by the arrow keys,
+  // not auto-selected and not counted by "Show more".
+  const groupOpen = (g, view, ui) => (g.collapsed ? !!view.search || ui.opened.includes(g.key) : !ui.closed.includes(g.key));
+  const openRows = (view, ui) => view.groups.flatMap(g => (!g.label || groupOpen(g, view, ui) ? g.rows : []));
+  function subCounts(records, today) {
     const inv = records.filter(r => r.kind === 'invoice');
-    const q = records.filter(r => r.kind === 'quote');
+    const q = records.filter(r => r.kind === 'quote'), day = today || L.honoluluToday();
     return {
       unpaid: inv.filter(r => UNPAID.has(r.state)).length, dueSoon: inv.filter(r => r.state === 'dueSoon').length,
       overdue: inv.filter(r => r.state === 'overdue').length, paid: inv.filter(r => r.state === 'paid').length,
       void: inv.filter(isGone).length,
       deleted: q.filter(isGone).length,
-      open: q.filter(r => !isGone(r) && !r.convertedTo && !(isQbo(r) && !qboOpenQuote(r))).length, converted: q.filter(r => r.convertedTo).length,
+      open: q.filter(r => openQuote(r) && !archived(r, day)).length, converted: q.filter(r => r.convertedTo).length,
       closed: q.filter(r => isQbo(r) && !qboOpenQuote(r)).length,
     };
   }
 
   // The left list for the current ui: { groups, empty }. Search and filters narrow the section (and sub-tab) on screen.
-  function buildView(records, ui, today) {
-    const q = s(ui.q);
-    const view = sectionView(filterRecords(records, ui, today || L.honoluluToday()), ui);
-    if (!q) return view;
-    const groups = view.groups.map(g => ({ ...g, rows: L.search(g.rows, q) })).filter(g => g.rows.length)
-      .map(g => group(g.key, g.label, g.rows, { noTotal: g.total == null, tone: g.tone }));
+  // now: cancelled records leave every list HIDE_CANCELLED_MS after the cancel, except while searching and in Quotes > Deleted.
+  const regroup = (g, rows) => group(g.key, g.label, rows, { noTotal: g.total == null, tone: g.tone, collapsed: g.collapsed });
+  function buildView(records, ui, today, now = Date.now()) {
+    const q = s(ui.q), day = today || L.honoluluToday();
+    const view = sectionView(filterRecords(records, ui, day), ui, day);
+    if (!q) {
+      if (ui.section === 'quotes' && ui.quoteSub === 'deleted') return view;
+      return { ...view, groups: view.groups.map(g => { const rows = g.rows.filter(r => !cancelGone(r, now)); return rows.length === g.rows.length ? g : regroup(g, rows); }).filter(g => g.rows.length) };
+    }
+    const groups = view.groups.map(g => ({ ...g, rows: L.search(g.rows, q) })).filter(g => g.rows.length).map(g => regroup(g, g.rows));
     const n = groups.reduce((a, g) => a + g.count, 0);
     return { search: true, groups: groups.length ? groups : [group('search', '0 found', [], { noTotal: true })], found: n, empty: `Nothing matches “${q}”.` };
   }
-  function sectionView(records, ui) {
-    if (ui.section === 'invoices') {
-      const inv = records.filter(r => r.kind === 'invoice');
-      const sub = INVOICE_SUBS.some(x => x[0] === ui.invSub) ? ui.invSub : 'unpaid'; // an old saved choice (Due soon, Void) opens Open or unpaid
-      const label = INVOICE_SUBS.find(x => x[0] === sub)[1];
-      const rows = sub === 'paid' ? byNewest(inv).filter(r => r.state === 'paid' || isGone(r)) : sub === 'unpaid' ? inv.filter(r => UNPAID.has(r.state)).sort(byDue) : inv.filter(r => r.state === sub).sort(byDue);
+  function sectionView(records, ui, today) {
+    if (ui.section === 'invoices') { // every choice newest first, as Recent (Trevor, Nov 13)
+      const inv = byNewest(records).filter(r => r.kind === 'invoice');
+      const sub = INVOICE_SUBS.some(x => x[0] === ui.invSub) ? ui.invSub : 'all'; // an old saved choice (Due soon, Void) opens All
+      const pick = { overdue: r => r.state === 'overdue', unpaid: r => UNPAID.has(r.state), open: r => r.state === 'unpaid' || r.state === 'dueSoon', paid: r => r.state === 'paid' || isGone(r) };
+      const one = (key, k, label) => { const rows = inv.filter(pick[k]); return rows.length ? [group(key, label, rows, { noTotal: k === 'paid', tone: k === 'overdue' ? 'late' : '' })] : []; };
+      if (sub === 'all') return { groups: [...one('allOverdue', 'overdue', 'Past due'), ...one('allOpen', 'open', 'Open or unpaid'), ...one('allPaid', 'paid', 'Paid or closed')], empty: 'No invoices yet.' };
       const empties = { unpaid: 'Nothing is owed. Every invoice is paid.', overdue: 'No invoices are past due.', paid: 'No paid or closed invoices yet.' };
-      return { groups: rows.length ? [group(sub, label, rows, { noTotal: sub === 'paid', tone: sub === 'overdue' ? 'late' : '' })] : [], empty: empties[sub] };
+      return { groups: one(sub, sub, INVOICE_SUBS.find(x => x[0] === sub)[1]), empty: empties[sub] };
     }
     if (ui.section === 'quotes') {
       const sub = ui.quoteSub || 'open';
-      const pick = { deleted: isGone, open: r => !isGone(r) && !r.convertedTo && !(isQbo(r) && !qboOpenQuote(r)), converted: r => !!r.convertedTo, closed: r => isQbo(r) && !qboOpenQuote(r) && !r.convertedTo }[sub] || (() => false);
+      const pick = { deleted: isGone, open: openQuote, converted: r => !!r.convertedTo, closed: r => isQbo(r) && !qboOpenQuote(r) && !r.convertedTo }[sub] || (() => false);
       const rows = byNewest(records).filter(r => r.kind === 'quote' && pick(r));
-      return { groups: rows.length ? [group(sub, { open: 'Open quotes', converted: 'Turned into sale', closed: 'Closed in QuickBooks', deleted: 'Deleted quotes' }[sub], rows)] : [],
-        empty: { open: 'No open quotes.', converted: 'No quotes have been turned into a sale yet.', closed: 'No closed QuickBooks quotes.', deleted: 'No deleted quotes.' }[sub] };
+      const empty = { open: 'No open quotes.', converted: 'No quotes have been turned into a sale yet.', closed: 'No closed QuickBooks quotes.', deleted: 'No deleted quotes.' }[sub];
+      if (sub === 'open') { // quotes older than 30 days go to one folder at the bottom, closed until opened (ui.opened)
+        const day = today || L.honoluluToday(), cur = rows.filter(r => !archived(r, day)), old = rows.filter(r => archived(r, day));
+        return { groups: [...(cur.length ? [group('open', 'Open quotes', cur)] : []), ...(old.length ? [group('archived', 'Archived quotes', old, { noTotal: true, collapsed: true })] : [])], empty };
+      }
+      return { groups: rows.length ? [group(sub, { converted: 'Turned into sale', closed: 'Closed in QuickBooks', deleted: 'Deleted quotes' }[sub], rows)] : [], empty };
     }
     if (ui.section === 'sales') {
       if (ui.salesSub === 'missing') { // F02: serial-numbered sales with no buyer or a missing phone, email or address; read-only
@@ -299,6 +324,8 @@
       }
     }
     if (r.state === 'void' && !isQbo(r)) { const n = (records || []).find(x => (x.number || x.txnId) === r.replacedBy); ev.push({ t: `Corrected, replaced by ${r.replacedBy}`, d: n ? n.date : '', at: n ? placeOf(n.number) : '' }); }
+    const due = r.dueIsCustom && marks && marks.dues && marks.dues[r.txnId];
+    if (due && due.date) ev.push({ t: `Due date changed to ${fmtD(due.date)}`, d: due.at ? L.honoluluToday(due.at) : '', at: timeOf(due.at) });
     if (r.state === 'cancelled') ev.push({ t: 'Cancelled', d: r.cancelledAt, at: '' });
     if (r.convertedTo) { const n = (records || []).find(x => (x.number || x.txnId) === r.convertedTo); ev.push({ t: `Turned into sale ${r.convertedTo}`, d: n ? n.date : '', at: n ? placeOf(n.number) : '' }); }
     return ev.sort((a, b) => (a.d || '').localeCompare(b.d || ''));
@@ -417,13 +444,15 @@
   }
 
   // UI memory: in memory for tab switches, sessionStorage for a reload. Storage may be missing or throw.
-  const DEFAULT_UI = Object.freeze({ section: 'recent', invSub: 'unpaid', quoteSub: 'open', salesSub: 'all', missField: 'any', when: '', invoiceWhen: 'sixMonths', src: '', cShow: '', cSort: '', q: '', sel: '', scroll: 0, closed: [] });
+  // closed: groups shut by hand; opened: groups that start shut (Archived quotes) opened by hand. invAllV: Invoices opened on All once
+  // (Nov 13), so a computer that saved Open or unpaid before All existed starts on All, then keeps whatever is picked after.
+  const DEFAULT_UI = Object.freeze({ section: 'recent', invSub: 'all', invAllV: 1, quoteSub: 'open', salesSub: 'all', missField: 'any', when: '', invoiceWhen: 'sixMonths', src: '', cShow: '', cSort: '', q: '', sel: '', scroll: 0, closed: [], opened: [] });
   function loadUi(storage) {
     try {
       const v = JSON.parse(storage.getItem(STORE_KEY) || 'null');
-      if (v && typeof v === 'object') return { ...DEFAULT_UI, ...v, closed: Array.isArray(v.closed) ? v.closed : [] };
+      if (v && typeof v === 'object') return { ...DEFAULT_UI, ...v, closed: Array.isArray(v.closed) ? v.closed : [], opened: Array.isArray(v.opened) ? v.opened : [], ...(v.invAllV ? {} : { invSub: 'all', invAllV: 1 }) };
     } catch (_) { /* private window or blocked storage */ }
-    return { ...DEFAULT_UI, closed: [] };
+    return { ...DEFAULT_UI, closed: [], opened: [] };
   }
   // Column widths (T4): the list|document and document|panel edges are draggable. Saved per computer as {list, rail} px; junk falls back to the default.
   const COLS_KEY = 'mpe.ledger.cols', COL_LIST = [300, 560], COL_RAIL = [240, 440], COL_MID_MIN = 520;
@@ -730,13 +759,20 @@
     : `<span class="nm">${esc(c.company || c.name)}</span>`);
   // Column J for a Customers row (see buildCustomerRow): the QuickBooks id, else the customer's own 'k:' id when the edit moves its key.
   const customerRef = (c, f) => c.qboId || (c.id.startsWith('k:') && L.customerKey(f.phone, f.company, f.name) !== c.id.slice(2) ? c.id : '');
-  // Money: the big amount (left to pay on an owing invoice, else the total), one dark status line (red dot only when overdue), then the
-  // total and each payment, deposit, store credit line. notes: [{ text, tone: ''|'warn'|'late'|'ok' }], the quiet status lines under it.
-  function railMoneyHtml(r, today, notes = []) {
+  // Top of the panel, right under the doc line (Trevor, Nov 13): the big amount (left to pay on an owing invoice, else the total) and one
+  // dark status line (red dot only when overdue), then on a register invoice the Change due date control (due: dueEditHtml's editor state).
+  function railTopHtml(r, today, due) {
     const t = statusOf(r, today), owing = r.kind === 'invoice' && UNPAID.has(r.state), gone = r.state === 'void' || r.state === 'cancelled';
     const unit = owing ? 'left to pay' : r.kind === 'invoice' && r.state === 'paid' ? 'paid' : `${KIND_LABEL[r.kind].toLowerCase()} total`;
     const n = r.daysLate, status = r.state === 'overdue' ? `${n} day${n === 1 ? '' : 's'} overdue · due ${fmtD(r.dueDate)}`
       : r.state === 'dueSoon' ? `${t.text} · ${fmtD(r.dueDate)}` : r.state === 'unpaid' ? `${t.text} · ${fmtD(r.dueDate)}` : s(t.pill).replace(/^Quote · (.)/, (_, c) => c.toUpperCase());
+    return `<div class="money"><div class="amt num${gone ? ' gone' : ''}">${money(owing ? r.balance : r.total)}<span>${esc(unit)}</span></div>`
+      + (status ? `<div class="od">${r.state === 'overdue' ? '<i aria-hidden="true"></i>' : ''}${esc(status)}</div>` : '') + (canEditDue(r) ? dueEditHtml(r, due) : '') + '</div>';
+  }
+  // The rest of the money, below the customer card: the total and each payment, deposit, store credit line, then notes
+  // ([{ text, tone: ''|'warn'|'late'|'ok' }], the quiet status lines). Nothing to show: ''.
+  function railMoneyHtml(r, today, notes = []) {
+    const owing = r.kind === 'invoice' && UNPAID.has(r.state), gone = r.state === 'void' || r.state === 'cancelled';
     const lines = [], pays = (r.kind === 'receipt' ? [] : r.paymentsLive || []).slice().sort((a, b) => lt(s(a.recorded_at), s(b.recorded_at)));
     if (pays.length || (r.kind === 'receipt' && r.creditUsed > 0) || (owing && r.paid > 0)) lines.push(lnHtml(`${KIND_LABEL[r.kind]} total`, money(r.total)));
     for (const p of pays) {
@@ -746,10 +782,60 @@
     if (!pays.length && owing && r.paid > 0) lines.push(lnHtml('Paid', '−' + money(r.paid)));
     if (r.kind === 'receipt' && r.creditUsed > 0) lines.push(lnHtml('Store credit used', '−' + money(r.creditUsed)));
     if (r.kind === 'quote' && r.deposit > 0 && !r.convertedTo && !gone) lines.push(lnHtml('Left to collect', money(cents(r.total - r.deposit)), ' tot'));
-    return `<div class="money"><div class="amt num${gone ? ' gone' : ''}">${money(owing ? r.balance : r.total)}<span>${esc(unit)}</span></div>`
-      + (status ? `<div class="od">${r.state === 'overdue' ? '<i aria-hidden="true"></i>' : ''}${esc(status)}</div>` : '') + lines.join('')
-      + notes.map(x => `<div class="nt${x.tone ? ' ' + x.tone : ''}"><i aria-hidden="true"></i>${esc(x.text)}</div>`).join('') + '</div>';
+    const body = lines.join('') + notes.map(x => `<div class="nt${x.tone ? ' ' + x.tone : ''}"><i aria-hidden="true"></i>${esc(x.text)}</div>`).join('');
+    return body ? `<div class="money">${body}</div>` : '';
   }
+  // Change due date (Trevor, Nov 13): register invoices that are not void or cancelled. One 'due' mark on the Payments tab; the
+  // transaction date itself is never edited (Unit Stock timing). ed: { txnId, value, err } while the editor is open, else null.
+  const canEditDue = r => r.kind === 'invoice' && !isQbo(r) && !isGone(r);
+  function dueEditHtml(r, ed) {
+    if (!ed || ed.txnId !== r.txnId) return '<button type="button" class="btn quiet due-ch" data-act="dueOpen">Change due date</button>';
+    const busy = ed.busy ? ' disabled' : '';
+    return `<div class="due-ed"><label for="dueIn">Due date</label><input type="date" id="dueIn" value="${esc(ed.value)}" min="${esc(r.date)}" max="${esc(dueMax(r.date))}"${busy}${ed.err ? ' aria-invalid="true" aria-describedby="dueErr"' : ''}>`
+      + `<div class="due-f"><button type="button" class="btn primary sm" data-act="dueSave"${busy}>${ed.busy ? 'Saving…' : 'Save'}</button>`
+      + (r.dueIsCustom ? `<button type="button" class="btn sm" data-act="dueAuto"${busy}>Back to 30 days</button>` : '')
+      + `<button type="button" class="btn quiet sm" data-act="dueCancel"${busy}>Cancel</button></div>`
+      + (ed.err ? `<div class="err" id="dueErr" role="alert">${esc(ed.err)}</div>` : '') + '</div>';
+  }
+  const dueMax = date => (date ? String(Number(date.slice(0, 4)) + 5) + date.slice(4) : '');
+  // The typed due date: { date } to save, { same: true } (unchanged: nothing written) or { error } to show.
+  function checkDue(r, text) {
+    const v = s(text), d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+    if (!d || new Date(Date.UTC(+d[1], d[2] - 1, +d[3])).toISOString().slice(0, 10) !== v) return { error: 'Pick a real date.' };
+    if (r.date && v < r.date) return { error: `The due date cannot be before the invoice date, ${fmtD(r.date)}.` };
+    if (r.date && v > dueMax(r.date)) return { error: 'Pick a date within 5 years of the invoice date.' };
+    return v === r.dueDate ? { same: true } : { date: v };
+  }
+  // The one Payments row for a due date change: date '' = back to automatic (invoice date + 30). Column J reads 'due'.
+  const dueRows = (r, date, place, now) => [L.buildMarkRow({ kind: 'due', invoice_number: r.number, txnId: r.txnId, note: date, place: place || '' }, now)];
+  // Order note (Trevor, Nov 13: "only saved per order", never printed): one quiet line under the panel's buttons, above the timeline, on
+  // every register record (cancelled and void too), never on a QuickBooks record. Saved as one 'note' mark (ledger-data.js ORDER NOTE).
+  // ed: the open editor { txnId, text, err, busy } or null. A record with no note of its own that was made from one with a note shows that
+  // note read-only ("From Q11004: ..."). Worded apart from the customer Memo on purpose.
+  function orderNoteHtml(r, ed) {
+    if (isQbo(r)) return '';
+    if (ed) {
+      const busy = ed.busy ? ' disabled' : '';
+      return `<div class="onote editing"><label class="onote-l" for="oNoteText">Order note · shop only, never printed or emailed</label>`
+        + `<textarea id="oNoteText" maxlength="2000" rows="${Math.min(8, Math.max(3, s(ed.text).split('\n').length))}"${busy}${ed.err ? ' aria-invalid="true" aria-describedby="oNoteErr"' : ''}>${esc(ed.text)}</textarea>`
+        + `<div class="onote-f"><span class="onote-h">Ctrl+Enter saves</span>`
+        + `<button type="button" class="btn quiet sm" data-act="noteCancel"${busy}>Cancel</button><button type="button" class="btn primary sm" data-act="noteSave"${busy}>${ed.busy ? 'Saving…' : 'Save'}</button></div>`
+        + (ed.err ? `<div class="err" id="oNoteErr" role="alert">${esc(ed.err)}</div>` : '') + '</div>';
+    }
+    const from = !r.orderNote && r.orderNoteFrom ? `<div class="onote-from"><span class="onote-l">From ${esc(r.orderNoteFrom.number)}</span><span class="onote-t">${esc(r.orderNoteFrom.text)}</span></div>` : '';
+    return '<div class="onote-w">' + from + (r.orderNote
+      ? `<button type="button" class="onote" data-act="noteOpen" title="Click to change the order note"><span class="onote-l">Order note · shop only</span><span class="onote-t">${esc(r.orderNote)}</span></button>`
+      : `<button type="button" class="onote add" data-act="noteOpen"><svg class="i sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add order note<span class="onote-h">shop only</span></button>`) + '</div>';
+  }
+  // Keys in the order note box: Ctrl/Cmd+Enter saves (Enter alone is a new line), Escape cancels.
+  const noteKey = e => (e.key === 'Escape' ? 'cancel' : e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing ? 'save' : '');
+  // The typed note: { same: true } (nothing to write, clearing an empty note included) or { text } to save.
+  const checkNote = (r, text) => { const v = L.orderNoteText(text); return v === (r.orderNote || '') ? { same: true } : { text: v }; };
+  const noteRows = (r, text, place, now) => [L.buildMarkRow({ kind: 'note', invoice_number: r.number, txnId: r.txnId, note: text, place: place || '' }, now)];
+  // A QuickBooks record's panel: the Mac (host.refreshQbo) gets the whole-file refresh; other computers get where to do it.
+  const qboRefreshHtml = (canRefresh, refreshing) => (canRefresh
+    ? `<div class="rq qr"><button type="button" class="btn sm" data-act="qboRefresh"${refreshing ? ' disabled' : ''}>${refreshing ? 'Refreshing… (takes a few minutes)' : 'Refresh from QuickBooks'}</button><span>Updates every QuickBooks record, takes a few minutes.</span></div>`
+    : '<div class="rq qr"><span>Refresh from QuickBooks on the Mac. This computer shows the change by itself within about 10 minutes.</span></div>');
   // The buttons: one big button for the record's next step (owing invoice: Take payment; open quote: Convert to invoice), then two rows of
   // three boxes in fixed spots (one the record cannot use stays in place, disabled, its reason as the title), then More.
   const RAIL_BOXES = [['reprint', 'Print'], ['email', 'Email'], ['edit', 'Edit'], ['pdf', 'Download'], ['retype', 'Change type'], ['cancel', 'Cancel']];
@@ -825,18 +911,51 @@
     const live = L.livePayments(L.parsePayments(payRows));
     return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
   }
-  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railMoneyHtml, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest: L.factsFromRequest, documentPages: L.documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
+  // A saved document shows without waiting for the next sheet read. The register writes localStorage 'mpe_print_history' on every save,
+  // which fires 'storage' in this page. After a short pause the model is rebuilt from the last sheet rows plus this computer's unsent
+  // documents (host.readTransactionsLocal: no Sheets call), keeping payments, marks and customers from the last full load. It waits while
+  // an edit or a load is running or History is hidden (no timer then: it runs once when shown or when the load ends), and drops its
+  // result if a load started meanwhile (that load reads storage itself).
+  function localRefresh({ st, host, create, adopt, draw, hidden, setTimer = setTimeout, clearTimer = clearTimeout, ms = 300 }) {
+    let dirty = false, timer = 0;
+    async function flush() {
+      const h = host();
+      if (!dirty || !h || !h.readTransactionsLocal || st.phase !== 'ready' || st.edit || st.loadOn || hidden()) return;
+      dirty = false;
+      const seq = st.loadSeq;
+      let model;
+      try {
+        const tx = h.readTransactionsLocal();
+        if (!tx) return;
+        model = await create(tx);
+      } catch (_) { return; } // the next full load shows it
+      if (st.loadSeq !== seq || st.phase !== 'ready' || st.edit) { dirty = true; return; }
+      adopt(model);
+      draw();
+    }
+    return {
+      flush,
+      hold() { clearTimer(timer); timer = 0; },
+      onStorage(e) {
+        if (!e || e.key !== 'mpe_print_history') return;
+        dirty = true;
+        clearTimer(timer); timer = 0;
+        if (!hidden()) timer = setTimer(() => { timer = 0; flush(); }, ms);
+      },
+    };
+  }
   function boot() {
     const doc = root.document;
     const $ = id => doc.getElementById(id);
     const store = (() => { try { return root.sessionStorage; } catch (_) { return null; } })();
-    const ui = store ? loadUi(store) : { ...DEFAULT_UI, closed: [] };
+    const ui = store ? loadUi(store) : { ...DEFAULT_UI, closed: [], opened: [] };
     const st = { phase: 'loading', model: null, records: [], payRows: [], custRows: [], qboCustomers: [], cust: null, custRev: 0, recLimit: 100, backTo: '', marks: { drafts: {}, edits: {} }, local: { drafts: {} },
       today: '', busy: '', edit: null, template: null, docKey: '', pages: null, docErr: '',
-      qbo: null, qboVersion: '', qboAt: 0, qboBusy: false, qboWarned: false, qboAgain: false, helcimOk: false, helcimP: null, helcimAt: { at: 0 }, helcimBusy: false, helcimWhen: 0, looks: {}, qboRun: null, qboTried: false, qboGenerated: '', refreshing: false, refreshFailed: false, rev: 0, limit: PAGE, view: null };
+      qbo: null, qboVersion: '', qboAt: 0, qboBusy: false, qboWarned: false, qboAgain: false, helcimOk: false, helcimP: null, helcimAt: { at: 0 }, helcimBusy: false, helcimWhen: 0, looks: {}, qboRun: null, qboTried: false, qboGenerated: '', refreshing: false, refreshFailed: false, rev: 0, limit: PAGE, view: null, loadOn: 0, loadSeq: 0, noteEdits: {} };
     const host = () => root.MPELedgerHost;
     const memoOn = () => !!(host() && host().memoReady && host().memoReady()); // an app that cannot read Customers column K shows no memo
     const shop = () => host() && host().shopSettings;
@@ -876,7 +995,19 @@
     }
     const creditOf = key => { const b = credits(); return b && key ? b[key] || 0 : 0; };
 
+    // The model from sheet rows plus what the last full load kept (payments, marks, customers). Shared by load() and the local refresh.
+    const createModel = tx => L.create({ txnRows: tx || [], paymentRows: st.payRows, drafts: st.marks.drafts, today: st.today });
+    function adopt(model) {
+      st.model = model;
+      if (st.qbo) model.addQbo(st.qbo, st.today); // QuickBooks copy already downloaded: merge before the first draw
+      setRecords(model.records);
+    }
+    // One load at a time is counted so a local refresh never races it; when the last one ends a waiting local refresh runs.
     async function load(noMove) {
+      st.loadOn++; st.loadSeq++;
+      try { return await loadRun(noMove); } finally { st.loadOn--; local.flush(); }
+    }
+    async function loadRun(noMove) {
       const h = host();
       if (!h) { st.phase = 'nohost'; return draw(); }
       if (h.shopSettings && !st.shopStarted) { // background only: page load, every 5 minutes, window shown again; never on a print
@@ -892,10 +1023,8 @@
         st.custRows = cu || []; st.custRev++;
         st.today = (h.honoluluToday && h.honoluluToday()) || L.honoluluToday();
         st.payRows = pay || [];
-        st.marks = { drafts: { ...((mk && mk.drafts) || {}), ...st.local.drafts }, edits: { ...((mk && mk.edits) || {}) }, before: (mk && mk.before) || {}, log: (mk && mk.log) || {}, sent: (mk && mk.sent) || {}, paylinks: (mk && mk.paylinks) || {}, editLog: (mk && mk.editLog) || {} };
-        st.model = await L.create({ txnRows: tx || [], paymentRows: st.payRows, drafts: st.marks.drafts, today: st.today });
-        if (st.qbo) st.model.addQbo(st.qbo, st.today); // QuickBooks copy already downloaded: merge before the first draw
-        setRecords(st.model.records);
+        st.marks = { drafts: { ...((mk && mk.drafts) || {}), ...st.local.drafts }, edits: { ...((mk && mk.edits) || {}) }, before: (mk && mk.before) || {}, log: (mk && mk.log) || {}, sent: (mk && mk.sent) || {}, paylinks: (mk && mk.paylinks) || {}, editLog: (mk && mk.editLog) || {}, dues: (mk && mk.dues) || {} };
+        adopt(await createModel(tx));
         st.phase = 'ready'; fresh = true;
       } catch (e) {
         st.phase = e && e.code === 'not_signed_in' ? 'signedout' : (st.model ? 'ready' : 'error');
@@ -912,6 +1041,8 @@
       if (st.phase === 'ready') { helcimReady(); helcimCheck(false); }
     }
     function setRecords(list) { st.records = decorate(list); st.rev++; st.view = null; }
+    const frameHidden = () => { try { return !!(root.frameElement && root.frameElement.hidden); } catch (_) { return false; } }; // the website's History iframe
+    const local = localRefresh({ st, host, create: createModel, adopt, draw: () => draw(), hidden: () => doc.visibilityState === 'hidden' || frameHidden() });
 
     // QuickBooks history arrives after the sheet is on screen. Failure leaves the sheet as it was.
     const loadQbo = qboLoader(st, host, {
@@ -970,9 +1101,9 @@
     async function refreshQbo() {
       const h = host();
       if (st.refreshing || !h || !h.refreshQbo) return;
-      st.refreshing = true; st.refreshFailed = false; drawQbo();
+      st.refreshing = true; st.refreshFailed = false; draw(); // the header bar and a QuickBooks record's panel button both show it
       const out = await runQboRefresh(h, async () => { st.qboAt = 0; await loadQbo(); }, { generated: () => st.qboGenerated });
-      st.refreshing = false; st.refreshFailed = out === 'failed'; drawQbo();
+      st.refreshing = false; st.refreshFailed = out === 'failed'; draw();
     }
 
     function draw() {
@@ -990,16 +1121,13 @@
       }
       $('main').hidden = false; $('state').hidden = true;
       drawQbo(); drawHelcimBar();
-      const sum = st.model.owedSummary();
-      // Footer, the same on every section, so nothing above the list moves.
-      $('owed').innerHTML = `Owed <span class="num">${money(sum.total)}</span> · <span class="${sum.overdue ? 'late' : ''}">${sum.overdue} overdue</span>`;
-      const counts = ui.section === 'invoices' || ui.section === 'quotes' ? subCounts(st.records) : ui.section === 'sales' ? { missing: L.missingInfo(st.records, 'any').length } : {};
+      const counts = ui.section === 'invoices' || ui.section === 'quotes' ? subCounts(st.records, st.today) : ui.section === 'sales' ? { missing: L.missingInfo(st.records, 'any').length } : {};
       $('sections').innerHTML = SECTIONS.map(([k, label]) => `<button data-section="${k}" aria-pressed="${ui.section === k}">${label}</button>`).join('');
       const subs = ui.section === 'invoices' ? [['invSub', INVOICE_SUBS]] : ui.section === 'quotes' ? [['quoteSub', QUOTE_SUBS]]
         : ui.section === 'sales' ? [['salesSub', SALES_SUBS]].concat(ui.salesSub === 'missing' ? [['missField', MISSING_FIELDS]] : []) : [];
       // One row of drop-downs under the search box on every section: what to show (Invoices, Quotes, Sales), date and source, or the
       // customer filter and sort. Fixed height, never wraps.
-      const subSel = subs.map(([key, list]) => { const def = key === 'invSub' ? 'unpaid' : list[0][0], cur = list.some(x => x[0] === ui[key]) ? ui[key] : def;
+      const subSel = subs.map(([key, list]) => { const def = list[0][0], cur = list.some(x => x[0] === ui[key]) ? ui[key] : def;
         return `<select data-filter="${key}" aria-label="${key === 'missField' ? 'Missing' : 'Show'}" class="${cur !== def ? 'on' : ''}">${list.map(([k, label]) =>
         `<option value="${k}"${cur === k ? ' selected' : ''}>${esc(label)}${counts[k] != null && ['unpaid', 'overdue', 'open', 'missing'].includes(k) ? ` (${counts[k]})` : ''}</option>`).join('')}</select>`; }).join('');
       const inCust = ui.section === 'customers';
@@ -1008,28 +1136,35 @@
       $('q').setAttribute('aria-label', $('q').placeholder);
       const fkeys = inCust ? ['cShow', 'cSort'] : [ui.section === 'invoices' ? 'invoiceWhen' : 'when', 'src'];
       $('filters').innerHTML = subSel + fkeys.map(k => `<select data-filter="${k}" aria-label="${k === 'cSort' ? 'Sort' : 'Filter'}" class="${ui[k] ? 'on' : ''}">${(FILTERS[k === 'invoiceWhen' ? 'when' : k]).map(([v, label]) => `<option value="${v}"${ui[k] === v ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`).join('');
-      const view = currentView();
-      const rows = view.rows;
+      const now = Date.now(), view = currentView(now);
+      const rows = view.rows, shown = openRows(view, ui);
       // In Missing info a filled-in sale leaves the list: the selection moves to the next row down, else the one above, else nothing.
       const missing = ui.section === 'sales' && ui.salesSub === 'missing', was = missing && st.missRows && st.missRows.includes(ui.sel) ? st.missRows.indexOf(ui.sel) : -1;
       if (was >= 0 && !rows.some(r => r.txnId === ui.sel)) ui.sel = nextSelection(st.missRows, ui.sel, rows.map(r => r.txnId)) || (rows[0] ? rows[0].txnId : '');
       st.missRows = missing ? rows.map(r => r.txnId) : null;
-      if (!byId(ui.sel)) ui.sel = rows[0] ? rows[0].txnId : ''; // a record that leaves the view (just paid) stays selected
-      const at = rows.findIndex(r => r.txnId === ui.sel);
+      // A record that leaves the view (just paid) stays selected; a cancelled one that was on screen and timed out moves to the first row.
+      ui.sel = keepSelection(ui.sel, byId(ui.sel), shown, st.selShown, now);
+      st.selShown = shown.some(r => r.txnId === ui.sel) ? ui.sel : '';
+      hideTimer(now);
+      const at = shown.findIndex(r => r.txnId === ui.sel);
       if (at >= st.limit) st.limit = at + 1; // arrow keys walk past the drawn rows
       let room = st.limit;
       const keep = list.scrollTop;
       list.innerHTML = view.groups.length ? view.groups.map(g => {
-        const body = g.rows.slice(0, Math.max(0, room)).map(inCust ? custRowHtml : rowHtml).join('');
-        room -= g.rows.length;
+        const open = !g.label || groupOpen(g, view, ui); // Archived quotes start shut, open in search
+        const body = g.rows.slice(0, open ? Math.max(0, room) : PAGE).map(inCust ? custRowHtml : rowHtml).join(''); // a shut group's rows use none of the page
+        if (open) room -= g.rows.length;
         if (!g.label) return `<div class="flat">${body}</div>`;
-        return `<details data-g="${g.key}" ${ui.closed.includes(g.key) ? '' : 'open'}><summary class="${g.tone === 'late' ? 'red' : ''}">${ICON.right}${esc(g.label)} ${view.search ? '' : `<span class="ct">${g.count}</span>`}<span class="tot num">${g.total == null ? '' : money(g.total)}</span></summary>${body}</details>`;
-      }).join('') + (rows.length > st.limit ? `<button class="btn more" data-act="more">Show ${Math.min(PAGE, rows.length - st.limit)} more of ${(rows.length - st.limit).toLocaleString('en-US')} left</button>` : '')
+        return `<details data-g="${g.key}"${g.collapsed ? ' data-c="1"' : ''} ${open ? 'open' : ''}><summary class="${g.tone === 'late' ? 'red' : ''}">${ICON.right}${esc(g.label)} ${view.search ? '' : `<span class="ct">${g.count}</span>`}<span class="tot num">${g.total == null ? '' : money(g.total)}</span></summary>${body}</details>`;
+      }).join('') + (shown.length > st.limit ? `<button class="btn more" data-act="more">Show ${Math.min(PAGE, shown.length - st.limit)} more of ${(shown.length - st.limit).toLocaleString('en-US')} left</button>` : '')
         : `<div class="empty">${esc(view.empty)}${view.search ? '<br><button class="btn" style="margin-top:10px" data-act="clearSearch">Clear search</button>' : ''}</div>`;
       list.scrollTop = st.firstDraw ? keep : ui.scroll;
       st.firstDraw = true;
       list.querySelectorAll('details').forEach(el => el.addEventListener('toggle', () => {
-        const k = el.dataset.g; ui.closed = ui.closed.filter(x => x !== k); if (!el.open) ui.closed.push(k); remember();
+        const k = el.dataset.g;
+        if (el.dataset.c) { if (!s(ui.q)) { ui.opened = ui.opened.filter(x => x !== k); if (el.open) ui.opened.push(k); } }
+        else { ui.closed = ui.closed.filter(x => x !== k); if (!el.open) ui.closed.push(k); }
+        remember();
       }));
       if (inCust) drawCustomer(byId(ui.sel)); else drawRecord(byId(ui.sel));
       // D15: while an edit is open the left list collapses to a thin edge and takes no input; the panel holds the customer editor.
@@ -1040,16 +1175,25 @@
       remember();
     }
 
-    // buildView is pure: rebuilt only when the records or the section / sub-tab / search change, not on every selection.
-    function currentView() {
+    // buildView is pure: rebuilt only when the records or the section / sub-tab / search change, or a cancelled record times out
+    // (the key counts the cancels older than HIDE_CANCELLED_MS), not on every selection. Show more survives a time-out rebuild.
+    const cancelTimes = () => { if (st.cxRev !== st.rev) { st.cxRev = st.rev; st.cx = st.records.filter(r => r.state === 'cancelled').map(r => Date.parse(r.cancelledTs)).filter(Number.isFinite); } return st.cx; };
+    function currentView(now = Date.now()) {
       const inCust = ui.section === 'customers';
-      const key = [st.rev, inCust ? st.custRev : '', ui.section, ui.invSub, ui.quoteSub, ui.salesSub, ui.missField, ui.when, ui.invoiceWhen, ui.src, ui.cShow, ui.cSort, s(ui.q)].join('\u0001');
+      const base = [st.rev, inCust ? st.custRev : '', ui.section, ui.invSub, ui.quoteSub, ui.salesSub, ui.missField, ui.when, ui.invoiceWhen, ui.src, ui.cShow, ui.cSort, s(ui.q), st.today].join('\u0001');
+      const key = base + '\u0001' + (inCust ? '' : cancelTimes().filter(t => t <= now - HIDE_CANCELLED_MS).length);
       if (!st.view || st.view.key !== key) {
-        const v = inCust ? buildCustomerView(customers().list, ui, st.today) : buildView(st.records, ui, st.today);
-        st.view = { key, ...v, rows: v.groups.flatMap(g => g.rows) };
-        st.limit = PAGE;
+        const v = inCust ? buildCustomerView(customers().list, ui, st.today) : buildView(st.records, ui, st.today, now);
+        if (!st.view || st.view.base !== base) st.limit = PAGE;
+        st.view = { key, base, ...v, rows: v.groups.flatMap(g => g.rows) };
       }
       return st.view;
+    }
+    // One timer to the next cancelled record's time-out, replaced on every draw; none while the window is hidden (showing it reloads).
+    function hideTimer(now) {
+      clearTimeout(st.hideT); st.hideT = 0;
+      const at = doc.visibilityState === 'hidden' ? 0 : nextHideAt(cancelTimes(), now);
+      if (at) st.hideT = setTimeout(() => { st.hideT = 0; if (st.phase === 'ready' && !st.edit) draw(); }, at - now + 50);
     }
 
     // Row: who (or the top item), total; then date and time, and the type with its status for invoices.
@@ -1145,8 +1289,69 @@
         qn && { text: qn }, stale ? { text: `Emailed ${fmtD(stale)}, changed since`, tone: 'warn' } : sent ? { text: `Emailed ${fmtD(sent)}` } : draft && { text: `Draft made ${fmtD(draft)}` },
         r.kind === 'invoice' && staleLink(r) && { text: 'Pay link needs a new link: the total changed', tone: 'warn' },
         look && { text: look === STALE_LOOK ? STALE_LOOK : 'Needs a look: ' + look, tone: 'late' }].filter(Boolean);
-      $('rail').innerHTML = docLineHtml(r) + custCardHtml(r, key ? creditOf(key) : 0) + railMoneyHtml(r, st.today, notes)
-        + `<div class="acts">${railActsHtml(acts, st.busy)}${shop() ? reviewSwitchHtml(reviewOn(), shop().status(), root.MPEShopSettings.OLD_APP_TEXT) : ''}</div>` + timelineHtml(historyFor(r, st.payRows, st.marks, st.records));
+      if (st.dueEdit && st.dueEdit.txnId !== r.txnId) st.dueEdit = null; // another record: the due date box closes
+      const ed = st.dueEdit, typing = doc.activeElement && doc.activeElement.id === 'dueIn';
+      const ned = st.noteEdits[r.txnId] || null, nta = doc.activeElement && doc.activeElement.id === 'oNoteText' ? doc.activeElement : null; // a redraw keeps the caret
+      const ncaret = nta ? [nta.selectionStart, nta.selectionEnd] : null;
+      // Total and due date first (Trevor, Nov 13), then the customer card, the other money lines and notes, the buttons, the timeline.
+      $('rail').innerHTML = docLineHtml(r) + railTopHtml(r, st.today, ed) + custCardHtml(r, key ? creditOf(key) : 0) + railMoneyHtml(r, st.today, notes)
+        + `<div class="acts">${railActsHtml(acts, st.busy)}${shop() ? reviewSwitchHtml(reviewOn(), shop().status(), root.MPEShopSettings.OLD_APP_TEXT) : ''}${isQbo(r) ? qboRefreshHtml(!!(host() && host().refreshQbo), st.refreshing) : ''}</div>` + orderNoteHtml(r, ned) + timelineHtml(historyFor(r, st.payRows, st.marks, st.records));
+      const nt = $('oNoteText');
+      if (nt && ned) { // the typed text exactly (the HTML copy loses a leading new line); the caret goes to the end when the box opens or a save is refused
+        nt.value = ned.text;
+        if (ned.focus || ncaret) { const at = ned.focus || !ncaret ? [nt.value.length, nt.value.length] : ncaret; ned.focus = false; nt.focus(); try { nt.setSelectionRange(at[0], at[1]); } catch (_) {} }
+      }
+      const noteBtn = st.noteBack && !ned && $('rail').querySelector('[data-act="noteOpen"]'); // the note box just closed: focus returns to it
+      if (noteBtn) { st.noteBack = false; noteBtn.focus(); }
+      const di = $('dueIn');
+      if (di && ed && (ed.focus || typing)) { ed.focus = false; di.focus(); }
+      const openBtn = st.dueBack && !ed && $('rail').querySelector('[data-act="dueOpen"]'); // the editor just closed: focus returns to its button
+      if (openBtn) { st.dueBack = false; openBtn.focus(); }
+    }
+    // Change due date: open (focus in the date box), save (one 'due' mark, then reload), back to 30 days, cancel. Nothing unchanged is written.
+    function dueOpen(r) { if (canEditDue(r)) { st.dueEdit = { txnId: r.txnId, value: r.dueDate || '', err: '', focus: true }; draw(); } }
+    function dueCancel() { if (st.dueEdit && !st.dueEdit.busy) { st.dueEdit = null; st.dueBack = true; draw(); } }
+    function dueSave(r, auto) {
+      const ed = st.dueEdit;
+      if (!ed || ed.txnId !== r.txnId) return;
+      if (ed.busy || st.busy) return toast('Wait for the current action to finish.');
+      const c = auto ? { date: '' } : checkDue(r, ($('dueIn') || {}).value ?? ed.value);
+      if (c.error) { ed.err = c.error; ed.focus = true; return draw(); }
+      if (c.same) { st.dueEdit = null; st.dueBack = true; return draw(); }
+      ed.busy = true;
+      run('due', async () => {
+        let kept = false; // the host queues the row on this computer before it sends, so only a row the host marked `queued` was saved here; any other failure saved nothing
+        try { await host().appendPaymentRows(dueRows(r, c.date, host().place, Date.now())); }
+        catch (e) { if (e && e.queued) kept = true; else throw e; }
+        finally { ed.busy = false; }
+        st.dueEdit = null; st.dueBack = true;
+        if (kept) return SAVED_HERE;
+        return auto ? `Due date back to 30 days: ${fmtD(r.dueAuto)}.` : `Due date changed to ${fmtD(c.date)}.`;
+      });
+    }
+    // Order note: open (an unsaved draft for this record is kept, also while another row is shown), save (one 'note' mark, then reload;
+    // nothing when unchanged), cancel. A save that never queued (signed out, offline before the read) keeps the box open with the typed text and says why; a failure after the host queued it is saved on this computer.
+    function noteOpen(r) { if (isQbo(r)) return; if (!st.noteEdits[r.txnId]) st.noteEdits[r.txnId] = { txnId: r.txnId, text: r.orderNote || '', err: '' }; st.noteEdits[r.txnId].focus = true; draw(); }
+    function noteCancel(r) { const ed = st.noteEdits[r.txnId]; if (!ed || ed.busy) return; delete st.noteEdits[r.txnId]; st.noteBack = true; draw(); }
+    function noteSave(r) {
+      const ed = st.noteEdits[r.txnId];
+      if (!ed) return;
+      if (ed.busy || st.busy) return toast('Wait for the current action to finish.');
+      const c = checkNote(r, ed.text);
+      if (c.same) { delete st.noteEdits[r.txnId]; st.noteBack = true; return draw(); }
+      ed.err = ''; ed.busy = true;
+      run('note', async () => {
+        let kept = false; // only a failure marked `queued` by the host means the row is kept on this computer
+        try { await host().appendPaymentRows(noteRows(r, c.text, host().place, Date.now())); }
+        catch (e) {
+          if (e && e.queued) kept = true;
+          else { ed.err = e && e.code === 'not_signed_in' ? 'Not signed in to Google. The note was not saved.' : 'The note was not saved. Check the internet connection and try again.'; ed.focus = true; return ''; }
+        } finally { ed.busy = false; }
+        if (st.noteEdits[r.txnId] === ed) delete st.noteEdits[r.txnId];
+        st.noteBack = true;
+        if (kept) return SAVED_HERE;
+        return c.text ? 'Order note saved.' : 'Order note cleared.';
+      });
     }
     // During an edit the panel keeps its shape (D14, D13): the customer card turns into the boxes, Save and Cancel take the buttons'
     // spots (#editRail, redrawn by drawEdit), the timeline stays. A redraw keeps the caret.
@@ -1208,6 +1413,7 @@
     }
 
     // ---- actions
+    const SAVED_HERE = 'Saved on this computer. It is shared when the sheet answers.';
     async function run(name, fn, okMsg) {
       if (st.busy) return;
       st.busy = name; draw();
@@ -1431,6 +1637,13 @@
       if (k === 'retype') return typeMenu(r, el);
       if (k === 'cancel') return confirmCancel(r);
       if (k === 'uncancel') return setCancel(r, 'uncancel');
+      if (k === 'dueOpen') return dueOpen(r);
+      if (k === 'dueCancel') return dueCancel();
+      if (k === 'dueSave') return dueSave(r, false);
+      if (k === 'dueAuto') return dueSave(r, true);
+      if (k === 'noteOpen') return noteOpen(r);
+      if (k === 'noteCancel') return noteCancel(r);
+      if (k === 'noteSave') return noteSave(r);
     }
     // Edit: the contact fields in a small form. Saving adds ONE row to the Customers tab (the newest row for a customer wins), kept
     // on this computer until the sheet shows it exactly.
@@ -1622,6 +1835,21 @@
     });
     const rail = $('rail');
     // The panel's customer fields during an edit: typing goes to st.edit.cust; the panel's Save and Cancel follow it.
+    // The due date box: what is typed is kept (a background redraw keeps it); Enter saves, Escape cancels.
+    rail.addEventListener('input', e => { if (e.target.id === 'dueIn' && st.dueEdit) st.dueEdit.value = e.target.value; });
+    // The order note box: typing is kept in st.noteEdits (per record, so another row and back keeps it); its keys stay in the box.
+    rail.addEventListener('input', e => { const r = e.target.id === 'oNoteText' && byId(ui.sel), ed = r && st.noteEdits[r.txnId]; if (ed) ed.text = e.target.value; });
+    rail.addEventListener('keydown', e => {
+      if (e.target.id !== 'oNoteText') return;
+      e.stopPropagation();
+      const k = noteKey(e), r = byId(ui.sel);
+      if (k && r) { e.preventDefault(); if (k === 'save') noteSave(r); else noteCancel(r); }
+    });
+    rail.addEventListener('keydown', e => {
+      if (e.target.id !== 'dueIn') return;
+      if (e.key === 'Enter') { e.preventDefault(); const r = byId(ui.sel); if (r) dueSave(r, false); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dueCancel(); }
+    });
     rail.addEventListener('input', e => {
       const k = e.target.dataset && e.target.dataset.cf, f = st.edit; if (!k || !f || editBusy(f)) return;
       custTyped(f.cust, k, e.target.value);
@@ -1659,7 +1887,7 @@
     doc.addEventListener('keydown', e => {
       if (e.key === 'Escape') { $('menu').hidden = true; return; }
       if (!['ArrowDown', 'ArrowUp'].includes(e.key) || (e.target.tagName === 'INPUT' && e.target.id !== 'q') || st.phase !== 'ready' || st.edit) return;
-      const rows = currentView().rows;
+      const rows = openRows(currentView(), ui);
       const i = rows.findIndex(r => r.txnId === ui.sel);
       const n = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
       if (n) { e.preventDefault(); select(n.txnId); }
@@ -1732,7 +1960,11 @@
     if (root.ResizeObserver) new root.ResizeObserver(sendRect).observe($('editSlot')); // bar height, rail width, window: the slot moves
     // Coming back to the tab: fresh numbers from other computers, same search, row and scroll.
     doc.addEventListener('visibilitychange', () => { if (doc.visibilityState === 'visible' && st.phase === 'ready') autoLoad(); });
+    doc.addEventListener('visibilitychange', () => { if (doc.visibilityState === 'hidden') { clearTimeout(st.hideT); st.hideT = 0; local.hold(); } }); // no timer while hidden
     root.addEventListener('mpe-ledger-host', autoLoad); // the host announces itself if it attaches after this page
+    // A document saved on this computer: the register writes mpe_print_history, which fires 'storage' here. No Sheets call.
+    root.addEventListener('storage', e => local.onStorage(e));
+    root.addEventListener('resize', () => local.flush()); // the website's hidden frame resizes when it is shown again
     api.refresh = autoLoad;
     load();
   }
@@ -1757,6 +1989,6 @@
     giveCredit: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12.5V4.5h8l9 9-8 8z"/><circle cx="8" cy="9" r="1.4"/></svg>',
     newInvoice: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   };
-  const api = { ...pure, withDeposit, cardFeeOf, boot };
+  const api = { ...pure, withDeposit, cardFeeOf, localRefresh, boot };
   return api;
 });

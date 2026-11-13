@@ -37,7 +37,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 const TAX_LABEL = 'Tax (4.712%)';
 const TITLES = Object.freeze({ invoice: 'Invoice', quote: 'Quote', receipt: 'Receipt' });
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const EXTRA_LIMITS = { po: 200, terms: 200, ordered_by: 200, bill_to: 500, paid: 20, deposit: 20, revised_on: 10, valid_until: 10 };
+const EXTRA_LIMITS = { po: 200, received_by: 200, terms: 200, ordered_by: 200, bill_to: 500, paid: 20, deposit: 20, revised_on: 10, valid_until: 10 };
 
 class DocumentRenderError extends Error {}
 
@@ -218,6 +218,10 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
     if (values[slot] === undefined) throw new DocumentRenderError(`Template slot ${slot} has no value`);
     return values[slot];
   });
+  // Received by (Trevor, 2026-11-13): the typed name fills the signature's Print line. The '.received' pieces carry the slot; an older
+  // cached template lacks them and prints the blank line as before (the old pieces never gain a slot, so an older renderer still fills them).
+  const sigPiece = (name, values = {}) => (pieces.has(`${name}.received`)
+    ? fill(`${name}.received`, { ...values, received: escape(extra.received_by || '') }) : fill(name, values));
   const cfg = cleanSettings(settings);
   const extra = officialExtras(extras);
   const { issued, totals, customer } = facts;
@@ -355,10 +359,10 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
     // copy 'customer'; a receipt has one copy). Never quotes or the merchant copy. An older cached template has no piece: none prints.
     sig: (extra.review && pieces.has('counter.review') && (kind === 'receipt' ? copy !== 'merchant' && copy !== 'shop' : kind === 'invoice' && copy === 'customer')
       ? piece('counter.review') : '')
-      + (kind === 'invoice' && copy !== 'customer' ? fill('counter.sig', { po: escape(firstOf(extra.po, /[,;\n]/)) }) : '')
+      + (kind === 'invoice' && copy !== 'customer' ? sigPiece('counter.sig', { po: escape(firstOf(extra.po, /[,;\n]/)) }) : '')
       // Received by / Print / Sign (Signature toggle): receipts and quotes; on a two-copy receipt it goes on the shop copy. A template
       // without the piece throws, so a requested signature is never silently left off.
-      + (extra.signature && (kind === 'quote' || (kind === 'receipt' && (extra.warranty ? copy === 'shop' : true))) ? piece('counter.sign') : '')
+      + (extra.signature && (kind === 'quote' || (kind === 'receipt' && (extra.warranty ? copy === 'shop' : true))) ? sigPiece('counter.sign') : '')
       + (copy && pieces.has('counter.copy') ? fill('counter.copy', { label: { customer: 'Customer copy', shop: 'Shop copy' }[copy] || 'Merchant copy' }) : '')
       // The warranty form: the receipt's shop copy, pinned to the bottom of the page by the piece's own CSS. A cached older template
       // lacks the piece and throws, so POS prints its own page (with its warranty form) instead.

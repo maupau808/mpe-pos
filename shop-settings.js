@@ -24,7 +24,7 @@
   const REFRESH_MS = 5 * 60 * 1000;   // other computers pick a change up within this
   const MIN_GAP_MS = 30 * 1000;       // a window shown again refreshes, but not more often than this
   const OLD_APP_TEXT = 'Update the counter app to change this';
-  const PLACES = { 1: 'Mac app', 2: 'PC Left', 3: 'PC Right', 4: 'Tech Dept' };
+  const PLACES = { 1: 'Mac app', 2: 'PC Left', 3: 'PC Right', 4: 'Tech Dept', 5: 'back_office' };
 
   const s = v => String(v == null ? '' : v).trim();
   const idOf = r => [0, 1, 2, 3].map(i => s(r && r[i])).join('\u0001');
@@ -52,7 +52,7 @@
     }
     return out;
   }
-  // Where a row came from: the register digit (1 Mac, 2 PC Left, 3 PC Right) in the app, else the browser.
+  // Where a row came from: the register digit (1 Mac, 2 PC Left, 3 PC Right, 4 Tech Dept, 5 back_office) in the app, else the browser.
   const placeLabel = (digit, app) => (app ? PLACES[s(digit)] || 'app' : 'browser');
 
   // deps: { get(range), append(range, rows), addTab(), storage, place, now }. addTab adds the Settings tab (only that tab).

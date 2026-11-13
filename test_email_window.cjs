@@ -85,6 +85,27 @@ if (process.versions.electron) {
       await shot('error');
     });
     await run({ payLink: { url: '', canAdd: true, add: async () => { throw new Error('boom'); }, startMessage } }, async ({ q, btn, msg }) => { btn().click(); await sleep(50); ok('throw: shown, message unchanged', q('.err[role="alert"]').textContent.includes('boom') && msg() === START); });
+    // Signature (Trevor, 2026-11-07): part of the message box, formatting kept, editable; typed lines are sent and kept in a draft.
+    const SIG = '<div style="color:rgb(0,0,0)"><b>Shop Name</b><br><a href="https://shop.example.test">shop.example.test</a></div>';
+    localStorage.clear();
+    let sent = null;
+    const ps = MPEEmailWindow.open({ ...base, message: START, signature: SIG, send: async f => { sent = f; } });
+    await sleep(50);
+    let d = document.querySelector('dialog.mew'), sig = d.querySelector('.msg [data-sig]');
+    ok('signature: in the message box, editable', sig && sig.isContentEditable && sig.closest('.msg').querySelector('textarea'));
+    ok('signature: formatting kept (bold, link)', sig.querySelector('b') && sig.querySelector('a[href="https://shop.example.test"]') && /-- /.test(sig.textContent));
+    ok('signature: no "goes below" hint', !d.innerHTML.includes('goes below the message'));
+    sig.insertAdjacentHTML('beforeend', '<div>Trevor</div>'); sig.dispatchEvent(new Event('input', { bubbles: true }));
+    await shot('signature');
+    d.querySelector('[data-a="save"]').click();
+    d.querySelector('[data-a="close"]').click(); await ps;
+    const ps2 = MPEEmailWindow.open({ ...base, message: START, signature: SIG, send: async f => { sent = f; } });
+    await sleep(50);
+    d = document.querySelector('dialog.mew'); sig = d.querySelector('[data-sig]');
+    ok('signature: the saved draft keeps the typed name', /Trevor/.test(sig.textContent) && sig.querySelector('b'));
+    d.querySelector('[data-a="send"]').click(); await ps2;
+    ok('signature: sent html has the edits, the bold, the link and one "-- " line', sent && /Trevor/.test(sent.html) && /<b>Shop Name<\\/b>/.test(sent.html) && (sent.html.match(/-- /g) || []).length === 1);
+    ok('signature: sent text has the typed name', sent && /Shop Name[\\s\\S]*Trevor/.test(sent.text));
     return out;
   })()`;
   process.on('unhandledRejection', e => { console.log('FAIL: ' + (e && (e.stack || e.message || JSON.stringify(e)))); app.exit(1); });
