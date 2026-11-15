@@ -563,7 +563,7 @@
   // built here (a search then only calls includes()). addQbo(model, mapped, today) merges and derives the state per load.
   const QBO_TITLES = { invoice: 'Invoice', quote: 'Quote', receipt: 'Receipt' };
   function qboRecords(json) {
-    const out = [];
+    const out = [], custs = new Map(((json && json.customers) || []).map(c => [s(c.id), c]));
     for (const q of (json && json.records) || []) {
       const kind = q.kind === 'invoice' || q.kind === 'quote' ? q.kind : q.kind === 'receipt' ? 'receipt' : '';
       if (!kind) continue;
@@ -580,6 +580,7 @@
         qboStatus: s(q.status).toLowerCase(), qboBalance: money(q.balance), qboDue: isoDate(q.dueDate), qboExpires: isoDate(q.expires),
         draftMade: false, draftText: '', paymentsLive: [], _ph: phone.replace(/\D/g, ''),
       };
+      r._qc = custs.get(r.customerId) || null; // the QuickBooks customer, for the buyer's contact fields
       r._hay = [r.txnId, number, r.date, name, company, phone, email, r.addr, s(q.total), QBO_TITLES[kind],
         ...items.flatMap(i => [i.pn, i.desc, i.serials.join(' ')])].filter(Boolean).join(' ').toLowerCase();
       r._serialHay = items.flatMap(i => i.serials).map(alnum).filter(Boolean).join(' ');
@@ -630,36 +631,92 @@
     for (const r of mapped) if (!used.has(r) && !(r.number && have.has(key(r)))) extra.push(qboState(r, today));
     return merged.concat(extra);
   }
-  // Display-only "QuickBooks buyer": a register sale (not a quote) with no buyer, or the Jana Yamashiro placeholder, whose serials
-  // (uppercase letters and digits, 4+ characters) appear in exactly ONE QuickBooks invoice or receipt (never an estimate) gets
-  // r.qboBuyer = { name, customerId } and that name in its search text. Two or more different documents: nothing. One pass builds
-  // serial -> documents; nothing is written anywhere. Idempotent: a reload recomputes from the untouched base search text.
+  // "QuickBooks buyer": a register sale (not a quote) with no buyer, or the Jana Yamashiro placeholder, whose serial (uppercase letters and
+  // digits, 4+ characters; any spacing, dashes or dots; any case) is in a QuickBooks invoice or receipt line (never an estimate) gets
+  // r.qboBuyer = { name, customerId, sure, fill } and that name in its search text. Nothing is written here: the History page saves
+  // `fill` into the sale on a person's press. Several documents are fine when they are one customer; several customers are told apart by the
+  // sale's total (to the cent) within 3 days, else nobody. sure = the nearest matching document is within 3 days of the sale, or within 14 days with the same total.
+  // fill = { company, name, phone, email, street, city, region, zip } laid out so customerKey(...) equals the key customerGroups gives that
+  // QuickBooks customer. Each document's descriptions are squashed once (cached on the mapped record); idempotent on re-merge.
   const PLACEHOLDER_BUYER = 'jana yamashiro';
   // "Jana Yamashiro" or QuickBooks' "Yamashiro, Jana": the stand-in, never a buyer.
   const isJana = v => s(v).toLowerCase().split(/[^a-z]+/).filter(Boolean).sort().join(' ') === 'jana yamashiro';
   const snKey = v => s(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
-  function addQboBuyers(sheet, mapped) {
-    const docs = new Map(); // serial key -> Map(txnId -> record)
-    for (const q of mapped) {
-      if (q.kind === 'quote' || isJana(q.company || q.name)) continue; // the old system's copies under Jana name nobody (Trevor, Nov 6)
-      for (const i of q.items) for (const x of i.serials) {
-        const k = snKey(x);
-        if (k.length < 4) continue;
-        if (!docs.has(k)) docs.set(k, new Map());
-        docs.get(k).set(q.txnId, q);
-      }
+  const dayGap = (a, b) => (a && b ? Math.abs(dayNum(a) - dayNum(b)) : Infinity);
+  // Does key k (squashed) at p in q's squashed text sit in the original description not inside a longer number? A digit-led key may not
+  // follow a digit, and no letter or digit may follow the key.
+  function okAt(q, k, p) {
+    const sq = q._sq, d = s(q.items[sq.slice(0, p).split('|').length - 1].desc).toUpperCase(), start = p - sq.lastIndexOf('|', p - 1) - 1;
+    let a = 0, n = -1;
+    for (; a < d.length; a++) if (/[A-Z0-9]/.test(d[a]) && ++n === start) break;
+    let e = a;
+    for (let left = k.length - 1; left && e < d.length; e++) if (/[A-Z0-9]/.test(d[e + 1])) left--; // stops at the end of the text
+    return !((/\d/.test(k[0]) && /\d/.test(d[a - 1] || '')) || /[A-Z0-9]/.test(d[e + 1] || ''));
+  }
+  // One search index per download (cached on the mapped array): every searchable document's squashed descriptions in one string, so a
+  // serial is one indexOf over it; plus exported serial -> documents. hits caches key -> documents so a re-merge searches nothing.
+  const qboIdx = new WeakMap();
+  function qboIndex(mapped) {
+    let x = qboIdx.get(mapped);
+    if (x && x.n === mapped.length) return x;
+    const cand = mapped.filter(q => q.kind !== 'quote' && q.qboStatus !== 'void' && !isJana(q.company || q.name)); // Jana copies name nobody (Trevor, Nov 6)
+    const offs = [], by = new Map();
+    let big = '';
+    for (const q of cand) {
+      if (q._sq == null) q._sq = q.items.map(i => snKey(i.desc)).join('|');
+      offs.push(big.length); big += q._sq + '\n';
+      for (const i of q.items) for (const v of i.serials) { const k = snKey(v); if (k.length >= 4) { if (!by.has(k)) by.set(k, new Set()); by.get(k).add(q); } }
     }
+    qboIdx.set(mapped, x = { n: mapped.length, cand, big, offs, by, hits: new Map() });
+    return x;
+  }
+  function qboDocs(x, k) {
+    let h = x.hits.get(k);
+    if (h) return h;
+    h = new Set(x.by.get(k));
+    for (let p = x.big.indexOf(k); p >= 0; p = x.big.indexOf(k, p + 1)) {
+      let lo = 0, hi = x.offs.length - 1;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (x.offs[mid] <= p) lo = mid; else hi = mid - 1; }
+      const q = x.cand[lo];
+      if (!h.has(q) && p - x.offs[lo] + k.length <= q._sq.length && okAt(q, k, p - x.offs[lo])) h.add(q);
+    }
+    x.hits.set(k, h);
+    return h;
+  }
+  // The customer's own profile address first (what QuickBooks shows as the customer's address); the document's only when the customer
+  // has none and the document has a city. The document's free-form block is never used as the street when a profile address exists.
+  function qboFill(q) {
+    const c = q._qc, co = c ? s(c.company) : s(q.company);
+    const mine = c ? { name: co ? [s(c.given), s(c.family)].filter(Boolean).join(' ') : s(c.name), phone: s(c.phone || c.mobile), email: s(c.email || q.email) }
+      : { name: s(q.name), phone: s(q.phone), email: s(q.email) };
+    const cl = c && Array.isArray(c.lines) ? c.lines.map(s).filter(Boolean).join(', ') : '';
+    const addr = c && (cl || s(c.city) || s(c.state) || s(c.zip)) ? { street: cl, city: s(c.city), region: s(c.state), zip: s(c.zip) }
+      : q.city ? { street: q.street, city: q.city, region: s(q.region), zip: q.zip } : { street: '', city: '', region: '', zip: '' };
+    return { company: co, ...mine, ...addr };
+  }
+  function addQboBuyers(sheet, mapped) {
+    const x = qboIndex(mapped), cand = x.cand, twins = new Map(); // serial key -> txnIds of the live register sales carrying it
+    for (const r of sheet) if (r.source !== 'qbo' && r.kind !== 'quote' && r.state !== 'cancelled' && r.state !== 'void')
+      for (const i of r.items) for (const v of i.serials) { const k = snKey(v); if (!twins.has(k)) twins.set(k, new Set()); twins.get(k).add(r.txnId); }
     for (const r of sheet) {
       if (r._hayBase == null) r._hayBase = r._hay;
       r._hay = r._hayBase;
       r.qboBuyer = null;
-      if (r.source === 'qbo' || r.kind === 'quote' || !docs.size) continue;
+      if (r.source === 'qbo' || r.kind === 'quote' || !cand.length) continue;
       if (![r.name, r.company].filter(Boolean).every(x => x.toLowerCase() === PLACEHOLDER_BUYER)) continue; // an entered buyer stays
-      const hit = new Map();
-      for (const i of r.items) for (const x of i.serials) for (const [id, q] of docs.get(snKey(x)) || []) hit.set(id, q);
-      const q = hit.size === 1 ? [...hit.values()][0] : null, name = q && (q.company || q.name);
+      const keys = [...new Set(r.items.flatMap(i => i.serials).map(snKey).filter(k => k.length >= 4))];
+      if (!keys.length) continue;
+      const hit = new Set(); // the same QuickBooks document may hold several of the sale's serials
+      for (const k of keys) for (const q of qboDocs(x, k)) hit.add(q);
+      const byCust = new Map(); // customer id (or the document itself) -> its matching documents
+      for (const q of hit) { const id = q.customerId || q.txnId; byCust.set(id, (byCust.get(id) || []).concat(q)); }
+      const fits = [...byCust.values()].filter(ds => ds.some(q => cents(q.total) === cents(r.total) && dayGap(q.date, r.date) <= 3));
+      const docs = byCust.size === 1 ? [...byCust.values()][0] : fits.length === 1 ? fits[0] : null;
+      if (!docs) continue;
+      const q = docs.reduce((a, b) => (dayGap(b.date, r.date) < dayGap(a.date, r.date) ? b : a)), name = q.company || q.name;
       if (!name) continue;
-      r.qboBuyer = { name, customerId: q.customerId };
+      // sure: a unit rung up twice at the register is never sure
+      r.qboBuyer = { name, customerId: q.customerId, sure: !keys.some(k => twins.get(k).size > 1) && (dayGap(q.date, r.date) <= 3 || (dayGap(q.date, r.date) <= 14 && cents(q.total) === cents(r.total))), fill: qboFill(q) };
       r._hay = r._hayBase + ' ' + name.toLowerCase();
     }
   }

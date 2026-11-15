@@ -582,6 +582,61 @@
       : res.pdf === 'queued' ? ' The PDF copy is waiting to upload.' : res.pdf === 'unavailable' ? ' The PDF copy could not be refreshed yet.' : '';
     return `Saved. ${r.number} is updated.${num}${pdf}`;
   }
+  // ---- QuickBooks buyers saved onto register sales. Only a press of "Save to this sale" or "Save N buyers" writes; loading never does.
+  const digitsOf = v => s(v).replace(/\D/g, '');
+  const qboSavable = r => !!(r && r.qboBuyer && r.qboBuyer.fill && s(r.txnId) && r.state !== 'void' && r.state !== 'cancelled');
+  // The bulk list: sure matches on a register receipt that is not waiting to share, whose own phone is blank or the buyer's.
+  function qboBulkList(records, pending, parked) {
+    return (records || []).filter(r => qboSavable(r) && r.qboBuyer.sure && r.kind === 'receipt' && s(r.number) && !(pending && pending.has(r.txnId)) && !(parked && parked.has(r.txnId))
+      && (!digitsOf(r.phone) || digitsOf(r.phone) === digitsOf(r.qboBuyer.fill.phone)) && (!s(r.email) || s(r.email).toLowerCase() === s(r.qboBuyer.fill.email).toLowerCase()));
+  }
+  // Fill blanks only: what the sale will hold is its own value where it has one, else QuickBooks'. The address is one unit (never a QuickBooks
+  // city on the sale's own street). name and company always go (even '', that clears the placeholder buyer).
+  const QBO_ADDR = ['street', 'city', 'region', 'zip'];
+  const qboOwn = r => ({ phone: s(r.phone), email: s(r.email), street: s(r.street), city: s(r.city), region: s(regionOf(r)), zip: s(r.zip) });
+  function qboMerged(r, fill) {
+    const own = qboOwn(r), keep = QBO_ADDR.some(k => own[k]), m = { phone: own.phone || s(fill.phone), email: own.email || s(fill.email) };
+    for (const k of QBO_ADDR) m[k] = keep ? own[k] : s(fill[k]);
+    return m;
+  }
+  function qboPatch(r, fill) {
+    const own = qboOwn(r), m = qboMerged(r, fill), patch = { name: s(fill.name), company: s(fill.company) };
+    for (const k of Object.keys(m)) if (m[k] !== own[k]) patch[k] = m[k];
+    return { ...patch, updateInfo: false };
+  }
+  // One result: saved | pending (saved here only: stop) | signedout (stop) | register (stop) | skipped (refused, sheet untouched) | check (look in History).
+  function qboOutcome(res) {
+    if (!res || typeof res !== 'object') return 'check';
+    if (res.ok) return res.pending ? 'pending' : 'saved';
+    const c = s(res.code);
+    return c === 'not_signed_in' || c === 'offline' ? 'signedout' : c === 'not_empty' ? 'register' : ['error', 'timeout', 'closed'].includes(c) ? 'check' : 'skipped';
+  }
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  function qboEndText({ saved, skipped, check, stop }) {
+    const got = `Saved ${plural(saved, 'buyer', 'buyers')}.`;
+    if (stop === 'pending') return `Saved ${saved}. The sheet is not answering, so the rest are waiting. Try again in a few minutes.`;
+    if (stop === 'signedout') return `${got} Not signed in to Google, so the rest were not saved. Sign in, then press the button again.`;
+    if (stop === 'error') return `${got} Something went wrong, so the rest were not saved. Press the button again.`;
+    if (stop === 'register') return `${got} The register has a sale open, so the rest were not saved. Finish or clear it, then press the button again.`;
+    return got + (skipped ? ` ${skipped} could not be saved; open ${skipped === 1 ? 'it' : 'them'} and use Save to this sale.` : '') + (check ? ` ${check} may not have finished. Check History.` : '');
+  }
+  // The header button: null when there is nothing to press (hidden).
+  const qboSaveBar = (n, run, can) => (!can || (!run && !n) ? null : { label: run ? `Saving ${run.at} of ${run.n}…` : `Save ${plural(n, 'buyer', 'buyers')}`, busy: !!run });
+  // One sale at a time through the register's one silent edit, a short pause between, stopping on the first stop result.
+  async function runQboSave(h, list, { sleep = ms => new Promise(ok => setTimeout(ok, ms)), gapMs = 1000, progress = () => {}, totals } = {}) {
+    const t = totals || { saved: 0, skipped: 0, check: 0, stop: '' }; // a caller that passes totals keeps the running counts if this throws
+    for (let i = 0; i < list.length && !t.stop; i++) {
+      const r = list[i];
+      progress(i + 1, list.length);
+      if (i) await sleep(gapMs);
+      let res;
+      try { res = await h.editSession(r, qboPatch(r, r.qboBuyer.fill), { cardFee: cardFeeOf(r) > 0, storeCredit: r.creditUsed || 0 }); }
+      catch (e) { res = { ok: false, code: s(e && e.code) || 'error' }; }
+      const o = qboOutcome(res);
+      if (o === 'saved' || o === 'skipped' || o === 'check') t[o]++; else t.stop = o;
+    }
+    return t;
+  }
   // The row to select when the selected one left a list: the next one down that is still there, else the one above, else ''.
   function nextSelection(was, sel, now) {
     const i = was.indexOf(sel), alive = id => now.includes(id);
@@ -612,7 +667,7 @@
   // matched the way the Customers search matches (buildCustomerView), newest activity first, active customers only.
   const SUGGEST_KEYS = ['company', 'name', 'phone'], SUGGEST_MAX = 8;
   function custSuggest(list, k, text) {
-    const q = k === 'phone' ? s(text).replace(/\D/g, '') : s(text);
+    const q = k === 'phone' ? digitsOf(text) : s(text);
     if (q.length < (k === 'phone' ? 4 : 3)) return []; // the register's minimums: 3 letters, 4 digits
     const v = buildCustomerView((list || []).filter(c => !c.inactive), { q }, '0000-00-00');
     return v.groups.length ? v.groups[0].rows.slice(0, SUGGEST_MAX) : [];
@@ -733,12 +788,17 @@
   // Top of the panel: what it is and when.
   const docLineHtml = r => `<div class="docno">${esc(KIND_LABEL[r.kind])} ${esc(r.number || r.txnId)}${r.date ? ` · ${esc(fmtDY(r.date))}` : ''}${isQbo(r) ? ' · QuickBooks' : ''}</div>`;
   // The customer card: name bold, then contact, phone, email, address (empty lines skipped). Edit turns this card into the boxes.
-  function custCardHtml(r, credit) {
+  // A matched, unsaved sale shows the buyer's details from QuickBooks and, when it can be saved, the one "Save to this sale" button (save: '' | 'on' | 'off').
+  function custCardHtml(r, credit, save) {
+    const f = r.qboBuyer && r.qboBuyer.fill;
     const name = r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : s(r.company || r.name);
-    const addr = [r.street, [r.city, regionOf(r), r.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-    const lines = [!r.qboBuyer && r.company && r.name ? r.name : '', r.phone, r.email, addr].filter(Boolean);
+    const addrOf = (street, city, region, zip) => [street, [city, region, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    const m = f && qboMerged(r, f); // what the sale holds after Save: its own detail wherever it has one
+    const lines = f ? [f.company && f.name ? f.name : '', m.phone, m.email, addrOf(m.street, m.city, m.region, m.zip)].filter(Boolean)
+      : [!r.qboBuyer && r.company && r.name ? r.name : '', r.phone, r.email, addrOf(r.street, r.city, regionOf(r), r.zip)].filter(Boolean);
     return `<div class="pc"><h3>Customer</h3>${name ? `<b class="cn${r.qboBuyer ? ' muted' : ''}">${esc(name)}</b>` : `<span class="cn muted">${lines.length ? 'No name' : 'No customer on this sale'}</span>`}`
-      + lines.map(x => `<div class="cs">${esc(x)}</div>`).join('') + (credit ? `<div class="ccredit">${creditPill(credit)}</div>` : '') + '</div>';
+      + lines.map(x => `<div class="cs">${esc(x)}</div>`).join('') + (credit ? `<div class="ccredit">${creditPill(credit)}</div>` : '')
+      + (save ? `<button type="button" class="btn sm cqs" data-act="qboSave"${save === 'off' ? ' disabled' : ''}>Save to this sale</button>` : '') + '</div>';
   }
   // Customer memo (shop only, Customers column K). It sits at the top of the customer card and is typed in place: click it (or
   // "Add memo"), Enter saves, Shift+Enter is a new line, Escape cancels. ed = the open editor { id, text, err } or null. An app that
@@ -945,7 +1005,7 @@
     const live = L.livePayments(L.parsePayments(payRows));
     return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
   }
-  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, canEditDate, dateEditHtml, checkDate, dateRows, driveNote, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, canEditDate, dateEditHtml, checkDate, dateRows, driveNote, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboSavable, qboBulkList, qboPatch, qboOutcome, qboEndText, qboSaveBar, runQboSave, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest: L.factsFromRequest, documentPages: L.documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
@@ -1059,7 +1119,7 @@
         st.payRows = pay || [];
         st.marks = { drafts: { ...((mk && mk.drafts) || {}), ...st.local.drafts }, edits: { ...((mk && mk.edits) || {}) }, before: (mk && mk.before) || {}, log: (mk && mk.log) || {}, sent: (mk && mk.sent) || {}, paylinks: (mk && mk.paylinks) || {}, editLog: (mk && mk.editLog) || {}, dues: (mk && mk.dues) || {} };
         adopt(await createModel(tx));
-        st.phase = 'ready'; fresh = true;
+        st.phase = 'ready'; fresh = true; st.loadFresh = (st.loadFresh || 0) + 1; // counts loads that really read the sheet
       } catch (e) {
         st.phase = e && e.code === 'not_signed_in' ? 'signedout' : (st.model ? 'ready' : 'error');
         if (st.model) toast('Could not refresh. Showing what was loaded before.');
@@ -1127,17 +1187,42 @@
       const h = host(), el = $('qbAsOf');
       const m = qboBar({ loading: !st.qboTried && !!(h && h.readQboHistory), loaded: !!st.qbo, generatedAt: st.qboGenerated,
         canRefresh: !!(h && h.refreshQbo), refreshing: st.refreshing, failed: st.refreshFailed }, Date.now());
+      const sv = qboSaveBar(qboBulk().length, st.qboSaving, !!(h && h.editSession));
       el.hidden = !m.text;
       el.innerHTML = m.text ? `<span class="${m.stale ? 'stale' : ''}">${esc(m.text)}</span>`
-        + (m.control === 'button' ? `<button class="btn quiet" data-act="qboRefresh"${m.busy ? ' disabled' : ''}>${esc(m.label)}</button>` : `<span>${esc(m.label)}</span>`)
+        + (m.control === 'button' ? `<button class="btn quiet" data-act="qboRefresh"${m.busy || st.busy ? ' disabled' : ''}>${esc(m.label)}</button>` : `<span>${esc(m.label)}</span>`)
+        + (sv ? `<button class="btn quiet qsave" data-act="qboSaveAll" title="Save the QuickBooks customer onto each matched sale"${sv.busy || st.busy ? ' disabled' : ''}>${esc(sv.label)}</button>` : '')
         + (m.error ? `<span class="stale">${esc(m.error)}</span>` : '') : '';
     }
     async function refreshQbo() {
       const h = host();
-      if (st.refreshing || !h || !h.refreshQbo) return;
+      if (st.refreshing || st.busy || !h || !h.refreshQbo) return;
       st.refreshing = true; st.refreshFailed = false; draw(); // the header bar and a QuickBooks record's panel button both show it
       const out = await runQboRefresh(h, async () => { st.qboAt = 0; await loadQbo(); }, { generated: () => st.qboGenerated });
       st.refreshing = false; st.refreshFailed = out === 'failed'; draw();
+    }
+    const qboBulk = () => qboBulkList(st.records, pendingIds(), parkedIds());
+    // "Save N buyers": one load first (fresh rows), the sales one by one, one load at the end.
+    async function saveQboBuyers() {
+      const h = host();
+      if (st.busy || !h || !h.editSession) return;
+      st.busy = 'qboSave'; st.qboSaving = { at: 0, n: qboBulk().length }; draw();
+      const t = { saved: 0, skipped: 0, check: 0, stop: '' };
+      try {
+        const was = st.loadFresh;
+        await load();
+        if (st.loadFresh === was) { st.busy = ''; st.qboSaving = null; draw(); toast('Could not read the sheet just now, so nothing was saved. Try again.'); return; } // the rows may be old: write nothing
+        await runQboSave(h, qboBulk(), { totals: t, progress: (at, n) => { st.qboSaving = { at, n }; drawQbo(); } });
+      } catch (_) { t.stop = 'error'; }
+      st.busy = ''; st.qboSaving = null;
+      toast(qboEndText(t));
+      return load();
+    }
+    // "Save to this sale": the same one save, for one sale.
+    function saveQboBuyer(r) {
+      const h = host();
+      if (!qboSavable(r) || !h || !h.editSession) return;
+      run('qboSave', async () => editOutcomeText(r, await h.editSession(r, qboPatch(r, r.qboBuyer.fill), { cardFee: cardFeeOf(r) > 0, storeCredit: r.creditUsed || 0 })));
     }
 
     function draw() {
@@ -1330,7 +1415,7 @@
       const ned = st.noteEdits[r.txnId] || null, nta = doc.activeElement && doc.activeElement.id === 'oNoteText' ? doc.activeElement : null; // a redraw keeps the caret
       const ncaret = nta ? [nta.selectionStart, nta.selectionEnd] : null;
       // Total and due date first (Trevor, Nov 13), then the customer card, the other money lines and notes, the buttons, the timeline.
-      $('rail').innerHTML = docLineHtml(r) + railTopHtml(r, st.today, ed, ded) + custCardHtml(r, key ? creditOf(key) : 0) + railMoneyHtml(r, st.today, notes)
+      $('rail').innerHTML = docLineHtml(r) + railTopHtml(r, st.today, ed, ded) + custCardHtml(r, key ? creditOf(key) : 0, qboSavable(r) && host() && host().editSession ? (st.busy ? 'off' : 'on') : '') + railMoneyHtml(r, st.today, notes)
         + `<div class="acts">${railActsHtml(acts, st.busy)}${shop() ? reviewSwitchHtml(reviewOn(), shop().status(), root.MPEShopSettings.OLD_APP_TEXT) : ''}${isQbo(r) ? qboRefreshHtml(!!(host() && host().refreshQbo), st.refreshing) : ''}</div>` + orderNoteHtml(r, ned) + timelineHtml(historyFor(r, st.payRows, st.marks, st.records));
       const nt = $('oNoteText');
       if (nt && ned) { // the typed text exactly (the HTML copy loses a leading new line); the caret goes to the end when the box opens or a save is refused
@@ -1681,6 +1766,7 @@
       if (k === 'reviewQr') return reviewToggle();
       if (k === 'retry') return load();
       if (k === 'qboRefresh') return refreshQbo();
+      if (k === 'qboSaveAll') return saveQboBuyers();
       if (k === 'hcCheck') return helcimCheck(true);
       if (k === 'clearSearch') { ui.q = ''; $('q').value = ''; return draw(); }
       if (k === 'clearFilters') { ui.when = ui.src = ui.cShow = ui.cSort = ''; ui.invoiceWhen = ''; ui.sel = ''; return draw(); }
@@ -1699,6 +1785,7 @@
         return;
       }
       if (!r) return;
+      if (k === 'qboSave') return saveQboBuyer(r);
       if (k === 'pay') return takePayment(r);
       if (k === 'giveCredit') { const key = credits() ? L.creditKey(r, ctx()) : ''; return key && giveCredit(key, r.company || r.name); }
       if (k === 'undoPay') return undoPaid(r.txnId);
