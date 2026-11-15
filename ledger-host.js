@@ -293,6 +293,7 @@
         openPdf: typeof d.openPdf === 'function' ? number => d.openPdf(number) : undefined, // app 0.3.52+
         saveDrivePdf: typeof d.saveDrivePdf === 'function' ? request => d.saveDrivePdf(request) : undefined, // app 0.3.80+: replaces an invoice's Drive PDF after a due date change
         // Mac app only: main exposes qboRefresh on darwin, so Windows has none and History says "Refresh on the Mac".
+        refreshQboOne: typeof d.qboRefreshOne === 'function' ? (kind, id) => d.qboRefreshOne(kind, id) : undefined, // Mac app that has the one-record refresh; an older Mac app keeps the whole-file button
         refreshQbo: typeof d.qboRefresh === 'function' ? () => d.qboRefresh() : undefined,
         // Main downloads, gunzips and keeps the copy; { unchanged: true } or { text, modifiedTime }.
         qboHistory: typeof d.qboHistory === 'function' ? async known => {
@@ -594,6 +595,7 @@
       // Change a sale's type in place (invoice, receipt, quote). Missing on app 0.3.56 and older.
       setType: env.setType ? (record, to) => guard(env.setType(record.txnId, record.number, record.kind, to)) : undefined,
       refreshQbo: env.refreshQbo,
+      refreshQboOne: env.refreshQboOne,
       saveDrivePdf: env.saveDrivePdf ? request => guard(env.saveDrivePdf(request)) : undefined,
       helcim: env.helcim, // { ready, payLink, status } or undefined
       readQboHistory: env.qboHistory ? known => guard(env.qboHistory(known)) : undefined,

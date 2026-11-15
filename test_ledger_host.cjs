@@ -372,13 +372,21 @@ test('Refresh from QuickBooks: only the Mac app (preload gives qboRefresh on dar
   assert.deepEqual(calls, ['mac']);
   const win = K.createHost(K.environment({ mpeDesktop: { ...base, platform: 'win32' }, navigator: {} }), {});
   assert.equal(win.refreshQbo, undefined);
+  assert.equal(win.refreshQboOne, undefined);
+  assert.equal(mac.refreshQboOne, undefined, 'an older Mac app (no qboRefreshOne) keeps the whole-file button');
+  const one = [];
+  const mac2 = K.createHost(K.environment({ mpeDesktop: { ...base, platform: 'darwin', qboRefresh: async () => ({ ok: true }), qboRefreshOne: async (kind, id) => { one.push([kind, id]); return { ok: true, record: { qboId: id } }; } }, navigator: { userAgent: 'Macintosh' } }), {});
+  assert.deepEqual(await mac2.refreshQboOne('invoice', '7'), { ok: true, record: { qboId: '7' } });
+  assert.deepEqual(one, [['invoice', '7']]);
   assert.equal(typeof win.readQboHistory, 'function', 'the PC still shows the "QuickBooks as of" line');
   const parent = { sheetsGet() {}, googleSessionAvailable: () => true, localStorage: { getItem: () => 't' } };
   const site = K.createHost(K.environment({ parent, DecompressionStream, Response }), {});
   assert.equal(site.refreshQbo, undefined);
+  assert.equal(site.refreshQboOne, undefined);
   assert.equal(typeof site.readQboHistory, 'function');
   const preload = fs.readFileSync(path.join(__dirname, '../POSDesktop/src/ledger-tab-preload.js'), 'utf8');
   assert.match(preload, /process\.platform === 'darwin' \? \{ qboRefresh:/);
+  assert.match(preload, /process\.platform === 'darwin' \? \{ qboRefreshOne:/);
 });
 test('website: the page token reads the pinned Drive file (alt=media), gunzips it, and asks Drive once per page', async () => {
   const calls = [];

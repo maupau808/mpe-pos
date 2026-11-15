@@ -12,6 +12,7 @@
  *   emailPrepare(record, request) -> Promise<{ from, signature, to, subject, message, pages, attachment, canSend }>; sends nothing
  *   sendEmail(record, prep, fields) -> Promise; sends ONE email. Called only by the email window's Send button (a person presses it)
  *   openInNewSale({ kind: 'quote' | 'copy' | 'newInvoice' | 'edit', txn: record }) -> Promise; opens a NEW sale tab
+ *   refreshQboOne(kind, id) (optional, Mac app only) -> Promise<{ ok, record?, notFound?, reason? }>; re-reads ONE QuickBooks document and patches it into the shared file.
  *   refreshQbo() (optional, Mac app only) -> Promise<{ ok, reason? }>; rebuilds the QuickBooks file and resolves once it changed.
  *                                Without it History says "Refresh on the Mac".
  *   readQboHistory(knownVersion) (optional) -> Promise<{ unchanged: true } | { data, modifiedTime }>; History's read-only QuickBooks
@@ -519,6 +520,12 @@
     await reload();
     return 'done';
   }
+  // One-record refresh (a QuickBooks record's panel, Mac app): the plain-words result, and the list with that one record replaced
+  // (or dropped when QuickBooks no longer has it). Nothing else in the list moves.
+  const QBO_ONE_TEXT = { updated: 'Updated from QuickBooks', gone: 'Not found in QuickBooks', busy: 'QuickBooks is busy, try again in a minute', failed: 'Could not reach QuickBooks. Try again.' };
+  const qboOneOutcome = r => (r && r.ok && r.notFound ? 'gone' : r && r.ok && r.record ? 'updated' : r && r.reason === 'busy' ? 'busy' : 'failed');
+  const qboMergeOne = (list, customers, kind, id, record) => (list || []).filter(x => !(x.kind === kind && x.txnId === 'qbo:' + id))
+    .concat(record ? L.qboRecords({ customers, records: [record] }) : []);
   // The QuickBooks loader (state in st). A call while a read is in flight asks for one more read after it, so a refresh that
   // finishes mid-read never leaves the old file showing; the returned promise settles when that extra read is done.
   function qboLoader(st, host, hooks, now = Date.now) {
@@ -974,7 +981,9 @@
   const checkNote = (r, text) => { const v = L.orderNoteText(text); return v === (r.orderNote || '') ? { same: true } : { text: v }; };
   const noteRows = (r, text, place, now) => [L.buildMarkRow({ kind: 'note', invoice_number: r.number, txnId: r.txnId, note: text, place: place || '' }, now)];
   // A QuickBooks record's panel: the Mac (host.refreshQbo) gets the whole-file refresh; other computers get where to do it.
-  const qboRefreshHtml = (canRefresh, refreshing) => (canRefresh
+  const qboRefreshHtml = (canRefresh, refreshing, one = false) => (one
+    ? `<div class="rq qr"><button type="button" class="btn sm" data-act="qboRefreshOne"${refreshing ? ' disabled' : ''}>${refreshing ? 'Refreshing…' : 'Refresh from QuickBooks'}</button><span>Updates just this record, takes about a second.</span></div>`
+    : canRefresh
     ? `<div class="rq qr"><button type="button" class="btn sm" data-act="qboRefresh"${refreshing ? ' disabled' : ''}>${refreshing ? 'Refreshing… (takes a few minutes)' : 'Refresh from QuickBooks'}</button><span>Updates every QuickBooks record, takes a few minutes.</span></div>`
     : '<div class="rq qr"><span>Refresh from QuickBooks on the Mac. This computer shows the change by itself within about 10 minutes.</span></div>');
   // The buttons: one big button for the record's next step (owing invoice: Take payment; open quote: Convert to invoice), then two rows of
@@ -1052,7 +1061,7 @@
     const live = L.livePayments(L.parsePayments(payRows));
     return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
   }
-  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, canEditDate, dateEditHtml, checkDate, dateRows, driveNote, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboSavable, qboBulkList, qboPatch, qboOutcome, qboEndText, makeToast, qboMissingOf, qboWeekOf, qboWeekText, qboMissingRows, qboMissingLabel, QBO_MISSING_UI, txnBlock, qboSaveBar, runQboSave, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  const pure = { qboOneOutcome, qboMergeOne, QBO_ONE_TEXT, colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, canEditDate, dateEditHtml, checkDate, dateRows, driveNote, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboSavable, qboBulkList, qboPatch, qboOutcome, qboEndText, makeToast, qboMissingOf, qboWeekOf, qboWeekText, qboMissingRows, qboMissingLabel, QBO_MISSING_UI, txnBlock, qboSaveBar, runQboSave, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest: L.factsFromRequest, documentPages: L.documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
@@ -1238,14 +1247,14 @@
       const sv = qboSaveBar(qboBulk().length, st.qboSaving, !!(h && h.editSession)), miss = m.text ? qboMissingRows(st.records, st.today).length : 0;
       el.hidden = !m.text;
       el.innerHTML = m.text ? `<span class="${m.stale ? 'stale' : ''}">${esc(m.text)}</span>`
-        + (m.control === 'button' ? `<button class="btn quiet" data-act="qboRefresh"${m.busy || st.busy ? ' disabled' : ''}>${esc(m.label)}</button>` : `<span>${esc(m.label)}</span>`)
+        + (m.control === 'button' ? `<button class="btn quiet" data-act="qboRefresh"${m.busy || st.busy || st.refreshingOne ? ' disabled' : ''}>${esc(m.label)}</button>` : `<span>${esc(m.label)}</span>`)
         + (sv ? `<button class="btn quiet qsave" data-act="qboSaveAll" title="Save the QuickBooks customer onto each matched sale"${sv.busy || st.busy ? ' disabled' : ''}>${esc(sv.label)}</button>` : '')
         + (miss ? `<button class="btn quiet qsave" data-act="qboMissing" title="Show the units sold in the last 30 days that are not in QuickBooks">${esc(qboMissingLabel(miss))}</button>` : '')
         + (m.error ? `<span class="stale">${esc(m.error)}</span>` : '') : '';
     }
     async function refreshQbo() {
       const h = host();
-      if (st.refreshing || st.busy || !h || !h.refreshQbo) return;
+      if (st.refreshing || st.refreshingOne || st.busy || !h || !h.refreshQbo) return;
       st.refreshing = true; st.refreshFailed = false; draw(); // the header bar and a QuickBooks record's panel button both show it
       const was = st.qboGenerated;
       const out = await runQboRefresh(h, async () => { st.qboAt = 0; await loadQbo(); }, { generated: () => st.qboGenerated });
@@ -1255,6 +1264,22 @@
       const week = () => qboWeekText(qboWeekOf(st.records));
       if (st.qboGenerated !== was && !st.busy && !st.edit && h.editSession && qboBulk().length) return saveQboBuyers(week);
       notify(week());
+    }
+    // One QuickBooks record (the panel's button): no waiting for the file, no buyer auto-save. The server patched the shared file too.
+    async function refreshQboOne(r) {
+      const h = host();
+      if (!r || !isQbo(r) || st.refreshing || st.refreshingOne || st.busy || !h || !h.refreshQboOne) return;
+      const id = String(r.txnId).replace(/^qbo:/, '');
+      st.refreshingOne = true; draw();
+      let res; try { res = await h.refreshQboOne(r.kind, id); } catch (_) { res = null; }
+      st.refreshingOne = false;
+      const out = qboOneOutcome(res);
+      if (out === 'updated' || out === 'gone') {
+        st.qbo = qboMergeOne(st.qbo, st.qboCustomers, r.kind, id, out === 'updated' ? res.record : null);
+        setRecords(st.model.addQbo(st.qbo, st.today));
+        if (out === 'gone' && ui.sel === r.txnId) ui.sel = '';
+      }
+      draw(); toast(QBO_ONE_TEXT[out]);
     }
     const qboBulk = () => qboBulkList(st.records, pendingIds(), parkedIds());
     // "Save N buyers": one load first (fresh rows), the sales one by one, one load at the end.
@@ -1472,7 +1497,7 @@
       const ncaret = nta ? [nta.selectionStart, nta.selectionEnd] : null;
       // Total and due date first (Trevor, Nov 13), then the customer card, the other money lines and notes, the buttons, the timeline.
       $('rail').innerHTML = docLineHtml(r) + railTopHtml(r, st.today, ed, ded) + custCardHtml(r, key ? creditOf(key) : 0, qboSavable(r) && host() && host().editSession ? (st.busy ? 'off' : 'on') : '') + railMoneyHtml(r, st.today, notes)
-        + `<div class="acts">${railActsHtml(acts, st.busy)}${shop() ? reviewSwitchHtml(reviewOn(), shop().status(), root.MPEShopSettings.OLD_APP_TEXT) : ''}${isQbo(r) ? qboRefreshHtml(!!(host() && host().refreshQbo), st.refreshing) : ''}</div>` + orderNoteHtml(r, ned) + timelineHtml(historyFor(r, st.payRows, st.marks, st.records));
+        + `<div class="acts">${railActsHtml(acts, st.busy)}${shop() ? reviewSwitchHtml(reviewOn(), shop().status(), root.MPEShopSettings.OLD_APP_TEXT) : ''}${isQbo(r) ? qboRefreshHtml(!!(host() && host().refreshQbo), st.refreshing || st.refreshingOne, !!(host() && host().refreshQboOne)) : ''}</div>` + orderNoteHtml(r, ned) + timelineHtml(historyFor(r, st.payRows, st.marks, st.records));
       const nt = $('oNoteText');
       if (nt && ned) { // the typed text exactly (the HTML copy loses a leading new line); the caret goes to the end when the box opens or a save is refused
         nt.value = ned.text;
@@ -1824,6 +1849,7 @@
       if (k === 'qboRefresh') return refreshQbo();
       if (k === 'qboSaveAll') return saveQboBuyers();
       if (k === 'qboMissing') { st.backTo = ''; Object.assign(ui, QBO_MISSING_UI, { sel: '', scroll: 0 }); $('q').value = ''; $('list').scrollTop = 0; return draw(); }
+      if (k === 'qboRefreshOne') return refreshQboOne(r);
       if (k === 'hcCheck') return helcimCheck(true);
       if (k === 'clearSearch') { ui.q = ''; $('q').value = ''; return draw(); }
       if (k === 'clearFilters') { ui.when = ui.src = ui.cShow = ui.cSort = ''; ui.invoiceWhen = ''; ui.sel = ''; return draw(); }
