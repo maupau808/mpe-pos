@@ -607,7 +607,8 @@
   // A counter document made before Oct 31 is on the sheet AND in QuickBooks with the same number: keep the sheet one, but an owing
   // sheet invoice takes QuickBooks' payments (Trevor, Nov 1: paid in QuickBooks showed red). Many counter "invoices" went to
   // QuickBooks as a paid sales receipt with the same number: that receipt marks the invoice paid and is not shown twice.
-  // Copies, so a re-merge starts clean.
+  // Copies, so a re-merge starts clean. A QuickBooks document that is the copy of a register serial sale (addQboBuyers) is left out, unless it
+  // still has money owing or the sale is an owing invoice (the number-based payment logic below keeps those).
   const OWING = new Set(['unpaid', 'dueSoon', 'overdue', 'old']);
   function mergeQbo(sheet, mapped, today) {
     today = todayIso(today);
@@ -615,7 +616,7 @@
     const have = new Set(sheet.filter(r => r.number).map(key));
     const qBy = kind => new Map(mapped.filter(r => r.kind === kind && r.number).map(r => [s(r.number).toLowerCase(), r]));
     const qInv = qBy('invoice'), qRcpt = qBy('receipt'), used = new Set();
-    addQboBuyers(sheet, mapped);
+    const hidden = addQboBuyers(sheet, mapped);
     const merged = sheet.map(r => {
       if (r.kind !== 'invoice' || !OWING.has(r.state) || !r.number) return r;
       const n = s(r.number).toLowerCase(), q = qInv.get(n), rc = q ? null : qRcpt.get(n);
@@ -628,7 +629,7 @@
       return { ...r, paidInQbo: true, balance: left / 100, paid: Math.max(0, (cents(r.total) - left) / 100) };
     });
     const extra = [];
-    for (const r of mapped) if (!used.has(r) && !(r.number && have.has(key(r)))) extra.push(qboState(r, today));
+    for (const r of mapped) if (!used.has(r) && !hidden.has(r) && !(r.number && have.has(key(r)))) extra.push(qboState(r, today));
     return merged.concat(extra);
   }
   // "QuickBooks buyer": a register sale (not a quote) with no buyer, or the Jana Yamashiro placeholder, whose serial (uppercase letters and
@@ -659,11 +660,11 @@
   function qboIndex(mapped) {
     let x = qboIdx.get(mapped);
     if (x && x.n === mapped.length) return x;
-    const cand = mapped.filter(q => q.kind !== 'quote' && q.qboStatus !== 'void' && !isJana(q.company || q.name)); // Jana copies name nobody (Trevor, Nov 6)
+    const cand = mapped.filter(q => q.kind !== 'quote' && q.qboStatus !== 'void'); // Jana documents stay in: they carry a sale but name nobody (q._jana; Trevor, Nov 6)
     const offs = [], by = new Map();
     let big = '';
     for (const q of cand) {
-      if (q._sq == null) q._sq = q.items.map(i => snKey(i.desc)).join('|');
+      if (q._sq == null) { q._sq = q.items.map(i => snKey(i.desc)).join('|'); q._jana = isJana(q.company || q.name); }
       offs.push(big.length); big += q._sq + '\n';
       for (const i of q.items) for (const v of i.serials) { const k = snKey(v); if (k.length >= 4) { if (!by.has(k)) by.set(k, new Set()); by.get(k).add(q); } }
     }
@@ -694,20 +695,60 @@
       : q.city ? { street: q.street, city: q.city, region: s(q.region), zip: q.zip } : { street: '', city: '', region: '', zip: '' };
     return { company: co, ...mine, ...addr };
   }
+  // W3d: every register serial sale (receipt or invoice, live, 4+ character serial) also gets r.inQbo and r.qboCopy. A document carrying a serial
+  // vouches (inQbo), per serial, for only the nearest-dated live sale sharing that serial among those it is in window for: inQbo = a carrying
+  // document dated no earlier than 3 days before the sale (any total), so one document with two serials can vouch for two sales; qboCopy = one dated from 3 days before to 14 days after the sale with a total within 5 cents (tax rounding). Returns the copies mergeQbo leaves out
+  // (at most one per sale, one sale per document: the nearest-dated; nearest date then total); the number joins the sale's search text.
+  const snKeys = r => [...new Set(r.items.flatMap(i => i.serials).map(snKey).filter(k => k.length >= 4))];
+  const isSerialSale = (r, keys = snKeys(r)) => r.source !== 'qbo' && (r.kind === 'receipt' || r.kind === 'invoice') && r.state !== 'cancelled' && r.state !== 'void' && keys.length > 0;
+  // The week check: the newest day D (a serial sale with inQbo) where at least half of the serial sales dated D-6..D have inQbo (one unit
+  // typed in early must not move it); '' when none. qboWeek = that 7 day span's counts; qboMissing = every serial sale not inQbo up to D, newest first.
+  function qboEnteredThrough(records) {
+    const day = new Map(); // date -> [serial sales, with inQbo]
+    for (const r of records) if (r.date && isSerialSale(r)) { const c = day.get(r.date) || day.set(r.date, [0, 0]).get(r.date); c[0]++; if (r.inQbo) c[1]++; }
+    for (const d of [...day.keys()].filter(d => day.get(d)[1]).sort().reverse()) {
+      let n = 0, q = 0;
+      for (let k = 0; k < 7; k++) { const c = day.get(addDays(d, -k)); if (c) { n += c[0]; q += c[1]; } }
+      if (q * 2 >= n) return d;
+    }
+    return '';
+  }
+  function qboWeek(records) {
+    const to = qboEnteredThrough(records);
+    if (!to) return null;
+    const from = addDays(to, -6), wk = records.filter(r => r.date >= from && r.date <= to && isSerialSale(r));
+    return { from, to, sold: wk.length, missing: wk.filter(r => !r.inQbo).length };
+  }
+  function qboMissing(records) {
+    const end = qboEnteredThrough(records);
+    return end ? records.filter(r => !r.inQbo && r.date && r.date <= end && isSerialSale(r)).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)) : [];
+  }
   function addQboBuyers(sheet, mapped) {
-    const x = qboIndex(mapped), cand = x.cand, twins = new Map(); // serial key -> txnIds of the live register sales carrying it
+    const x = qboIndex(mapped), cand = x.cand, twins = new Map(), hidden = new Set(), serial = new Map(), owner = new Map(), claim = new Map(); // twins: serial key -> txnIds of the live register sales carrying it
     for (const r of sheet) if (r.source !== 'qbo' && r.kind !== 'quote' && r.state !== 'cancelled' && r.state !== 'void')
       for (const i of r.items) for (const v of i.serials) { const k = snKey(v); if (!twins.has(k)) twins.set(k, new Set()); twins.get(k).add(r.txnId); }
     for (const r of sheet) {
       if (r._hayBase == null) r._hayBase = r._hay;
       r._hay = r._hayBase;
-      r.qboBuyer = null;
+      r.qboBuyer = null; r.inQbo = r.qboCopy = false;
       if (r.source === 'qbo' || r.kind === 'quote' || !cand.length) continue;
-      if (![r.name, r.company].filter(Boolean).every(x => x.toLowerCase() === PLACEHOLDER_BUYER)) continue; // an entered buyer stays
-      const keys = [...new Set(r.items.flatMap(i => i.serials).map(snKey).filter(k => k.length >= 4))];
+      const keys = snKeys(r);
       if (!keys.length) continue;
-      const hit = new Set(); // the same QuickBooks document may hold several of the sale's serials
-      for (const k of keys) for (const q of qboDocs(x, k)) hit.add(q);
+      const all = new Set(); // the same QuickBooks document may hold several of the sale's serials
+      const sale = isSerialSale(r, keys);
+      for (const k of keys) for (const q of qboDocs(x, k)) {
+        all.add(q);
+        if (sale && q.date && r.date && dayNum(q.date) - dayNum(r.date) >= -3) { // inQbo: per (document, serial) the nearest-dated sale in window
+          const m = claim.get(q) || claim.set(q, new Map()).get(q), g = dayGap(q.date, r.date), c = m.get(k);
+          if (!c || g < c.g) m.set(k, { r, g });
+        }
+      }
+      if (sale) {
+        serial.set(r, { all, keys });
+        for (const q of all) { const g = dayGap(q.date, r.date), c = owner.get(q); if (!c || g < c.g) owner.set(q, { r, g }); }
+      }
+      if (![r.name, r.company].filter(Boolean).every(x => x.toLowerCase() === PLACEHOLDER_BUYER)) continue; // an entered buyer stays
+      const hit = new Set([...all].filter(q => !q._jana)); // Jana documents name nobody
       const byCust = new Map(); // customer id (or the document itself) -> its matching documents
       for (const q of hit) { const id = q.customerId || q.txnId; byCust.set(id, (byCust.get(id) || []).concat(q)); }
       const fits = [...byCust.values()].filter(ds => ds.some(q => cents(q.total) === cents(r.total) && dayGap(q.date, r.date) <= 3));
@@ -716,9 +757,23 @@
       const q = docs.reduce((a, b) => (dayGap(b.date, r.date) < dayGap(a.date, r.date) ? b : a)), name = q.company || q.name;
       if (!name) continue;
       // sure: a unit rung up twice at the register is never sure
-      r.qboBuyer = { name, customerId: q.customerId, sure: !keys.some(k => twins.get(k).size > 1) && (dayGap(q.date, r.date) <= 3 || (dayGap(q.date, r.date) <= 14 && cents(q.total) === cents(r.total))), fill: qboFill(q) };
-      r._hay = r._hayBase + ' ' + name.toLowerCase();
+      r.qboBuyer = { name, customerId: q.customerId, sure: !keys.some(k => twins.has(k) && twins.get(k).size > 1) && (dayGap(q.date, r.date) <= 3 || (dayGap(q.date, r.date) <= 14 && cents(q.total) === cents(r.total))), fill: qboFill(q) };
+      r._hay += ' ' + name.toLowerCase();
     }
+    for (const [r, { all, keys }] of serial) {
+      const mine = [...all].filter(q => owner.get(q).r === r), owes = r.kind === 'invoice' && (OWING.has(r.state) || r.qboBuyer); // an invoice with a matched buyer keeps its document: only receipts join the QuickBooks customer
+      const off = q => (q.date && r.date ? dayNum(q.date) - dayNum(r.date) : NaN); // days after the sale
+      r.inQbo = keys.some(k => [...qboDocs(x, k)].some(q => claim.has(q) && claim.get(q).has(k) && claim.get(q).get(k).r === r));
+      const copies = mine.filter(q => off(q) >= -3 && off(q) <= 14 && Math.abs(cents(q.total) - cents(r.total)) <= 5)
+        .sort((a, b) => dayGap(a.date, r.date) - dayGap(b.date, r.date) || Math.abs(cents(a.total) - cents(r.total)) - Math.abs(cents(b.total) - cents(r.total)));
+      r.qboCopy = copies.length > 0;
+      const q = copies[0];
+      if (q && !owes && !(q.kind === 'invoice' && q.qboStatus !== 'paid' && cents(q.qboBalance) > 0)) {
+        hidden.add(q);
+        if (q.number) r._hay += ' ' + s(q.number).toLowerCase();
+      }
+    }
+    return hidden;
   }
 
   // ---- Customers ----
@@ -995,5 +1050,5 @@
     return !txn || cents(money(txn[12])) !== cents(r.total);
   }
   return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionRowsMatch, transactionBlockEnd, transactionRowsForOrder, DATE_MIN, dateOk, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, orderNoteText, buildPaymentRow, helcimPaymentRows,
-    buildVoidRow, beforeNote, undoRows, honoluluToday, factsFromRequest, documentPages, storeCreditNote, qboRecords, mergeQbo, COUNT_FROM, CUSTOMER_COLUMNS, MEMO_NONE, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
+    buildVoidRow, beforeNote, undoRows, honoluluToday, factsFromRequest, documentPages, storeCreditNote, qboRecords, mergeQbo, qboEnteredThrough, qboWeek, qboMissing, COUNT_FROM, CUSTOMER_COLUMNS, MEMO_NONE, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });

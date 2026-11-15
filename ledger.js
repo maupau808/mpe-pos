@@ -139,7 +139,7 @@
   // Filters under the search box. Records: when and where from. Customers: who to show and the order.
   const FILTERS = {
     when: [['', 'Any date'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['sixMonths', 'Past 6 months'], ['year', 'This year'], ['lastYear', 'Last year']],
-    src: [['', 'All sources'], ['register', 'Register only'], ['qbo', 'QuickBooks only']],
+    src: [['', 'All sources'], ['register', 'Register only'], ['qbo', 'QuickBooks only'], ['missing', 'Units not in QuickBooks']],
     cShow: [['', 'All customers'], ['owes', 'Owes money'], ['overdue', 'Overdue'], ['year', 'Bought this year']],
     cSort: [['', 'Newest activity'], ['name', 'Name A–Z'], ['balance', 'Most owed']],
   };
@@ -150,7 +150,8 @@
     month.setUTCDate(Math.min(cd, last));
     const fromSix = month.toISOString().slice(0, 10), selectedWhen = ui.section === 'invoices' ? (ui.invoiceWhen ?? ui.when ?? 'sixMonths') : ui.when;
     const when = { sixMonths: r => (r.date || '') >= fromSix, '30': r => (r.date || '') >= from30, '90': r => (r.date || '') >= from90, year: r => (r.date || '').startsWith(y), lastYear: r => (r.date || '').startsWith(String(y - 1)) }[selectedWhen];
-    const src = { register: r => !isQbo(r), qbo: isQbo }[ui.src];
+    const miss = ui.src === 'missing' && new Set(qboMissingOf(records));
+    const src = { register: r => !isQbo(r), qbo: isQbo, missing: r => miss.has(r) }[ui.src];
     return when || src ? records.filter(r => (!when || when(r)) && (!src || src(r))) : records;
   }
   // A receipt or invoice marked Presold in the register: held in stock, still to be picked up.
@@ -226,7 +227,7 @@
         const miss = byNewest(L.missingInfo(records, ui.missField || 'any'));
         return { groups: miss.length ? [group('missing', 'Missing info', miss, { noTotal: true })] : [], empty: 'No sales with a serial number are missing that.' };
       }
-      const rows = byNewest(records).filter(r => r.kind === 'receipt');
+      const rows = byNewest(records).filter(r => r.kind === 'receipt' || (ui.src === 'missing' && r.kind === 'invoice')); // units not in QuickBooks include serial invoices
       return { groups: rows.length ? [group('sales', 'Register sales', rows)] : [], empty: 'No register sales yet.' };
     }
     // Recent leaves out open quotes older than 30 days too (Trevor, Nov 13); searching still finds them
@@ -611,9 +612,41 @@
     const c = s(res.code);
     return c === 'not_signed_in' || c === 'offline' ? 'signedout' : c === 'not_empty' ? 'register' : ['error', 'timeout', 'closed'].includes(c) ? 'check' : 'skipped';
   }
+  // The toast: 7 seconds, or with m.stay until its Dismiss. An ordinary toast shown over a stay message gives the stay message back when its time is up.
+  function makeToast(t, setT, clearT) {
+    let timer, stay = null;
+    const hide = () => t.classList.remove('show');
+    function paint(m) {
+      t.innerHTML = `<span>${esc(m.text)}</span>` + (m.undo ? '<button type="button">Undo</button>' : m.stay ? '<button type="button">Dismiss</button>' : '');
+      if (m.undo || m.stay) t.querySelector('button').onclick = () => { if (m.stay) stay = null; hide(); if (m.undo) m.undo(); };
+      t.classList.add('show');
+    }
+    return msg => {
+      const m = typeof msg === 'string' ? { text: msg } : msg;
+      clearT(timer); paint(m);
+      if (m.stay) stay = m; else timer = setT(() => (stay ? paint(stay) : hide()), 7000);
+    };
+  }
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-  function qboEndText({ saved, skipped, check, stop }) {
+  // A ledger-data.js from before the weekly check (this file is not version-tagged, that one is): no week, nothing missing, never a throw.
+  const qboMissingOf = (records, data = L) => (typeof data.qboMissing === 'function' ? data.qboMissing(records) : []);
+  const qboWeekOf = (records, data = L) => (typeof data.qboWeek === 'function' ? data.qboWeek(records) : null);
+  // The weekly check, from L.qboWeek: "3 of 14 units sold Nov 1 to Nov 7 are not in QuickBooks." Nothing when there is no week.
+  function qboWeekText(w) {
+    if (!w) return '';
+    const span = `sold ${fmtD(w.from)} to ${fmtD(w.to)}`;
+    if (!w.missing) return w.sold === 1 ? `The 1 unit ${span} is in QuickBooks.` : `All ${w.sold} units ${span} are in QuickBooks.`;
+    return `${w.missing} of ${plural(w.sold, 'unit', 'units')} ${span} ${w.missing === 1 ? 'is' : 'are'} not in QuickBooks.`;
+  }
+  // The footer link: the Sales list it opens (the source choice Units not in QuickBooks, Last 30 days), counted from that very list.
+  const QBO_MISSING_UI = Object.freeze({ section: 'sales', salesSub: 'all', src: 'missing', when: '30', q: '' });
+  const qboMissingRows = (records, today) => buildView(records, QBO_MISSING_UI, today).groups.flatMap(g => g.rows);
+  const qboMissingLabel = n => (n ? `${plural(n, 'unit', 'units')} not in QuickBooks` : '');
+  function qboEndText({ saved, skipped, check, stop, number }) {
     const got = `Saved ${plural(saved, 'buyer', 'buyers')}.`;
+    if (stop === 'read') return 'Could not read the sheet just now, so nothing was saved. Try again.';
+    if (stop === 'rows') return `${got} Stopped at ${number}: the sheet changed while it was saving. Tell Claude before pressing again.`;
+    if (stop === 'check') return `${got} The sheet could not be checked after a save, so the rest were not saved. Check History, then press the button again.`;
     if (stop === 'pending') return `Saved ${saved}. The sheet is not answering, so the rest are waiting. Try again in a few minutes.`;
     if (stop === 'signedout') return `${got} Not signed in to Google, so the rest were not saved. Sign in, then press the button again.`;
     if (stop === 'error') return `${got} Something went wrong, so the rest were not saved. Press the button again.`;
@@ -622,18 +655,32 @@
   }
   // The header button: null when there is nothing to press (hidden).
   const qboSaveBar = (n, run, can) => (!can || (!run && !n) ? null : { label: run ? `Saving ${run.at} of ${run.n}…` : `Save ${plural(n, 'buyer', 'buyers')}`, busy: !!run });
-  // One sale at a time through the register's one silent edit, a short pause between, stopping on the first stop result.
+  // A sale's block in the Transactions rows: its row count when exactly one TXN row carries its id, else 0.
+  function txnBlock(rows, id) {
+    const at = (rows || []).reduce((a, row, i) => (String(row[0]).toLowerCase() === 'txn' && String(row[1]) === id ? a.concat(i) : a), []);
+    return at.length === 1 ? L.transactionBlockEnd(rows, at[0], id) - at[0] : 0;
+  }
+  // One sale at a time through the register's one silent edit, a short pause between, stopping on the first stop result. B1: the sheet is
+  // re-read after EVERY answer; the sale must still have one TXN row and the same block size, else the register's write may have landed on other
+  // rows (a sale inserted by another computer): stop 'rows' (t.number names the sale). A read that fails stops as 'check'. The read after one
+  // sale is the "before" of the next.
   async function runQboSave(h, list, { sleep = ms => new Promise(ok => setTimeout(ok, ms)), gapMs = 1000, progress = () => {}, totals } = {}) {
     const t = totals || { saved: 0, skipped: 0, check: 0, stop: '' }; // a caller that passes totals keeps the running counts if this throws
+    let rows;
+    try { rows = await h.readTransactions(); } catch (_) { t.stop = 'read'; return t; }
     for (let i = 0; i < list.length && !t.stop; i++) {
       const r = list[i];
       progress(i + 1, list.length);
       if (i) await sleep(gapMs);
+      const n0 = txnBlock(rows, r.txnId);
+      if (!n0) { t.skipped++; continue; } // not (once) on the sheet: nothing is written
       let res;
       try { res = await h.editSession(r, qboPatch(r, r.qboBuyer.fill), { cardFee: cardFeeOf(r) > 0, storeCredit: r.creditUsed || 0 }); }
       catch (e) { res = { ok: false, code: s(e && e.code) || 'error' }; }
       const o = qboOutcome(res);
       if (o === 'saved' || o === 'skipped' || o === 'check') t[o]++; else t.stop = o;
+      try { rows = await h.readTransactions(); } catch (_) { t.stop = 'check'; return t; }
+      if (txnBlock(rows, r.txnId) !== n0) { t.stop = 'rows'; t.number = r.number; }
     }
     return t;
   }
@@ -1005,7 +1052,7 @@
     const live = L.livePayments(L.parsePayments(payRows));
     return live.filter(p => p.method === 'credit_given' && !p.txnId && L.resolveCredit(p.customer, ctx) === key).sort((a, b) => lt(b.recorded_at, a.recorded_at))[0] || null;
   }
-  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, canEditDate, dateEditHtml, checkDate, dateRows, driveNote, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboSavable, qboBulkList, qboPatch, qboOutcome, qboEndText, qboSaveBar, runQboSave, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
+  const pure = { colsDefault, colsClamp, COLS_KEY, LOCK, STALE_LOOK, editTitleHtml, editRailHtml, docLineHtml, custCardHtml, memoHtml, memoKey, memoFields, memoFirstLine, custNameHtml, customerRef, railTopHtml, railMoneyHtml, canEditDue, dueEditHtml, checkDue, dueRows, canEditDate, dateEditHtml, checkDate, dateRows, driveNote, orderNoteHtml, noteKey, checkNote, noteRows, qboRefreshHtml, HIDE_CANCELLED_MS, ARCHIVE_DAYS, cancelGone, nextHideAt, keepSelection, groupOpen, openRows, menuItems, reviewSwitchHtml, timelineHtml, emailPayLink, PAY_TOKEN, CREDIT_FROM, creditDue, creditText, creditPill, giveCreditRows, takeCredit, moveCredits, lastGiven, editFlow, followUpRuns, followUpText, railActsHtml, SALES_SUBS, MISSING_FIELDS, documentUnchanged, nextSelection, custEditStart, custEditModel, custEditHtml, custSuggest, custPick, custTyped, PICK_LOCK, CUST_KEYS, customerPatch, customerChange, editOutcomeText, qboSavable, qboBulkList, qboPatch, qboOutcome, qboEndText, makeToast, qboMissingOf, qboWeekOf, qboWeekText, qboMissingRows, qboMissingLabel, QBO_MISSING_UI, txnBlock, qboSaveBar, runQboSave, qboAsOf, qboBar, runQboRefresh, qboLoader, qboNote, byNewest, TAX_RATE, SECTIONS, INVOICE_SUBS, QUOTE_SUBS, METHOD_LABEL, decorate, statusOf, buildView, subCounts, actionsFor, FILTERS, checkAmount, filterRecords,
     buildCustomerView, customerSource, customerBalance, newInvoiceTxn, historyFor, requestFromRecord, factsFromRequest: L.factsFromRequest, documentPages: L.documentPages, paymentRowsFor, addPayLink, helcimPickup, HELCIM_RECHECK_MS, loadUi, saveUi, placeOf, money, fmtD };
 
   // ------------------------------------------------------------------ page
@@ -1187,23 +1234,30 @@
       const h = host(), el = $('qbAsOf');
       const m = qboBar({ loading: !st.qboTried && !!(h && h.readQboHistory), loaded: !!st.qbo, generatedAt: st.qboGenerated,
         canRefresh: !!(h && h.refreshQbo), refreshing: st.refreshing, failed: st.refreshFailed }, Date.now());
-      const sv = qboSaveBar(qboBulk().length, st.qboSaving, !!(h && h.editSession));
+      const sv = qboSaveBar(qboBulk().length, st.qboSaving, !!(h && h.editSession)), miss = m.text ? qboMissingRows(st.records, st.today).length : 0;
       el.hidden = !m.text;
       el.innerHTML = m.text ? `<span class="${m.stale ? 'stale' : ''}">${esc(m.text)}</span>`
         + (m.control === 'button' ? `<button class="btn quiet" data-act="qboRefresh"${m.busy || st.busy ? ' disabled' : ''}>${esc(m.label)}</button>` : `<span>${esc(m.label)}</span>`)
         + (sv ? `<button class="btn quiet qsave" data-act="qboSaveAll" title="Save the QuickBooks customer onto each matched sale"${sv.busy || st.busy ? ' disabled' : ''}>${esc(sv.label)}</button>` : '')
+        + (miss ? `<button class="btn quiet qsave" data-act="qboMissing" title="Show the units sold in the last 30 days that are not in QuickBooks">${esc(qboMissingLabel(miss))}</button>` : '')
         + (m.error ? `<span class="stale">${esc(m.error)}</span>` : '') : '';
     }
     async function refreshQbo() {
       const h = host();
       if (st.refreshing || st.busy || !h || !h.refreshQbo) return;
       st.refreshing = true; st.refreshFailed = false; draw(); // the header bar and a QuickBooks record's panel button both show it
+      const was = st.qboGenerated;
       const out = await runQboRefresh(h, async () => { st.qboAt = 0; await loadQbo(); }, { generated: () => st.qboGenerated });
       st.refreshing = false; st.refreshFailed = out === 'failed'; draw();
+      // Only this press, only when it brought a new file and nothing else is going on: fill the buyers by itself, then the weekly check.
+      if (out !== 'done') return;
+      const week = () => qboWeekText(qboWeekOf(st.records));
+      if (st.qboGenerated !== was && !st.busy && !st.edit && h.editSession && qboBulk().length) return saveQboBuyers(week);
+      notify(week());
     }
     const qboBulk = () => qboBulkList(st.records, pendingIds(), parkedIds());
     // "Save N buyers": one load first (fresh rows), the sales one by one, one load at the end.
-    async function saveQboBuyers() {
+    async function saveQboBuyers(extra = () => '') {
       const h = host();
       if (st.busy || !h || !h.editSession) return;
       st.busy = 'qboSave'; st.qboSaving = { at: 0, n: qboBulk().length }; draw();
@@ -1211,11 +1265,11 @@
       try {
         const was = st.loadFresh;
         await load();
-        if (st.loadFresh === was) { st.busy = ''; st.qboSaving = null; draw(); toast('Could not read the sheet just now, so nothing was saved. Try again.'); return; } // the rows may be old: write nothing
+        if (st.loadFresh === was) { st.busy = ''; st.qboSaving = null; draw(); notify('Could not read the sheet just now, so nothing was saved. Try again.' + (extra() && ' ' + extra())); return; } // the rows may be old: write nothing
         await runQboSave(h, qboBulk(), { totals: t, progress: (at, n) => { st.qboSaving = { at, n }; drawQbo(); } });
       } catch (_) { t.stop = 'error'; }
       st.busy = ''; st.qboSaving = null;
-      toast(qboEndText(t));
+      notify(qboEndText(t) + (extra() && ' ' + extra()), t.stop === 'rows');
       return load();
     }
     // "Save to this sale": the same one save, for one sale.
@@ -1767,6 +1821,7 @@
       if (k === 'retry') return load();
       if (k === 'qboRefresh') return refreshQbo();
       if (k === 'qboSaveAll') return saveQboBuyers();
+      if (k === 'qboMissing') { st.backTo = ''; Object.assign(ui, QBO_MISSING_UI, { sel: '', scroll: 0 }); $('q').value = ''; $('list').scrollTop = 0; return draw(); }
       if (k === 'hcCheck') return helcimCheck(true);
       if (k === 'clearSearch') { ui.q = ''; $('q').value = ''; return draw(); }
       if (k === 'clearFilters') { ui.when = ui.src = ui.cShow = ui.cSort = ''; ui.invoiceWhen = ''; ui.sel = ''; return draw(); }
@@ -1933,15 +1988,15 @@
     }
 
     // ---- small UI pieces
-    let toastT;
-    function toast(msg) {
-      const t = $('toast');
-      const m = typeof msg === 'string' ? { text: msg } : msg;
-      t.innerHTML = `<span>${esc(m.text)}</span>` + (m.undo ? '<button type="button">Undo</button>' : '');
-      if (m.undo) t.querySelector('button').onclick = () => { t.classList.remove('show'); m.undo(); };
-      t.classList.add('show');
-      clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 7000);
+    const toast = makeToast($('toast'), setTimeout, clearTimeout);
+    // A result that must be seen (the QuickBooks save and weekly check): held while this page is hidden, shown when it is next visible.
+    // The app hides History with setVisible(false), which may not fire visibilitychange: an unfocused page counts as hidden too, and focus or the app's shown message releases it.
+    const pageHidden = () => doc.visibilityState === 'hidden' || frameHidden() || !doc.hasFocus();
+    function notify(text, stay) {
+      if (!text) return;
+      if (pageHidden()) st.held = { text, stay: !!stay }; else toast({ text, stay: !!stay });
     }
+    function showHeld() { if (st.held && !pageHidden()) { const m = st.held; st.held = null; toast(m); } }
     function openMenu(b, items, onPick) { // b: a rect ({ left, top, bottom })
       const menu = $('menu');
       if (!items.length) return;
@@ -2135,11 +2190,15 @@
     if (root.ResizeObserver) new root.ResizeObserver(sendRect).observe($('editSlot')); // bar height, rail width, window: the slot moves
     // Coming back to the tab: fresh numbers from other computers, same search, row and scroll.
     doc.addEventListener('visibilitychange', () => { if (doc.visibilityState === 'visible' && st.phase === 'ready') autoLoad(); });
+    doc.addEventListener('visibilitychange', showHeld);
+    root.addEventListener('focus', showHeld);
+    root.addEventListener('mpe-ledger-host', showHeld); // the app's "History is shown again"
     doc.addEventListener('visibilitychange', () => { if (doc.visibilityState === 'hidden') { clearTimeout(st.hideT); st.hideT = 0; local.hold(); } }); // no timer while hidden
     root.addEventListener('mpe-ledger-host', autoLoad); // the host announces itself if it attaches after this page
     // A document saved on this computer: the register writes mpe_print_history, which fires 'storage' here. No Sheets call.
     root.addEventListener('storage', e => local.onStorage(e));
     root.addEventListener('resize', () => local.flush()); // the website's hidden frame resizes when it is shown again
+    root.addEventListener('resize', showHeld);
     api.refresh = autoLoad;
     load();
   }
