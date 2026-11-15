@@ -1335,7 +1335,7 @@ function mpeLoadLib(kind) {
   <script src="ledger-tab.js"></script>
   <script src="email-draft.js"></script>
   <script src="email-window.js"></script>
-  <script src="ledger-data.js?v=2026.11.14.3"></script>
+  <script src="ledger-data.js?v=2026.11.14.4"></script>
   <script src="ledger-host.js"></script>
   <script src="document-renderer.js"></script>
   <script src="shop-settings.js"></script>
@@ -1349,7 +1349,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.14.3';
+const POS_RELEASE = '2026.11.14.4';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -7054,14 +7054,60 @@ async function writeTransactionToSheet(order) {
       // Another register may insert rows above this document after the read above. Every step below works at the old
       // offset, so before each one confirm the document's first row is still there; if not, stop and let the retry
       // re-read (Sheets has no compare-and-set, so only the time of one small read stays open).
+      let at = existingTxnIdx; // where this document's rows are now; moves only if the proof below finds another register inserted rows above
       const anchor = async () => {
-        const first = (await sheetsGet(`${TXN_SHEET}!A${existingTxnIdx + 1}:B${existingTxnIdx + 1}`))[0] || [];
+        const first = (await sheetsGet(`${TXN_SHEET}!A${at + 1}:B${at + 1}`))[0] || [];
         if (String(first[0] || '').trim().toUpperCase() !== 'TXN' || String(first[1] || '') !== txnId) {
           throw new Error('Transactions changed while saving; will retry');
         }
       };
       const end = transactionBlockEnd(existingRows, existingTxnIdx, txnId);
       const savedRows = existingRows.slice(existingTxnIdx, end);
+      // The one in-place write. Sheets has no compare-and-set, so another register can insert rows above between the check and
+      // the write and this lands on other sales' rows. So: (1) read the exact rows about to be replaced and refuse unless they are
+      // this document's saved rows; (2) after writing, re-read the tab and prove the document sits at the written row exactly once;
+      // (3) if not, put the neighbours' rows back from the read made before the edit, write again where the document now is, and
+      // prove that. Any failure throws, so a shifted or unproven write is never reported as saved.
+      const writeBlockProven = async start => {
+        const blank = row => !(row || []).some(value => String(value ?? '').trim());
+        const fp = list => transactionRowsFingerprint(list);
+        const m = Math.min(savedRows.length, rows.length);
+        const before = await sheetsGet(`${TXN_SHEET}!A${start + 1}:Y${start + rows.length}`);
+        if (fp(before.slice(0, m)) !== fp(savedRows.slice(0, m)) || before.slice(m).some(row => !blank(row))) {
+          throw new Error('Transactions changed while saving; will retry');
+        }
+        const proven = list => { const mine = []; let items = 0;
+          list.forEach((row, i) => { const t = String(row[0] || '').trim().toUpperCase();
+            if (t === 'TXN' && String(row[1] || '') === txnId) mine.push(i); else if (t === 'ITEM' && String(row[1] || '') === txnId) items++; });
+          // exactly one summary row at the written row, this document's rows there, and no stray old lines (a shrinking block keeps its tail until the delete)
+          return mine.length === 1 && mine[0] === start_ && fp(list.slice(start_, start_ + rows.length)) === fp(rows) && items === Math.max(rows.length, savedRows.length) - 1; };
+        const same = (list, at0, ref, at1, len) => { for (let i = 0; i < len; i++) if (!list[at0 + i] || fp([list[at0 + i]]) !== fp([ref[at1 + i] || []])) return false; return len > 0; };
+        let start_ = start;
+        for (let pass = 0; ; pass++) {
+          await sheetsUpdate(`${TXN_SHEET}!A${start_ + 1}`, transactionUserEnteredRows(rows));
+          const now = await sheetsGet(TXN_SHEET);
+          if (proven(now)) return start_;
+          if (pass >= 1) throw new Error('Transaction could not be placed on the sheet; nothing was reported saved');
+          // Shifted: find how far. The row below this document before the edit (E[end]) is untouched by our write; it sits k rows lower.
+          const span = Math.max(savedRows.length, rows.length), below = existingRows[end];
+          let k = 0; const seq = Math.min(3, existingRows.length - end);
+          if (seq > 0 && !blank(below)) for (let j = 1; j <= 200 && !k; j++) if (same(now, start_ + span + j, existingRows, end, seq)) k = j;
+          if (!k) throw new Error('Transactions changed while saving and could not be repaired; check History');
+          // Rows above are E[start_ - k ...] if the insert sat above them; if the rows just above the document are unchanged, the insert
+          // sat at the document itself: those rows were another register's, not ours to restore.
+          const insertedAtDoc = start_ > 0 && same(now, start_ - Math.min(3, start_), existingRows, start_ - Math.min(3, start_), Math.min(3, start_));
+          const putBack = Math.min(k, rows.length), fix = [];
+          for (let i = 0; i < putBack; i++) {
+            if (!now[start_ + i] || fp([now[start_ + i]]) !== fp([rows[i]])) continue; // someone rewrote it since: leave it
+            fix.push(insertedAtDoc ? new Array(25).fill('') : (existingRows[start_ - k + i] || []).slice(0, 25).map(v => String(v ?? '')));
+          }
+          if (fix.length) await sheetsUpdate(`${TXN_SHEET}!A${start_ + 1}`, insertedAtDoc ? fix : transactionUserEnteredRows(fix));
+          start_ += k;
+          if (insertedAtDoc) { await sheetsUpdate(`${TXN_SHEET}!A${start_ + 1}`, transactionUserEnteredRows(rows)); const again = await sheetsGet(TXN_SHEET);
+            if (!proven(again)) throw new Error('Transaction could not be placed on the sheet; nothing was reported saved');
+            throw new Error('Another register inserted a sale at this one while saving; its rows may need a second look. Will retry'); }
+        }
+      };
       // Received by (column Y) not known for this sale (opened from a History that could read only A:X, or an older local copy) and
       // nothing typed: keep what the sheet has, never blank it.
       if (order.receivedBy === undefined && rows[0]) rows[0][24] = String(savedRows[0]?.[24] ?? '').trim();
@@ -7100,16 +7146,16 @@ async function writeTransactionToSheet(order) {
           } }]);
         }
         if (delta > 0) await anchor();
-        await sheetsUpdate(`${TXN_SHEET}!A${existingTxnIdx + 1}`, transactionUserEnteredRows(rows));
+        at = await writeBlockProven(at);
         if (delta < 0) await anchor();
         if (delta < 0) await sheetsBatchUpdate([{ deleteDimension: {
-          range: { sheetId, dimension: 'ROWS', startIndex: existingTxnIdx + rows.length, endIndex: end },
+          range: { sheetId, dimension: 'ROWS', startIndex: at + rows.length, endIndex: at + savedRows.length },
         } }]);
         writeMode = '(updated existing)';
         checkBlockEnd = true;
       }
       // Old already-synced local copies never overwrite a newer copy from another register.
-      writtenRange = `${TXN_SHEET}!A${existingTxnIdx + 1}:Y${existingTxnIdx + (order.historySyncPending ? rows.length : savedRows.length) + (checkBlockEnd ? 1 : 0)}`;
+      writtenRange = `${TXN_SHEET}!A${at + 1}:Y${at + (order.historySyncPending ? rows.length : savedRows.length) + (checkBlockEnd ? 1 : 0)}`;
     } else {
       const txnTs = txnDate.getTime();
       // Find the first TXN row that is older than this transaction → insert before it.

@@ -6,7 +6,7 @@ const html = fs.readFileSync(process.env.POS_HISTORY_PAGE || __dirname + '/index
 const clone = x => JSON.parse(JSON.stringify(x));
 function setup() {
   const storage = new Map();
-  let sheet = [], batches = 0, connected = false, corruptRead = false, failWrite = false;
+  let sheet = [], batches = 0, connected = false, corruptRead = false, failWrite = false, wrote = false;
   const s = {
     console: {log() {}, warn() {}}, _docType: 'quote', _reprintSource: null,
     _currentTxnId: null, _currentTxnDate: null, _pendingTxnDate: null,
@@ -31,11 +31,11 @@ function setup() {
       if(range === 'Transactions') return clone(sheet);
       const match=range.match(/A(\d+):[BPVWXY](\d+)/);assert.ok(match,range);
       const result=clone(sheet.slice(Number(match[1])-1, Number(match[2])));
-      if(corruptRead && result[1]) result[1][10]='999';
+      if(corruptRead && wrote && result[1]) result[1][10]='999';
       return result;
     },
     sheetsAppend: async (range,rows) => {if(failWrite)throw Error('offline');const at=sheet.length;sheet.push(...entered(rows));return {updates:{updatedRange:`Transactions!A${at+1}:P${sheet.length}`}};},
-    sheetsUpdate: async (range,rows) => {if(failWrite)throw Error('offline');const at=Number(range.match(/A(\d+)/)[1])-1;sheet.splice(at,rows.length,...entered(rows));},
+    sheetsUpdate: async (range,rows) => {if(failWrite)throw Error('offline');wrote=true;const at=Number(range.match(/A(\d+)/)[1])-1;sheet.splice(at,rows.length,...entered(rows));},
     sheetsBatchUpdate: async requests => {
       if(failWrite) throw Error('offline');batches++;
       for(const req of requests){
