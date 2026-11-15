@@ -411,15 +411,18 @@
   // the register's own row writer so History shows them at once. Read-only: only reads this computer's storage, writes nothing.
   // Skipped: a txnId already on the sheet (the sheet's copy wins), an entry that needs a look, one not waiting to sync, and one the
   // register already pushed (so a sale removed from the sheet is never brought back). parseTransactions keeps the first copy of an id.
-  function unsentRows(storage, sheetRows) {
+  // pushedThen (local rebuilds only): the pushed ids when the sheet was last read. An entry pushed AFTER that read is not on those rows
+  // yet, so it still shows (saved while History was hidden and pushed before it was shown); one pushed before it and absent stays out.
+  function unsentRows(storage, sheetRows, pushedThen) {
     try {
       const list = JSON.parse((storage && storage.getItem('mpe_print_history')) || '[]');
       if (!Array.isArray(list)) return [];
       const onSheet = new Set(sheetRows.filter(r => r && String(r[0]).toUpperCase() === 'TXN').map(r => s(r[1])));
-      const pushed = new Set(JSON.parse((storage && storage.getItem('mpe_pushed_txn')) || '[]'));
+      const pushed = pushedIds(storage);
       const out = [];
       for (const o of list) {
-        if (!o || !o.historySyncPending || o.needsLook || !o.txnId || onSheet.has(s(o.txnId)) || pushed.has(o.txnId) || !Array.isArray(o.items)) continue;
+        if (!o || o.needsLook || !o.txnId || onSheet.has(s(o.txnId)) || !Array.isArray(o.items)) continue;
+        if (pushedThen ? !(o.historySyncPending || (pushed.has(o.txnId) && !pushedThen.has(o.txnId))) : !o.historySyncPending || pushed.has(o.txnId)) continue;
         const at = new Date(o.date);
         if (!Number.isFinite(+at)) continue;
         try { out.push(...L.transactionRowsForOrder(o, o.txnId, at)); } catch (_) { /* one bad entry never hides History */ }
@@ -428,12 +431,14 @@
     } catch (_) { return []; }
   }
 
+  const pushedIds = storage => { try { return new Set(JSON.parse((storage && storage.getItem('mpe_pushed_txn')) || '[]')); } catch (_) { return new Set(); } };
+
   // ---- The host the page uses (contract: POS/ledger.js header) ----
   function createHost(env, w) {
     const doc = w && w.document;
     const store = createPaymentsStore({ get: env.get, append: env.append, storage: env.storage });
     const customers = createRowStore({ get: env.get, append: env.append, storage: env.storage }, CUST_TAB);
-    let cycle = null, sheet = null, shown = [], yKnownNow = true; // the last sheet read, and the unsent rows shown with it (readTransactionsLocal)
+    let cycle = null, sheet = null, shown = [], yKnownNow = true, pushedThen = new Set(); // the last sheet read, and the unsent rows shown with it (readTransactionsLocal)
     function note(text) {
       const el = doc && doc.getElementById('hostNote');
       if (el) { el.textContent = text; el.hidden = !text; }
@@ -472,6 +477,7 @@
       async readTransactions() {
         await signedIn();
         let rows, known = true;
+        const before = pushedIds(env.storage); // before the read starts: a sale pushed while it runs still shows
         for (const range of [TXN_RANGE, ...TXN_RANGES_OLD]) {
           try { rows = await guard(env.get(range)); break; }
           catch (e) { if (e && e.code === 'not_signed_in') throw e; if (!/not allowed/i.test(s(e && e.message)) || range === TXN_RANGES_OLD[1]) throw e; known = false; }
@@ -479,6 +485,7 @@
         if (!Array.isArray(rows)) return rows;
         yKnownNow = known;
         sheet = rows;
+        pushedThen = before;
         shown = unsentRows(env.storage, rows);
         return rows.concat(shown);
       },
@@ -488,7 +495,7 @@
       // the next full read brings the sheet's copy, so it never blinks out. null before the first read.
       readTransactionsLocal() {
         if (!sheet) return null;
-        const fresh = unsentRows(env.storage, sheet), have = new Set(fresh.map(r => s(r[1])));
+        const fresh = unsentRows(env.storage, sheet, pushedThen), have = new Set(fresh.map(r => s(r[1])));
         const onSheet = new Set(sheet.filter(r => r && String(r[0]).toUpperCase() === 'TXN').map(r => s(r[1])));
         shown = fresh.concat(shown.filter(r => !have.has(s(r[1])) && !onSheet.has(s(r[1]))));
         return sheet.concat(shown);

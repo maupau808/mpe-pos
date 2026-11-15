@@ -775,6 +775,21 @@ test('readTransactionsLocal: the last sheet rows plus the documents saved here n
   assert.equal(host.readTransactionsLocal().filter(r => r[0] === 'TXN' && r[1] === 'T-NEW').length, 1);
 });
 
+test('readTransactionsLocal (3ee5279e): saved while History was hidden and pushed before it was shown still lists; one pushed before the last read and gone from the sheet stays out', async () => {
+  const sheet = fakeSheet(), storage = memoryStorage();
+  const line = { pn: 'A-1', desc: 'A-1 desc', qty: 1, ea: 10, sub: 10 };
+  const order = (txnId, num, extra = {}) => ({ txnId, docType: 'quote', docNumber: num, date: '2026-11-12T19:05:07.000Z', total: 10, customer: { name: 'Lani Testcase' }, items: [line], historySyncPending: true, ...extra });
+  sheet.tabs.Transactions = [['Type', 'TxnID'], ...L.transactionRowsForOrder(order('T-SHEET', 'Q1', { historySyncPending: false }))];
+  storage.setItem('mpe_print_history', JSON.stringify([order('T-GONE', 'Q0', { historySyncPending: false })]));
+  storage.setItem('mpe_pushed_txn', JSON.stringify(['T-GONE']));
+  const host = K.createHost({ kind: 'web', place: '9', storage, signedIn: async () => true, get: sheet.get, append: sheet.append }, {});
+  await host.readTransactions();
+  const ids = rows => L.parseTransactions(rows).map(r => r.txnId).sort();
+  storage.setItem('mpe_print_history', JSON.stringify([order('T-GONE', 'Q0', { historySyncPending: false }), order('T-NEW', 'Q2', { historySyncPending: false })]));
+  storage.setItem('mpe_pushed_txn', JSON.stringify(['T-GONE', 'T-NEW'])); // the whole save and push happened with no local rebuild in between
+  assert.deepEqual(ids(host.readTransactionsLocal()), ['T-NEW', 'T-SHEET']);
+});
+
 // ---- Order note (History, shop only): its row reads back exactly; it never reaches a sale request or the email window ----
 test('order notes with new lines, a leading =, +, \' and an emoji are appended as text, read back exactly and leave the queue empty; a later payment still saves', async () => {
   const sheet = fakeSheet(), storage = memoryStorage();

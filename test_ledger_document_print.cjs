@@ -10,7 +10,7 @@ const vm = require('node:vm');
 const { factsFromRequest } = require('../POSDesktop/src/document-print');
 
 const page = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const start = page.indexOf('function ledgerDocumentRequest()');
+const start = page.indexOf('function ledgerDocumentRequest(');
 const end = page.indexOf('function buildInvoiceSig()');
 assert.ok(start > 0 && end > start);
 

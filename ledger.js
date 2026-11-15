@@ -1063,8 +1063,9 @@
   // result if a load started meanwhile (that load reads storage itself).
   function localRefresh({ st, host, create, adopt, draw, hidden, setTimer = setTimeout, clearTimer = clearTimeout, ms = 300 }) {
     let dirty = false, timer = 0;
-    async function flush() {
+    async function flush(force) { // force: rebuild from storage even when no storage event was seen (the app's shown-again message)
       const h = host();
+      if (force) dirty = true;
       if (!dirty || !h || !h.readTransactionsLocal || st.phase !== 'ready' || st.edit || st.loadOn || hidden()) return;
       dirty = false;
       const seq = st.loadSeq;
@@ -1369,6 +1370,7 @@
       if (at) st.hideT = setTimeout(() => { st.hideT = 0; if (st.phase === 'ready' && !st.edit) draw(); }, at - now + 50);
     }
 
+    const sentOf = r => (st.marks.sent || {})[r.txnId] || (st.marks.sent || {})[r.number]; // the emailed date: the panel's "Emailed ..." and the list's Sent tag
     // Row: who (or the top item), total; then date and time, and the type with its status for invoices.
     function rowHtml(r) {
       const owing = r.kind === 'invoice' && UNPAID.has(r.state); // the due status takes the time's place on the date line (Trevor, Nov 6)
@@ -1378,7 +1380,7 @@
       const kind = r.state === 'cancelled' ? '<b class="k-cancel">Cancelled</b>' : repair ? '<b class="k-repair">Repair</b>' : r.kind === 'receipt' ? '' : `<b class="k-doc">${esc(KIND_LABEL[r.kind])}</b>`;
       return `<button class="row${r.state === 'void' || r.state === 'cancelled' ? ' is-void' : ''}" role="option" data-id="${esc(r.txnId)}" aria-selected="${r.txnId === ui.sel}">
         <span class="nm${r.qboBuyer || !(r.company || r.name) ? ' noname' : ''}">${esc(r.qboBuyer ? 'QuickBooks buyer: ' + r.qboBuyer.name : who(r))}</span><span class="amt num">${money(UNPAID.has(r.state) ? r.balance : r.total)}</span>
-        <span class="sub num">${esc(when)}${owing ? `<span class="due-count${r.state === 'overdue' ? ' late' : ''}">${esc(statusOf(r, st.today).text)}</span>` : ''}</span><span class="when">${kind}</span></button>`;
+        <span class="sub num">${esc(when)}${owing ? `<span class="due-count${r.state === 'overdue' ? ' late' : ''}">${esc(statusOf(r, st.today).text)}</span>` : ''}</span><span class="when">${sentOf(r) ? '<span class="sent" title="Emailed">Sent</span>' : ''}${kind}</span></button>`;
     }
 
     // Customer row: name, what is owed, then contact and last activity.
@@ -1451,7 +1453,7 @@
       else st.before = null;
       if (!st.edit) drawDocument(old || r);
       const draft = st.marks.drafts[r.txnId] || st.marks.drafts[r.number];
-      const sent = (st.marks.sent || {})[r.txnId] || (st.marks.sent || {})[r.number];
+      const sent = sentOf(r);
       const stale = (r.kind === 'invoice' || r.kind === 'quote') && !isQbo(r) ? L.emailedChangedSince(r, st.marks) : '';
       const acts = actionsFor(r, !!(host() && host().downloadPdf), helcimState(r)).filter(a => a.act !== 'retype' || typeChoices(r).length);
       const qn = qboNote(r), look = r.kind === 'invoice' && UNPAID.has(r.state) ? st.looks[r.txnId] : '';
@@ -1811,7 +1813,7 @@
       f.rect(b && b.width > 0 && b.height > 0 ? { x: b.left, y: b.top, width: b.width, height: b.height } : null);
     }
     // An automatic reload (tab shown again, the host arriving, refresh) waits while an edit is open; the edit's end runs one load().
-    const autoLoad = () => { if (st.edit && st.edit.defer()) return; load(); };
+    const autoLoad = async () => { if (st.edit && st.edit.defer()) return; await local.flush(true); load(); };
     function act(k, el) {
       const r = byId(ui.sel);
       if (k === 'editSave') { if (st.edit && st.edit.save()) drawEdit(); return; }
