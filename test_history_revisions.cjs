@@ -61,6 +61,7 @@ function setup() {
   vm.runInContext(html.slice(active,html.indexOf('// Reserve a date',active)),s);
   const reserve=html.indexOf('function reserveDocDate()');
   vm.runInContext(html.slice(reserve,html.indexOf('function updateScreenDocTitle()',reserve)),s);
+  s.renderSaleDate=()=>{};   // the Sale date box is page furniture: saveToHistory refreshes it, these tests have no page
   return {s,storage,save(){vm.runInContext('reserveDocDate()',s);return vm.runInContext('saveToHistory()',s);},
     sync:()=>vm.runInContext('pushTransactionToSheet(getHistory()[0])',s),
     flush:()=>vm.runInContext('flushUnpushedTxns()',s),

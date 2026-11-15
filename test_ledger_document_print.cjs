@@ -24,7 +24,7 @@ const build = (docType, screen = {}) => {
     regCreditApplied: () => screen.creditCents || 0, window: { MPELedgerData: require('./ledger-data.js') },
     captureOrder: () => screen.order || null, activeDocNumber: () => screen.number || null,
     ledgerBillingAddress: () => screen.billing || { lines: [], city: '', region: '', postal_code: '', country: '' },
-    _currentTxnDate: screen.date || null, _pendingTxnDate: null, Intl, Date, Math, String, Number,
+    _currentTxnDate: screen.date || null, _pendingTxnDate: null, saleStartDate: () => new Date(), Intl, Date, Math, String, Number,
     shopReviewOn: () => !!screen.review, // the shop-wide Review QR switch (a local cache read in the page)
   };
   vm.createContext(sandbox);
