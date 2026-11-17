@@ -274,6 +274,7 @@
         identity: () => d.google.gmailIdentity(),
         sendMail: typeof d.google.sendGmail === 'function' ? raw => d.google.sendGmail(raw) : undefined, // app 0.3.61+
         printDocument: request => d.printDocument(request),
+        documentPayments: !!d.documentPayments,   // this app's own renderer prints `payments` and an after-tax order discount (older apps drop both)
         // Helcim pay links (app only; the Ledger tab's preload adds it once the app can talk to Helcim). Never on the website.
         helcim: d.helcim && typeof d.helcim.payLink === 'function' ? d.helcim : undefined,
         openSale: async request => { const r = await d.openSale(request); if (!r || !r.ok) throw new Error('The sale tab did not open'); },
@@ -515,7 +516,8 @@
       memoReady: () => customers.wide(),
       async reprint(record, request) {
         // Every type, receipts too: the app prints the filled template to the counter printer (browser print is a no-op there).
-        if (env.printDocument) {
+        // An app without documentPayments would print an after-tax discount document with the wrong totals: the page prints it instead.
+        if (env.printDocument && (env.documentPayments || !(request.totals && request.totals.discount_after_tax))) {
           const r = await env.printDocument(request);
           if (r && r.ok) { if (r.printed !== false) await quietMark('print', record, 'reprint'); return r; } // { printed: false }: closed without printing
           if (!(r && r.fallback)) throw new Error('The printer did not take it');
@@ -529,7 +531,7 @@
         const [identity, list] = await Promise.all([guard(env.identity()), pages(request)]);
         const t = request.totals;
         const order = { payLink: s(payLink), customer: { name: record.name }, toggles: { cardFee: Number(t.card_fee) > 0 },
-          ledgerTotals: { subtotal: t.subtotal, tax: t.tax, card_fee: t.card_fee, total: t.total },
+          ledgerTotals: { subtotal: t.subtotal, tax: t.tax, card_fee: t.card_fee, total: t.total, discount_after_tax: t.discount_after_tax },
           items: (record.items || []).map(i => ({ pn: i.pn, desc: i.desc, qty: i.qty, ea: i.ea, sub: i.sub, sn: i.serials })) };
         const day = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
         return { from: identity.email, accountEmail: identity.accountEmail || identity.email, signature: identity.signature || '', to: s(record.email), pages: [list[0]], attachment: number + '.pdf',

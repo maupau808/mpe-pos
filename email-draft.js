@@ -74,8 +74,9 @@ function buildEmailBody(order, title, number, dateStr, signature = '') {
   const money = value => '$' + Number(value).toFixed(2);
   const items = order.items || [];
   const frozenTotals = order.ledgerTotals;
-  const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.sub) || 0), 0);
-  const total = frozenTotals ? Number(frozenTotals.total) : checkoutTotals(subtotal, !!order.toggles?.cardFee).total;
+  const split = globalThis.MPELedgerData?.splitOrderDiscount?.(items) || { items, discount: 0 };   // an after-tax order discount is not taxed
+  const subtotal = split.items.reduce((sum, item) => sum + (parseFloat(item.sub) || 0), 0);
+  const total = frozenTotals ? Number(frozenTotals.total) : checkoutTotals(subtotal, !!order.toggles?.cardFee, 0, split.discount).total;
   const kind = String(title).toLowerCase();
   const plus30 = () => {
     const d = new Date(dateStr);

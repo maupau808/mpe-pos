@@ -355,8 +355,9 @@
   function cardFeeOf(rec) {
     const r = withDeposit(rec);
     if (isQbo(r)) return 0;
-    const subtotal = (r.items || []).filter(i => i.pn !== 'Note').reduce((a, i) => a + i.sub, 0);
-    const rest = cents(r.total) - cents(subtotal) - cents(subtotal * TAX_RATE);
+    const split = L.splitOrderDiscount((r.items || []).filter(i => i.pn !== 'Note'));   // an after-tax order discount is not taxed
+    const subtotal = split.items.reduce((a, i) => a + i.sub, 0);
+    const rest = cents(r.total) - cents(subtotal) - cents(subtotal * TAX_RATE) + cents(split.discount);
     return Math.abs(rest) >= 0.05 ? rest : 0;
   }
   // Could the host's last Transactions read see column Y (Received by)? Hosts without yKnown() always can.
@@ -364,10 +365,13 @@
   // opts.review: the shop-wide Review QR switch is on; it rides only on receipts and invoices (the renderer prints it on the customer copy).
   function requestFromRecord(rec, opts) {
     const r = rec.kind === 'quote' ? rec : withDeposit(rec); // a quote's deposit prints in the totals (deposit below), not as a note
-    const items = r.items.filter(i => i.pn !== 'Note');
-    const subtotal = items.reduce((a, i) => a + i.sub, 0);
+    const split = L.splitOrderDiscount(r.items.filter(i => i.pn !== 'Note'));   // after-tax order discount: out of the lines and the taxable subtotal
+    const subtotal = split.items.reduce((a, i) => a + i.sub, 0);
     const tax = isQbo(r) ? r.tax : subtotal * TAX_RATE; // QuickBooks states its own tax and has no card fee
     const cardFee = cardFeeOf(r);
+    // Payment history for the totals (invoices and quotes with live payments; a credit moved off the sale keeps its sign). Never marks or voided rows.
+    const payments = (r.kind === 'invoice' || r.kind === 'quote') && !isQbo(r)
+      ? (r.paymentsLive || []).filter(p => p.amount > 0 && p.date).map(p => ({ date: p.date, amount: (p.method === 'credit_given' ? '-' : '') + m2(p.amount) })) : [];
     const completion = new Date(r.date ? `${r.date}T12:00:00-10:00` : Date.now());
     const billing = r.street || r.city
       ? { billing_address: { lines: r.addrLines || (r.street ? [r.street] : []), city: r.city, region: regionOf(r), postal_code: r.zip, country: '' } }
@@ -378,14 +382,16 @@
       ...(s(r.receivedBy) ? { received_by: s(r.receivedBy), ...(r.kind === 'receipt' || r.kind === 'quote' ? { signature: true } : {}) } : {}),
       ...(r.kind === 'invoice' && r.paid > 0 ? { paid: m2(r.paid) } : {}), // part or full payments print as Amount paid / Balance due
       ...(r.kind === 'quote' && r.deposit > 0 ? { deposit: m2(r.deposit) } : {}), // Subtotal, tax, Deposit paid -$X, Total (what is left)
+      ...(payments.length ? { payments } : {}),   // wins over paid / deposit in the renderer: Total, one row per payment, Remaining due
       dueDate: r.kind === 'invoice' ? (r.dueDate || null) : null,
       customer: { name: r.name, company: r.company, phone: r.phone, email: r.email, ...billing },
-      lines: r.items.map(i => (i.pn === 'Note'
+      lines: r.items.filter(i => !split.rows.includes(i)).map(i => (i.pn === 'Note'
         ? { kind: 'note', description: i.desc }
         : { kind: 'item', part_number: i.pn, make: '', description: i.desc, quantity: s(i.qty) || '1', serials: i.serials.filter(x => !s(i.desc).toUpperCase().includes(x)), // QuickBooks already prints S/N in the description
           original_unit_amount: m2(i.off ? i.origEa : i.ea), discount_amount: m2(i.off || 0), unit_amount: m2(i.ea), line_total: m2(i.sub) })),
       totals: { subtotal: m2(subtotal), card_fee: m2(cardFee), tax: m2(tax),
-        rounding: m2(cents(r.total) - cents(subtotal) - cents(tax) - cents(cardFee)), total: m2(r.total) },
+        rounding: m2(cents(r.total) - cents(subtotal) - cents(tax) - cents(cardFee) + cents(split.discount)), total: m2(r.total),
+        ...(split.discount > 0 ? { discount_after_tax: m2(split.discount), ...(split.percent ? { discount_after_tax_percent: split.percent } : {}) } : {}) },
       ...(opts && opts.review && (r.kind === 'receipt' || r.kind === 'invoice') ? { review: true } : {}),
       // A receipt with a typed serial prints a shop copy with the warranty form, as the register does (Trevor, 2026-11-03).
       ...(r.kind === 'receipt' && r.items.some(i => i.pn !== 'Note' && (i.serials || []).some(x => s(x) && !s(i.desc).toUpperCase().includes(x))) ? { warranty: true } : {}),

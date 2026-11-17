@@ -112,7 +112,8 @@
     return {
       issued: { document_type: q.type, document_number: q.number, document_date: day, document_time: renderer.documentTime(q), due_date: q.dueDate || null },
       customer, lines,
-      totals: { subtotal: t.subtotal, card_fee: t.card_fee == null ? '0.00' : t.card_fee, tax: t.tax, rounding: t.rounding == null ? '0.00' : t.rounding, total: t.total },
+      totals: { subtotal: t.subtotal, card_fee: t.card_fee == null ? '0.00' : t.card_fee, tax: t.tax, rounding: t.rounding == null ? '0.00' : t.rounding, total: t.total,
+        ...(t.discount_after_tax != null && Number(t.discount_after_tax) !== 0 ? { discount_after_tax: t.discount_after_tax, ...(t.discount_after_tax_percent != null ? { discount_after_tax_percent: t.discount_after_tax_percent } : {}) } : {}) },
       message: '',
     };
   }
@@ -123,6 +124,7 @@
     const po = s(request.po);
     const receivedBy = s(request.received_by);   // the signature's Print line (the register, and History from Transactions column Y)
     const extras = { ...(po ? { po } : {}), ...(receivedBy ? { received_by: receivedBy } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}), ...(request.type === 'quote' && request.deposit ? { deposit: request.deposit } : {}),
+      ...((request.type === 'invoice' || request.type === 'quote') && Array.isArray(request.payments) && request.payments.length ? { payments: request.payments } : {}),
       ...(request.review === true && (request.type === 'receipt' || request.type === 'invoice') ? { review: true } : {}),
       ...(request.warranty === true && request.type === 'receipt' ? { warranty: true } : {}),
       ...(request.signature === true && (request.type === 'receipt' || request.type === 'quote') ? { signature: true } : {}) };
@@ -130,6 +132,19 @@
     return copies.map(copy => renderer.renderOfficialHtml(template, facts, extras, settings || renderer.DEFAULT_SETTINGS, copy));
   }
 
+
+  // The whole-order discount taken AFTER tax (Trevor, 2026-11-16): the one Discount item row whose description starts "Order discount after
+  // tax" (optionally "(10%)"). It is not part of the taxable subtotal and never prints as a line. This is THE helper every subtotal / tax /
+  // total worked out from items goes through (register, History, print, PDF). items: anything with pn, desc and sub (a number or "$-5.00").
+  // -> { items: the rest (taxable), discount: dollars off (>= 0), percent: '10' or '', rows: the discount rows }
+  const AFTER_TAX_ROW = /^Order discount after tax\b/i;
+  function splitOrderDiscount(items) {
+    const rest = [], rows = [];
+    for (const i of items || []) (i && /^Discount$/i.test(s(i.pn)) && AFTER_TAX_ROW.test(s(i.desc)) ? rows : rest).push(i);
+    const off = Math.max(0, -rows.reduce((a, i) => a + cents(money(i.sub)), 0));
+    const m = rows.length ? /\(([\d.]+)%\)/.exec(s(rows[0].desc)) : null;
+    return { items: rest, discount: off / 100, percent: m ? m[1] : '', rows };
+  }
 
   function isoDate(v) {
     const t = s(v);
@@ -1050,5 +1065,5 @@
     return !txn || cents(money(txn[12])) !== cents(r.total);
   }
   return { CREDIT_LABELS, creditKey, resolveCredit, creditBalances, creditCap, undoCredit, autoCreditRow, creditUseRow, pendingCreditMoves, refundDue, editMoney, payLinkStale, missingInfo, emailedChangedSince, isPlaceholderBuyer, transactionRowsFingerprint, transactionRowsMatch, transactionBlockEnd, transactionRowsForOrder, DATE_MIN, dateOk, NET_DAYS, SOON_DAYS, METHODS, PAYMENT_COLUMNS, parseTransactions, parsePayments, parseMarks, cancelledIds, buildMarkRow, orderNoteText, buildPaymentRow, helcimPaymentRows,
-    buildVoidRow, beforeNote, undoRows, honoluluToday, factsFromRequest, documentPages, storeCreditNote, qboRecords, mergeQbo, qboEnteredThrough, qboWeek, qboMissing, COUNT_FROM, CUSTOMER_COLUMNS, MEMO_NONE, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
+    buildVoidRow, beforeNote, undoRows, splitOrderDiscount, honoluluToday, factsFromRequest, documentPages, storeCreditNote, qboRecords, mergeQbo, qboEnteredThrough, qboWeek, qboMissing, COUNT_FROM, CUSTOMER_COLUMNS, MEMO_NONE, customerKey, buildCustomerRow, parseCustomerRows, buildCustomers, livePayments, derive, filter, owedSummary, search, create };
 });

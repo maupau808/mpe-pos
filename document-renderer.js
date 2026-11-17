@@ -41,6 +41,21 @@ const EXTRA_LIMITS = { po: 200, received_by: 200, terms: 200, ordered_by: 200, b
 
 class DocumentRenderError extends Error {}
 
+// Payment history (Trevor, 2026-11-16): [{ date: 'YYYY-MM-DD', amount: 'x.xx' (or '-x.xx' for a credit moved off the sale) }], oldest first, at most MAX_PAYMENTS. Strict: anything
+// off-shape is refused (never silently trimmed), so a printed "Remaining due" is never worked out from a partial list.
+const MAX_PAYMENTS = 24;
+function cleanPayments(value) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > MAX_PAYMENTS) throw new DocumentRenderError('Payments are not valid');
+  const list = value.map((p) => {
+    if (!p || typeof p !== 'object' || typeof p.date !== 'string' || typeof p.amount !== 'string'
+        || !/^\d{4}-\d{2}-\d{2}$/.test(p.date) || !/^-?\d{1,12}\.\d{2}$/.test(p.amount)) throw new DocumentRenderError('Payments are not valid');
+    isoParts(p.date);
+    return { date: p.date, amount: p.amount };
+  });
+  return list.map((p, i) => [p, i]).sort((a, b) => (a[0].date < b[0].date ? -1 : a[0].date > b[0].date ? 1 : a[1] - b[1])).map((x) => x[0]);
+}
+
 function parseTemplate(text) {
   const pieces = new Map();
   for (const match of String(text).matchAll(PIECE)) pieces.set(match[1], match[2]);
@@ -66,6 +81,7 @@ const isZero = (a) => a.n === 0n;
 const isOne = (a) => a.n === 10n ** BigInt(a.scale);
 const mul = (a, b) => ({ n: a.n * b.n, scale: a.scale + b.scale });
 const sub = (a, b) => { const [x, y, scale] = align(a, b); return { n: x - y, scale }; };
+const add = (a, b) => { const [x, y, scale] = align(a, b); return { n: x + y, scale }; };
 const maxZero = (a) => (a.n < 0n ? { n: 0n, scale: 2 } : a);
 
 function money(value) {
@@ -148,6 +164,8 @@ function officialExtras(extras) {
   }
   const revision = extras && extras.revision;
   if (Number.isInteger(revision) && revision >= 1) clean.revision = revision;
+  const payments = cleanPayments(extras && extras.payments);
+  if (payments.length) clean.payments = payments;
   if (extras && extras.review === true) clean.review = true;   // the shop-wide Review QR switch is on (POS/shop-settings.js)
   if (extras && extras.warranty === true) clean.warranty = true;   // receipts: a serial was typed, so a shop copy with the warranty form prints
   if (extras && extras.signature === true) clean.signature = true; // receipts and quotes: the Signature toggle (Received by / Print / Sign)
@@ -269,16 +287,40 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
     }));
   }
   const total = dec(totals.total);
+  const afterTax = totals.discount_after_tax === undefined ? null : dec(totals.discount_after_tax);   // an order discount taken off after tax (not a line)
+  if (afterTax && !isZero(afterTax)) {
+    const parts = add(add(add(dec(totals.subtotal), dec(totals.card_fee)), dec(totals.rounding)), dec(totals.tax));
+    const [left, right] = align(sub(parts, afterTax), total);
+    if (left !== right) {
+      throw new DocumentRenderError('Totals do not add up');   // subtotal + card fee + rounding + tax - discount must be the total
+    }
+  }
   const sums = [['Subtotal', totals.subtotal, '']];
   for (const [label, key] of [['Card fee', 'card_fee'], ['Rounding', 'rounding']]) {
     if (!isZero(dec(totals[key]))) sums.push([label, totals[key], '']);
   }
   sums.push([isZero(dec(totals.tax)) ? 'Tax' : TAX_LABEL, totals.tax, '']);
+  if (afterTax && !isZero(afterTax)) {
+    sums.push([totals.discount_after_tax_percent ? `Discount (${totals.discount_after_tax_percent}%)` : 'Discount', afterTax, '', `-${money(afterTax)}`]);
+  }
+  // Payment history (invoices and quotes): the full Total, one plain row per payment (oldest first, MM/DD), then what is still due.
+  // It replaces the older "Deposit paid" / "Amount paid + Balance due" ending, which stay for requests without it.
+  const history = (kind === 'invoice' || kind === 'quote') && extra.payments ? extra.payments : null;
   // A quote's deposit prints as its own line before the total, and the total is what is left to pay (Trevor, Nov 5).
-  const deposit = kind === 'quote' && extra.deposit !== undefined ? dec(extra.deposit) : null;
-  if (deposit && !isZero(deposit)) sums.push(['Deposit paid', deposit, '', `-${money(deposit)}`], ['Total', maxZero(sub(total, deposit)), '.total']);
+  const deposit = !history && kind === 'quote' && extra.deposit !== undefined ? dec(extra.deposit) : null;
+  if (history) {
+    sums.push(['Total', totals.total, '.total']);
+    let left = total;
+    for (const p of history) {
+      const [, mm, dd] = /^\d{4}-(\d{2})-(\d{2})/.exec(p.date);
+      const paid = dec(p.amount);   // a store-credit move off the sale keeps its sign (negative amount prints as a plus)
+      sums.push([`${mm}/${dd}`, paid, '', paid.n < 0n ? money({ n: -paid.n, scale: paid.scale }) : `-${money(paid)}`]);
+      left = sub(left, paid);
+    }
+    sums.push(['Remaining due', maxZero(left), '.due']);
+  } else if (deposit && !isZero(deposit)) sums.push(['Deposit paid', deposit, '', `-${money(deposit)}`], ['Total', maxZero(sub(total, deposit)), '.total']);
   else sums.push(['Total', totals.total, '.total']);
-  if (kind === 'invoice') {
+  if (kind === 'invoice' && !history) {
     const paid = dec(extra.paid === undefined ? '0.00' : extra.paid);
     if (style === 'clean' || !isZero(paid)) sums.push(['Amount paid', paid, ''], ['Balance due', maxZero(sub(total, paid)), '.due']);
   }
@@ -373,6 +415,7 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
 return {
   DEFAULT_SETTINGS,
   DocumentRenderError,
+  cleanPayments,
   cleanSettings,
   copiesFor,
   longDate,

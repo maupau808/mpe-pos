@@ -21,7 +21,8 @@ const build = (docType, screen = {}) => {
       : id === 'docReceivedBy' && screen.receivedBy !== undefined ? { value: screen.receivedBy }
       : id === 'signatureBtn' && screen.signature ? { classList: { contains: (c) => c === 'active' } } : null) },
     tbody: { querySelectorAll: () => (screen.serialTyped ? [{ value: ' ' }, { value: 'SN123' }] : [{ value: '' }]) },   // the typed serial boxes
-    regCreditApplied: () => screen.creditCents || 0, window: { MPELedgerData: require('./ledger-data.js') },
+    regCreditApplied: () => screen.creditCents || 0, regDepositCents: () => screen.depositCents || 0,
+    window: { MPELedgerData: require('./ledger-data.js'), ...(screen.desktop ? { mpeDesktop: screen.desktop } : {}) },
     captureOrder: () => screen.order || null, activeDocNumber: () => screen.number || null,
     ledgerBillingAddress: () => screen.billing || { lines: [], city: '', region: '', postal_code: '', country: '' },
     _currentTxnDate: screen.date || null, _pendingTxnDate: null, saleStartDate: () => new Date(), Intl, Date, Math, String, Number,
@@ -210,4 +211,56 @@ test('Received by fills the signature Print line on the app and the website; an 
   assert.match(L.documentPages(named('invoice'), R, old, R.DEFAULT_SETTINGS)[1], /Print: <span class="sig-underline"><\/span>/);
   // An older renderer fills the unchanged pieces: they carry no new slot.
   assert.doesNotMatch(template.get('counter.sig') + template.get('counter.sign'), /\{\{received\}\}/);
+});
+
+const plain = (v) => JSON.parse(JSON.stringify(v));
+// Deposit at the register and the after-tax order discount (Trevor, 2026-11-16): what the register's request carries.
+test('a deposit taken with the sale rides as payments (website, or an app with documentPayments); an older app gets paid / deposit; none = nothing', () => {
+  const order = { customer: { name: 'TEST' }, toggles: {}, items: [{ pn: 'TEST', desc: 'Test part', qty: 1, ea: 100, sub: 100, sn: [] }] };
+  const screen = (extra) => ({ order, number: 'L21001', date: '2026-11-16T20:00:00Z', depositCents: 2500, ...extra });
+  assert.deepEqual(plain(build('invoice', screen()).payments), [{ date: '2026-11-16', amount: '25.00' }]);
+  assert.deepEqual(plain(build('quote', screen({ number: 'Q21001' })).payments), [{ date: '2026-11-16', amount: '25.00' }]);
+  assert.deepEqual(plain(build('invoice', screen({ desktop: { documentPayments: true } })).payments), [{ date: '2026-11-16', amount: '25.00' }]);
+  const old = build('invoice', screen({ desktop: {} }));
+  assert.equal(old.payments, undefined);
+  assert.equal(old.paid, '25.00');
+  assert.equal(build('quote', screen({ number: 'Q21001', desktop: {} })).deposit, '25.00');
+  const none = build('invoice', screen({ depositCents: 0 }));
+  assert.equal(none.payments, undefined); assert.equal(none.paid, undefined);
+  // the pages the renderer makes from it: Total, the deposit row, Remaining due
+  const R = require('./document-renderer.js'), L = require('./ledger-data.js');
+  const template = R.parseTemplate(fs.readFileSync(path.join(__dirname, 'document-template.html'), 'utf8'));
+  const html = L.documentPages(build('invoice', screen()), R, template, R.DEFAULT_SETTINGS)[0];
+  assert.match(html, />11\/16<\/span><span>-\$25\.00</);
+  assert.match(html, />Remaining due<\/span><span>\$79\.71</);
+});
+
+test('an after-tax order discount: taxed goods only, the discount is no line, it rides in totals; an older app gets the page layout', () => {
+  const goods = { pn: 'TEST', desc: 'Test part', qty: 1, ea: 100, sub: 100, sn: [] };
+  const cut = (desc, off) => ({ pn: 'Discount', desc, qty: 1, ea: -off, sub: -off, sn: [] });
+  const order = (extra) => ({ customer: { name: 'TEST' }, toggles: {}, items: [goods, ...extra] });
+  const screen = (items, extra) => ({ order: order(items), number: 'L21001', date: '2026-11-16T20:00:00Z', ...extra });
+  const after = build('invoice', screen([cut('Order discount after tax (10%)', 10.47)]));
+  assert.deepEqual(plain(after.lines.map((l) => l.part_number)), ['TEST']);
+  assert.deepEqual(JSON.parse(JSON.stringify(after.totals)), { subtotal: '100.00', card_fee: '0.00', tax: '4.71', rounding: '0.00', total: '94.24',
+    discount_after_tax: '10.47', discount_after_tax_percent: '10' });
+  // a card fee is on what is left
+  const fee = build('invoice', screen([cut('Order discount after tax', 10)], { order: { ...order([cut('Order discount after tax', 10)]), toggles: { cardFee: true } } }));
+  assert.equal(fee.totals.total, '97.55');
+  assert.equal(fee.totals.card_fee, '2.84');
+  // before tax is exactly as it was: a line, taxed down
+  const before = build('invoice', screen([cut('Order discount', 10)]));
+  assert.deepEqual(plain(before.lines.map((l) => l.part_number)), ['TEST', 'Discount']);
+  assert.equal(before.totals.discount_after_tax, undefined);
+  assert.equal(before.totals.subtotal, '90.00');
+  // an app that cannot print it (no documentPayments flag) keeps the page layout
+  assert.equal(build('invoice', screen([cut('Order discount after tax', 10)], { desktop: {} })), null);
+  assert.notEqual(build('invoice', screen([cut('Order discount after tax', 10)], { desktop: { documentPayments: true } })), null);
+  assert.notEqual(build('invoice', screen([cut('Order discount', 10)], { desktop: {} })), null);
+  // the same discount through the real renderer equals the app's print service
+  const R = require('./document-renderer.js'), L = require('./ledger-data.js');
+  const template = R.parseTemplate(fs.readFileSync(path.join(__dirname, 'document-template.html'), 'utf8'));
+  const html = L.documentPages(after, R, template, R.DEFAULT_SETTINGS)[0];
+  assert.match(html, />Discount \(10%\)<\/span><span>-\$10\.47</);
+  assert.doesNotMatch(html, /Order discount/);
 });
