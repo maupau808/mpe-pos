@@ -25,7 +25,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   address_2: 'Wailuku, HI 96793',
   phone: '(808) 249-2730',
   email: 'info@mauipowerequipment.com',
-  invoice_footer_1: 'Please either pay via the link (surcharge added for credit cards) or send a check made payable to:',
+  invoice_footer_1: 'Please send a check made payable to:',
   invoice_footer_2: 'Maui Power Equipment Inc.\n970 Lower Main St\nWailuku, HI 96793',
   quote_footer: 'Quotes are valid for {valid_days} days from issued date. However, Maui Power Equipment maintains the right to adjust prices in response to extreme increases in product or freight cost.',
   receipt_footer: '',
