@@ -264,3 +264,15 @@ test('an after-tax order discount: taxed goods only, the discount is no line, it
   assert.match(html, />Discount \(10%\)<\/span><span>-\$10\.47</);
   assert.doesNotMatch(html, /Order discount/);
 });
+
+test('Pay link: History pages offer the link in the invoice footer only when the request carries pay_link', () => {
+  const R = require('./document-renderer.js'), L = require('./ledger-data.js');
+  const template = R.parseTemplate(fs.readFileSync(path.join(__dirname, 'document-template.html'), 'utf8'));
+  const order = { customer: { name: 'TEST', company: '', phone: '', email: '' }, toggles: { cardFee: false },
+    items: [{ pn: 'TST1', desc: 'Test part', qty: 1, ea: 10, sub: 10, sn: [] }] };
+  const request = build('invoice', { order, number: 'L21001', date: '2026-11-05T20:00:00.000Z' });
+  const page = (r) => L.documentPages(r, R, template, R.DEFAULT_SETTINGS)[0];
+  assert.ok(page(request).includes('Please send a check made payable to:'));
+  assert.ok(!page(request).includes('pay via the link'));
+  assert.ok(page({ ...request, pay_link: true }).includes('Please either pay via the link (surcharge added for credit cards) or send a check made payable to:'));
+});

@@ -126,6 +126,7 @@
     const extras = { ...(po ? { po } : {}), ...(receivedBy ? { received_by: receivedBy } : {}), ...(request.type === 'invoice' && request.paid ? { paid: request.paid } : {}), ...(request.type === 'quote' && request.deposit ? { deposit: request.deposit } : {}),
       ...((request.type === 'invoice' || request.type === 'quote') && Array.isArray(request.payments) && request.payments.length ? { payments: request.payments } : {}),
       ...(request.review === true && (request.type === 'receipt' || request.type === 'invoice') ? { review: true } : {}),
+      ...(request.pay_link === true && request.type === 'invoice' ? { pay_link: true } : {}),
       ...(request.warranty === true && request.type === 'receipt' ? { warranty: true } : {}),
       ...(request.signature === true && (request.type === 'receipt' || request.type === 'quote') ? { signature: true } : {}) };
     const copies = renderer.copiesFor(request.type, extras);

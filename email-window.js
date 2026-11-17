@@ -177,6 +177,7 @@
         field('message').value = untouched ? next : here.replace(/\s+$/, '') + '\n\n' + payLines(out.url);
         if (untouched) clean = JSON.stringify(values());
       }
+      if (out.pages) pages.forEach((f, i) => { if (out.pages[i]) f.srcdoc = out.pages[i]; }); // the attachment now offers the link
       payRow(out.url); preview();
     }
     const err = t => { $('.err').textContent = t || ''; };

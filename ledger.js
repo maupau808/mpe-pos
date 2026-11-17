@@ -393,6 +393,7 @@
         rounding: m2(cents(r.total) - cents(subtotal) - cents(tax) - cents(cardFee) + cents(split.discount)), total: m2(r.total),
         ...(split.discount > 0 ? { discount_after_tax: m2(split.discount), ...(split.percent ? { discount_after_tax_percent: split.percent } : {}) } : {}) },
       ...(opts && opts.review && (r.kind === 'receipt' || r.kind === 'invoice') ? { review: true } : {}),
+      ...(opts && opts.payLink && r.kind === 'invoice' ? { pay_link: true } : {}), // has a live pay link: the footer offers it
       // A receipt with a typed serial prints a shop copy with the warranty form, as the register does (Trevor, 2026-11-03).
       ...(r.kind === 'receipt' && r.items.some(i => i.pn !== 'Note' && (i.serials || []).some(x => s(x) && !s(i.desc).toUpperCase().includes(x))) ? { warranty: true } : {}),
     };
@@ -1117,7 +1118,7 @@
     const memoOn = () => !!(host() && host().memoReady && host().memoReady()); // an app that cannot read Customers column K shows no memo
     const shop = () => host() && host().shopSettings;
     const reviewOn = () => !!shop() && shop().get('review_qr') === 'on';
-    const requestOf = r => requestFromRecord(r, { review: reviewOn() });
+    const requestOf = r => requestFromRecord(r, { review: reviewOn(), payLink: !!linkFor(r) });
     // Review QR: shows the new state at once here; the row goes to the Settings tab in the background (other computers within 5 minutes).
     function reviewToggle() {
       const ss = shop();
@@ -1769,9 +1770,16 @@
     function emailWindow(r) {
       const request = st.request || requestOf(r);
       const url = r.kind === 'invoice' ? linkFor(r) : '', canAdd = actionsFor(r, false, helcimState(r)).some(a => a.act === 'payLink');
-      const add = async () => { const out = await addPayLink(host(), r); if (!out.ok) return { error: out.message }; load(true); return { url: out.url }; };
+      let prep = null;
+      // A link added in the window: the attached invoice is rebuilt so its footer offers the link too.
+      const add = async () => {
+        const out = await addPayLink(host(), r); if (!out.ok) return { error: out.message };
+        load(true);
+        try { const again = await host().emailPrepare(r, { ...request, pay_link: true }, out.url); if (prep && again.pages && again.pages[0]) prep.pages = again.pages; } catch (_) { /* keeps the page it had */ }
+        return { url: out.url, pages: prep && prep.pages };
+      };
       run('email', async () => {
-        const [prep, tok] = await Promise.all([host().emailPrepare(r, request, url), !url && canAdd ? host().emailPrepare(r, request, PAY_TOKEN) : null]);
+        let tok; [prep, tok] = await Promise.all([host().emailPrepare(r, request, url), !url && canAdd ? host().emailPrepare(r, request, PAY_TOKEN) : null]);
         st.busy = ''; draw();
         const out = await root.MPEEmailWindow.open({ ...prep, pages: prep.pages || (st.pages || []).slice(0, 1), key: r.txnId, heading: `Email ${KIND_LABEL[r.kind].toLowerCase()} ${r.number}`,
           cannotSend: prep.canSend ? '' : 'This app needs its update before it can send. The update installs by itself when the register is idle.',

@@ -19,6 +19,8 @@ const TEXT_FIELDS = ['shop_name', 'address_1', 'address_2', 'phone', 'email', 'i
   'receipt_footer', 'default_terms', 'closing'];
 // The wording used until the counter has a saved copy of Ledger's Document settings: Ledger's own defaults
 // (Ledger/tools/ledger_document_settings.py). The parity test renders with these and compares to Ledger's bytes.
+// Invoice footer line 1 when the invoice has an online pay link (extras.pay_link; Trevor, 2026-11-17). Without one it is invoice_footer_1.
+const PAY_LINK_FOOTER = 'Please either pay via the link (surcharge added for credit cards) or send a check made payable to:';
 const DEFAULT_SETTINGS = Object.freeze({
   shop_name: 'Maui Power Equipment',
   address_1: '970 Lower Main St',
@@ -166,6 +168,7 @@ function officialExtras(extras) {
   if (Number.isInteger(revision) && revision >= 1) clean.revision = revision;
   const payments = cleanPayments(extras && extras.payments);
   if (payments.length) clean.payments = payments;
+  if (extras && extras.pay_link === true) clean.pay_link = true; // invoices: this one has an online pay link, so the footer offers it
   if (extras && extras.review === true) clean.review = true;   // the shop-wide Review QR switch is on (POS/shop-settings.js)
   if (extras && extras.warranty === true) clean.warranty = true;   // receipts: a serial was typed, so a shop copy with the warranty form prints
   if (extras && extras.signature === true) clean.signature = true; // receipts and quotes: the Signature toggle (Received by / Print / Sign)
@@ -330,7 +333,7 @@ function renderOfficialHtml(template, facts, extras, settings, copy) {
   const words = (text) => text.split('{terms}').join(terms).split('{valid_until}').join(validUntil).split('{valid_days}').join(String(cfg.quote_valid_days));
   // Quotes print no fine print (Trevor, Oct 31); quote_footer stays a setting so saved wording still loads.
   const footerKeys = { invoice: ['invoice_footer_1', 'invoice_footer_2'], quote: [], receipt: ['receipt_footer'] }[kind];
-  const footers = footerKeys.map((key) => words(cfg[key])).filter(Boolean);
+  const footers = footerKeys.map((key) => words(key === 'invoice_footer_1' && extra.pay_link ? PAY_LINK_FOOTER : cfg[key])).filter(Boolean);
   const contact = [cfg.phone, cfg.email].filter(Boolean).join(' · ');
   const page = {
     title: escape(title), number: escape(number), shop_name: escape(cfg.shop_name), css: piece(`${style}.css`), revised,
