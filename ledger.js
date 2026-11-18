@@ -603,7 +603,8 @@
   // The bulk list: sure matches on a register receipt that is not waiting to share, whose own phone is blank or the buyer's.
   function qboBulkList(records, pending, parked) {
     return (records || []).filter(r => qboSavable(r) && r.qboBuyer.sure && r.kind === 'receipt' && s(r.number) && !(pending && pending.has(r.txnId)) && !(parked && parked.has(r.txnId))
-      && (!digitsOf(r.phone) || digitsOf(r.phone) === digitsOf(r.qboBuyer.fill.phone)) && (!s(r.email) || s(r.email).toLowerCase() === s(r.qboBuyer.fill.email).toLowerCase()));
+      && (!digitsOf(r.phone) || digitsOf(r.phone) === digitsOf(r.qboBuyer.fill.phone)) && (!s(r.email) || s(r.email).toLowerCase() === s(r.qboBuyer.fill.email).toLowerCase())
+      && qboChanges(r)); // a sale that already holds everything QuickBooks has is not listed again
   }
   // Fill blanks only: what the sale will hold is its own value where it has one, else QuickBooks'. The address is one unit (never a QuickBooks
   // city on the sale's own street). name and company always go (even '', that clears the placeholder buyer).
@@ -614,6 +615,7 @@
     for (const k of QBO_ADDR) m[k] = keep ? own[k] : s(fill[k]);
     return m;
   }
+  const qboChanges = r => { const p = qboPatch(r, r.qboBuyer.fill); return Object.keys(p).length > 3 || p.name !== s(r.name) || p.company !== s(r.company); };
   function qboPatch(r, fill) {
     const own = qboOwn(r), m = qboMerged(r, fill), patch = { name: s(fill.name), company: s(fill.company) };
     for (const k of Object.keys(m)) if (m[k] !== own[k]) patch[k] = m[k];
@@ -656,7 +658,7 @@
   const QBO_MISSING_UI = Object.freeze({ section: 'sales', salesSub: 'all', src: 'missing', when: '30', q: '' });
   const qboMissingRows = (records, today) => buildView(records, QBO_MISSING_UI, today).groups.flatMap(g => g.rows);
   const qboMissingLabel = n => (n ? `${plural(n, 'unit', 'units')} not in QuickBooks` : '');
-  function qboEndText({ saved, skipped, check, stop, number }) {
+  function qboEndText({ saved, skipped, check, stop, number, numbers }) {
     const got = `Saved ${plural(saved, 'buyer', 'buyers')}.`;
     if (stop === 'read') return 'Could not read the sheet just now, so nothing was saved. Try again.';
     if (stop === 'rows') return `${got} Stopped at ${number}: the sheet changed while it was saving. Tell Claude before pressing again.`;
@@ -665,7 +667,7 @@
     if (stop === 'signedout') return `${got} Not signed in to Google, so the rest were not saved. Sign in, then press the button again.`;
     if (stop === 'error') return `${got} Something went wrong, so the rest were not saved. Press the button again.`;
     if (stop === 'register') return `${got} The register has a sale open, so the rest were not saved. Finish or clear it, then press the button again.`;
-    return got + (skipped ? ` ${skipped} could not be saved; open ${skipped === 1 ? 'it' : 'them'} and use Save to this sale.` : '') + (check ? ` ${check} may not have finished. Check History.` : '');
+    return got + (skipped ? ` ${skipped} could not be saved${numbers && numbers.length ? ` (${numbers.join(', ')})` : ''}; open ${skipped === 1 ? 'it' : 'them'} and use Save to this sale.` : '') + (check ? ` ${check} may not have finished. Check History.` : '');
   }
   // The header button: null when there is nothing to press (hidden).
   const qboSaveBar = (n, run, can) => (!can || (!run && !n) ? null : { label: run ? `Saving ${run.at} of ${run.n}…` : `Save ${plural(n, 'buyer', 'buyers')}`, busy: !!run });
@@ -687,12 +689,13 @@
       progress(i + 1, list.length);
       if (i) await sleep(gapMs);
       const n0 = txnBlock(rows, r.txnId);
-      if (!n0) { t.skipped++; continue; } // not (once) on the sheet: nothing is written
+      if (!n0) { t.skipped++; (t.numbers = t.numbers || []).push(r.number); continue; } // not (once) on the sheet: nothing is written
       let res;
       try { res = await h.editSession(r, qboPatch(r, r.qboBuyer.fill), { cardFee: cardFeeOf(r) > 0, storeCredit: r.creditUsed || 0 }); }
       catch (e) { res = { ok: false, code: s(e && e.code) || 'error' }; }
       const o = qboOutcome(res);
       if (o === 'saved' || o === 'skipped' || o === 'check') t[o]++; else t.stop = o;
+      if (o === 'skipped') (t.numbers = t.numbers || []).push(r.number);
       try { rows = await h.readTransactions(); } catch (_) { t.stop = 'check'; return t; }
       if (txnBlock(rows, r.txnId) !== n0) { t.stop = 'rows'; t.number = r.number; }
     }

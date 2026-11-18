@@ -195,6 +195,7 @@
         const off = money(r[15]);
         cur.items.push({ pn: s(r[8]), desc: s(r[9]), qty: s(r[10]), ea: money(r[11]), sub: money(r[12]),
           serials: s(r[13]).split(',').map(x => x.trim().toUpperCase()).filter(Boolean),
+          ...(s(r[13]) !== s(r[13]).toUpperCase() ? { serialsSaved: s(r[13]).split(',').map(x => x.trim()).filter(Boolean) } : {}), // typed in lower case: Edit must rebuild the saved row exactly
           origEa: off > 0 ? money(r[14]) : 0, off: off > 0 ? off : 0,
           // Q cost (null = an old row saved before cost was kept), R brand, S flags (W warranty unit, O editable custom line, F free-entry line)
           cost: s(r[16]) === '' ? null : money(r[16]), make: s(r[17]), flags: s(r[18]).toUpperCase() });
