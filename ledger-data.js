@@ -763,7 +763,10 @@
         serial.set(r, { all, keys });
         for (const q of all) { const g = dayGap(q.date, r.date), c = owner.get(q); if (!c || g < c.g) owner.set(q, { r, g }); }
       }
-      if (![r.name, r.company].filter(Boolean).every(x => x.toLowerCase() === PLACEHOLDER_BUYER)) continue; // an entered buyer stays
+      // An entered buyer stays, unless it is only a name jotted to find the sale (no phone, email or address; Trevor, 2026-11-17):
+      // then QuickBooks still names the buyer, and it is sure only when every jotted word is in the QuickBooks name.
+      const noBuyer = [r.name, r.company].filter(Boolean).every(x => x.toLowerCase() === PLACEHOLDER_BUYER);
+      if (!noBuyer && (s(r.phone) || s(r.email) || s(r.street) || s(r.city))) continue;
       const hit = new Set([...all].filter(q => !q._jana)); // Jana documents name nobody
       const byCust = new Map(); // customer id (or the document itself) -> its matching documents
       for (const q of hit) { const id = q.customerId || q.txnId; byCust.set(id, (byCust.get(id) || []).concat(q)); }
@@ -773,7 +776,9 @@
       const q = docs.reduce((a, b) => (dayGap(b.date, r.date) < dayGap(a.date, r.date) ? b : a)), name = q.company || q.name;
       if (!name) continue;
       // sure: a unit rung up twice at the register is never sure
-      r.qboBuyer = { name, customerId: q.customerId, sure: !keys.some(k => twins.has(k) && twins.get(k).size > 1) && (dayGap(q.date, r.date) <= 3 || (dayGap(q.date, r.date) <= 14 && cents(q.total) === cents(r.total))), fill: qboFill(q) };
+      const wordsOf = v => s(v).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean), qWords = new Set(wordsOf(q.name + ' ' + q.company));
+      const jotFits = noBuyer || wordsOf(r.name + ' ' + r.company).every(w => qWords.has(w));
+      r.qboBuyer = { name, customerId: q.customerId, sure: jotFits && !keys.some(k => twins.has(k) && twins.get(k).size > 1) && (dayGap(q.date, r.date) <= 3 || (dayGap(q.date, r.date) <= 14 && cents(q.total) === cents(r.total))), fill: qboFill(q) };
       r._hay += ' ' + name.toLowerCase();
     }
     for (const [r, { all, keys }] of serial) {
