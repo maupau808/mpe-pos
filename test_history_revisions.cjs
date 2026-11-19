@@ -498,12 +498,17 @@ test('F01 session: a customer change on a saved invoice rewrites it in place, ke
  assert.equal(c.s.getHistory()[0].historySyncPending, false); assert.deepEqual(c.queued, [c.stored.txnId]);
  assert.equal(vm.runInContext('_editSession', c.s), null);
 });
-test('F01 session: no change writes nothing; a sale screen that cannot reproduce the saved rows is refused with nothing changed', async () => {
- const c = await savedInvoice(), sheet = c.sheet(), writes = c.batches();
+test('F01 session: no change writes nothing; a sale screen that cannot reproduce the saved rows saves the customer only, lines and total untouched (Trevor, 2026-11-18)', async () => {
+ const c = await savedInvoice(), sheet = c.sheet(), local = clone(c.s.getHistory()[0]);
  let r = await c.s.runEditSession(c.request({company: 'TEST LANDFILL'})); assert.equal(r.unchanged, true); assert.deepEqual(c.sheet(), sheet);
  c.s.draft.items[0].qty = 5;   // the screen would save a different document than the one History showed
- r = await c.s.runEditSession(c.request({phone: '1'})); assert.equal(r.ok, false); assert.equal(r.code, 'open_sale_screen');
- assert.deepEqual(c.sheet(), sheet); assert.equal(c.batches(), writes); assert.equal(c.marks().length, 0);
+ r = await c.s.runEditSession(c.request({phone: '808-555-0199'})); await flush2();
+ assert.equal(r.ok, true, JSON.stringify(r)); assert.equal(r.verified, true); assert.equal(r.pdf, 'none');
+ const before = rowsOf(sheet), after = rowsOf(c.sheet());
+ assert.equal(after[0][5], '808-555-0199');
+ after[0][5] = before[0][5]; assert.deepEqual(after, before, 'only the phone changed: every line and the total are as saved');
+ assert.equal(c.marks().length, 1);
+ assert.deepEqual(c.s.getHistory()[0], local, "this computer's copy is put back, not replaced by the screen's rebuilt sale");
 });
 test('F01 session: another register changed the document since History loaded it: refused, this computer\'s copy restored, nothing sent', async () => {
  const c = await savedInvoice(), loaded = c.fp(), saved = clone(c.s.getHistory()[0]);

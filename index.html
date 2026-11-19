@@ -1362,7 +1362,7 @@ function mpeLoadLib(kind) {
   <script src="ledger-tab.js"></script>
   <script src="email-draft.js"></script>
   <script src="email-window.js"></script>
-  <script src="ledger-data.js?v=2026.11.18.1"></script>
+  <script src="ledger-data.js?v=2026.11.18.2"></script>
   <script src="ledger-host.js"></script>
   <script src="document-renderer.js"></script>
   <script src="shop-settings.js"></script>
@@ -1376,7 +1376,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.18.1';
+const POS_RELEASE = '2026.11.18.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -7056,7 +7056,7 @@ async function writeTransactionToSheet(order) {
 
   // Only an acknowledged, unchanged snapshot may skip the Drive write.
   if (!order.historySyncPending && getPushedTxnIds().has(txnId)) { console.log('[MPE] TxnID already pushed, skipping:', txnId); return; }
-  const rows = transactionRowsForOrder(order, txnId, txnDate);
+  let rows = transactionRowsForOrder(order, txnId, txnDate);
   const savedDocType = DOC_TITLES[order.docType] ? order.docType : '';
   const savedDocNumber = order.docNumber ? String(order.docNumber) : '';
 
@@ -7086,6 +7086,7 @@ async function writeTransactionToSheet(order) {
     if (order.historySyncPending && existingRows.some(row => row[0] === 'CUSTOMER_UPDATE' && String(row[1] || '') === txnId)) {
       throw new Error('This transaction has saved customer updates. Open it in Ledger before changing its saved contents.');
     }
+    if (order.customerOnly && existingTxnIdx < 0) { const gone = new Error('This sale is not on the sheet. Nothing was changed.'); gone.permanent = true; throw gone; }
     if (existingTxnIdx >= 0) {
       // Another register may insert rows above this document after the read above. Every step below works at the old
       // offset, so before each one confirm the document's first row is still there; if not, stop and let the retry
@@ -7099,6 +7100,12 @@ async function writeTransactionToSheet(order) {
       };
       const end = transactionBlockEnd(existingRows, existingTxnIdx, txnId);
       const savedRows = existingRows.slice(existingTxnIdx, end);
+      // Customer-only save (History's silent save of a sale this screen cannot rebuild exactly): the saved rows stay as they are on
+      // the sheet, lines and total included; only the customer cells of the summary row (E-H, Q-V) come from the screen.
+      if (order.customerOnly) {
+        const mine = rows[0];
+        rows = savedRows.map((row, i) => i ? row.slice(0, 25) : Array.from({ length: 25 }, (_, col) => [4, 5, 6, 7, 16, 17, 18, 19, 20, 21].includes(col) ? (mine[col] ?? '') : (row[col] ?? '')));
+      }
       // The one in-place write. Sheets has no compare-and-set, so another register can insert rows above between the check and
       // the write and this lands on other sales' rows. So: (1) read the exact rows about to be replaced and refuse unless they are
       // this document's saved rows; (2) after writing, re-read the tab and prove the document sits at the written row exactly once;
@@ -10744,6 +10751,7 @@ function saveToHistory() {
       order.loadedFingerprint = _editSession.loadedFingerprint;
       order.sessionId = _editSession.id;
       if (_editSession.updateInfo) { order.updateInfo = true; order.customerRef = _editSession.customerRef || ''; }
+      if (_editSession.customerOnly) order.customerOnly = true;   // the sheet keeps its saved lines and total (writeTransactionToSheet)
     }
   } else {
     const pad = n => String(n).padStart(2, '0');
@@ -11661,7 +11669,7 @@ async function editSessionLoad(req, fail, stop = () => null, opts = {}) {   // s
   return null;
 }
 // Shared save and report (silent and embedded): saves the screen through the one save path and answers the one result.
-async function editSessionSave(req, base, updateInfo) {
+async function editSessionSave(req, base, updateInfo, customerOnly = false) {
   const fail = editSessionFail(base), txn = req.txn;
   try {
     const after = captureOrder();
@@ -11670,7 +11678,7 @@ async function editSessionSave(req, base, updateInfo) {
     const history = getHistory();
     const previous = history.find(entry => entry.txnId === txn.txnId);
     const previousCopy = previous ? JSON.parse(JSON.stringify(previous)) : null;
-    _editSession = { id: req.sessionId, loadedFingerprint: req.loaded, updateInfo: !!updateInfo,
+    _editSession = { id: req.sessionId, loadedFingerprint: req.loaded, updateInfo: !!updateInfo, customerOnly,
       customerRef: document.getElementById('custPanel').dataset.customerRef || '' };
     try {
       await prepareAndSaveForPrint('save_snapshot', { prepareOutput: false });
@@ -11691,7 +11699,10 @@ async function editSessionSave(req, base, updateInfo) {
       return { ...base, ok: true, pending: true, localSaved: true, number, customer: updateInfo ? 'waiting' : 'none' };
     }
     let pdf = 'none';
-    if (_docType === 'invoice') {
+    if (customerOnly) {   // this computer's copy was built from a screen that does not match the saved sale: put the old copy back (the sheet has the truth)
+      const all = getHistory(), at = all.findIndex(entry => entry.txnId === txn.txnId);
+      if (at >= 0) { if (previousCopy) all[at] = previousCopy; else all.splice(at, 1); localStorage.setItem(HISTORY_KEY, JSON.stringify(all)); }
+    } else if (_docType === 'invoice') {
       pdf = 'website';
       if (window.mpeDesktop && typeof window.mpeDesktop.invoiceDriveSave === 'function') {
         try { const saved = await window.mpeDesktop.invoiceDriveSave(ledgerDocumentRequest()); pdf = saved && saved.ok ? (saved.queued ? 'queued' : 'saved') : 'unavailable'; }
@@ -11712,14 +11723,18 @@ async function runEditSession(raw) {
   const base = editSessionBase(raw), fail = editSessionFail(base);
   if (!req || req.mode !== 'silent') return fail('invalid', 'That edit request was not valid. Nothing was changed.');
   if (_editSession || _embeddedEdit) return fail('busy', 'Another edit is saving. Try again in a moment.');
+  let customerOnly = false;
   try {
     const refused = await editSessionLoad(req, fail);
-    if (refused) return refused;
+    // The screen does not rebuild this sale exactly (Trevor, 2026-11-18: save the customer anyway). A silent save only ever changes
+    // the customer, so it goes on as a customer-only save: the sheet keeps the sale's saved lines and total untouched.
+    customerOnly = !!refused && refused.code === 'open_sale_screen';
+    if (refused && !customerOnly) return refused;
     for (const [key, id] of Object.entries(EDIT_PATCH_FIELDS)) if (key in req.patch) document.getElementById(id).value = req.patch[key];
   } catch (error) {
     return fail('error', 'The edit stopped part-way. Check History before trying again.', { detail: String(error && error.message || error).slice(0, 120) });
   }
-  return editSessionSave(req, base, !!req.patch.updateInfo);
+  return editSessionSave(req, base, !!req.patch.updateInfo, customerOnly);
 }
 function reportEditResult(result) {
   if (window.mpeDesktop && typeof window.mpeDesktop.editSessionResult === 'function') window.mpeDesktop.editSessionResult(result);
