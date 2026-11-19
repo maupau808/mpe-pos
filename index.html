@@ -985,11 +985,13 @@ body.embedded-edit #counterView .cv-kf{display:flex;align-items:center;gap:6px 1
 body.embedded-edit #counterView .cv-kf>*{order:0!important}
 }
 .cv-results{padding:4px;border-color:#c7d0c9;border-radius:8px;box-shadow:0 8px 22px rgba(20,40,25,.16);font-size:13.5px}
-.cv-results button[data-cv-pick]{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:10px;align-items:center;height:30px;padding:0 8px;border-radius:5px}
+.cv-results{display:grid;grid-template-columns:minmax(110px,max-content) minmax(0,1fr) auto;column-gap:10px;align-content:start}.cv-results[hidden]{display:none}
+.cv-results button{grid-column:1/-1}
+.cv-results button[data-cv-pick]{display:grid;grid-template-columns:subgrid;align-items:center;height:30px;padding:0 8px;border-radius:5px}
 .cv-results button:not([data-cv-pick]){padding:6px 8px;font-size:13.5px}
 .cv-results button[data-cv-pick]>b,.cv-results button[data-cv-pick]>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .cv-results button[data-cv-pick] small{display:inline;font-size:12px;margin:0}
-.cv-results button[data-cv-pick] strong{font-weight:400;color:#525d55}
+.cv-results button[data-cv-pick] strong{font-weight:400;color:#525d55;text-align:right}
 .cv-results button:hover,.cv-results button.active{background:#e8f2eb}
 body.dark .cv-results button[data-cv-pick] strong{color:#c9d3cc}
 </style>
@@ -1362,7 +1364,7 @@ function mpeLoadLib(kind) {
   <script src="ledger-tab.js"></script>
   <script src="email-draft.js"></script>
   <script src="email-window.js"></script>
-  <script src="ledger-data.js?v=2026.11.18.2"></script>
+  <script src="ledger-data.js?v=2026.11.18.3"></script>
   <script src="ledger-host.js"></script>
   <script src="document-renderer.js"></script>
   <script src="shop-settings.js"></script>
@@ -1376,7 +1378,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.18.2';
+const POS_RELEASE = '2026.11.18.3';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -12928,7 +12930,9 @@ function sync(){
 function hideSearch(){results.hidden=true;results.replaceChildren();searchTarget=null;searchMatches=[];}
 // K5 (Trevor, 2026-11-13): a short list of one-line matches, about six rows tall; the rest scroll inside it.
 const CV_RESULTS_HEIGHT=206;
-function positionSearch(){if(results.hidden||!searchTarget?.input?.isConnected)return;const anchor=searchTarget.input.getBoundingClientRect();const width=Math.min(innerWidth-16,Math.max(420,Math.min(560,anchor.width)));results.style.width=width+'px';results.style.maxHeight=CV_RESULTS_HEIGHT+'px';const wanted=Math.min(CV_RESULTS_HEIGHT,results.scrollHeight),below=innerHeight-anchor.bottom-8,above=anchor.top-8,up=below<wanted&&above>below;const room=Math.max(40,up?above:below),height=Math.min(wanted,room);results.style.maxHeight=Math.min(room,CV_RESULTS_HEIGHT)+'px';results.style.left=Math.min(Math.max(8,anchor.left),innerWidth-width-8)+'px';results.style.top=(up?anchor.top-height-6:anchor.bottom+6)+'px';results.dataset.direction=up?'up':'down';}
+// Wide enough to show every listed part whole (report a28cfb4a), never wider than the box typed in (700 when that box is narrow) or the window.
+function searchListWidth(content,anchorWidth,viewport){return Math.min(viewport-16,Math.max(420,Math.min(content,Math.max(700,anchorWidth))));}
+function positionSearch(){if(results.hidden||!searchTarget?.input?.isConnected)return;const anchor=searchTarget.input.getBoundingClientRect();results.style.width='max-content';const width=searchListWidth(Math.ceil(results.getBoundingClientRect().width)+16,anchor.width,innerWidth);results.style.width=width+'px';results.style.maxHeight=CV_RESULTS_HEIGHT+'px';const wanted=Math.min(CV_RESULTS_HEIGHT,results.scrollHeight),below=innerHeight-anchor.bottom-8,above=anchor.top-8,up=below<wanted&&above>below;const room=Math.max(40,up?above:below),height=Math.min(wanted,room);results.style.maxHeight=Math.min(room,CV_RESULTS_HEIGHT)+'px';results.style.left=Math.min(Math.max(8,anchor.left),innerWidth-width-8)+'px';results.style.top=(up?anchor.top-height-6:anchor.bottom+6)+'px';results.dataset.direction=up?'up':'down';}
 function showSearch(input,row){if(!editable())return;if(!loaded){flashScanCommand('Prices are still loading','warn');return;}const text=input.value.trim();if(!text){hideSearch();return;}searchTarget={input,row,text};searchMatches=searchParts(text);searchActive=0;renderResults();}
 function renderResults(){if(!searchTarget)return;const matches=searchMatches.slice(0,MAX_RESULTS);results.innerHTML=matches.map((p,n)=>`<button type="button" data-cv-pick="${n}" class="${n===searchActive?'active':''}"><b>${enc(p.og||p.pn)}</b><span>${enc(p.desc||p.pn)}${p.make?`<small> · ${enc(p.make)}</small>`:''}</span><strong>${p.list?enc(fmt(p.list)):''}</strong></button>`).join('')+(!matches.length?`<button type="button" data-cv-custom="1">Use “${enc(searchTarget.text)}” as a custom item</button>`:'')+(searchMatches._more?.length?`<button type="button" data-cv-more="1">Show ${searchMatches._more.length} other variants</button>`:'');results.hidden=false;positionSearch();}
 function pick(part,tabToQty=false){if(!editable())return;const target=searchTarget;if(!target)return;const i=target.row==null?emptyRow():target.row;const input=tbody.querySelector(`[data-row="${i}"].part-input`);input.value=part.og||part.pn;ensureScannerMobileRow(i);applyMobilePart(i,part,{skipFocus:true});hideSearch();q('#cvEntry').value='';schedule();if(tabToQty)focusLineField(i,'[data-cv-field="qty"]');else requestAnimationFrame(()=>q('#cvEntry').focus());}
