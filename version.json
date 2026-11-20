@@ -60,5 +60,125 @@
         }
       ]
     }
+  },
+  "parts": {
+    "release": "2026.11.20.1",
+    "files": [
+      {
+        "name": "mpe_parts.db",
+        "size": 822673408,
+        "sha256": "5dd5c830fdff58af9c933dca69969be5415d5ee62676300a51497830db64be71",
+        "chunks": [
+          {
+            "fileId": "1ZpVen9icpDdkQFPib1SXIMlzx0kVrtB-",
+            "name": "MPE-Parts-2026.11.20.1-mpe_parts.db.gz.part-000",
+            "size": 41943040,
+            "sha256": "659b7545481193f4753bc772fc654e2a378b7ea2fc65222e5ccbee771db1185b"
+          },
+          {
+            "fileId": "1D-nXRy9QSctdrZ9y_yxH5WwT8mdD4xGV",
+            "name": "MPE-Parts-2026.11.20.1-mpe_parts.db.gz.part-001",
+            "size": 41943040,
+            "sha256": "088d4bfe670b11b10c35781259305bcf717c0661d81a660415eadf0ac492772b"
+          },
+          {
+            "fileId": "1ptoAvrnO9MfOc5ZDX2tjsV3AuB4P4qqZ",
+            "name": "MPE-Parts-2026.11.20.1-mpe_parts.db.gz.part-002",
+            "size": 41943040,
+            "sha256": "0d2aa6c2a0715f718bdeb36eb49cbd9b2f11655ec63f948e7a88eb745490c43a"
+          },
+          {
+            "fileId": "1iYN4yD46FFqXZkWBgXved716vAzzKbUv",
+            "name": "MPE-Parts-2026.11.20.1-mpe_parts.db.gz.part-003",
+            "size": 41943040,
+            "sha256": "120d1bf5bba5f5b699f9017c9ae37c5fa38a7f04cf078e2bd52429058f8dfdb6"
+          },
+          {
+            "fileId": "1GdqRWbxEvfhcXdxlcPR2oZ1g7lgXH7Xi",
+            "name": "MPE-Parts-2026.11.20.1-mpe_parts.db.gz.part-004",
+            "size": 28507366,
+            "sha256": "a51bc6afc48fe14b005594822f4cd1d1ecf2983fa73b22aaff18b8f0814839da"
+          }
+        ]
+      },
+      {
+        "name": "mpe_parts_server.py",
+        "size": 141083,
+        "sha256": "957454d7f3210516d7658b28f88de451d9219f0bbdc7b76966fded5d31cb9a84",
+        "chunks": [
+          {
+            "fileId": "1veqyA37ULnLIr4fmLGcmZFr-sEMm1qph",
+            "name": "MPE-Parts-2026.11.20.1-mpe_parts_server.py.gz.part-000",
+            "size": 45861,
+            "sha256": "b079c353e44c054414292a8527d70806ed4c8e0ab0b6ffae0f979058f5ff7a1b"
+          }
+        ]
+      },
+      {
+        "name": "mpe_parts.html",
+        "size": 158905,
+        "sha256": "35d6fdb1db892e4f4aa8dae60ff0b8986287efcae58e7a29ccc3ffadce443840",
+        "chunks": [
+          {
+            "fileId": "15kzP0zCuLBtqfZXMmFi2zoVlaXBzkkAE",
+            "name": "MPE-Parts-2026.11.20.1-mpe_parts.html.gz.part-000",
+            "size": 51585,
+            "sha256": "68a23522dd6a3fbd57144ac0e16004e9cba31e0c0a35c75cbbc1f111398a976d"
+          }
+        ]
+      },
+      {
+        "name": "part_number.py",
+        "size": 3561,
+        "sha256": "4fe79d8062d6511b894c185bbab4966b4682f8b89b996e7109b9b2fc8689347a",
+        "chunks": [
+          {
+            "fileId": "11y3I9oPCMO2RhjnVhBWM0WHMML3xDJUz",
+            "name": "MPE-Parts-2026.11.20.1-part_number.py.gz.part-000",
+            "size": 1518,
+            "sha256": "0cc06450931f496037cf0dab86a8da7013940eb2349491455bf60c70821a6776"
+          }
+        ]
+      },
+      {
+        "name": "part_number.js",
+        "size": 3773,
+        "sha256": "2483bd6e030452193ccc95dc3f0f4f14f17ed21457b8cd4cc1109796c658fa5b",
+        "chunks": [
+          {
+            "fileId": "140KY9ZTBqgEagvvDcdUAMWGqnkbupS0g",
+            "name": "MPE-Parts-2026.11.20.1-part_number.js.gz.part-000",
+            "size": 1685,
+            "sha256": "0c06f4c3127781ff9ad0a94664bcc86a0b376b530544c48721cf458e44985536"
+          }
+        ]
+      },
+      {
+        "name": "pn_copy.js",
+        "size": 4674,
+        "sha256": "ea029bffcd97d104cd8b1a0b90085d1793777e6900d4907ee1d6a953b94458c1",
+        "chunks": [
+          {
+            "fileId": "1KwZsRLH2ixC8EjT8EAB_IBvq8bVCntnY",
+            "name": "MPE-Parts-2026.11.20.1-pn_copy.js.gz.part-000",
+            "size": 2211,
+            "sha256": "72028924255181cd9a00a301b6d7a085e5421439d634f9a632079cef6fd8dbe6"
+          }
+        ]
+      },
+      {
+        "name": "search_synonyms.py",
+        "size": 7592,
+        "sha256": "bdd1c77ac91fbdd78bc85d6cb52f2521a9130c457a62a5bfca447172324e43ff",
+        "chunks": [
+          {
+            "fileId": "1NcAcoUZCfcem6FiSJu8wJ0s_0yjJps6B",
+            "name": "MPE-Parts-2026.11.20.1-search_synonyms.py.gz.part-000",
+            "size": 2913,
+            "sha256": "71925b8f15db5b479518f313488f97cd7495d8edd3d3ad8e79457e78dc507f28"
+          }
+        ]
+      }
+    ]
   }
 }
