@@ -862,7 +862,7 @@ body.sales-view .search-table td:nth-child(6) { display: none !important; }
  body.embedded-edit #counterView .cv-article.cv-added{background:#eef6f0}body.embedded-edit #counterView .cv-article.cv-mismatch{box-shadow:inset 3px 0 0 #b26a00;background:#fff8ec}body.embedded-edit tr.edit-mismatch>td{background:#fff8ec}body.embedded-edit #counterView #cvEntry{border-color:#9cc3a8}body.embedded-edit tr.drop-before>td{box-shadow:inset 0 3px 0 #24683a}body.embedded-edit tr.drop-after>td{box-shadow:inset 0 -3px 0 #24683a}
 }
 @media screen{#counterView #adminFullScreen[aria-pressed="true"],#counterView #adminFrontLock[aria-pressed="true"]{background:#dce8dc;border-color:#8ca28b;font-weight:600!important}body.dark #counterView #adminFullScreen[aria-pressed="true"],body.dark #counterView #adminFrontLock[aria-pressed="true"]{background:#3e5942;color:#eff5ec;border-color:#779379}#counterView .cv-tabs.cv-fixed-tabs{max-width:none;overflow:visible;flex-shrink:0}}
-#counterView .cv-preview{display:block;width:100%;max-width:860px;height:100%;min-height:420px;margin:0 auto;border:1px solid #d5ddd3;border-radius:6px;background:#fff}#counterView.cv-previewing .cv-work>:not(.cv-preview){display:none!important}#counterView.cv-previewing .cv-work{background:#eef1ed}#counterView #cvPreviewBtn[aria-pressed="true"]{background:#e8f2eb;border-color:#9cc3a8;color:#24683a}body.dark #counterView #cvPreviewBtn[aria-pressed="true"]{background:#26402e;border-color:#48544a;color:#bfe0c9}
+#counterView .cv-preview{display:block;width:100%;max-width:860px;height:100%;min-height:420px;margin:0 auto;border:1px solid #d5ddd3;border-radius:6px;background:#fff}#counterView.cv-previewing .cv-work>:not(.cv-preview){display:none!important}body.embedded-edit #counterView.cv-previewing .cv-work>.cv-workbar{display:flex!important;border-bottom:0}body.embedded-edit #counterView.cv-previewing .cv-workbar>:not(#cvPreviewBtn){visibility:hidden}body.embedded-edit #counterView .cv-preview{height:calc(100% - 40px)}body.embedded-edit #counterView #cvPreviewBtn{display:flex;align-items:center;justify-content:center;width:34px;height:32px;padding:7px;flex-shrink:0}body.embedded-edit #counterView #cvPreviewBtn svg{width:18px;height:18px}#counterView.cv-previewing .cv-work{background:#eef1ed}#counterView #cvPreviewBtn[aria-pressed="true"]{background:#e8f2eb;border-color:#9cc3a8;color:#24683a}body.dark #counterView #cvPreviewBtn[aria-pressed="true"]{background:#26402e;border-color:#48544a;color:#bfe0c9}
 @media print{#counterView,.cv-results{display:none!important}tr[data-order-discount] td,tr[data-order-discount] input,tr.cv-order-print td,tr.cv-order-print input{font-weight:800!important;color:#000!important}}
 
 
@@ -1364,7 +1364,7 @@ function mpeLoadLib(kind) {
   <script src="ledger-tab.js"></script>
   <script src="email-draft.js"></script>
   <script src="email-window.js"></script>
-  <script src="ledger-data.js?v=2026.11.18.3"></script>
+  <script src="ledger-data.js?v=2026.11.21.1"></script>
   <script src="ledger-host.js"></script>
   <script src="document-renderer.js"></script>
   <script src="shop-settings.js"></script>
@@ -1378,7 +1378,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.18.3';
+const POS_RELEASE = '2026.11.21.1';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -12924,7 +12924,7 @@ function sync(){
  q('.cv-timing').hidden=!!window.mpeDesktop&&!window.mpeDesktop.documentPayments&&orderTiming!=='after';   /* an app that cannot print an after-tax discount hides the choice */
  const maximum=(get,base,cap)=>Math.min(cap,Math.max(base,...ids.map(i=>String(get(rowInfo(i))).length*9+12)));root.style.setProperty('--cv-columns',`22px minmax(150px,1fr) ${maximum(r=>plain(r.cost),64,110)}px 58px 68px ${maximum(r=>plain(r.base),92,140)}px 44px ${maximum(r=>fmt(r.total),104,154)}px 34px`);
  if(ids.length>lastCount){q('.cv-work').scrollTop=q('.cv-work').scrollHeight;}lastCount=ids.length;
- {const none=_docType==='internal'||document.body.classList.contains('embedded-edit');q('#cvPreviewBtn').hidden=none;if(previewOpen)none?closePreview():showPreview(true);}
+ {const none=_docType==='internal',btn=q('#cvPreviewBtn');if(document.body.classList.contains('embedded-edit')&&btn.parentNode!==q('.cv-workbar')){q('.cv-workbar').append(btn);q('.cv-workbar').after(q('#cvPreview'));}btn.hidden=none;if(previewOpen)none?closePreview():showPreview(true);}   /* History edit hides the top bar: the eye sits at the right of the Add note row (Trevor, 2026-11-21, report 432ea1fa) */
  }finally{busy=false;}
 }
 function hideSearch(){results.hidden=true;results.replaceChildren();searchTarget=null;searchMatches=[];}
