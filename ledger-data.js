@@ -64,7 +64,7 @@
   const NET_DAYS = 30;
   const COUNT_FROM = '2026-01-01'; // invoices dated earlier never count as owed
   const SOON_DAYS = 7;
-  const METHODS = Object.freeze(['cash', 'check', 'card_terminal', 'helcim_card', 'helcim_ach', 'credit_given', 'credit_used']); // helcim_*: payments Helcim reported (helcimPaymentRows); credit_*: store credit
+  const METHODS = Object.freeze(['cash', 'check', 'card_terminal', 'sheffield', 'helcim_card', 'helcim_ach', 'credit_given', 'credit_used']); // helcim_*: payments Helcim reported (helcimPaymentRows); credit_*: store credit
   // Labels for the two store-credit methods (ledger.js owns the rest in its METHOD_LABEL). credit_given on a sale = an overpayment moved off it.
   const CREDIT_LABELS = Object.freeze({ credit_given: 'Moved to store credit', credit_used: 'Store credit' });
   const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs', email_sent: 'sent', paylink: 'paylinks', due: 'dues', date: 'dates', note: 'orderNotes' }); // paylink: note = url|helcimInvoiceId (parseMarks.paylinks)
@@ -296,7 +296,7 @@
     return 'pay_' + (now || Date.now()).toString(36) + Math.random().toString(36).slice(2, 8);
   }
   function buildPaymentRow(p, now) {
-    if (!METHODS.includes(p.method)) throw new Error('method must be cash, check, card_terminal, helcim_card, helcim_ach, credit_given or credit_used');
+    if (!METHODS.includes(p.method)) throw new Error('method must be cash, check, card_terminal, sheffield, helcim_card, helcim_ach, credit_given or credit_used');
     const amt = typeof p.amount === 'string' && p.amount.trim() === '' ? NaN : Number(p.amount);
     if (!Number.isFinite(amt) || amt < 0) throw new Error('amount must be a number, 0 or more');
     if (CREDIT[p.method]) { // store credit: positive amount, an owner in K; given needs a reason, used needs the sale it paid
@@ -594,7 +594,7 @@
         name, company, street, addrLines: lines, city: s(q.city), region: s(q.state), zip: s(q.zip),
         addr: [street, s(q.city), s(q.state), s(q.zip)].filter(Boolean).join(', '), phone, email,
         total: money(q.total), tax: money(q.tax), fromQuote: '', items, presell: false, contactConflict: false, completedContact: null,
-        qboStatus: s(q.status).toLowerCase(), qboBalance: money(q.balance), qboDue: isoDate(q.dueDate), qboExpires: isoDate(q.expires),
+        qboStatus: s(q.status).toLowerCase(), qboBalance: money(q.balance), qboLedger: q.ledger && typeof q.ledger === 'object' ? q.ledger : {}, qboFailed: q.ledgerFailed && typeof q.ledgerFailed === 'object' ? q.ledgerFailed : {}, qboDue: isoDate(q.dueDate), qboExpires: isoDate(q.expires),
         draftMade: false, draftText: '', paymentsLive: [], _ph: phone.replace(/\D/g, ''),
       };
       r._qc = custs.get(r.customerId) || null; // the QuickBooks customer, for the buyer's contact fields
@@ -606,14 +606,22 @@
     return out;
   }
   // Money owed: only an open QuickBooks invoice dated 2026-01-01 or later counts (state unpaid/dueSoon/overdue, due date = QuickBooks'
-  // dueDate). Earlier ones are 'old' (never tallied, no red). Void is 'void' with no replacement. Nothing here touches Payments.
-  function qboState(r, today) {
+  // dueDate). Earlier ones are 'old' (never tallied, no red). Void is 'void' with no replacement.
+  // Payments taken in History (Trevor, 2026-11-22): pays = this invoice's live Payments rows (txnId 'qbo:<id>'). The Mac sends each to
+  // QuickBooks and lists it in the record's `ledger` ({ payment_id: amount }, written with the balance it changed). What is left =
+  // QuickBooks' balance, less live payments not sent yet, plus sent payments since undone. r.qboPending: something still to send.
+  function qboState(r, today, pays) {
     if (r.kind !== 'invoice') { r.state = r.kind; return r; }
-    const total = cents(r.total), left = Math.max(0, cents(r.qboBalance));
+    const sent = r.qboLedger || {}, liveIds = new Set((pays || []).map(p => p.payment_id));
+    const notSent = (pays || []).filter(p => !(p.payment_id in sent)).reduce((a, p) => a + cents(p.amount), 0);
+    const undone = Object.keys(sent).filter(id => !liveIds.has(id)).reduce((a, id) => a + cents(money(sent[id])), 0);
+    const total = cents(r.total), left = Math.max(0, cents(r.qboBalance) - notSent + undone);
+    r.paymentsLive = pays || []; r.qboPending = notSent > 0 || undone > 0;
+    r.qboRefused = (pays || []).map(p => s((r.qboFailed || {})[p.payment_id])).find(Boolean) || ''; // why QuickBooks will not take a payment
     r.dueDate = r.qboDue || (r.date ? addDays(r.date, NET_DAYS) : '');
     r.daysLate = 0; r.paidDate = ''; r.paidMethod = '';
     if (r.qboStatus === 'void') { r.state = 'void'; r.balance = 0; r.paid = 0; return r; }
-    if (r.qboStatus === 'paid' || left <= 0) { r.state = 'paid'; r.balance = 0; r.paid = r.total; return r; }
+    if (left <= 0) { r.state = 'paid'; r.balance = 0; r.paid = r.total; return r; }
     r.balance = left / 100; r.paid = Math.max(0, (total - left) / 100);
     if (r.date && r.date < COUNT_FROM) { r.state = 'old'; return r; }
     const days = r.dueDate ? dayNum(r.dueDate) - dayNum(today) : Infinity;
@@ -627,8 +635,10 @@
   // Copies, so a re-merge starts clean. A QuickBooks document that is the copy of a register serial sale (addQboBuyers) is left out, unless it
   // still has money owing or the sale is an owing invoice (the number-based payment logic below keeps those).
   const OWING = new Set(['unpaid', 'dueSoon', 'overdue', 'old']);
-  function mergeQbo(sheet, mapped, today) {
+  function mergeQbo(sheet, mapped, today, payments) {
     today = todayIso(today);
+    const pays = new Map(); // QuickBooks invoice txnId -> its live Payments rows
+    for (const p of livePayments(payments || [])) if (p.txnId.startsWith('qbo:')) (pays.get(p.txnId) || pays.set(p.txnId, []).get(p.txnId)).push(p);
     const key = r => r.kind + '|' + s(r.number).toLowerCase();
     const have = new Set(sheet.filter(r => r.number).map(key));
     const qBy = kind => new Map(mapped.filter(r => r.kind === kind && r.number).map(r => [s(r.number).toLowerCase(), r]));
@@ -646,7 +656,7 @@
       return { ...r, paidInQbo: true, balance: left / 100, paid: Math.max(0, (cents(r.total) - left) / 100) };
     });
     const extra = [];
-    for (const r of mapped) if (!used.has(r) && !hidden.has(r) && !(r.number && have.has(key(r)))) extra.push(qboState(r, today));
+    for (const r of mapped) if (!used.has(r) && !hidden.has(r) && !(r.number && have.has(key(r)))) extra.push(qboState(r, today, pays.get(r.txnId)));
     return merged.concat(extra);
   }
   // "QuickBooks buyer": a register sale (not a quote) with no buyer, or the Jana Yamashiro placeholder, whose serial (uppercase letters and
@@ -981,15 +991,15 @@
     const fn = displayRows || (owner && owner.displayRows && (rows => owner.displayRows(rows)));
     let rows = txnRows, states = null;
     if (fn) { const d = await fn(txnRows); rows = d.rows; states = d.states; }
-    const marks = parseMarks(paymentRows);
-    const records = derive(parseTransactions(rows, states, { yKnown: yKnown !== false }), parsePayments(paymentRows), today, drafts, marks.cancels, marks.editLog, marks.dues, marks.orderNotes, marks.dates);
+    const marks = parseMarks(paymentRows), payments = parsePayments(paymentRows);
+    const records = derive(parseTransactions(rows, states, { yKnown: yKnown !== false }), payments, today, drafts, marks.cancels, marks.editLog, marks.dues, marks.orderNotes, marks.dates);
     const model = {
       records,
       list: (name, query) => search(filter(model.records, name), query),
       owedSummary: () => owedSummary(model.records),
       search: q => search(model.records, q),
       // Merge mapped QuickBooks records (qboRecords) in; model.records is a new array afterwards.
-      addQbo(mapped, now) { model.records = mergeQbo(records, mapped || [], now || today); return model.records; },
+      addQbo(mapped, now) { model.records = mergeQbo(records, mapped || [], now || today, payments); return model.records; },
     };
     return model;
   }

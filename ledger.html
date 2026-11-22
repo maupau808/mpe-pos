@@ -323,7 +323,7 @@ body.dragging{cursor:col-resize;user-select:none}
 .rq-sw:disabled{cursor:default;color:var(--ink-3)}.rq-sw:disabled i{opacity:.55}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
-<script src="ledger-data.js?v=2026.11.21.1"></script>
+<script src="ledger-data.js?v=2026.11.22.1"></script>
 <script src="shop-settings.js"></script>
 <!-- document-renderer.js is a byte-for-byte copy of POSDesktop/src/document-renderer.js (test_document_renderer_copy.cjs). -->
 <script>var module = { exports: {} };</script>
@@ -393,7 +393,7 @@ addEventListener('keydown',e=>{if(e.key!=='.'||!e.ctrlKey||e.metaKey||e.altKey||
   <div class="hint">Type a smaller amount for a part payment. The rest stays owed.</div>
   <div class="err" id="payErr" role="alert"></div>
   <div class="hint" style="margin-top:6px">How was it paid?</div>
-  <div class="how"><button class="btn primary" value="cash">Cash</button><button class="btn primary" value="check">Check</button><button class="btn primary" value="card_terminal">Card</button><button class="btn credit" id="payCredit" value="credit_used" hidden>Store credit</button></div>
+  <div class="how"><button class="btn primary" value="cash">Cash</button><button class="btn primary" value="check">Check</button><button class="btn primary" value="card_terminal">Card</button><button class="btn primary" value="sheffield">Sheffield</button><button class="btn credit" id="payCredit" value="credit_used" hidden>Store credit</button></div>
   <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn quiet" value="cancel" formnovalidate>Cancel</button></div>
 </form></dialog>
 <dialog id="creditDlg" class="pay"><form method="dialog"><h2 id="crTitle">Give store credit</h2>

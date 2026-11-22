@@ -41,7 +41,7 @@
   const ARCHIVE_DAYS = 30; // Trevor (Nov 13): an open quote dated more than 30 days ago moves to the collapsed Archived quotes group (hide only)
   const HIDE_CANCELLED_MS = 5 * 60 * 1000; // Trevor (Nov 13): a cancelled sale stays struck through this long, then leaves the lists (search still finds it)
   const PLACES = { 1: 'Mac', 2: 'PC Left', 3: 'PC Right', 4: 'Tech Dept', 5: 'back_office', 9: 'Web' };
-  const METHOD_LABEL = { cash: 'Cash', check: 'Check', card_terminal: 'Card terminal', helcim_card: 'Card online', helcim_ach: 'Bank transfer', ...L.CREDIT_LABELS }; // + credit_given / credit_used
+  const METHOD_LABEL = { cash: 'Cash', check: 'Check', card_terminal: 'Card terminal', sheffield: 'Sheffield', helcim_card: 'Card online', helcim_ach: 'Bank transfer', ...L.CREDIT_LABELS }; // + credit_given / credit_used
   const KIND_LABEL = { invoice: 'Invoice', quote: 'Quote', receipt: 'Sale' };
   const STORE_KEY = 'mpe.ledger.ui';
   const UNPAID = new Set(['unpaid', 'dueSoon', 'overdue']);
@@ -268,8 +268,10 @@
   // Buttons for one record, strongest first. Each: { act, label, primary?, quiet?, menu?, disabled?, why? }.
   function actionsFor(r, canPdf, helcim) { // helcim: { connected, link } for Add pay link (only when History runs in the app with Helcim set up)
     const a = [];
-    if (isQbo(r)) { // read-only copy from QuickBooks: no Payments tab, edit, PDF or email draft
+    if (isQbo(r)) { // a copy from QuickBooks: no edit or email draft. An open invoice takes payments (the Mac sends each to QuickBooks).
       if (qboOpenQuote(r) && !r.convertedTo) a.push({ act: 'toSale', label: 'Convert to invoice', primary: true });
+      if (r.kind === 'invoice' && UNPAID.has(r.state)) a.push({ act: 'pay', label: r.paid > 0 ? `Take payment · ${money(r.balance)} left` : 'Take payment', primary: true });
+      if (r.kind === 'invoice' && (r.paymentsLive || []).length) a.push({ act: 'undoPay', label: r.paymentsLive.length > 1 ? 'Undo last payment' : 'Undo payment' });
       a.push({ act: 'reprint', label: 'Print' });
       if (canPdf) a.push({ act: 'pdf', label: 'Download' });
       a.push({ act: 'copy', label: 'Copy to new sale', quiet: true });
@@ -313,7 +315,7 @@
       const draft = marks && marks.drafts && (marks.drafts[r.txnId] || marks.drafts[r.number]);
       if (draft) ev.push({ t: 'Email draft made', d: draft, at: '' });
     }
-    if (!isQbo(r)) { // a register sale lists only the store credit it used (D17)
+    { // a register sale lists only the store credit it used (D17)
       const from = (records || []).find(x => x.txnId === r.fromQuote && x.kind === 'quote'); // its deposit shows on the sale made from it
       const ids = new Set([r.txnId, from && from.txnId].filter(Boolean)), nums = new Set([r.number, from && from.number].filter(Boolean));
       const mine = L.parsePayments(paymentRows).filter(p => (ids.has(p.txnId) || (!p.txnId && nums.has(p.invoice_number))) && (r.kind !== 'receipt' || p.method === 'credit_used'));
@@ -488,7 +490,7 @@
   function saveUi(storage, ui) { try { storage.setItem(STORE_KEY, JSON.stringify(ui)); return true; } catch (_) { return false; } }
 
   // The one line that replaces Mark paid / Undo on a QuickBooks record.
-  const qboNote = r => (!isQbo(r) ? '' : r.kind !== 'invoice' ? 'From QuickBooks' : r.state === 'paid' ? 'Paid in QuickBooks' : r.state === 'void' ? 'Void in QuickBooks' : 'Open in QuickBooks');
+  const qboNote = r => (!isQbo(r) ? '' : r.kind !== 'invoice' ? 'From QuickBooks' : r.qboRefused ? `QuickBooks did not take the payment: ${r.qboRefused}. Undo it and check the invoice.` : r.qboPending ? 'Sending to QuickBooks. The Mac does it within a minute or two.' : r.state === 'paid' ? 'Paid in QuickBooks' : r.state === 'void' ? 'Void in QuickBooks' : 'Open in QuickBooks');
 
   // "QuickBooks as of Sat 2:04 AM" (Honolulu) from the file's own generatedAt; stale after 4 days (96 hours).
   const QBO_STALE_HOURS = 96;
@@ -1496,7 +1498,7 @@
       // What used to be pills: quiet lines under the money, a dot only for what needs attention.
       const notes = [awaitingPickup(r) && { text: 'Presold, awaiting pickup', tone: 'warn' }, creditDue(r) && { text: creditDue(r), tone: 'late' },
         r.movedText && { text: r.movedText, tone: 'ok' }, pendingIds().has(r.txnId) ? { text: 'Saved on this computer, not shared yet' } : parkedIds().has(r.txnId) && { text: 'Last change needs a look', tone: 'late' },
-        qn && { text: qn }, stale ? { text: `Emailed ${fmtD(stale)}, changed since`, tone: 'warn' } : sent ? { text: `Emailed ${fmtD(sent)}` } : draft && { text: `Draft made ${fmtD(draft)}` },
+        qn && { text: qn, tone: r.qboRefused ? 'late' : '' }, stale ? { text: `Emailed ${fmtD(stale)}, changed since`, tone: 'warn' } : sent ? { text: `Emailed ${fmtD(sent)}` } : draft && { text: `Draft made ${fmtD(draft)}` },
         r.kind === 'invoice' && staleLink(r) && { text: 'Pay link needs a new link: the total changed', tone: 'warn' },
         look && { text: look === STALE_LOOK ? STALE_LOOK : 'Needs a look: ' + look, tone: 'late' }].filter(Boolean);
       if (st.dueEdit && st.dueEdit.txnId !== r.txnId) st.dueEdit = null; // another record: the due date box closes
@@ -1686,7 +1688,7 @@
       $('payErr').textContent = '';
       // Store credit (invoices only): the customer's credit, at most what is owed. Untouched, the amount box means "all of it"; a smaller
       // typed amount uses that much. The sheet is read again when it is written (takeCredit).
-      const key = !dep && credits() ? L.creditKey(r, ctx()) : '', avail = key ? Math.min(Math.max(0, creditOf(key)), Math.round(r.balance * 100)) : 0, typedAt = $('payAmt').value;
+      const key = !dep && !isQbo(r) && credits() ? L.creditKey(r, ctx()) : '', avail = key ? Math.min(Math.max(0, creditOf(key)), Math.round(r.balance * 100)) : 0, typedAt = $('payAmt').value;
       $('payCredit').hidden = !(avail > 0);
       $('payCredit').textContent = `Store credit · ${money(avail / 100)}`;
       d.returnValue = '';
