@@ -1364,7 +1364,7 @@ function mpeLoadLib(kind) {
   <script src="ledger-tab.js"></script>
   <script src="email-draft.js"></script>
   <script src="email-window.js"></script>
-  <script src="ledger-data.js?v=2026.11.22.1"></script>
+  <script src="ledger-data.js?v=2026.11.22.2"></script>
   <script src="ledger-host.js"></script>
   <script src="document-renderer.js"></script>
   <script src="shop-settings.js"></script>
@@ -1378,7 +1378,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.22.1';
+const POS_RELEASE = '2026.11.22.2';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -1392,7 +1392,6 @@ const DRIVE_FILE_ID = '1xpDOnCq71CZ-Oc4Fh9enVugOL8w75bEz'; // from your Drive UR
 // POS receipts use this local service rather than the system print dialog.
 // The service owns the fixed Brother queue + one-sided settings.
 const POS_PRINT_URL = 'http://localhost:8765/pos-print';
-const QBO_CUSTOMERS_URL = 'http://localhost:8766/customers/cache';
 // Stage 4 (SQLite crossover): lean gzipped JSON price feed lives in its OWN Drive file.
 // The POS tries this FIRST and silently falls back to the xlsx above on ANY problem
 // (unset id, fetch error, gunzip/parse error, empty feed). Paste the id once created.
@@ -12275,7 +12274,7 @@ function storeQboCustomers(customers, version) {
   return true;
 }
 // The registers' app already downloads the nightly QuickBooks copy for History; the sale screen reads its customers
-// from the same Drive file, only when it changed. A browser on the Mac still uses the Mac's local QuickBooks service.
+// from the same Drive file, only when it changed. A plain browser keeps the last stored copy.
 async function syncQboCustomersFromDrive() {
   const google = window.mpeDesktop.google;
   const info = await google.catalogInfo('qbo');
@@ -12297,16 +12296,6 @@ async function syncQboCustomerCache() {
   _qboCustomerCacheFetchAt = Date.now() - 28 * 60 * 1000;
   if (desktopGoogleAvailable() && typeof DecompressionStream !== 'undefined') {
     try { if (await syncQboCustomersFromDrive()) { _qboCustomerCacheFetchAt = Date.now(); return; } } catch (error) { console.warn('QuickBooks customers from Drive unavailable:', error?.message || error); }
-  }
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 10000);
-  try {
-    const response = await fetch(QBO_CUSTOMERS_URL, { cache: 'no-store', signal: ctl.signal });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok || !payload.verified || !Array.isArray(payload.customers) || payload.customers.length !== payload.count || payload.count < 1) return;
-    if (storeQboCustomers(payload.customers, 'local:' + (payload.refreshed_at || ''))) _qboCustomerCacheFetchAt = Date.now();
-  } catch {} finally {
-    clearTimeout(timer);
   }
 }
 
