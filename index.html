@@ -1364,7 +1364,7 @@ function mpeLoadLib(kind) {
   <script src="ledger-tab.js"></script>
   <script src="email-draft.js"></script>
   <script src="email-window.js"></script>
-  <script src="ledger-data.js?v=2026.11.22.2"></script>
+  <script src="ledger-data.js?v=2026.11.22.3"></script>
   <script src="ledger-host.js"></script>
   <script src="document-renderer.js"></script>
   <script src="shop-settings.js"></script>
@@ -1378,7 +1378,7 @@ const MPE_CUSTOMERS = [];
 /*MPE_CUSTOMERS_END*/
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 const SHEETS_ID = '18muyvVxMXRp1gSo0TikijL2SyKOqt7qVIL886vbKZrA'; // MPE Price Updates
-const POS_RELEASE = '2026.11.22.2';
+const POS_RELEASE = '2026.11.22.3';
 // One shop-facing row per approved STIHL saw model/variant. Exact and partial
 // part-number searches still resolve every physical SKU before this text filter.
 const STIHL_SAW_TEXT_PNS = new Set(('11462000062 11462000061 11482000212 11482000213 11482000216 11482000215 11372000357 11372000361 11452000286 11452000299 11482000214 11232000881 11432000700 11432000699 11412000680 11412000676 11412000681 11412000674 11402000595 11402000643 11402000631 11402000633 11402000637 11402000618 11402000807 11422000201 11422000137 11422000210 11422000142 11472000033 11472000097 11442000423 11442000336 11442000387 11442000410 11242000218 11242000222 MA040115861 MA040115883 MA040115845 MA032000002 12522000048 MA052000017 MA032000007 MA032000016 MA012000014 MA022000058 12092000060 12102000031 11302000373 11302000449').split(' '));
@@ -3829,7 +3829,7 @@ function appendSerialToMatchingUnitRow(part, serial) {
   const serialKey = canonicalSerialNumber(value);
   if (!part?.warranty || !pn || !serialKey || packageComponentPNs().has(pn)) return null;
 
-  let targetRow = null;
+  let targetRow = null, openRow = null;
   for (let row = 0; row < NUM_ROWS; row++) {
     const input = tbody.querySelector(`[data-row="${row}"].part-input`);
     const tr = tbody.querySelector(`tr[data-row="${row}"]`);
@@ -3840,13 +3840,16 @@ function appendSerialToMatchingUnitRow(part, serial) {
       return { row, qty: parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1, duplicate: true };
     }
     if (targetRow === null) targetRow = row;
+    if (openRow === null && serialInputs.some(field => !field.value.trim())) openRow = row;
   }
+  if (openRow !== null) targetRow = openRow;   // a line still missing a serial takes it before any line grows
   if (targetRow === null) return null;
 
   let fields = Array.from(tbody.querySelectorAll(`tr[data-sn-for="${targetRow}"] .sn-input`));
   let field = fields.find(input => !input.value.trim());
   let qty = parseInt(document.getElementById(`qty-${targetRow}`)?.value, 10) || 1;
   if (!field) {
+    if (_embeddedEdit) return { row: targetRow, qty, full: true };   // History edit: a scan never raises a saved quantity
     qty = setRowQuantity(targetRow, qty + 1);
     fields = Array.from(tbody.querySelectorAll(`tr[data-sn-for="${targetRow}"] .sn-input`));
     field = fields.find(input => !input.value.trim());
@@ -3872,6 +3875,7 @@ function appendScanToMatchingPartRow(part) {
     const tr = tbody.querySelector(`tr[data-row="${row}"]`);
     if (normalizePN(input?.dataset.partPn) !== pn || tr?.dataset.pkgUnits) continue;
     const current = parseInt(document.getElementById(`qty-${row}`)?.value, 10) || 1;
+    if (_embeddedEdit) return { row, qty: current, full: true };   // History edit: a scan never raises a saved quantity
     const qty = setRowQuantity(row, current + 1);
     rememberLatestScannedSaleRow(row);
     markScanOriginRow(row);
@@ -4193,6 +4197,13 @@ function flushPendingCatalogScans() {
   queued.forEach(scan => acceptDecodedScan(scan.raw, scan.format, { claimed: true }));
 }
 
+// History edit (Trevor, 2026-11-22): a scan of something already on the document fills an empty serial box or changes nothing.
+function editScanKept(row) {
+  ++scanStatusVersion;
+  const message = `Row ${rowPos(row)} is already on this document: nothing changed`;
+  setScanStatus(message, 'warn');
+  flashScanCommand(message, 'warn');
+}
 function acceptDecodedScan(rawValue, format, options = {}) {
   if (_nextTransactionBusy) { flashScanCommand('Saving the sale — scan again in a moment', 'warn'); return false; }
   // A package re-group triggered as a side effect of this scan may carry
@@ -4237,9 +4248,14 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
     if (format === 'hardware') flashScanCommand(message, 'warn');
     return;
   }
+  if (_embeddedEdit && !rowNeedsUnitSerial(pendingUnitSerialRow)) {   // a serial label that names no model goes to the one line still missing serials
+    // ponytail: with two lines missing serials such a label waits for review; add a line picker if that comes up
+    const waiting = rowOrder().filter(rowNeedsUnitSerial);
+    pendingUnitSerialRow = waiting.length === 1 ? waiting[0] : null;
+  }
   const result = resolveScannedValue(raw);
   const scannedSerial = result.serial || (unitSerialCandidates(raw).length ||
-    (rowNeedsUnitSerial(pendingUnitSerialRow) && likelySecondUnitSerial(raw) && !result.candidates.length) ? raw : '');
+    (likelySecondUnitSerial(raw) && !result.candidates.length) ? raw : '');   // any serial-shaped scan: never the same serial twice (Trevor, 2026-11-22)
   if (scannedSerial) {
     const key = canonicalSerialNumber(scannedSerial);
     const duplicate = Array.from(tbody.querySelectorAll('.sn-input')).find(field => canonicalSerialNumber(field.value) === key);
@@ -4254,6 +4270,7 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
     if (result.candidates.length === 1) {
       playScanBeep(false);
       const merged = appendSerialToMatchingUnitRow(result.candidates[0], result.serial);
+      if (merged?.full) return editScanKept(merged.row);
       if (merged) {
         ++scanStatusVersion;
         setScanStatus(merged.duplicate
@@ -4287,6 +4304,7 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
       const row = pendingUnitSerialRow;
       const waitingPart = findPartByPn(waitingPN);
       const merged = appendSerialToMatchingUnitRow(waitingPart, raw);
+      if (merged?.full) return editScanKept(merged.row);
       if (merged && merged.row !== row) {
         pendingUnitSerialRow = null;
         if (document.querySelector(`#mobileRows [data-row="${row}"]`)) clearMobileRow(row);
@@ -4305,9 +4323,20 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
       return;
     }
   }
+  if (_embeddedEdit && !result.candidates.length && !serialCandidates.length && likelySecondUnitSerial(raw)) {
+    // History edit: a serial with no line to take it adds no "needs review" line
+    ++scanStatusVersion;
+    const message = rowOrder().some(rowNeedsUnitSerial)
+      ? `${raw} not added: more than one line needs serials, type it on its line`
+      : `${raw} not added: every serial box is filled`;
+    setScanStatus(message, 'warn');
+    flashScanCommand(message, 'warn');
+    return;
+  }
   if (serialCandidates.length === 1) {
     playScanBeep(false);
     const merged = appendSerialToMatchingUnitRow(serialCandidates[0], raw);
+    if (merged?.full) return editScanKept(merged.row);
     if (merged) {
       ++scanStatusVersion;
       setScanStatus(merged.duplicate
@@ -4347,6 +4376,7 @@ function _acceptDecodedScan(rawValue, format, options = {}) {
   if (needsReview) { saveScanForReview(raw, format, result.candidates); return; }
   const part = result.candidates[0];
   const merged = appendScanToMatchingPartRow(part);
+  if (merged?.full) return editScanKept(merged.row);
   if (merged) {
     ++scanStatusVersion;
     setScanStatus(`Row ${rowPos(merged.row)} → qty ${merged.qty}`, 'ok');
