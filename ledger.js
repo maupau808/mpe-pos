@@ -631,9 +631,9 @@
     return c === 'not_signed_in' || c === 'offline' ? 'signedout' : c === 'not_empty' ? 'register' : ['error', 'timeout', 'closed'].includes(c) ? 'check' : 'skipped';
   }
   // The toast: 7 seconds, or with m.stay until its Dismiss. An ordinary toast shown over a stay message gives the stay message back when its time is up.
-  function makeToast(t, setT, clearT) {
+  function makeToast(t, setT, clearT, onHide) {
     let timer, stay = null;
-    const hide = () => t.classList.remove('show');
+    const hide = () => { t.classList.remove('show'); if (onHide) onHide(); };
     function paint(m) {
       t.innerHTML = `<span>${esc(m.text)}</span>` + (m.undo ? '<button type="button">Undo</button>' : m.stay ? '<button type="button">Dismiss</button>' : '');
       if (m.undo || m.stay) t.querySelector('button').onclick = () => { if (m.stay) stay = null; hide(); if (m.undo) m.undo(); };
@@ -1054,8 +1054,9 @@
     if (!fresh || !UNPAID.has(fresh.state)) return { ok: false, cap: 0, message: `${r.number} is not owing any more. Nothing was taken.` };
     const cap = L.creditCap(freshRows, key, Math.round(fresh.balance * 100), fm.records, ctx);
     if (!(amountCents > 0) || amountCents > cap) return { ok: false, cap, message: cap > 0 ? `Only ${money(cap / 100)} of store credit can be used now. Nothing was taken. Try again with that amount.` : 'This customer has no store credit left. Nothing was taken.' };
-    await h.appendPaymentRows([L.creditUseRow({ txnId: fresh.txnId, number: fresh.number, kind: fresh.kind }, amountCents, key, now, h.place || '')]);
-    return { ok: true, cents: amountCents };
+    const row = L.creditUseRow({ txnId: fresh.txnId, number: fresh.number, kind: fresh.kind }, amountCents, key, now, h.place || '');
+    await h.appendPaymentRows([row]);
+    return { ok: true, cents: amountCents, id: row[0] };
   }
   // D18: a sale that shows Refund due and has a customer moves the extra to store credit by itself. Runs on every History load, so a
   // credit row that failed after a save, or a customer added later, is picked up; the fixed ids (credit_<txnId>) make two Histories safe.
@@ -1671,10 +1672,28 @@
 
     // ---- actions
     const SAVED_HERE = 'Saved on this computer. It is shared when the sheet answers.';
+    // Cmd/Ctrl+Z takes back the newest action whose toast offered Undo (or a plain `reverse`), Shift+Cmd/Ctrl+Z puts it back. Only History's own reverses
+    // are used (cancel/restore, retype, payment undo, give-credit undo): each re-checks the fresh sheet and may refuse. An action with no reverse adds no step.
+    const hist = { done: [], undone: [] };
+    let keyDir = '';   // 'undo' | 'redo' while a key (or the toast's Undo button) is calling a reverse: run() reads it once, on entry
+    function callReverse(fn, dir) { keyDir = dir; try { fn(); } finally { keyDir = ''; } }
+    function offer(msg, dir) {
+      const back = msg && typeof msg === 'object' && (msg.undo || msg.reverse);
+      if (!back) return msg;
+      if (dir === 'undo') hist.undone.push(back); else { hist.done.push(back); if (!dir) hist.undone.length = 0; }
+      return msg.undo ? { ...msg, undo: () => callReverse(back, dir === 'undo' ? 'redo' : 'undo') } : msg;
+    }
+    function stepHistory(redo) {
+      if (st.busy) return;
+      const fn = (redo ? hist.undone : hist.done).pop();
+      if (!fn) { toast(redo ? 'Nothing to redo' : 'Nothing to undo'); return; }
+      callReverse(fn, redo ? 'redo' : 'undo');
+    }
     async function run(name, fn, okMsg) {
+      const dir = keyDir; keyDir = '';
       if (st.busy) return;
       st.busy = name; draw();
-      try { const msg = await fn(); st.busy = ''; await load(); if (msg || okMsg) toast(msg || okMsg); }
+      try { const msg = await fn(); st.busy = ''; await load(); if (msg || okMsg) { hist.done.length = hist.undone.length = 0; toast(offer(msg, dir) || okMsg, true); } }
       catch (e) { st.busy = ''; draw(); toast(e && e.code === 'not_signed_in' ? 'Not signed in to Google. Nothing was saved.' : 'That did not go through. Nothing changed. Try again.'); }
     }
     // Take payment: amount (what is owed, typed over for a part payment) and how it was paid.
@@ -1707,11 +1726,12 @@
     }
     function markPaid(r, method, amount) {
       run('pay', async () => {
-        await host().appendPaymentRows(paymentRowsFor(r, method, st.today, host().place, Date.now(), amount));
+        const rows = paymentRowsFor(r, method, st.today, host().place, Date.now(), amount), payId = rows[0][0];
+        await host().appendPaymentRows(rows);
         const left = cents(r.balance - amount);
-        if (r.kind === 'quote') return { text: `${money(amount)} deposit taken on ${r.number} by ${METHOD_LABEL[method].toLowerCase()}.`, undo: () => undoPaid(r.txnId) };
+        if (r.kind === 'quote') return { text: `${money(amount)} deposit taken on ${r.number} by ${METHOD_LABEL[method].toLowerCase()}.`, undo: () => undoPaid(r.txnId, payId) };
         return { text: left > 0 ? `${money(amount)} taken on ${r.number} by ${METHOD_LABEL[method].toLowerCase()}. ${money(left)} still owed.`
-          : `${r.number} paid in full by ${METHOD_LABEL[method].toLowerCase()}.`, undo: () => undoPaid(r.txnId) };
+          : `${r.number} paid in full by ${METHOD_LABEL[method].toLowerCase()}.`, undo: () => undoPaid(r.txnId, payId) };
       });
     }
     // Store credit on an invoice: written only if the fresh Payments tab still holds that much (takeCredit).
@@ -1720,11 +1740,12 @@
         const out = await takeCredit(host(), r, Math.round(amount * 100), key, ctx(), Date.now());
         if (!out.ok) return out.message;
         const left = cents(r.balance - amount);
-        return { text: `${money(amount)} of store credit used on ${r.number}.${left > 0 ? ` ${money(left)} still owed.` : ''}`, undo: () => undoPaid(r.txnId) };
+        return { text: `${money(amount)} of store credit used on ${r.number}.${left > 0 ? ` ${money(left)} still owed.` : ''}`, undo: () => undoPaid(r.txnId, out.id) };
       });
     }
     // Undo voids the newest live payment, read fresh (load). Store credit: an automatic move already spent is refused with a plain sentence.
-    function undoPaid(id) {
+    // payId (from the toast's Undo or Cmd+Z): only that exact payment is voided; if another register has since taken a newer one, nothing is undone.
+    function undoPaid(id, payId) {
       run('undoPay', async () => {
         await load(true);
         const r = recById(id);
@@ -1732,6 +1753,7 @@
         try { rows = r ? L.undoRows(r, Date.now(), host().place || '', { paymentRows: st.payRows, records: st.records, ctx: ctx() }) : []; }
         catch (e) { return s(e && e.message) || 'That did not go through. Nothing changed.'; }
         if (!rows.length) return `${id} has no payment to undo.`;
+        if (payId && rows[0][9] !== payId) return 'Another payment came in after that one, so Undo left it alone. Use Undo payment on the invoice.';
         await host().appendPaymentRows(rows);
         if (rows[0][5] === 'credit_given') return `The move to store credit on ${r.number} is undone.`;
         return r.kind === 'quote' ? `Last deposit on ${r.number} undone.` : `${r.number} is unpaid again.`;
@@ -1987,7 +2009,7 @@
         if (kind === 'cancel' && (now.paymentsLive || []).length) return now.kind === 'quote' ? 'This quote has a deposit. Undo the deposit first.' : 'This invoice has a payment. Undo the payment first.';
         if ((now.state === 'cancelled') === (kind === 'cancel')) return kind === 'cancel' ? `${r.number} is already cancelled.` : `${r.number} is not cancelled.`;
         await host().appendPaymentRows([L.buildMarkRow({ kind, txnId: r.txnId, invoice_number: r.number, place: host().place || '' })]);
-        return kind === 'cancel' ? { text: now.kind === 'quote' ? `${r.number} deleted.` : `${r.number} cancelled. Its items go back into stock.`, undo: () => setCancel(r, 'uncancel') } : now.kind === 'quote' ? `${r.number} restored.` : `${r.number} is back on the books.`;
+        return kind === 'cancel' ? { text: now.kind === 'quote' ? `${r.number} deleted.` : `${r.number} cancelled. Its items go back into stock.`, undo: () => setCancel(r, 'uncancel') } : { text: now.kind === 'quote' ? `${r.number} restored.` : `${r.number} is back on the books.`, reverse: () => setCancel(r, 'cancel') };
       });
     }
     // Change to: invoice, receipt or quote, in place (one checked cell on the sheet; stock follows the new type).
@@ -2035,7 +2057,8 @@
     }
 
     // ---- small UI pieces
-    const toast = makeToast($('toast'), setTimeout, clearTimeout);
+    const toastRaw = makeToast($('toast'), setTimeout, clearTimeout, () => { hist.done.length = hist.undone.length = 0; });   // the key only ever acts on the Undo button that is on screen
+    const toast = (m, keepSteps) => { if (!keepSteps) hist.done.length = hist.undone.length = 0; toastRaw(m); };
     // A result that must be seen (the QuickBooks save and weekly check): held while this page is hidden, shown when it is next visible.
     // The app hides History with setVisible(false), which may not fire visibilitychange: an unfocused page counts as hidden too, and focus or the app's shown message releases it.
     const pageHidden = () => doc.visibilityState === 'hidden' || frameHidden() || !doc.hasFocus();
@@ -2200,6 +2223,15 @@
     doc.addEventListener('change', e => {
       const f = e.target.closest('[data-filter]');
       if (f) { ui[f.dataset.filter] = f.value; ui.sel = ''; $('list').scrollTop = 0; draw(); }
+    });
+    // Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z (see stepHistory). A field the user has just typed in keeps the browser's own typing undo; an open dialog is left alone.
+    let typed = null;
+    doc.addEventListener('input', e => { typed = e.target; }, true);
+    doc.addEventListener('focusout', e => { if (e.target === typed) typed = null; }, true);
+    doc.addEventListener('keydown', e => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || String(e.key).toLowerCase() !== 'z' || e.defaultPrevented) return;
+      if ((typed && typed === doc.activeElement) || doc.querySelector('dialog[open]') || (!hist.done.length && !hist.undone.length)) return;
+      e.preventDefault(); stepHistory(e.shiftKey);
     });
     const q = $('q');
     q.value = ui.q;
