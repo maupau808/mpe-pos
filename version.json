@@ -62,7 +62,7 @@
     }
   },
   "parts": {
-    "release": "2026.11.21.1",
+    "release": "2026.11.26.1",
     "files": [
       {
         "name": "mpe_parts.db",
@@ -116,14 +116,14 @@
       },
       {
         "name": "mpe_parts.html",
-        "size": 159036,
-        "sha256": "7d31148c622032d332a3f2a68a158aed21f45a86df46b95ee2300b0c712e66f9",
+        "size": 159556,
+        "sha256": "d7b54f944ac0935d31d77a1309a0c457aa5f73fea900f77a862a701c7c7f841f",
         "chunks": [
           {
-            "fileId": "1oKVg1OrY5ub41f3yJeb-ebHkfJhEQdUT",
-            "name": "MPE-Parts-2026.11.21.1-mpe_parts.html.gz.part-000",
-            "size": 51644,
-            "sha256": "fc6ba046db176e27edc074676fac22d3f87210858bc50c8c85bec81a6be93b39"
+            "fileId": "15iQ3OqwB4Gnvy-M4XqJ1KxwlK1Zns8ZT",
+            "name": "MPE-Parts-2026.11.26.1-mpe_parts.html.gz.part-000",
+            "size": 51801,
+            "sha256": "cfec16075f0307299cef3395425ea390a24b15a140346eb9ca903374d87df2af"
           }
         ]
       },
