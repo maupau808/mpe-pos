@@ -64,7 +64,7 @@
   const NET_DAYS = 30;
   const COUNT_FROM = '2026-01-01'; // invoices dated earlier never count as owed
   const SOON_DAYS = 7;
-  const METHODS = Object.freeze(['cash', 'check', 'card_terminal', 'sheffield', 'helcim_card', 'helcim_ach', 'credit_given', 'credit_used']); // helcim_*: payments Helcim reported (helcimPaymentRows); credit_*: store credit
+  const METHODS = Object.freeze(['cash', 'check', 'ach', 'card_terminal', 'sheffield', 'helcim_card', 'helcim_ach', 'credit_given', 'credit_used']); // helcim_*: payments Helcim reported (helcimPaymentRows); credit_*: store credit
   // Labels for the two store-credit methods (ledger.js owns the rest in its METHOD_LABEL). credit_given on a sale = an overpayment moved off it.
   const CREDIT_LABELS = Object.freeze({ credit_given: 'Moved to store credit', credit_used: 'Store credit' });
   const MARKS = Object.freeze({ email_draft: 'drafts', edit: 'edits', cancel: 'cancels', uncancel: 'cancels', print: 'prints', pdf: 'pdfs', pdf_open: 'pdfs', email_sent: 'sent', paylink: 'paylinks', due: 'dues', date: 'dates', note: 'orderNotes' }); // paylink: note = url|helcimInvoiceId (parseMarks.paylinks)
@@ -296,7 +296,7 @@
     return 'pay_' + (now || Date.now()).toString(36) + Math.random().toString(36).slice(2, 8);
   }
   function buildPaymentRow(p, now) {
-    if (!METHODS.includes(p.method)) throw new Error('method must be cash, check, card_terminal, sheffield, helcim_card, helcim_ach, credit_given or credit_used');
+    if (!METHODS.includes(p.method)) throw new Error('method must be cash, check, ach, card_terminal, sheffield, helcim_card, helcim_ach, credit_given or credit_used');
     const amt = typeof p.amount === 'string' && p.amount.trim() === '' ? NaN : Number(p.amount);
     if (!Number.isFinite(amt) || amt < 0) throw new Error('amount must be a number, 0 or more');
     if (CREDIT[p.method]) { // store credit: positive amount, an owner in K; given needs a reason, used needs the sale it paid

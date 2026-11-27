@@ -41,7 +41,7 @@
   const ARCHIVE_DAYS = 30; // Trevor (Nov 13): an open quote dated more than 30 days ago moves to the collapsed Archived quotes group (hide only)
   const HIDE_CANCELLED_MS = 5 * 60 * 1000; // Trevor (Nov 13): a cancelled sale stays struck through this long, then leaves the lists (search still finds it)
   const PLACES = { 1: 'Mac', 2: 'PC Left', 3: 'PC Right', 4: 'Tech Dept', 5: 'back_office', 9: 'Web' };
-  const METHOD_LABEL = { cash: 'Cash', check: 'Check', card_terminal: 'Card terminal', sheffield: 'Sheffield', helcim_card: 'Card online', helcim_ach: 'Bank transfer', ...L.CREDIT_LABELS }; // + credit_given / credit_used
+  const METHOD_LABEL = { cash: 'Cash', check: 'Check', ach: 'ACH / Direct deposit', card_terminal: 'Card terminal', sheffield: 'Sheffield', helcim_card: 'Card online', helcim_ach: 'Bank transfer', ...L.CREDIT_LABELS }; // + credit_given / credit_used
   const KIND_LABEL = { invoice: 'Invoice', quote: 'Quote', receipt: 'Sale' };
   const STORE_KEY = 'mpe.ledger.ui';
   const UNPAID = new Set(['unpaid', 'dueSoon', 'overdue']);
